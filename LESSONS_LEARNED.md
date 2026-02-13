@@ -104,6 +104,96 @@ This document captures key lessons learned from completing the VulnAssesTool pro
 
 **Recommendation:** Include security requirements in initial implementation tasking.
 
+---
+
+### 22. Consistent Security Layer Application
+
+**Lesson:** Security modules must be imported and used consistently across all code paths.
+
+**What Was Found:**
+- SQL sanitization module existed but was not imported in main.ts
+- IPC handlers lacked request validation despite patterns being documented
+- Test TODOs indicate incomplete features (XML parsing)
+
+**What We Fixed:**
+- Applied SQL sanitization consistently in all IPC handlers
+- Created request validation module for all IPC operations
+- Added input validation for CVE IDs, CPE strings, and search queries
+- Added file size validation to prevent DoS attacks
+
+**Recommendation:**
+- Code review must verify actual usage, not just presence
+- Static analysis tools needed for enforcement
+- Track test skips as feature debt, not just documentation
+
+---
+
+### 23. Multi-Layered Security Validation
+
+**Lesson:** Each security layer must be independently validated. One layer doesn't compensate for another.
+
+**What Was Found:**
+- Secure storage implemented but renderer still had keys in state
+- Context isolation configured but CSP not customized
+- SQL sanitization available but not consistently applied
+
+**What We Fixed:**
+- Created comprehensive request validation for all IPC channels
+- Applied sanitization to all user inputs before database queries
+- Added file upload size limits (50MB) with proper error handling
+- Created secure storage helper for consistent API key access patterns
+- Implemented error message sanitization to prevent information disclosure
+
+**Recommendation:** Each security layer must be independently validated. Defense in depth requires multiple, overlapping security controls.
+
+---
+
+### 24. File Upload Security Needs Multiple Validations
+
+**Lesson:** File upload security requires size limits, type validation, and content validation.
+
+**What Was Found:**
+- No file size limits (DoS risk)
+- MIME type validation only via basic accept attribute
+- No timeout for parsing operations
+
+**What We Fixed:**
+- Implemented 50MB file size limit with formatted error messages
+- Added empty file detection and rejection
+- Added user-friendly error messages for oversized files
+- Created tests for file size validation
+
+**Recommendation:** Implement comprehensive file upload validation:
+1. Size limits (e.g., 50MB max)
+2. Content-type validation
+3. Streaming parser for large files
+4. Parse timeout enforcement
+
+---
+
+### 25. Type-Safe IPC Communication
+
+**Lesson:** TypeScript interfaces don't provide runtime validation. Schema validation required.
+
+**What Was Found:**
+- IPC handlers accept request structures without schema validation
+- No check for malicious patterns beyond TypeScript types
+- Error messages could expose internal implementation details
+
+**What We Fixed:**
+- Created validateNvdSearchRequest() with comprehensive validation
+- Created validateGetCveRequest() with CVE ID format checking
+- Created validateStartSyncRequest() with years array validation
+- Created validateSetApiKeyRequest() with API key format validation
+- Implemented sanitizeErrorMessage() for user-facing error messages
+- Added SQL injection pattern detection in all search queries
+
+**Recommendation:**
+- Implement request validation middleware for all IPC channels
+- Use schema validation libraries (e.g., Zod, Joi) for complex requests
+- Sanitize all error messages before sending to renderer
+- Log detailed errors in development, return user-friendly messages in production
+
 ### 7. Incremental Delivery
 
 **Lesson:** Commit frequently and document progress as work completes.
@@ -374,10 +464,64 @@ The DevFlow Enforcer workflow successfully guided VulnAssesTool from project res
 - Context isolation ✅ (properly configured)
 - Node integration disabled ✅ (properly configured)
 - Secure storage ✅ (implemented)
-- CSP headers ❌ (using default only)
-- API keys in renderer ❌ (defeats purpose of secure storage)
+- CSP headers ✅ (custom CSP now implemented via meta tag and session headers)
+- API keys in renderer ❌ (defeats purpose of secure storage) - **FIXED**
 
 **Recommendation:** Each security layer must be independently validated. One layer doesn't compensate for another.
+
+---
+
+### 22. State Persistence Creates Security Migration Burden
+
+**Lesson:** Persisting sensitive data (API keys) in renderer state creates complex migration requirements and extends security surface area.
+
+**What Was Found:**
+- API keys (`nvdApiKey`, `osvApiKey`, `githubApiKey`) were in `AppSettings` type
+- Keys persisted to localStorage via Zustand middleware
+- Secure storage existed but was bypassed by renderer state
+- Migration required moving keys from localStorage → secure storage
+
+**Impact:**
+- Extended attack surface (localStorage accessible to web content)
+- Complex migration logic required
+- User confusion about where keys are stored
+- Code review found this as CRITICAL-001
+
+**What Was Fixed (CRITICAL-001):**
+1. Removed API key fields from `AppSettings` type definition
+2. Updated `Settings.tsx` to use `window.electronAPI.secureStorage` for all key operations
+3. Updated `ProjectDetail.tsx` to fetch keys from secure storage before API calls
+4. Updated `refreshService.ts` to not accept `nvdApiKey` parameter; fetches from secure storage internally
+5. Removed keys from persist middleware's `partialize` function
+6. Settings profile import/export no longer includes API keys
+
+**Recommendation:** Never persist sensitive data in renderer. Always fetch via IPC when needed. This adds latency but is necessary for security.
+
+---
+
+### 23. Content Security Policy (CSP) Requires Multiple Implementation Points
+
+**Lesson:** CSP is not a single-setting fix. It requires multiple coordinated changes across meta tag, session headers, and application code.
+
+**What Was Found:**
+- Default Electron CSP only (not customized)
+- No meta tag in index.html
+- No session-level CSP enforcement
+- Code review found this as CRITICAL-002
+
+**What Was Fixed (CRITICAL-002):**
+1. Added CSP meta tag to `index.html` with restrictive policy
+2. Added session header CSP enforcement in `electron/main.ts`
+3. Documented CSP in `architecture.md`
+
+**CSP Policy Implemented:**
+- `default-src 'self'` - Only allow resources from same origin
+- `script-src 'self' 'unsafe-inline' 'unsafe-eval'` - Allow inline scripts for React/JSX
+- `connect-src 'self' https://services.nvd.nist.gov https://api.osv.dev https://api.github.com` - Allow API connections
+- `style-src 'self' 'unsafe-inline'` - Allow inline styles
+- `img-src 'self' data: https:` - Allow images from self, data URIs, and HTTPS
+
+**Recommendation:** Test CSP in development mode before production. Some inline scripts from build tools may require `unsafe-eval`.
 
 ---
 
@@ -542,6 +686,7 @@ The DevFlow Enforcer workflow successfully guided VulnAssesTool from project res
    - ✅ Automated security scanning (ESLint security plugins)
    - ✅ SAST integration for sensitive data detection
    - ✅ All security findings resolved before release
+   - ✅ Medium priority findings fully addressed (MEDIUM-001 through MEDIUM-007)
 
 2. **Code Review Integration**
    - ✅ PRD → Architecture → Implementation → CODE_REVIEW
@@ -573,3 +718,8 @@ The DevFlow Enforcer workflow successfully guided VulnAssesTool from project res
 **Document Created:** 2026-02-12
 **Created By:** DevFlow Enforcer v2.0
 **Workflow Status:** Complete - Production Ready
+**Last Updated:** 2026-02-13
+
+---
+
+## Code Review Phase Insights (2026-02-13)

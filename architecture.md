@@ -232,9 +232,9 @@ VulnAssessTool uses Electron's **multi-process architecture** with strict securi
 | **Context Isolation** | Enabled in webPreferences | ✅ Active |
 | **Node Integration** | Disabled (nodeIntegration: false) | ✅ Active |
 | **Sandbox** | Enabled for renderer | ✅ Active |
-| **Content Security Policy** | Default Electron CSP | ✅ Active |
+| **Content Security Policy** | Custom CSP via meta tag + session headers | ✅ Active |
 | **Preload Script** | Secure bridge via contextBridge | ✅ Active |
-| **API Key Storage** | Encrypted via electron-store | ⚠️ Needs Implementation |
+| **API Key Storage** | Encrypted via Electron safeStorage, NOT in renderer state | ✅ Active |
 | **Code Signing** | Configured in electron-builder | ⚠️ Pending Setup |
 
 ---
@@ -651,6 +651,38 @@ contextBridge.exposeInMainWorld('electronAPI', {
   - Automatic encryption/decryption
   - Migration from plaintext keys
   - Prefix-based encryption detection
+
+#### Content Security Policy (CSP)
+
+**Purpose:** Prevent XSS attacks and data injection attacks
+
+**Implementation:**
+1. **Meta Tag CSP** (`index.html`):
+   ```html
+   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; ...">
+   ```
+
+2. **Session Header CSP** (`electron/main.ts`):
+   ```typescript
+   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+     if (details.resourceType === 'mainFrame') {
+       callback({
+         responseHeaders: {
+           ...details.responseHeaders,
+           'Content-Security-Policy': '...'
+         }
+       })
+     }
+   })
+   ```
+
+**CSP Directives:**
+- `default-src 'self'` - Only allow resources from same origin
+- `script-src 'self' 'unsafe-inline' 'unsafe-eval'` - Allow inline scripts for React/JSX
+- `connect-src 'self' https://...` - Allow API connections to NVD, OSV, GitHub
+- `style-src 'self' 'unsafe-inline'` - Allow inline styles
+- `img-src 'self' data: https:` - Allow images from self, data URIs, and HTTPS
+- `object-src 'none'` - Block plugins (Flash, Java, etc.)
 
 ### API Security
 
