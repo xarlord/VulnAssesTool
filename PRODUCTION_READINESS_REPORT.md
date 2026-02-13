@@ -188,12 +188,13 @@ VulnAssesTool has completed all DevFlow Enforcer phases and is **READY FOR PRODU
 
 ### Release Actions Required
 
-1. **Obtain Code Signing Certificates**
+1. **Obtain Code Signing Certificates** (DEFERRED TO LATER PHASE)
    - Windows: Purchase EV Code Signing Certificate
    - macOS: Enroll in Apple Developer Program
    - Linux: Setup GPG key
+   - Note: Code signing infrastructure is configured, certificates will be obtained later
 
-2. **Configure GitHub Secrets**
+2. **Configure GitHub Secrets** (WHEN OBTAINING CERTIFICATES)
    - `WINDOWS_CERT_PASSWORD`
    - `MAC_CERTS_PASSWORD`
    - `MAC_NOTARIZATION_PASSWORD`
@@ -204,6 +205,7 @@ VulnAssesTool has completed all DevFlow Enforcer phases and is **READY FOR PRODU
    ```bash
    npm run dist:all
    ```
+   Note: Unsigned builds can be created for testing
 
 4. **Create Release Tag**
    ```bash
@@ -216,6 +218,7 @@ VulnAssesTool has completed all DevFlow Enforcer phases and is **READY FOR PRODU
    - Builds all platforms
    - Creates GitHub Release
    - Uploads artifacts
+   - Note: Code signing will be added when certificates are available
 
 ---
 
