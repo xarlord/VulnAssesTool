@@ -76,15 +76,15 @@ Despite substantial existing code, we are restarting the project with DevFlow En
 | **UI-001** | **Accessibility** | **Critical** | **Modal missing focus trap - keyboard navigation broken** | ✅ Resolved | UI Team |
 | **UI-002** | **Accessibility** | **Critical** | **Modal missing ARIA role attributes (dialog, aria-modal)** | ✅ Resolved | UI Team |
 | **UI-003** | **Design System** | **High** | **Hard-coded gray colors instead of design tokens** | ✅ Resolved | UI Team |
-| **UI-004** | **Responsive** | **High** | **Modal fixed height constraint on small screens** | Open | UI Team |
+| **UI-004** | **Responsive** | **High** | **Modal fixed height constraint on small screens** | ✅ Resolved | UI Team |
 | **UI-005** | **Usability** | **High** | **Sync button checking phase shows 0% progress - confusing** | ✅ Resolved | UI Team |
 | **UI-006** | **Accessibility** | **High** | **Escape key doesn't close modal** | ✅ Resolved | UI Team |
-| **UI-007** | **Accessibility** | **Medium** | **Severity tag color contrast may not meet 4.5:1** | Open | UI Team |
+| **UI-007** | **Accessibility** | **Medium** | **Severity tag color contrast may not meet 4.5:1** | ✅ Resolved | UI Team |
 | **UI-008** | **Accessibility** | **Medium** | **Copy button lacks visible focus state** | ✅ Resolved | UI Team |
 | **UI-009** | **Accessibility** | **Medium** | **Toggle buttons touch target below 44x44px on mobile** | ✅ Resolved | UI Team |
-| **UI-010** | **Visual** | **Medium** | **Long CPE URIs may not wrap gracefully** | Open | UI Team |
-| **VISUAL-001** | **Visual** | **Low** | **Collapse sections snap without animation** | Open | UI Team |
-| **VISUAL-002** | **Usability** | **Low** | **Loading skeleton only in header, not content area** | Open | UI Team |
+| **UI-010** | **Visual** | **Medium** | **Long CPE URIs may not wrap gracefully** | ✅ Resolved | UI Team |
+| **VISUAL-001** | **Visual** | **Low** | **Collapse sections snap without animation** | ✅ Resolved | UI Team |
+| **VISUAL-002** | **Usability** | **Low** | **Loading skeleton only in header, not content area** | ✅ Resolved | UI Team |
 | **VISUAL-003** | **Content** | **Low** | **Empty state says "Coming Soon" but feature is implemented** | ✅ Resolved | UI Team |
 
 ---
