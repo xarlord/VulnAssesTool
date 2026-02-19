@@ -2,7 +2,7 @@
 
 **Project:** VulnAssesTool - Vulnerability Assessment Tool
 **Session:** Project Restart - 2026-02-12
-**Last Updated:** 2026-02-13
+**Last Updated:** 2026-02-18
 
 ---
 
@@ -73,6 +73,136 @@ Despite substantial existing code, we are restarting the project with DevFlow En
 | **HIGH-002** | **Security** | **High** | **Missing File Upload Size Limits** | **Resolved** | **Security Expert** |
 | **HIGH-003** | **Security** | **High** | **Missing IPC Request Validation** | **Resolved** | **Security Expert** |
 | **HIGH-004** | **Security** | **High** | **API Keys Exposed in Multiple Renderer Components** | **Resolved** | **Security Expert** |
+| **UI-001** | **Accessibility** | **Critical** | **Modal missing focus trap - keyboard navigation broken** | ✅ Resolved | UI Team |
+| **UI-002** | **Accessibility** | **Critical** | **Modal missing ARIA role attributes (dialog, aria-modal)** | ✅ Resolved | UI Team |
+| **UI-003** | **Design System** | **High** | **Hard-coded gray colors instead of design tokens** | ✅ Resolved | UI Team |
+| **UI-004** | **Responsive** | **High** | **Modal fixed height constraint on small screens** | Open | UI Team |
+| **UI-005** | **Usability** | **High** | **Sync button checking phase shows 0% progress - confusing** | ✅ Resolved | UI Team |
+| **UI-006** | **Accessibility** | **High** | **Escape key doesn't close modal** | ✅ Resolved | UI Team |
+| **UI-007** | **Accessibility** | **Medium** | **Severity tag color contrast may not meet 4.5:1** | Open | UI Team |
+| **UI-008** | **Accessibility** | **Medium** | **Copy button lacks visible focus state** | ✅ Resolved | UI Team |
+| **UI-009** | **Accessibility** | **Medium** | **Toggle buttons touch target below 44x44px on mobile** | ✅ Resolved | UI Team |
+| **UI-010** | **Visual** | **Medium** | **Long CPE URIs may not wrap gracefully** | Open | UI Team |
+| **VISUAL-001** | **Visual** | **Low** | **Collapse sections snap without animation** | Open | UI Team |
+| **VISUAL-002** | **Usability** | **Low** | **Loading skeleton only in header, not content area** | Open | UI Team |
+| **VISUAL-003** | **Content** | **Low** | **Empty state says "Coming Soon" but feature is implemented** | ✅ Resolved | UI Team |
+
+---
+
+## 2026-02-18 - UI/UX Review and Visual Testing Findings
+
+### Scope
+- **NvdCveDetailModal.tsx** - CVE detail floating window
+- **Search.tsx** - Search page with NVD mode and sync button
+
+### Overall Score: 7.4/10
+
+| Screen | Visual | Usability | Design System | Responsive | Accessibility | Overall |
+|--------|--------|-----------|---------------|------------|---------------|---------|
+| NvdCveDetailModal | 8/10 | 9/10 | 7/10 | 6/10 | 6/10 | 7.2/10 |
+| Search Page (NVD) | 8/10 | 8/10 | 8/10 | 7/10 | 7/10 | 7.6/10 |
+
+### Critical Findings (Must Fix Before Release)
+
+#### UI-001: Modal Missing Focus Trap
+- **Category:** Accessibility (WCAG 2.1)
+- **Location:** `NvdCveDetailModal.tsx:292-293`
+- **Problem:** When modal opens, focus is not trapped within the modal. Keyboard users may navigate to elements behind the backdrop.
+- **Impact:** WCAG 2.1 violation - keyboard navigation broken for modal dialogs
+- **Fix:** Implement focus trap with useEffect or use a modal library
+
+#### UI-002: Modal Missing ARIA Attributes
+- **Category:** Accessibility (WCAG 2.1)
+- **Location:** `NvdCveDetailModal.tsx:302`
+- **Problem:** Modal container lacks `role="dialog"` and `aria-modal="true"` attributes
+- **Impact:** Screen readers won't announce the modal correctly
+- **Fix:** Add ARIA attributes to modal container
+
+### High Priority Findings
+
+#### UI-003: Hard-coded Colors Instead of Design Tokens
+- **Category:** Design System
+- **Location:** `NvdCveDetailModal.tsx:94-116` (SEVERITY_COLORS, REFERENCE_TAG_COLORS)
+- **Problem:** Hard-coded gray/red/green colors (`text-gray-600`, `bg-gray-100`) instead of Tailwind design tokens
+- **Impact:** Dark mode won't work properly; inconsistent with app-wide design system
+- **Fix:** Replace with token equivalents: `text-muted-foreground`, `bg-muted`, `text-destructive`, etc.
+
+#### UI-004: Modal Height Constraint on Small Screens
+- **Category:** Responsive
+- **Location:** `NvdCveDetailModal.tsx:302`
+- **Problem:** `max-h-[90vh]` may cause content overflow issues on mobile devices
+- **Impact:** Content may be cut off on mobile; poor UX
+- **Fix:** Add responsive height classes and consider full-screen mode on mobile
+
+#### UI-005: Sync Button Checking Phase Visual Feedback
+- **Category:** Usability
+- **Location:** `Search.tsx:487-506`
+- **Problem:** While syncing, initial "checking" phase shows 0% progress which may confuse users
+- **Impact:** Users may think sync is frozen
+- **Fix:** Show indeterminate progress bar or spinner during checking phase
+
+#### UI-006: Escape Key Doesn't Close Modal
+- **Category:** Accessibility
+- **Location:** `NvdCveDetailModal.tsx`
+- **Problem:** Escape key doesn't close the modal - only clicking backdrop/X button works
+- **Impact:** Keyboard users cannot easily dismiss modal
+- **Fix:** Add keydown event listener for Escape key
+
+### Medium Priority Findings
+
+#### UI-007: Severity Tag Color Contrast
+- **Category:** Accessibility
+- **Location:** `NvdCveDetailModal.tsx:102-116`
+- **Problem:** Some severity color combinations may not meet 4.5:1 contrast ratio
+- **Analysis Needed:** Verify each combination with contrast checker
+- **Status:** Requires verification
+
+#### UI-008: Copy Button Focus State
+- **Category:** Accessibility
+- **Location:** `NvdCveDetailModal.tsx:317-333`
+- **Problem:** Copy button only has hover transition, no visible focus indicator
+- **Fix:** Add `focus-visible:ring-2 focus-visible:ring-primary`
+
+#### UI-009: Toggle Buttons Touch Target Size
+- **Category:** Accessibility
+- **Location:** `Search.tsx:442-468`
+- **Problem:** Toggle buttons have `py-2` (~8px padding) which may be below 44x44px minimum
+- **Impact:** Difficult to tap on mobile devices
+- **Fix:** Increase padding on mobile: `min-h-[44px]`
+
+#### UI-010: Long CPE URIs Overflow
+- **Category:** Visual Design
+- **Location:** `NvdCveDetailModal.tsx:644-646`
+- **Problem:** CPE URIs can be very long and `break-all` breaks mid-word
+- **Fix:** Consider `break-word` or truncation with tooltip
+
+### Low Priority Findings (Polish)
+
+#### VISUAL-001: Collapse Section Animation
+- **Category:** Visual Design
+- **Problem:** Expandable sections (CVSS, CPE, CWE, References) snap open/close without animation
+- **Fix:** Add smooth height transition
+
+#### VISUAL-002: Loading Skeleton Placeholder
+- **Category:** Usability
+- **Location:** `NvdCveDetailModal.tsx:306-310`
+- **Problem:** Loading skeleton only shows in header, not in content area
+- **Fix:** Add full skeleton for better perceived performance
+
+#### VISUAL-003: Outdated Empty State Copy
+- **Category:** Content
+- **Location:** `Search.tsx:775-784`
+- **Problem:** Empty state says "NVD Database Search Coming Soon" but the feature is implemented
+- **Fix:** Update copy to reflect actual functionality
+
+### Positive Findings
+1. **Good Severity Visual Hierarchy** - Color-coded severity badges are clear and consistent
+2. **Informative Loading States** - Sync progress shows percentage and estimated time remaining
+3. **Well-structured CVSS Tables** - Vector breakdown is informative and readable
+4. **Per-reference Tags** - Clear visual distinction between patch/vendor/advisory/exploit tags
+5. **Patch Available Alert** - Prominent green alert draws attention to fix availability
+6. **Responsive Modal Width** - `max-w-4xl` works well for most screen sizes
+7. **Copy to Clipboard** - Useful feature with visual feedback
 
 ---
 
