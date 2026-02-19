@@ -143,8 +143,56 @@ See: `NVD_EXTENSION_PLAN.md` for detailed implementation plan.
 
 ---
 
-**Session Updated:** 2026-02-18
+**Session Updated:** 2026-02-19
 **Workflow Status:** NVD EXTENSION COMPLETE ✅
+
+---
+
+## Phase 10: CPE Estimation for Excel-to-CycloneDX (2026-02-19)
+
+**Started:** 2026-02-19
+**Status:** 📋 PLANNED - Ready for Implementation
+
+### Overview
+Automatically estimate and suggest CPE values when converting Excel SBOM to CycloneDX format. When CPE field is empty but library name and version exist, match against NVD database and present ambiguous matches in a modal dialog for user confirmation.
+
+### Design Document
+See: `docs/plans/2026-02-19-cpe-estimation-design.md`
+
+### Implementation Phases
+
+| Phase | Description | Status | Est. Time |
+|-------|-------------|--------|-----------|
+| 10.1 | Core Matching Logic (CPEMatcher service) | ⏳ Pending | 2-3 days |
+| 10.2 | Database Integration (IPC handler) | ⏳ Pending | 1-2 days |
+| 10.3 | UI Components (CPEMatchDialog) | ⏳ Pending | 2 days |
+| 10.4 | Excel Parser Integration | ⏳ Pending | 1 day |
+| 10.5 | Testing & Polish | ⏳ Pending | 1 day |
+
+**Total Estimated Effort: 7-9 days**
+
+### Technical Approach
+
+**Matching Algorithm (Combined):**
+1. Token-based matching for initial candidate selection
+2. Levenshtein distance for fuzzy matching confidence
+3. NVD Database lookup using local `cpe_matches` table
+
+**UI Interaction:**
+- Modal dialog for ambiguous matches
+- Confidence scores displayed (0-100%)
+- "Accept All High Confidence" quick action
+- Option to skip CPE assignment
+
+### Key Files to Create/Modify
+
+| File | Description |
+|------|-------------|
+| `src/renderer/lib/services/cpeMatcher.ts` | Core matching service |
+| `src/renderer/components/CPEMatchDialog.tsx` | Modal dialog component |
+| `electron/database/cpeSearch.ts` | Database search functions |
+| `src/renderer/lib/parsers/excel.ts` | Enhanced Excel parser |
+| `src/renderer/lib/generators/cyclonedxGenerator.ts` | Integration point |
 
 ---
 
