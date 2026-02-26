@@ -1,8 +1,64 @@
 # DevFlow Enforcer Findings
 
 **Project:** VulnAssesTool - Vulnerability Assessment Tool
-**Session:** Project Restart - 2026-02-12
-**Last Updated:** 2026-02-23
+**Session:** V2.0 Expansion - 2026-02-26
+**Last Updated:** 2026-02-26
+
+---
+
+## 2026-02-26 - V2.0 Expansion Design Review
+
+### Design Document
+- **File:** `docs/plans/2026-02-26-v2-expansion-design.md`
+- **Target Release:** v2.0.0 (Q2 2026)
+- **Total Effort:** 94 days (~19 weeks)
+
+### Expansion Findings
+
+| ID | Category | Severity | Description | Status | Phase |
+|----|----------|----------|-------------|--------|-------|
+| V2-001 | Performance | High | Large SBOM scans (50K+ components) take 2+ minutes | Open | P1 |
+| V2-002 | Stability | Critical | No crash recovery - single error can lose user work | Partial | P1 |
+| V2-003 | Performance | Medium | Repeated API calls for same CVEs across projects | Open | P1 |
+| V2-004 | Functionality | High | No offline support - app unusable without internet | Open | P1 |
+| V2-005 | Data Safety | High | Database corruption means total data loss | Open | P1 |
+| V2-006 | Security | High | No exploit intelligence (KEV, EPSS) | Open | P2 |
+| V2-007 | Compliance | Medium | No VEX document generation/consumption | Open | P2 |
+| V2-008 | Security | Medium | No container image scanning support | Open | P2 |
+| V2-009 | UX | Medium | No guided onboarding for new users | Open | P3 |
+| V2-010 | UX | Medium | No keyboard-first navigation (command palette) | Open | P3 |
+| V2-011 | UX | Medium | Flat list doesn't show dependency relationships | Open | P3 |
+| V2-012 | UX | Low | Fixed dashboard layout doesn't suit all workflows | Open | P3 |
+| V2-013 | Reporting | Medium | Export options not stakeholder-ready | Open | P3 |
+| V2-014 | Branding | Medium | "VulnAssesTool" name not memorable | Open | P4 |
+| V2-015 | Documentation | Medium | No dedicated documentation portal | Open | P4 |
+| V2-016 | Analytics | Low | No visibility into real-world usage issues | Open | P4 |
+
+### Resolved Design Findings
+
+| ID | Description | Resolution |
+|----|-------------|------------|
+| FINDING-002 | Cytoscape.js bundle size concern | Lazy-load graph component |
+| FINDING-003 | Puppeteer PDF size concern | Use Electron printToPDF instead |
+| FINDING-006 | Effort estimation accuracy | Added 20% buffer to all phases |
+| FINDING-008 | Keyboard shortcut conflicts | Changed to Ctrl+Shift+P |
+
+### Scope Decisions
+
+| Item | Original Plan | Decision | Rationale |
+|------|---------------|----------|-----------|
+| CLI Tool | Phase 4 | Deferred to v2.1.0 | Focus on desktop excellence first |
+| Sigstore Attestation | Phase 2 | Deferred to v2.1.0 | Complexity underestimated |
+| Product Name | TBD | **VulnShield** (primary choice) | Strong, protective imagery |
+
+### Open Actions
+
+| ID | Action | Owner | Due |
+|----|--------|-------|-----|
+| ACTION-001 | Approve revised timeline | Product | Before Phase 1 start |
+| ACTION-002 | Confirm scope deferrals | Product | Before Phase 1 start |
+| ACTION-003 | Reserve npm package name | DevOps | Before v2.1.0 |
+| ACTION-004 | Register domain (vulnshield.io) | DevOps | Before Phase 4 |
 
 ---
 

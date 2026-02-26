@@ -3,12 +3,89 @@
 **Project:** VulnAssesTool - Vulnerability Assessment Tool
 **Started:** 2026-02-12
 **Last Updated:** 2026-02-26
-**Status:** ALL PHASES COMPLETE - PRODUCTION READY ✅
-**Current Release:** v0.4.1
+**Status:** V2.0 EXPANSION IN PROGRESS 🚀
+**Current Release:** v0.4.1 (stable)
+**Target Release:** v2.0.0 (Q2 2026)
+**Current Branch:** `feature/v2-phase1-foundation`
 
 ---
 
-## Current Extension: NVD Local Database (2021-2026)
+## 🚀 V2.0 EXPANSION - Software Supply Chain Security Platform
+
+**Design Document:** `docs/plans/2026-02-26-v2-expansion-design.md`
+**Target Release:** v2.0.0 (Q2 2026)
+**Vision:** Transform into enterprise-grade Software Supply Chain Security platform
+
+### V2.0 Phase Overview
+
+| Phase | Theme | Duration | Status | Branch |
+|-------|-------|----------|--------|--------|
+| 1 | Foundation (Performance & Stability) | 4.5 weeks | 🔄 In Progress | `feature/v2-phase1-foundation` |
+| 2 | Security Features (KEV, VEX, Containers) | 4.5 weeks | ⏳ Pending | `feature/v2-phase2-security` |
+| 3 | UX Excellence (Graph, Onboarding, Reports) | 6 weeks | ⏳ Pending | `feature/v2-phase3-ux` |
+| 4 | Branding & Launch (VulnShield) | 4.5 weeks | ⏳ Pending | `feature/v2-phase4-branding` |
+
+### Phase 1: Foundation (Current)
+
+**Objective:** Eliminate crash scenarios and achieve 50% performance improvement
+
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| P1-001 | Create ErrorBoundary component with fallback UI | 0.5d | ✅ Complete |
+| P1-002 | Add global error boundary to App.tsx | 0.5d | ✅ Complete |
+| P1-003 | Implement retry mechanism in ErrorBoundary | 1d | ⏳ Pending |
+| P1-004 | Create BackupService with scheduler | 1d | ⏳ Pending |
+| P1-005 | Add backup IPC handlers | 0.5d | ⏳ Pending |
+| P1-006 | Create Backup UI in Settings | 1d | ⏳ Pending |
+| P1-007 | Implement restore from backup | 0.5d | ⏳ Pending |
+| P1-008 | Create CacheManager service | 1d | ⏳ Pending |
+| P1-009 | Integrate cache with CVE lookups | 1d | ⏳ Pending |
+| P1-010 | Add cache configuration UI | 0.5d | ⏳ Pending |
+| P1-011 | Create DiffEngine service | 2d | ⏳ Pending |
+| P1-012 | Add component_hash to database schema | 0.5d | ⏳ Pending |
+| P1-013 | Integrate diff into scan workflow | 2d | ⏳ Pending |
+| P1-014 | Create OfflineQueue service | 2d | ⏳ Pending |
+| P1-015 | Add offline indicator to header | 0.5d | ⏳ Pending |
+| P1-016 | Implement sync-on-reconnect | 1d | ⏳ Pending |
+| P1-017 | Write unit tests (all components) | 2d | ⏳ Pending |
+| P1-018 | Write E2E tests | 1d | ⏳ Pending |
+| P1-019 | Performance benchmarking | 1d | ⏳ Pending |
+
+**Phase 1 Progress:** 2/19 tasks (11%)
+
+### V2.0 Success Metrics
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| Scan time (10K components) | ~2 min | <30s |
+| User onboarding | - | <5min to first report |
+| Test coverage | 95% | 95%+ maintained |
+| Crash rate | ~2-3/month | 0 |
+| Offline capability | Partial | Full |
+
+### V2.0 New Components
+
+| Component | Location | Purpose | Phase |
+|-----------|----------|---------|-------|
+| `ErrorBoundary.tsx` | `src/renderer/components/` | Global error handling | P1 ✅ |
+| `BackupService.ts` | `electron/services/` | Scheduled backups | P1 |
+| `CacheManager.ts` | `electron/services/` | CVE caching layer | P1 |
+| `DiffEngine.ts` | `src/renderer/lib/services/` | SBOM diffing | P1 |
+| `OfflineQueue.ts` | `src/renderer/lib/services/` | Request queuing | P1 |
+| `KevService.ts` | `electron/services/intelligence/` | CISA KEV sync | P2 |
+| `EpssService.ts` | `electron/services/intelligence/` | EPSS scores | P2 |
+| `ContainerScanner.ts` | `electron/services/scanner/` | Container analysis | P2 |
+| `VexGenerator.ts` | `src/renderer/lib/services/vex/` | VEX generation | P2 |
+| `OnboardingTour.tsx` | `src/renderer/components/onboarding/` | Guided flow | P3 |
+| `CommandPalette.tsx` | `src/renderer/components/` | Keyboard navigation | P3 |
+| `DependencyGraph.tsx` | `src/renderer/components/graph/` | Visualization | P3 |
+| `ReportGenerator.ts` | `src/renderer/lib/services/reports/` | PDF/HTML reports | P3 |
+
+---
+
+## Completed Extensions
+
+### NVD Local Database (2021-2026) ✅
 
 **Started:** 2026-02-18
 **Status:** ✅ COMPLETE - ALL PHASES IMPLEMENTED
