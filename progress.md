@@ -30,8 +30,9 @@
 | P1-009 | Integrate cache with CVE lookups | ✅ Complete | 2026-02-27 |
 | P1-010 | Add cache configuration UI | ✅ Complete | 2026-02-27 |
 | P1-011 | Create DiffEngine service | ✅ Complete | 2026-02-27 |
+| P1-012 | Add component_hash to database schema | ✅ Complete | 2026-02-27 |
 
-#### Pending Tasks (7 remaining)
+#### Pending Tasks (6 remaining)
 | ID | Task | Priority |
 |----|------|----------|
 | P1-011 | Create DiffEngine service | High |
@@ -43,7 +44,7 @@
 | P1-017 | Write unit tests (all components) | High |
 | P1-018 | Write E2E tests | High |
 
-**Phase 1 Progress:** 12/19 tasks (63%)
+**Phase 1 Progress:** 13/19 tasks (68%)
 **Phase 1 Estimated Completion:** ~4 weeks remaining
 
 ### V2.0 Timeline
