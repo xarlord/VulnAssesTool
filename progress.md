@@ -28,16 +28,11 @@
 | P1-007 | Implement restore from backup | ✅ Complete | 2026-02-27 |
 | P1-008 | Create CacheManager service | ✅ Complete | 2026-02-27 |
 | P1-009 | Integrate cache with CVE lookups | ✅ Complete | 2026-02-27 |
+| P1-010 | Add cache configuration UI | ✅ Complete | 2026-02-27 |
 
-#### Pending Tasks (9 remaining)
+#### Pending Tasks (8 remaining)
 | ID | Task | Priority |
 |----|------|----------|
-| P1-010 | Add cache configuration UI | Low |
-| P1-006 | Create Backup UI in Settings | Medium |
-| P1-007 | Implement restore from backup | High |
-| P1-008 | Create CacheManager service | Medium |
-| P1-009 | Integrate cache with CVE lookups | Medium |
-| P1-010 | Add cache configuration UI | Low |
 | P1-011 | Create DiffEngine service | High |
 | P1-012 | Add component_hash to database schema | High |
 | P1-013 | Integrate diff into scan workflow | High |
@@ -46,16 +41,15 @@
 | P1-016 | Implement sync-on-reconnect | Medium |
 | P1-017 | Write unit tests (all components) | High |
 | P1-018 | Write E2E tests | High |
-| P1-019 | Performance benchmarking | Medium |
 
-**Phase 1 Progress:** 10/19 tasks (53%)
+**Phase 1 Progress:** 11/19 tasks (58%)
 **Phase 1 Estimated Completion:** ~4 weeks remaining
 
 ### V2.0 Timeline
 
 | Phase | Duration | Target | Status |
 |-------|----------|--------|--------|
-| Phase 1: Foundation | 4.5 weeks | Month 1-2 | 🔄 In Progress (42%) |
+| Phase 1: Foundation | 4.5 weeks | Month 1-2 | 🔄 In Progress (58%) |
 | Phase 2: Security Features | 4.5 weeks | Month 2-3 | ⏳ Pending |
 | Phase 3: UX Excellence | 6 weeks | Month 3-5 | ⏳ Pending |
 | Phase 4: Branding & Launch | 4.5 weeks | Month 5-6 | ⏳ Pending |
