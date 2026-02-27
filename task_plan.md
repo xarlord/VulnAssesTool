@@ -45,13 +45,13 @@
 | P1-012 | Add component_hash to database schema | 0.5d | ✅ Complete |
 | P1-013 | Integrate diff into scan workflow | 2d | ✅ Complete |
 | P1-014 | Create OfflineQueue service | 2d | ✅ Complete |
-| P1-015 | Add offline indicator to header | 0.5d | ⏳ Pending |
+| P1-015 | Add offline indicator to header | 0.5d | ✅ Complete |
 | P1-016 | Implement sync-on-reconnect | 1d | ⏳ Pending |
 | P1-017 | Write unit tests (all components) | 2d | ⏳ Pending |
 | P1-018 | Write E2E tests | 1d | ⏳ Pending |
 | P1-019 | Performance benchmarking | 1d | ⏳ Pending |
 
-**Phase 1 Progress:** 15/19 tasks (79%)
+**Phase 1 Progress:** 16/19 tasks (84%)
 
 ### V2.0 Success Metrics
 
