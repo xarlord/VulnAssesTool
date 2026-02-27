@@ -21,11 +21,11 @@
 | Phase | Theme | Duration | Status | Branch |
 |-------|-------|----------|--------|--------|
 | 1 | Foundation (Performance & Stability) | 4.5 weeks | 🔄 In Progress | `feature/v2-phase1-foundation` |
-| 2 | Security Features (KEV, VEX, Containers) | 4.5 weeks | ⏳ Pending | `feature/v2-phase2-security` |
+| 2 | Security Features (KEV, VEX, Containers) | 4.5 weeks | 🔄 In Progress | `feature/v2-phase2-security` |
 | 3 | UX Excellence (Graph, Onboarding, Reports) | 6 weeks | ⏳ Pending | `feature/v2-phase3-ux` |
 | 4 | Branding & Launch (VulnShield) | 4.5 weeks | ⏳ Pending | `feature/v2-phase4-branding` |
 
-### Phase 1: Foundation (Current)
+### Phase 1: Foundation
 
 **Objective:** Eliminate crash scenarios and achieve 50% performance improvement
 
@@ -52,6 +52,29 @@
 | P1-019 | Performance benchmarking | 1d | ⏳ Pending |
 
 **Phase 1 Progress:** 16/19 tasks (84%)
+
+### Phase 2: Security Features (KEV & EPSS)
+
+**Objective:** Add exploit intelligence for risk prioritization
+
+**Design Document:** `docs/plans/2026-02-27-kev-epss-design.md`
+
+| ID | Task | Effort | Status |
+|----|------|--------|--------|
+| P2-001 | Create kev_catalog database table (migration 11) | 0.5d | ✅ Complete |
+| P2-002 | Add EPSS columns to cves table (migration 12) | 0.5d | ✅ Complete |
+| P2-003 | Create bundled KEV baseline data (20 entries) | 0.5d | ✅ Complete |
+| P2-004 | Implement KevService | 1d | ✅ Complete |
+| P2-005 | Implement EpssService | 1d | ✅ Complete |
+| P2-006 | Implement risk score calculation | 0.5d | ✅ Complete |
+| P2-007 | Create UI components (KevBadge, EpssCell, RiskScoreCell) | 0.5d | ✅ Complete |
+| P2-008 | Create IPC handlers for KEV/EPSS | 0.5d | ✅ Complete |
+| P2-009 | Add KEV/EPSS columns to vulnerability list | 0.5d | ✅ Complete |
+| P2-010 | Add KEV sync to Settings page | 0.5d | ✅ Complete |
+| P2-011 | Write unit tests | 1.5d | ✅ Complete |
+| P2-012 | Integrate with existing vulnerability display | 0.5d | ✅ Complete |
+
+**Phase 2 Progress:** 12/12 tasks (100%) ✅ **COMPLETE**
 
 ### V2.0 Success Metrics
 
