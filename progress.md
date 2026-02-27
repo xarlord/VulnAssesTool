@@ -32,18 +32,18 @@
 | P1-011 | Create DiffEngine service | ✅ Complete | 2026-02-27 |
 | P1-012 | Add component_hash to database schema | ✅ Complete | 2026-02-27 |
 | P1-013 | Integrate diff into scan workflow | ✅ Complete | 2026-02-27 |
+| P1-014 | Create OfflineQueue service | ✅ Complete | 2026-02-27 |
 
-#### Pending Tasks (5 remaining)
+#### Pending Tasks (4 remaining)
 | ID | Task | Priority |
 |----|------|----------|
-| P1-014 | Create OfflineQueue service | Medium |
 | P1-015 | Add offline indicator to header | Medium |
 | P1-016 | Implement sync-on-reconnect | Medium |
 | P1-017 | Write unit tests (all components) | High |
 | P1-018 | Write E2E tests | High |
 
-**Phase 1 Progress:** 14/19 tasks (74%)
-**Phase 1 Estimated Completion:** ~3 weeks remaining
+**Phase 1 Progress:** 15/19 tasks (79%)
+**Phase 1 Estimated Completion:** ~2 weeks remaining
 
 ### V2.0 Timeline
 
