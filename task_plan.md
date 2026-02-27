@@ -39,7 +39,7 @@
 | P1-006 | Create Backup UI in Settings | 1d | ✅ Complete |
 | P1-007 | Implement restore from backup | 0.5d | ✅ Complete |
 | P1-008 | Create CacheManager service | 1d | ✅ Complete |
-| P1-009 | Integrate cache with CVE lookups | 1d | ⏳ Pending |
+| P1-009 | Integrate cache with CVE lookups | 1d | ✅ Complete |
 | P1-010 | Add cache configuration UI | 0.5d | ⏳ Pending |
 | P1-011 | Create DiffEngine service | 2d | ⏳ Pending |
 | P1-012 | Add component_hash to database schema | 0.5d | ⏳ Pending |
