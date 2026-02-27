@@ -25,11 +25,12 @@
 | P1-004 | Create BackupService with scheduler | ✅ Complete | 2026-02-27 |
 | P1-005 | Add backup IPC handlers | ✅ Complete | 2026-02-27 |
 | P1-006 | Create Backup UI in Settings | ✅ Complete | 2026-02-27 |
+| P1-007 | Implement restore from backup | ✅ Complete | 2026-02-27 |
 
-#### Pending Tasks (13 remaining)
+#### Pending Tasks (12 remaining)
 | ID | Task | Priority |
 |----|------|----------|
-| P1-007 | Implement restore from backup | High |
+| P1-008 | Create CacheManager service | Medium |
 | P1-006 | Create Backup UI in Settings | Medium |
 | P1-007 | Implement restore from backup | High |
 | P1-008 | Create CacheManager service | Medium |
@@ -45,7 +46,7 @@
 | P1-018 | Write E2E tests | High |
 | P1-019 | Performance benchmarking | Medium |
 
-**Phase 1 Progress:** 6/19 tasks (32%)
+**Phase 1 Progress:** 7/19 tasks (37%)
 **Phase 1 Estimated Completion:** ~4 weeks remaining
 
 ### V2.0 Timeline

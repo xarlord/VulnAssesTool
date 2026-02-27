@@ -37,7 +37,7 @@
 | P1-004 | Create BackupService with scheduler | 1d | ✅ Complete |
 | P1-005 | Add backup IPC handlers | 0.5d | ✅ Complete |
 | P1-006 | Create Backup UI in Settings | 1d | ✅ Complete |
-| P1-007 | Implement restore from backup | 0.5d | ⏳ Pending |
+| P1-007 | Implement restore from backup | 0.5d | ✅ Complete |
 | P1-008 | Create CacheManager service | 1d | ⏳ Pending |
 | P1-009 | Integrate cache with CVE lookups | 1d | ⏳ Pending |
 | P1-010 | Add cache configuration UI | 0.5d | ⏳ Pending |
@@ -51,7 +51,7 @@
 | P1-018 | Write E2E tests | 1d | ⏳ Pending |
 | P1-019 | Performance benchmarking | 1d | ⏳ Pending |
 
-**Phase 1 Progress:** 6/19 tasks (32%)
+**Phase 1 Progress:** 7/19 tasks (37%)
 
 ### V2.0 Success Metrics
 
