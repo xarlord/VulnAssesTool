@@ -27,11 +27,12 @@
 | P1-006 | Create Backup UI in Settings | ✅ Complete | 2026-02-27 |
 | P1-007 | Implement restore from backup | ✅ Complete | 2026-02-27 |
 | P1-008 | Create CacheManager service | ✅ Complete | 2026-02-27 |
+| P1-009 | Integrate cache with CVE lookups | ⏳ Pending | |
 
-#### Pending Tasks (11 remaining)
+#### Pending Tasks (10 remaining)
 | ID | Task | Priority |
 |----|------|----------|
-| P1-009 | Integrate cache with CVE lookups | Medium |
+| P1-010 | Add cache configuration UI | Low |
 | P1-006 | Create Backup UI in Settings | Medium |
 | P1-007 | Implement restore from backup | High |
 | P1-008 | Create CacheManager service | Medium |
@@ -47,7 +48,7 @@
 | P1-018 | Write E2E tests | High |
 | P1-019 | Performance benchmarking | Medium |
 
-**Phase 1 Progress:** 8/19 tasks (42%)
+**Phase 1 Progress:** 9/19 tasks (47%)
 **Phase 1 Estimated Completion:** ~4 weeks remaining
 
 ### V2.0 Timeline
