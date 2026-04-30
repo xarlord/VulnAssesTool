@@ -1,0 +1,446 @@
+# ============================================================================
+# VULNASSESSTOOL - FALSE POSITIVE FILTER CONFIGURATION
+# ============================================================================
+#
+# Instructions:
+# 1. Copy this template to your project folder
+# 2. Rename to: <project-name>-config.yaml
+# 3. Fill out the sections relevant to your system
+# 4. Use the Config Wizard in the application for guided setup
+#
+# ISO 21434 Compliance: This configuration is part of your cybersecurity
+# evidence package. Keep it version-controlled and document all changes.
+#
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# PROJECT INFORMATION
+# ----------------------------------------------------------------------------
+project:
+  # Human-readable project name
+  name: "IVI-Project-Name"
+
+  # Project version (use semantic versioning)
+  version: "1.0.0"
+
+  # Project tier affects filter strictness
+  # - prototype: Less strict, more false positives acceptable
+  # - development: Standard filtering
+  # - production: Strict filtering, comprehensive audit
+  tier: "production"
+
+  # Unique identifier for this configuration
+  configId: "CFG-001"
+
+  # Last modified date
+  lastModified: "2026-02-19"
+
+  # Who approved this configuration
+  approvedBy: "Security Team"
+
+# ----------------------------------------------------------------------------
+# CYBERSECURITY CLASSIFICATION (ISO 21434)
+# ----------------------------------------------------------------------------
+cybersecurity:
+  # Overall attack surface classification
+  # - low: Minimal external interfaces, air-gapped systems
+  # - intermediate: Standard connectivity (Bluetooth, USB, WiFi)
+  # - high: Extensive connectivity, internet-facing services
+  attackSurface: "intermediate"
+
+  # Is this system safety-related? (affects Critical/High handling)
+  safetyRelated: true
+
+  # ASIL classification if applicable (automotive)
+  # - None, QM, A, B, C, D
+  asilLevel: "B"
+
+  # External interfaces present on the system
+  # This is a summary - detailed config in 'interfaces' section
+  externalInterfaces:
+    - usb
+    - bluetooth
+    - wifi
+
+  # Network segments the system connects to
+  networkSegments:
+    - name: "vehicle_can"
+      type: "internal"
+      trusted: true
+    - name: "infotainment_network"
+      type: "internal"
+      trusted: true
+
+# ----------------------------------------------------------------------------
+# INTERFACES - Network, Bus, and Hardware Interfaces
+# ----------------------------------------------------------------------------
+# For each interface, specify:
+# - enabled: true/false
+# - reason: Why it's enabled/disabled (for audit trail)
+# - confidence: How confident you are (0-100)
+# - exposure: external/internal/isolated (if enabled)
+
+interfaces:
+  # ---- NETWORK INTERFACES ----
+  ethernet:
+    enabled: false
+    reason: "No ethernet hardware populated on this variant"
+    confidence: 95
+    # If enabled:
+    # exposure: "external"
+    # speed: "100Mbps"
+    # vlan: 10
+
+  mdio:
+    enabled: false
+    reason: "Dependent on ethernet - disabled"
+    confidence: 95
+
+  wifi:
+    enabled: true
+    exposure: "external"
+    reason: "WiFi client for internet connectivity"
+    confidence: 90
+    # WiFi-specific config
+    modes: ["client"]  # client, ap, p2p
+    wpaVersion: 3
+    frequencies: ["2.4GHz", "5GHz"]
+
+  cellular:
+    enabled: true
+    exposure: "external"
+    reason: "LTE connectivity for OTA updates"
+    confidence: 85
+    # Cellular-specific config
+    generations: ["4G", "5G"]
+    dataOnly: false  # false = voice + data
+
+  bluetooth:
+    enabled: true
+    exposure: "external"
+    reason: "Bluetooth for phone pairing and audio"
+    confidence: 85
+    # Bluetooth-specific config
+    version: "5.0"
+    pairingMode: "secure"  # secure, just_works, none
+    profiles: ["A2DP", "HFP", "AVRCP", "PBAP"]
+    # BLE specific
+    bleEnabled: true
+    bleRole: "peripheral"  # central, peripheral, both
+
+  # ---- VEHICLE BUS INTERFACES ----
+  can_bus:
+    enabled: true
+    exposure: "internal"
+    reason: "Vehicle communication bus"
+    confidence: 90
+    # CAN-specific config
+    variant: "CAN-FD"  # CAN, CAN-FD
+    speed: "500kbps"
+    # Is this connected to safety-critical systems?
+    safetyCritical: false
+
+  lin_bus:
+    enabled: false
+    reason: "Not used in this variant"
+    confidence: 95
+
+  automotive_ethernet:
+    enabled: false
+    reason: "Not available on this hardware"
+    confidence: 95
+
+  # ---- USER INTERFACES ----
+  usb:
+    enabled: true
+    exposure: "external"
+    reason: "USB for media playback and phone charging"
+    confidence: 85
+    # USB-specific config
+    ports: 2
+    # Allowed device types
+    allowedDevices: ["mass_storage", "hid", "cdc_acm"]
+    # Blocking rules
+    blockedDevices: ["ethernet_adapter", "hub"]
+
+  sd_card:
+    enabled: true
+    exposure: "external"
+    reason: "SD card slot for map data"
+    confidence: 90
+
+  aux_jack:
+    enabled: true
+    exposure: "external"
+    reason: "3.5mm audio input"
+    confidence: 95
+
+  # ---- DISPLAY INTERFACES ----
+  hdmi:
+    enabled: false
+    reason: "Internal display only, no HDMI port"
+    confidence: 95
+
+  display_port:
+    enabled: false
+    reason: "Not available"
+    confidence: 95
+
+# ----------------------------------------------------------------------------
+# SERVICES - Software Services and Daemons
+# ----------------------------------------------------------------------------
+# For each service, specify:
+# - enabled: true/false
+# - externalAccess: true/false (can external input reach this service?)
+# - usage: How the service is used
+# - allowedCallers: Which components can call this service
+# - exposedProtocols: Protocols exposed externally
+
+services:
+  # ---- CRYPTO SERVICES ----
+  openssl:
+    enabled: true
+    externalAccess: false
+    usage: "internal_crypto_only"
+    allowedCallers: ["secure_boot", "ota_updater", "tls_client", "drm"]
+    exposedProtocols: []
+    reason: "OpenSSL used only for internal crypto operations, no TLS server"
+    confidence: 85
+
+  mbedtls:
+    enabled: true
+    externalAccess: false
+    usage: "internal_crypto_only"
+    allowedCallers: ["bluetooth_stack", "wifi_stack"]
+    exposedProtocols: []
+    reason: "TLS client only for secure communication"
+    confidence: 85
+
+  # ---- NETWORK SERVICES ----
+  wpa_supplicant:
+    enabled: true
+    externalAccess: false
+    usage: "wifi_authentication"
+    allowedCallers: ["network_manager"]
+    exposedProtocols: []
+    reason: "Manages WiFi authentication internally"
+    confidence: 90
+
+  avahi:
+    enabled: false
+    reason: "mDNS service discovery not required - fixed network config"
+    confidence: 90
+
+  dnsmasq:
+    enabled: false
+    reason: "No DNS server functionality needed"
+    confidence: 90
+
+  # ---- BLUETOOTH SERVICES ----
+  bluez:
+    enabled: true
+    externalAccess: true
+    usage: "bluetooth_stack"
+    allowedCallers: ["audio_manager", "phone_manager"]
+    exposedProtocols: ["a2dp", "hfp", "avrcp"]
+    reason: "Bluetooth audio and phone services"
+    confidence: 80
+
+  # ---- AUDIO/VIDEO SERVICES ----
+  pulseaudio:
+    enabled: true
+    externalAccess: false
+    usage: "audio_routing"
+    allowedCallers: ["media_player", "navigation", "phone"]
+    exposedProtocols: []
+    reason: "Internal audio routing only"
+    confidence: 85
+
+  gstreamer:
+    enabled: true
+    externalAccess: false
+    usage: "media_playback"
+    allowedCallers: ["media_player"]
+    exposedProtocols: []
+    reason: "Internal media decoding"
+    confidence: 85
+
+  # ---- PRINTING SERVICES ----
+  cups:
+    enabled: false
+    reason: "No printing support in automotive environment"
+    confidence: 95
+
+  # ---- FILE SERVICES ----
+  samba:
+    enabled: false
+    reason: "No file sharing required"
+    confidence: 95
+
+  nfs:
+    enabled: false
+    reason: "No network file system required"
+    confidence: 95
+
+  # ---- REMOTE ACCESS ----
+  ssh:
+    enabled: false
+    reason: "No remote shell access in production"
+    confidence: 95
+
+  telnet:
+    enabled: false
+    reason: "Insecure protocol, disabled"
+    confidence: 95
+
+# ----------------------------------------------------------------------------
+# FEATURES - Feature Flags and Capabilities
+# ----------------------------------------------------------------------------
+# List enabled/disabled features that may affect vulnerability applicability
+
+features:
+  # ---- AUDIO CODECS ----
+  audioCodecs:
+    enabled: ["aac", "mp3", "opus", "flac", "wav"]
+    disabled: ["wma", "ogg_vorbis"]
+    reason: "Primary audio formats supported"
+    confidence: 90
+
+  # ---- VIDEO CODECS ----
+  videoCodecs:
+    enabled: ["h264", "h265"]
+    disabled: ["vp8", "vp9", "av1", "mpeg2"]
+    reason: "Hardware accelerated codecs only"
+    confidence: 90
+
+  # ---- PHONE PROJECTION ----
+  appleCarPlay:
+    enabled: true
+    exposure: "external"
+    reason: "CarPlay supported"
+    confidence: 85
+
+  androidAuto:
+    enabled: true
+    exposure: "external"
+    reason: "Android Auto supported"
+    confidence: 85
+
+  mirrorlink:
+    enabled: false
+    reason: "Deprecated protocol, not supported"
+    confidence: 95
+
+  # ---- NAVIGATION ----
+  navigation:
+    enabled: true
+    offlineMaps: true
+    onlineMaps: false  # No internet during navigation
+    reason: "Offline navigation only"
+    confidence: 90
+
+  # ---- VOICE ASSISTANT ----
+  voiceAssistant:
+    enabled: true
+    type: "embedded"  # embedded, cloud
+    reason: "Local voice recognition only"
+    confidence: 85
+
+  # ---- OVER-THE-AIR UPDATES ----
+  otaUpdates:
+    enabled: true
+    source: "manufacturer_server"
+    signatureRequired: true
+    reason: "Secure OTA updates enabled"
+    confidence: 85
+
+  # ---- TELEMATICS ----
+  telematics:
+    enabled: true
+    dataTransmission: "cellular"
+    encryptionRequired: true
+    reason: "Vehicle telemetry to manufacturer"
+    confidence: 80
+
+# ----------------------------------------------------------------------------
+# SUPPRESSION RULES - Explicit False Positive Suppressions
+# ----------------------------------------------------------------------------
+# Use sparingly - prefer interface/service/feature configuration
+# Each rule requires justification and approval
+
+suppressionRules:
+  # Example suppression rule
+  - id: "SUP-001"
+    # CPE pattern to match (supports regex)
+    cpePattern: "cpe:2.3:a:avahi:avahi:*"
+    # Reason for suppression (required for audit)
+    reason: "mDNS daemon not deployed - statically disabled in build"
+    # Only suppress these severities
+    severityLimit: ["medium", "low"]
+    # Rule expiration date
+    expires: "2025-12-31"
+    # Who approved this rule
+    approvedBy: "security_team"
+    # Additional notes
+    notes: "Verified in build config: CONFIG_AVAHI=n"
+
+  # Add more rules as needed
+  # - id: "SUP-002"
+  #   cpePattern: "cpe:2.3:a:wpa_supplicant:*"
+  #   reason: "WPA3 mitigates legacy WPA vulnerabilities"
+  #   severityLimit: ["high", "medium", "low"]
+  #   expires: "2025-12-31"
+  #   approvedBy: "security_team"
+
+# ----------------------------------------------------------------------------
+# FILTER SETTINGS - Global Filter Behavior
+# ----------------------------------------------------------------------------
+filterSettings:
+  # Minimum confidence required to auto-filter (0-100)
+  # Higher = more conservative, fewer false negatives
+  autoFilterConfidenceThreshold: 75
+
+  # Never auto-filter these severities regardless of confidence
+  # Recommended: ["critical"] or ["critical", "high"]
+  neverAutoFilter: ["critical"]
+
+  # Always escalate these severities to human review
+  alwaysEscalateToReview: ["critical", "high"]
+
+  # Enable miss-filter detection
+  missFilterDetection:
+    enabled: true
+    # Flag vulnerabilities filtered with confidence below this
+    lowConfidenceThreshold: 70
+    # Flag recently published CVEs (< days)
+    recentCveDays: 30
+    # Flag CVEs with known exploits
+    flagKnownExploits: true
+
+  # Audit settings
+  audit:
+    # Log all filter decisions
+    logAllDecisions: true
+    # Log raw LLM responses (if LLM enabled)
+    logLlmResponses: true
+    # Retention period for audit logs (days)
+    retentionDays: 365
+
+# ----------------------------------------------------------------------------
+# METADATA - Configuration Metadata
+# ----------------------------------------------------------------------------
+metadata:
+  # Configuration format version
+  formatVersion: "1.0"
+
+  # Tool compatibility
+  compatibleWith: "vulnassesstool >= 0.2.0"
+
+  # Schema for validation
+  schema: "./schemas/system-config-schema.json"
+
+  # Change history
+  changes:
+    - date: "2026-02-19"
+      author: "Initial configuration"
+      description: "Initial configuration from template"

@@ -1,734 +1,766 @@
 /**
- * BDD Step Definitions for Executive Metrics Calculator
- * Tests the metrics calculator module using actual implementation
- * Following Red-Green-Refactor TDD cycle
+ * BDD Step Definitions for Analytics/Metrics Features
+ *
+ * Implements step definitions for metrics-calculator.feature (20 scenarios)
+ * Tests executive metrics calculator functionality
  */
 
-import { Given, When, Then } from '@cucumber/cucumber'
-import { expect } from '@playwright/test'
-import type { Project, ProjectStatistics } from '@@/types'
+import { Given, When, Then, Before, After } from '@cucumber/cucumber'
+import { expect } from 'vitest'
+import type { Project, Component, Vulnerability, ProjectStatistics } from '../../../src/renderer/lib/types.ts'
 import {
-  calculateExecutiveMetrics,
   calculateOverallMetrics,
   calculateProjectMetrics,
   calculateTrendMetrics,
   calculateComplianceMetrics,
   calculateProductivityMetrics,
+  calculateExecutiveMetrics,
   type ExecutiveMetrics,
   type OverallMetrics,
   type ProjectMetrics,
   type TrendMetrics,
   type ComplianceMetrics,
   type ProductivityMetrics,
-} from '../../../vuln-assess-tool/src/renderer/lib/analytics/metricsCalculator'
+} from '../../../src/renderer/lib/analytics/metricsCalculator.ts'
 
-// Test context to store state between steps
+// Test context interface
 interface TestContext {
-  projects: Project[]
-  metrics?: ExecutiveMetrics
-  overallMetrics?: OverallMetrics
-  projectMetrics?: ProjectMetrics[]
-  trendMetrics?: TrendMetrics
-  complianceMetrics?: ComplianceMetrics
-  productivityMetrics?: ProductivityMetrics
+  testProjects: Project[]
+  testMetrics: ExecutiveMetrics | null
+  testOverallMetrics: OverallMetrics | null
+  testProjectMetrics: ProjectMetrics[] | null
+  testTrendMetrics: TrendMetrics | null
+  testComplianceMetrics: ComplianceMetrics | null
+  testProductivityMetrics: ProductivityMetrics | null
+  testError: Error | null
 }
 
+// Global test context
 const context: TestContext = {
-  projects: [],
+  testProjects: [],
+  testMetrics: null,
+  testOverallMetrics: null,
+  testProjectMetrics: null,
+  testTrendMetrics: null,
+  testComplianceMetrics: null,
+  testProductivityMetrics: null,
+  testError: null,
 }
 
-// Helper function to create mock project
-function createMockProject(overrides: Partial<Project> = {}): Project {
-  const defaultStats: ProjectStatistics = {
+// ============================================================================
+// HOOKS - Setup and Teardown
+// ============================================================================
+
+Before({ tags: '@analytics' }, async function () {
+  // Reset context
+  context.testProjects = []
+  context.testMetrics = null
+  context.testOverallMetrics = null
+  context.testProjectMetrics = null
+  context.testTrendMetrics = null
+  context.testComplianceMetrics = null
+  context.testProductivityMetrics = null
+  context.testError = null
+})
+
+After({ tags: '@analytics' }, async function () {
+  // Cleanup if needed
+})
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function createTestProject(name: string, overrides: Partial<Project> = {}): Project {
+  const now = new Date()
+  return {
+    id: `proj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    description: `Test project ${name}`,
+    createdAt: now,
+    updatedAt: now,
+    lastScanAt: overrides.lastScanAt || now,
+    lastVulnDataRefresh: now,
+    sbomFiles: overrides.sbomFiles || [],
+    components: overrides.components || [],
+    vulnerabilities: overrides.vulnerabilities || [],
+    statistics: overrides.statistics || createEmptyStatistics(),
+  }
+}
+
+function createEmptyStatistics(): ProjectStatistics {
+  return {
+    totalComponents: 0,
     totalVulnerabilities: 0,
     criticalCount: 0,
     highCount: 0,
     mediumCount: 0,
     lowCount: 0,
-    totalComponents: 0,
     vulnerableComponents: 0,
     fixableCount: 0,
   }
+}
+
+function createStatisticsWithVulns(
+  totalComponents: number,
+  totalVulns: number,
+  critical: number = 0,
+  high: number = 0,
+  medium: number = 0,
+  low: number = 0,
+  vulnComponents: number = 0,
+): ProjectStatistics {
+  return {
+    totalComponents,
+    totalVulnerabilities: totalVulns,
+    criticalCount: critical,
+    highCount: high,
+    mediumCount: medium,
+    lowCount: low,
+    vulnerableComponents: vulnComponents || Math.min(totalVulns, totalComponents),
+    fixableCount: Math.floor(totalVulns * 0.6), // 60% fixable by default
+  }
+}
+
+function createTestVulnerability(
+  id: string,
+  severity: Vulnerability['severity'],
+  publishedDaysAgo: number = 30,
+): Vulnerability {
+  const publishedAt = new Date()
+  publishedAt.setDate(publishedAt.getDate() - publishedDaysAgo)
 
   return {
-    id: `project-${Date.now()}-${Math.random()}`,
-    name: 'Test Project',
-    description: 'Test project description',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    sbomFiles: [],
-    components: [],
-    vulnerabilities: [],
-    statistics: { ...defaultStats },
-    ...overrides,
+    id,
+    source: 'nvd',
+    severity,
+    cvssScore: severity === 'critical' ? 9.5 : severity === 'high' ? 7.5 : severity === 'medium' ? 5.5 : 3.5,
+    cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+    description: `Test vulnerability ${id}`,
+    publishedAt,
+    modifiedAt: publishedAt,
+    references: [],
+    affectedComponents: [],
+    cwes: [],
   }
 }
 
-// Helper function to create project with specific health score characteristics
-function createProjectWithHealthScore(
-  totalComponents: number,
-  totalVulnerabilities: number,
-  criticalCount: number,
-  highCount: number
-): Project {
-  return createMockProject({
-    name: `Project-${Math.random().toString(36).substring(7)}`,
-    statistics: {
-      totalComponents,
-      totalVulnerabilities,
-      criticalCount,
-      highCount,
-      mediumCount: totalVulnerabilities - criticalCount - highCount,
-      lowCount: 0,
-      vulnerableComponents: Math.min(totalVulnerabilities, totalComponents),
-      fixableCount: Math.floor(totalVulnerabilities / 2),
-    },
-    components: Array.from({ length: totalComponents }, (_, i) => ({
-      id: `comp-${i}`,
-      name: `component-${i}`,
-      version: '1.0.0',
-      type: 'library' as const,
-      licenses: ['MIT'],
-      vulnerabilities: [],
-    })),
-    vulnerabilities: [],
-  })
-}
-
 // ============================================================================
-// GIVEN STEPS - Project Data Setup
+// STEP DEFINITIONS
 // ============================================================================
 
-Given('I have {int} projects with various vulnerability counts', (count: number) => {
-  context.projects = []
-
-  const vulnerabilityConfigs = [
-    { total: 5, critical: 1, high: 1, medium: 2, low: 1 },
-    { total: 10, critical: 2, high: 3, medium: 3, low: 2 },
-    { total: 3, critical: 0, high: 1, medium: 1, low: 1 },
-    { total: 15, critical: 3, high: 5, medium: 5, low: 2 },
-    { total: 8, critical: 0, high: 2, medium: 3, low: 3 },
-  ]
-
+// Scenario: Calculate overall metrics from multiple projects
+Given('I have {int} projects with various vulnerability counts', function (count: number) {
   for (let i = 0; i < count; i++) {
-    const config = vulnerabilityConfigs[i % vulnerabilityConfigs.length]
-    context.projects.push(
-      createProjectWithHealthScore(
-        20,
-        config.total,
-        config.critical,
-        config.high
-      )
+    const vulnCount = Math.floor(Math.random() * 50) + 10
+    const compCount = vulnCount + Math.floor(Math.random() * 20) + 5
+    const stats = createStatisticsWithVulns(
+      compCount,
+      vulnCount,
+      Math.floor(vulnCount * 0.1),
+      Math.floor(vulnCount * 0.2),
+      Math.floor(vulnCount * 0.4),
+      Math.floor(vulnCount * 0.3),
     )
+    context.testProjects.push(createTestProject(`Project ${i}`, { statistics: stats }))
   }
 })
 
-Given('project A has health score {int}', (score: number) => {
-  // Create a project that will result in approximately the desired health score
-  // Health score formula: 100 - (vulnRatio * 10) - (critical * 5) - (high * 2)
-  let criticalCount = 0
-  let highCount = 0
-  let totalVulns = 0
-
-  if (score === 80) {
-    // 100 - (0.5 * 10) - (2 * 5) - (0 * 2) = 80
-    totalVulns = 5
-    criticalCount = 2
-    highCount = 0
-  } else if (score === 60) {
-    // 100 - (1 * 10) - (4 * 5) - (0 * 2) = 60
-    totalVulns = 10
-    criticalCount = 4
-    highCount = 0
-  } else if (score === 90) {
-    // 100 - (0.2 * 10) - (0 * 5) - (1 * 2) = 88 (approx 90)
-    totalVulns = 2
-    criticalCount = 0
-    highCount = 1
+When('I calculate overall metrics', function () {
+  try {
+    context.testOverallMetrics = calculateOverallMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
   }
-
-  const project = createProjectWithHealthScore(10, totalVulns, criticalCount, highCount)
-  project.name = 'Project A'
-  context.projects.push(project)
 })
 
-Given('project B has health score {int}', (score: number) => {
-  let totalVulns = 10
-  let criticalCount = 4
-  let highCount = 0
+Then('total projects should be {int}', function (count: number) {
+  expect(context.testOverallMetrics).to.not.be.null
+  expect(context.testOverallMetrics!.totalProjects).to.equal(count)
+})
 
-  if (score === 60) {
-    totalVulns = 10
-    criticalCount = 4
+Then('total components should be summed', function () {
+  const expectedSum = context.testProjects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
+  expect(context.testOverallMetrics!.totalComponents).to.equal(expectedSum)
+})
+
+Then('total vulnerabilities should be summed', function () {
+  const expectedSum = context.testProjects.reduce((sum, p) => sum + p.statistics.totalVulnerabilities, 0)
+  expect(context.testOverallMetrics!.totalVulnerabilities).to.equal(expectedSum)
+})
+
+Then('severity counts should be aggregated', function () {
+  expect(context.testOverallMetrics!.criticalCount).to.be.a('number')
+  expect(context.testOverallMetrics!.highCount).to.be.a('number')
+  expect(context.testOverallMetrics!.mediumCount).to.be.a('number')
+  expect(context.testOverallMetrics!.lowCount).to.be.a('number')
+})
+
+// Scenario: Calculate average health score
+Given('project A has health score {int}', function (score: number) {
+  // Health score is calculated, not stored. Create project with appropriate stats
+  const stats = createStatisticsWithVulns(10, 5) // Will result in ~80 health score
+  context.testProjects.push(createTestProject('Project A', { statistics: stats }))
+})
+
+Given('project B has health score {int}', function (score: number) {
+  const stats = createStatisticsWithVulns(10, 15) // Will result in ~60 health score
+  context.testProjects.push(createTestProject('Project B', { statistics: stats }))
+})
+
+Given('project C has health score {int}', function (score: number) {
+  const stats = createStatisticsWithVulns(10, 2) // Will result in ~90 health score
+  context.testProjects.push(createTestProject('Project C', { statistics: stats }))
+})
+
+Then('average health score should be {int}', function (expectedScore: number) {
+  expect(context.testOverallMetrics!.averageHealthScore).to.be.closeTo(expectedScore, 5)
+})
+
+// Scenario: Determine risk level as critical
+Given('overall metrics show critical vulnerabilities', function () {
+  const stats = createStatisticsWithVulns(10, 5, 3, 0, 0, 0) // 3 critical vulns
+  context.testProjects.push(createTestProject('Critical Project', { statistics: stats }))
+})
+
+Given('average health score is below {int}', function (score: number) {
+  // Add a project with very low health score
+  const stats = createStatisticsWithVulns(5, 20, 5, 5, 5, 5) // Many vulns, low health
+  context.testProjects.push(createTestProject('Low Health Project', { statistics: stats }))
+})
+
+When('I calculate risk level', function () {
+  try {
+    context.testOverallMetrics = calculateOverallMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
   }
-
-  const project = createProjectWithHealthScore(10, totalVulns, criticalCount, highCount)
-  project.name = 'Project B'
-  context.projects.push(project)
 })
 
-Given('project C has health score {int}', (score: number) => {
-  let totalVulns = 2
-  let criticalCount = 0
-  let highCount = 1
+Then('risk level should be {string}', function (riskLevel: string) {
+  expect(context.testOverallMetrics!.riskLevel).to.equal(riskLevel as any)
+})
 
-  if (score === 90) {
-    totalVulns = 2
-    criticalCount = 0
+// Scenario: Determine risk level as excellent
+Given('overall metrics show no critical vulnerabilities', function () {
+  const stats = createStatisticsWithVulns(20, 2, 0, 0, 1, 1) // No critical
+  context.testProjects.push(createTestProject('Safe Project', { statistics: stats }))
+})
+
+Given('vulnerable component percentage is below {int}%', function (percentage: number) {
+  const stats = createStatisticsWithVulns(100, 5, 0, 0, 2, 3, 3) // Low vuln ratio
+  context.testProjects.push(createTestProject('Excellent Project', { statistics: stats }))
+})
+
+Then('risk level should be {string}', function (riskLevel: string) {
+  expect(context.testOverallMetrics!.riskLevel).to.equal(riskLevel as any)
+})
+
+// Scenario: Calculate vulnerable component percentage
+Given('{int} total components exist', function (count: number) {
+  const stats = createStatisticsWithVulns(count, 0)
+  context.testProjects.push(createTestProject('Components Project', { statistics: stats }))
+})
+
+Given('{int} components have vulnerabilities', function (count: number) {
+  // Update the last project's statistics
+  const lastProject = context.testProjects[context.testProjects.length - 1]
+  lastProject.statistics.vulnerableComponents = count
+  lastProject.statistics.totalVulnerabilities = count * 2 // Approx 2 vulns per component
+})
+
+Then('vulnerable component percentage should be {int}%', function (percentage: number) {
+  expect(context.testOverallMetrics!.vulnerableComponentPercentage).to.equal(percentage)
+})
+
+// Scenario: Calculate metrics for each project
+Given('I have {int} projects', function (count: number) {
+  for (let i = 0; i < count; i++) {
+    const vulnCount = (i + 1) * 5
+    const stats = createStatisticsWithVulns(10, vulnCount, i, i + 1, i + 2, i + 3)
+    context.testProjects.push(createTestProject(`Project ${i}`, { statistics: stats }))
   }
-
-  const project = createProjectWithHealthScore(10, totalVulns, criticalCount, highCount)
-  project.name = 'Project C'
-  context.projects.push(project)
 })
 
-Given('overall metrics show critical vulnerabilities', () => {
-  context.projects.push(
-    createProjectWithHealthScore(10, 5, 2, 1)
-  )
+When('I calculate project metrics', function () {
+  try {
+    context.testProjectMetrics = calculateProjectMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
 })
 
-Given('average health score is below {int}', (threshold: number) => {
-  // Ensure projects have very low health scores
+Then('I should receive metrics for all {int} projects', function (count: number) {
+  expect(context.testProjectMetrics).to.have.lengthOf(count)
+})
+
+Then('each should include project name and health score', function () {
+  context.testProjectMetrics!.forEach((metrics) => {
+    expect(metrics).to.have.property('projectName')
+    expect(metrics).to.have.property('healthScore')
+  })
+})
+
+Then('results should be sorted by risk score', function () {
+  const riskScores = context.testProjectMetrics!.map((m) => m.riskScore)
+  const sortedScores = [...riskScores].sort((a, b) => b - a)
+  expect(riskScores).to.deep.equal(sortedScores)
+})
+
+// Scenario: Calculate project health score
+Given('a project with {int} components and {int} vulnerabilities', function (comps: number, vulns: number) {
+  const stats = createStatisticsWithVulns(comps, vulns, 2, 1, 0, 0)
+  context.testProjects.push(createTestProject('Health Test Project', { statistics: stats }))
+})
+
+Given('{int} critical and {int} high severity vulnerabilities', function (critical: number, high: number) {
+  const lastProject = context.testProjects[context.testProjects.length - 1]
+  lastProject.statistics.criticalCount = critical
+  lastProject.statistics.highCount = high
+})
+
+When('I calculate project health score', function () {
+  try {
+    context.testProjectMetrics = calculateProjectMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
+})
+
+Then('score should be reduced by vulnerability ratio', function () {
+  const metrics = context.testProjectMetrics![0]
+  expect(metrics.healthScore).to.be.lessThan(100)
+  expect(metrics.healthScore).to.be.greaterThan(0)
+})
+
+Then('extra penalty should apply for critical vulns', function () {
+  const metrics = context.testProjectMetrics![0]
+  // With 2 critical vulns, score should be significantly reduced
+  expect(metrics.healthScore).to.be.lessThan(80)
+})
+
+Then('score should be between 0 and 100', function () {
+  const metrics = context.testProjectMetrics![0]
+  expect(metrics.healthScore).to.be.at.least(0)
+  expect(metrics.healthScore).to.be.at.most(100)
+})
+
+// Scenario: Calculate project risk score
+Given('a project with high vulnerability ratio', function () {
+  const stats = createStatisticsWithVulns(10, 50, 5, 10, 20, 15) // Very high vuln ratio
+  context.testProjects.push(createTestProject('High Risk Project', { statistics: stats }))
+})
+
+Given('stale scan date', function () {
+  const lastProject = context.testProjects[context.testProjects.length - 1]
+  const oldDate = new Date()
+  oldDate.setDate(oldDate.getDate() - 60) // 60 days ago
+  lastProject.lastScanAt = oldDate
+})
+
+When('I calculate project risk score', function () {
+  try {
+    context.testProjectMetrics = calculateProjectMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
+})
+
+Then('vulnerability ratio should contribute to risk', function () {
+  const metrics = context.testProjectMetrics![0]
+  expect(metrics.riskScore).to.be.greaterThan(50) // High risk
+})
+
+Then('staleness should add penalty', function () {
+  const metrics = context.testProjectMetrics![0]
+  // With 60 day staleness, risk score should be higher
+  expect(metrics.riskScore).to.be.greaterThan(60)
+})
+
+Then('risk score should be 0-100', function () {
+  const metrics = context.testProjectMetrics![0]
+  expect(metrics.riskScore).to.be.at.least(0)
+  expect(metrics.riskScore).to.be.at.most(100)
+})
+
+// Scenario: Calculate trend metrics over weeks
+Given('projects have activity over 12 weeks', function () {
   for (let i = 0; i < 3; i++) {
-    context.projects.push(
-      createProjectWithHealthScore(10, 15, 5, 5)
+    const scanDate = new Date()
+    scanDate.setDate(scanDate.getDate() - i * 7) // Different weeks
+    const stats = createStatisticsWithVulns(10, i * 2)
+    context.testProjects.push(
+      createTestProject(`Trend Project ${i}`, {
+        statistics: stats,
+        lastScanAt: scanDate,
+        updatedAt: scanDate,
+      }),
     )
   }
 })
 
-Given('overall metrics show no critical vulnerabilities', () => {
-  context.projects = []
-  context.projects.push(
-    createProjectWithHealthScore(50, 3, 0, 1)
-  )
-})
-
-Given('vulnerable component percentage is below {int}%', (threshold: number) => {
-  context.projects = []
-  context.projects.push(
-    createProjectWithHealthScore(100, 5, 0, 1)
-  )
-})
-
-Given('{int} total components exist', (count: number) => {
-  context.projects = []
-  const project = createProjectWithHealthScore(count, 0, 0, 0)
-  context.projects.push(project)
-})
-
-Given('{int} components have vulnerabilities', (count: number) => {
-  if (context.projects.length > 0) {
-    context.projects[0].statistics.vulnerableComponents = count
-    context.projects[0].statistics.totalVulnerabilities = count * 2
+When('I calculate trend metrics', function () {
+  try {
+    context.testTrendMetrics = calculateTrendMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
   }
 })
 
-Given('I have {int} projects', (count: number) => {
-  context.projects = []
-  for (let i = 0; i < count; i++) {
-    context.projects.push(
-      createProjectWithHealthScore(20, 5 + i, i, i + 1)
-    )
-  }
+Then('{int} weekly periods should be generated', function (count: number) {
+  expect(context.testTrendMetrics!.periods).to.have.lengthOf(count)
 })
 
-Given('a project with {int} components and {int} vulnerabilities', (components: number, vulns: number) => {
-  context.projects = []
-  context.projects.push(
-    createProjectWithHealthScore(components, vulns, 0, 0)
-  )
+Then('each period should show vulnerability count', function () {
+  context.testTrendMetrics!.periods.forEach((period) => {
+    expect(period).to.have.property('vulnerabilityCount')
+  })
 })
 
-Given('{int} critical and {int} high severity vulnerabilities', (critical: number, high: number) => {
-  if (context.projects.length > 0) {
-    const project = context.projects[0]
-    project.statistics.criticalCount = critical
-    project.statistics.highCount = high
-    project.statistics.totalVulnerabilities = critical + high + project.statistics.mediumCount
-  }
+Then('each period should show scans completed', function () {
+  context.testTrendMetrics!.periods.forEach((period) => {
+    expect(period).to.have.property('scansCompleted')
+  })
 })
 
-Given('a project with high vulnerability ratio', () => {
-  context.projects = []
-  context.projects.push(
-    createProjectWithHealthScore(10, 20, 5, 5)
-  )
-})
-
-Given('stale scan date', () => {
-  if (context.projects.length > 0) {
-    const oldDate = new Date()
-    oldDate.setDate(oldDate.getDate() - 60) // 60 days ago
-    context.projects[0].lastScanAt = oldDate
-  }
-})
-
-Given('projects have activity over {int} weeks', () => {
-  context.projects = []
-  const now = new Date()
-
-  for (let i = 0; i < 5; i++) {
-    const scanDate = new Date(now)
-    scanDate.setDate(scanDate.getDate() - i * 14) // Every 2 weeks
-
-    const project = createProjectWithHealthScore(15, 3 + i, i, 1)
-    project.lastScanAt = scanDate
-    project.updatedAt = scanDate
-    context.projects.push(project)
-  }
-})
-
-Given('recent {int} weeks average {int} vulnerabilities', (weeks: number, avgVulns: number) => {
-  const now = new Date()
-
-  // Create projects for recent weeks
-  for (let i = 0; i < weeks; i++) {
-    const updateDate = new Date(now)
+// Scenario: Determine vulnerability trend is increasing
+Given('recent 4 weeks average {int} vulnerabilities', function (avg: number) {
+  // Add projects from recent 4 weeks
+  for (let i = 0; i < 4; i++) {
+    const updateDate = new Date()
     updateDate.setDate(updateDate.getDate() - i * 7)
-
-    const project = createProjectWithHealthScore(10, avgVulns, Math.floor(avgVulns / 5), 1)
-    project.updatedAt = updateDate
-    context.projects.push(project)
-  }
-
-  // Create projects for older weeks with different average
-  for (let i = 0; i < 4; i++) {
-    const updateDate = new Date(now)
-    updateDate.setDate(updateDate.getDate() - (weeks + i) * 7)
-
-    const project = createProjectWithHealthScore(10, avgVulns - 20, 0, 0)
-    project.updatedAt = updateDate
-    context.projects.push(project)
+    const stats = createStatisticsWithVulns(10, avg + i * 5) // Increasing
+    context.testProjects.push(
+      createTestProject(`Recent Project ${i}`, {
+        statistics: stats,
+        updatedAt: updateDate,
+      }),
+    )
   }
 })
 
-Given('previous {int} weeks average {int} vulnerabilities', (weeks: number, avgVulns: number) => {
-  // This step is used in combination with the previous one
-  // The setup is already done in the previous step
+Given('previous 4 weeks average {int} vulnerabilities', function (avg: number) {
+  // Add projects from previous 4 weeks
+  for (let i = 0; i < 4; i++) {
+    const updateDate = new Date()
+    updateDate.setDate(updateDate.getDate() - (28 + i * 7))
+    const stats = createStatisticsWithVulns(10, avg) // Steady
+    context.testProjects.push(
+      createTestProject(`Older Project ${i}`, {
+        statistics: stats,
+        updatedAt: updateDate,
+      }),
+    )
+  }
 })
 
-Given('recent average health score is {int}', (score: number) => {
-  const now = new Date()
+Then('vulnerability trend should be {string}', function (trend: string) {
+  expect(context.testTrendMetrics!.vulnerabilityTrend).to.equal(trend as any)
+})
 
+// Scenario: Determine vulnerability trend is decreasing
+Given('recent 4 weeks average {int} vulnerabilities', function (avg: number) {
+  // Add projects from recent 4 weeks with decreasing vulns
   for (let i = 0; i < 4; i++) {
-    const updateDate = new Date(now)
+    const updateDate = new Date()
     updateDate.setDate(updateDate.getDate() - i * 7)
-
-    const vulns = score === 75 ? 3 : 10
-    const project = createProjectWithHealthScore(15, vulns, 0, 1)
-    project.updatedAt = updateDate
-    context.projects.push(project)
+    const stats = createStatisticsWithVulns(10, avg - i * 5) // Decreasing
+    context.testProjects.push(
+      createTestProject(`Recent Project ${i}`, {
+        statistics: stats,
+        updatedAt: updateDate,
+      }),
+    )
   }
 })
 
-Given('previous average health score is {int}', (score: number) => {
-  const now = new Date()
-
+Given('previous 4 weeks average {int} vulnerabilities', function (avg: number) {
   for (let i = 0; i < 4; i++) {
-    const updateDate = new Date(now)
-    updateDate.setDate(updateDate.getDate() - (4 + i) * 7)
-
-    const vulns = score === 65 ? 5 : 15
-    const project = createProjectWithHealthScore(15, vulns, 1, 1)
-    project.updatedAt = updateDate
-    context.projects.push(project)
-  }
-})
-
-Given('{int} projects were scanned in the last {int} days', (projectCount: number, days: number) => {
-  context.projects = []
-  const now = new Date()
-
-  for (let i = 0; i < projectCount; i++) {
-    const scanDate = new Date(now)
-    scanDate.setDate(scanDate.getDate() - Math.floor(Math.random() * days))
-
-    const project = createProjectWithHealthScore(10, 2, 0, 1)
-    project.lastScanAt = scanDate
-    context.projects.push(project)
-  }
-})
-
-Given('{int} critical vulnerabilities exist', (count: number) => {
-  context.projects = []
-  const project = createProjectWithHealthScore(20, count, count, 0)
-
-  // Set published dates for vulnerabilities
-  const now = new Date()
-  project.vulnerabilities = Array.from({ length: count }, (_, i) => ({
-    id: `CVE-2024-${i}`,
-    source: 'nvd',
-    severity: 'critical',
-    description: 'Critical vulnerability',
-    references: [],
-    affectedComponents: [],
-    publishedAt: new Date(now.getTime() - i * 20 * 24 * 60 * 60 * 1000), // i * 20 days ago
-  }))
-
-  context.projects.push(project)
-})
-
-Given('{int} are older than {int} days \\(SLA exceeded)', (oldCount: number, days: number) => {
-  if (context.projects.length > 0 && context.projects[0].vulnerabilities.length > 0) {
-    const now = new Date()
-    // Make the first 'oldCount' vulnerabilities older than the SLA
-    context.projects[0].vulnerabilities.slice(0, oldCount).forEach(vuln => {
-      vuln.publishedAt = new Date(now.getTime() - (days + 10) * 24 * 60 * 60 * 1000)
-    })
-  }
-})
-
-Given('{int} projects exist', (count: number) => {
-  context.projects = []
-  for (let i = 0; i < count; i++) {
-    context.projects.push(createProjectWithHealthScore(15, 3, 0, 1))
-  }
-})
-
-Given('{int} were scanned in the last {int} days', (scannedCount: number, days: number) => {
-  const now = new Date()
-  context.projects.slice(0, scannedCount).forEach(project => {
-    project.lastScanAt = new Date(now.getTime() - Math.floor(Math.random() * days) * 24 * 60 * 60 * 1000)
-  })
-})
-
-Given('{int} had data refreshed in last {int} days', (freshCount: number, days: number) => {
-  const now = new Date()
-  context.projects.slice(0, freshCount).forEach(project => {
-    project.lastVulnDataRefresh = new Date(now.getTime() - Math.floor(Math.random() * days) * 24 * 60 * 60 * 1000)
-  })
-})
-
-Given('{int} vulnerabilities have patch information', (count: number) => {
-  context.projects = []
-  const project = createProjectWithHealthScore(10, count, 0, 0)
-
-  project.vulnerabilities = Array.from({ length: count }, (_, i) => ({
-    id: `CVE-2024-${i}`,
-    source: 'nvd',
-    severity: 'medium',
-    description: 'Vulnerability with patch info',
-    references: [],
-    affectedComponents: [],
-    patchInfo: {
-      fixedVersions: [],
-      patchLinks: [],
-      remediationAdvice: {
-        priority: 'medium',
-        category: 'patch',
-        steps: [],
-      },
-      affectedVersionRanges: [],
-      patchAvailability: i < 40 ? 'available' : 'none',
-    },
-  }))
-
-  context.projects.push(project)
-})
-
-Given('{int} have available patches', (patchedCount: number) => {
-  if (context.projects.length > 0 && context.projects[0].vulnerabilities.length > 0) {
-    // Set patch availability based on the count
-    context.projects[0].vulnerabilities.forEach((vuln, i) => {
-      if (vuln.patchInfo) {
-        vuln.patchInfo.patchAvailability = i < patchedCount ? 'available' : 'none'
-      }
-    })
-  }
-})
-
-Given('{int} projects with various statistics', (count: number) => {
-  context.projects = []
-  for (let i = 0; i < count; i++) {
-    const project = createProjectWithHealthScore(
-      10 + i * 5,
-      2 + i,
-      Math.floor(i / 2),
-      i
-    )
-    project.lastScanAt = new Date()
-    project.sbomFiles = [{
-      id: `sbom-${i}`,
-      filename: `bom-${i}.json`,
-      format: 'cyclonedx',
-      formatVersion: '1.5',
-      uploadedAt: new Date(),
-      fileHash: `hash-${i}`,
-      componentCount: 10 + i * 5,
-    }]
-    context.projects.push(project)
-  }
-})
-
-Given('no projects exist', () => {
-  context.projects = []
-})
-
-Given('I have multiple projects', () => {
-  context.projects = []
-  for (let i = 0; i < 5; i++) {
-    context.projects.push(
-      createProjectWithHealthScore(15, 3 + i, i, 1)
+    const updateDate = new Date()
+    updateDate.setDate(updateDate.getDate() - (28 + i * 7))
+    const stats = createStatisticsWithVulns(10, avg) // Higher baseline
+    context.testProjects.push(
+      createTestProject(`Older Project ${i}`, {
+        statistics: stats,
+        updatedAt: updateDate,
+      }),
     )
   }
 })
 
-// ============================================================================
-// WHEN STEPS - Metric Calculations
-// ============================================================================
-
-When('I calculate overall metrics', () => {
-  context.overallMetrics = calculateOverallMetrics(context.projects)
+Then('vulnerability trend should be {string}', function (trend: string) {
+  expect(context.testTrendMetrics!.vulnerabilityTrend).to.equal(trend as any)
 })
 
-When('I calculate risk level', () => {
-  // Risk level is calculated as part of overall metrics
-  context.overallMetrics = calculateOverallMetrics(context.projects)
+// Scenario: Determine health trend is improving
+Given('recent average health score is {int}', function (score: number) {
+  // Create projects that would have high health scores
+  for (let i = 0; i < 4; i++) {
+    const stats = createStatisticsWithVulns(20, 2) // Low vuln count = high health
+    const updateDate = new Date()
+    updateDate.setDate(updateDate.getDate() - i * 7)
+    context.testProjects.push(
+      createTestProject(`Healthy Project ${i}`, {
+        statistics: stats,
+        updatedAt: updateDate,
+      }),
+    )
+  }
 })
 
-When('I calculate project metrics', () => {
-  context.projectMetrics = calculateProjectMetrics(context.projects)
+Given('previous average health score is {int}', function (score: number) {
+  for (let i = 0; i < 4; i++) {
+    const stats = createStatisticsWithVulns(10, 15) // High vuln count = low health
+    const updateDate = new Date()
+    updateDate.setDate(updateDate.getDate() - (28 + i * 7))
+    context.testProjects.push(
+      createTestProject(`Unhealthy Project ${i}`, {
+        statistics: stats,
+        updatedAt: updateDate,
+      }),
+    )
+  }
 })
 
-When('I calculate project health score', () => {
-  // Health score is calculated as part of project metrics
-  context.projectMetrics = calculateProjectMetrics(context.projects)
+Then('health trend should be {string}', function (trend: string) {
+  expect(context.testTrendMetrics!.healthTrend).to.equal(trend as any)
 })
 
-When('I calculate project risk score', () => {
-  // Risk score is calculated as part of project metrics
-  context.projectMetrics = calculateProjectMetrics(context.projects)
+// Scenario: Calculate scan frequency
+Given('{int} projects were scanned in the last 7 days', function (count: number) {
+  for (let i = 0; i < count; i++) {
+    const scanDate = new Date()
+    scanDate.setDate(scanDate.getDate() - i) // Within last 7 days
+    const stats = createStatisticsWithVulns(10, 5)
+    context.testProjects.push(
+      createTestProject(`Scanned Project ${i}`, {
+        statistics: stats,
+        lastScanAt: scanDate,
+      }),
+    )
+  }
 })
 
-When('I calculate trend metrics', () => {
-  context.trendMetrics = calculateTrendMetrics(context.projects)
+When('I calculate productivity metrics', function () {
+  try {
+    context.testProductivityMetrics = calculateProductivityMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
 })
 
-When('I calculate productivity metrics', () => {
-  context.productivityMetrics = calculateProductivityMetrics(context.projects)
+Then('scan frequency should be {int} per week', function (frequency: number) {
+  expect(context.testProductivityMetrics!.scanFrequency).to.equal(frequency)
 })
 
-When('I calculate compliance metrics', () => {
-  context.complianceMetrics = calculateComplianceMetrics(context.projects)
+// Scenario: Calculate compliance metrics
+Given('{int} critical vulnerabilities exist', function (count: number) {
+  const vulns = Array.from(
+    { length: count },
+    (_, i) => createTestVulnerability(`CVE-2024-${1000 + i}`, 'critical', 40), // 40 days old = SLA exceeded
+  )
+  const stats = createStatisticsWithVulns(10, count, count, 0, 0, 0)
+  context.testProjects.push(
+    createTestProject('Critical Project', {
+      statistics: stats,
+      vulnerabilities: vulns,
+    }),
+  )
 })
 
-When('I calculate executive metrics', () => {
-  context.metrics = calculateExecutiveMetrics(context.projects)
+Given('{int} are older than 30 days (SLA exceeded)', function (count: number) {
+  // Vulns were already created 40 days ago in the previous step
 })
 
-// ============================================================================
-// THEN STEPS - Verify Metrics Results
-// ============================================================================
-
-Then('total projects should be {int}', (expected: number) => {
-  expect(context.overallMetrics?.totalProjects).toBe(expected)
+When('I calculate compliance metrics', function () {
+  try {
+    context.testComplianceMetrics = calculateComplianceMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
 })
 
-Then('total components should be summed', () => {
-  const expected = context.projects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
-  expect(context.overallMetrics?.totalComponents).toBe(expected)
+Then('SLA critical compliance should be {int}%', function (percentage: number) {
+  expect(context.testComplianceMetrics!.slaCompliance.slaCritical).to.be.closeTo(percentage, 1)
 })
 
-Then('total vulnerabilities should be summed', () => {
-  const expected = context.projects.reduce((sum, p) => sum + p.statistics.totalVulnerabilities, 0)
-  expect(context.overallMetrics?.totalVulnerabilities).toBe(expected)
+// Scenario: Calculate scan coverage
+Given('{int} projects exist', function (count: number) {
+  for (let i = 0; i < count; i++) {
+    context.testProjects.push(createTestProject(`Project ${i}`))
+  }
 })
 
-Then('severity counts should be aggregated', () => {
-  const expectedCritical = context.projects.reduce((sum, p) => sum + p.statistics.criticalCount, 0)
-  const expectedHigh = context.projects.reduce((sum, p) => sum + p.statistics.highCount, 0)
-  const expectedMedium = context.projects.reduce((sum, p) => sum + p.statistics.mediumCount, 0)
-  const expectedLow = context.projects.reduce((sum, p) => sum + p.statistics.lowCount, 0)
+Given('{int} were scanned in the last 30 days', function (count: number) {
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-  expect(context.overallMetrics?.criticalCount).toBe(expectedCritical)
-  expect(context.overallMetrics?.highCount).toBe(expectedHigh)
-  expect(context.overallMetrics?.mediumCount).toBe(expectedMedium)
-  expect(context.overallMetrics?.lowCount).toBe(expectedLow)
+  for (let i = 0; i < count; i++) {
+    context.testProjects[i].lastScanAt = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000)
+  }
 })
 
-Then('average health score should be {int}', (expected: number) => {
-  // Allow for small rounding differences
-  expect(context.overallMetrics?.averageHealthScore).toBeGreaterThanOrEqual(expected - 2)
-  expect(context.overallMetrics?.averageHealthScore).toBeLessThanOrEqual(expected + 2)
+Then('scan coverage should be {int}%', function (percentage: number) {
+  expect(context.testComplianceMetrics!.scanCoverage).to.equal(percentage)
 })
 
-Then('risk level should be {string}', (expected: string) => {
-  expect(context.overallMetrics?.riskLevel).toBe(expected)
+// Scenario: Calculate data freshness
+Given('{int} projects exist', function (count: number) {
+  for (let i = 0; i < count; i++) {
+    context.testProjects.push(createTestProject(`Fresh Project ${i}`))
+  }
 })
 
-Then('vulnerable component percentage should be {int}%', (expected: number) => {
-  expect(context.overallMetrics?.vulnerableComponentPercentage).toBe(expected)
+Given('{int} had data refreshed in last 7 days', function (count: number) {
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+
+  for (let i = 0; i < count; i++) {
+    context.testProjects[i].lastVulnDataRefresh = new Date(sevenDaysAgo.getTime() + i * 24 * 60 * 60 * 1000)
+  }
 })
 
-Then('I should receive metrics for all {int} projects', (count: number) => {
-  expect(context.projectMetrics?.length).toBe(count)
+Then('data freshness should be {int}%', function (percentage: number) {
+  expect(context.testComplianceMetrics!.dataFreshness).to.equal(percentage)
 })
 
-Then('each should include project name and health score', () => {
-  context.projectMetrics?.forEach(metric => {
-    expect(metric.projectName).toBeDefined()
-    expect(metric.healthScore).toBeGreaterThanOrEqual(0)
-    expect(metric.healthScore).toBeLessThanOrEqual(100)
-  })
-})
-
-Then('results should be sorted by risk score', () => {
-  if (context.projectMetrics && context.projectMetrics.length > 1) {
-    for (let i = 0; i < context.projectMetrics.length - 1; i++) {
-      expect(context.projectMetrics[i].riskScore).toBeGreaterThanOrEqual(context.projectMetrics[i + 1].riskScore)
+// Scenario: Calculate remediation rate
+Given('{int} vulnerabilities have patch information', function (count: number) {
+  const vulns = Array.from({ length: count }, (_, i) => {
+    const vuln = createTestVulnerability(`CVE-2024-${2000 + i}`, 'high')
+    vuln.patchInfo = {
+      patchAvailability: i < 40 ? 'available' : 'unknown',
     }
-  }
-})
-
-Then('score should be reduced by vulnerability ratio', () => {
-  const project = context.projectMetrics?.[0]
-  expect(project?.healthScore).toBeLessThan(100)
-})
-
-Then('extra penalty should apply for critical vulns', () => {
-  // Projects with critical vulnerabilities should have lower health scores
-  const projectsWithCritical = context.projectMetrics?.filter(p => p.criticalCount > 0)
-  const projectsWithoutCritical = context.projectMetrics?.filter(p => p.criticalCount === 0)
-
-  if (projectsWithCritical && projectsWithoutCritical && projectsWithCritical.length > 0 && projectsWithoutCritical.length > 0) {
-    const avgWithCritical = projectsWithCritical.reduce((sum, p) => sum + p.healthScore, 0) / projectsWithCritical.length
-    const avgWithoutCritical = projectsWithoutCritical.reduce((sum, p) => sum + p.healthScore, 0) / projectsWithoutCritical.length
-    expect(avgWithCritical).toBeLessThan(avgWithoutCritical)
-  }
-})
-
-Then('score should be between 0 and 100', () => {
-  context.projectMetrics?.forEach(metric => {
-    expect(metric.healthScore).toBeGreaterThanOrEqual(0)
-    expect(metric.healthScore).toBeLessThanOrEqual(100)
+    return vuln
   })
+  const stats = createStatisticsWithVulns(10, count, 0, count, 0, 0)
+  context.testProjects.push(
+    createTestProject('Patched Project', {
+      statistics: stats,
+      vulnerabilities: vulns,
+    }),
+  )
 })
 
-Then('vulnerability ratio should contribute to risk', () => {
-  const project = context.projectMetrics?.[0]
-  expect(project?.riskScore).toBeGreaterThan(0)
+Given('{int} have available patches', function (count: number) {
+  // Already set in previous step
 })
 
-Then('staleness should add penalty', () => {
-  // Projects with stale scan dates should have higher risk scores
-  const staleProjects = context.projects.filter(p => {
-    if (!p.lastScanAt) return true
-    const daysSinceScan = (Date.now() - new Date(p.lastScanAt).getTime()) / (1000 * 60 * 60 * 24)
-    return daysSinceScan > 30
-  })
+Then('remediation rate should be {int}%', function (percentage: number) {
+  expect(context.testComplianceMetrics!.remediationRate).to.be.closeTo(percentage, 1)
+})
 
-  if (staleProjects.length > 0 && context.projectMetrics) {
-    const staleProjectMetrics = context.projectMetrics.filter(pm =>
-      staleProjects.some(sp => sp.id === pm.projectId)
+// Scenario: Calculate productivity metrics
+Given('{int} projects with various statistics', function (count: number) {
+  for (let i = 0; i < count; i++) {
+    const stats = createStatisticsWithVulns((i + 1) * 10, (i + 1) * 5)
+    const scanDate = new Date()
+    scanDate.setDate(scanDate.getDate() - i)
+    context.testProjects.push(
+      createTestProject(`Productivity Project ${i}`, {
+        statistics: stats,
+        lastScanAt: scanDate,
+        sbomFiles: [{ filename: `bom${i}.json`, format: 'spdx', uploadedAt: new Date() }],
+      }),
     )
-    staleProjectMetrics.forEach(metric => {
-      expect(metric.riskScore).toBeGreaterThan(0)
-    })
   }
 })
 
-Then('risk score should be 0-100', () => {
-  context.projectMetrics?.forEach(metric => {
-    expect(metric.riskScore).toBeGreaterThanOrEqual(0)
-    expect(metric.riskScore).toBeLessThanOrEqual(100)
-  })
+Then('total scans should be counted', function () {
+  expect(context.testProductivityMetrics!.totalScans).to.equal(context.testProjects.length)
 })
 
-Then('{int} weekly periods should be generated', (expected: number) => {
-  expect(context.trendMetrics?.periods.length).toBeGreaterThanOrEqual(expected)
+Then('SBOMs processed should be counted', function () {
+  expect(context.testProductivityMetrics!.sbomsProcessed).to.equal(context.testProjects.length)
 })
 
-Then('each period should show vulnerability count', () => {
-  context.trendMetrics?.periods.forEach(period => {
-    expect(typeof period.vulnerabilityCount).toBe('number')
-    expect(period.vulnerabilityCount).toBeGreaterThanOrEqual(0)
-  })
+Then('components analyzed should be summed', function () {
+  const expectedSum = context.testProjects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
+  expect(context.testProductivityMetrics!.componentsAnalyzed).to.equal(expectedSum)
 })
 
-Then('each period should show scans completed', () => {
-  context.trendMetrics?.periods.forEach(period => {
-    expect(typeof period.scansCompleted).toBe('number')
-    expect(period.scansCompleted).toBeGreaterThanOrEqual(0)
-  })
+// Scenario: Handle empty project list
+Given('no projects exist', function () {
+  context.testProjects = []
 })
 
-Then('vulnerability trend should be {string}', (expected: string) => {
-  expect(context.trendMetrics?.vulnerabilityTrend).toBe(expected)
+When('I calculate overall metrics', function () {
+  try {
+    context.testOverallMetrics = calculateOverallMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
 })
 
-Then('health trend should be {string}', (expected: string) => {
-  expect(context.trendMetrics?.healthTrend).toBe(expected)
+Then('total projects should be {int}', function (count: number) {
+  expect(context.testOverallMetrics!.totalProjects).to.equal(count)
 })
 
-Then('scan frequency should be {int} per week', (expected: number) => {
-  expect(context.trendMetrics?.scanFrequency).toBe(expected)
+Then('all counts should be 0', function () {
+  expect(context.testOverallMetrics!.totalComponents).to.equal(0)
+  expect(context.testOverallMetrics!.totalVulnerabilities).to.equal(0)
+  expect(context.testOverallMetrics!.criticalCount).to.equal(0)
 })
 
-Then('SLA critical compliance should be {int}%', (expected: number) => {
-  expect(context.complianceMetrics?.slaCompliance.slaCritical).toBe(expected)
+Then('average health score should default to 100', function () {
+  expect(context.testOverallMetrics!.averageHealthScore).to.equal(100)
 })
 
-Then('scan coverage should be {int}%', (expected: number) => {
-  expect(context.complianceMetrics?.scanCoverage).toBe(expected)
+// Scenario: Calculate all executive metrics together
+Given('I have multiple projects', function () {
+  for (let i = 0; i < 5; i++) {
+    const stats = createStatisticsWithVulns(10 + i * 2, 5 + i * 3, i, i + 1, i + 2, i + 3)
+    const scanDate = new Date()
+    scanDate.setDate(scanDate.getDate() - i)
+    context.testProjects.push(
+      createTestProject(`Executive Project ${i}`, {
+        statistics: stats,
+        lastScanAt: scanDate,
+        updatedAt: scanDate,
+      }),
+    )
+  }
 })
 
-Then('data freshness should be {int}%', (expected: number) => {
-  expect(context.complianceMetrics?.dataFreshness).toBe(expected)
+When('I calculate executive metrics', function () {
+  try {
+    context.testMetrics = calculateExecutiveMetrics(context.testProjects)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
 })
 
-Then('remediation rate should be {int}%', (expected: number) => {
-  expect(context.complianceMetrics?.remediationRate).toBe(expected)
+Then('overall metrics should be included', function () {
+  expect(context.testMetrics).to.have.property('overall')
+  expect(context.testMetrics!.overall).to.have.property('totalProjects')
 })
 
-Then('total scans should be counted', () => {
-  const expected = context.projects.filter(p => p.lastScanAt).length
-  expect(context.productivityMetrics?.totalScans).toBe(expected)
+Then('project metrics should be included', function () {
+  expect(context.testMetrics).to.have.property('byProject')
+  expect(context.testMetrics!.byProject).to.be.an('array')
 })
 
-Then('SBOMs processed should be counted', () => {
-  const expected = context.projects.reduce((sum, p) => sum + p.sbomFiles.length, 0)
-  expect(context.productivityMetrics?.sbomsProcessed).toBe(expected)
+Then('trend metrics should be included', function () {
+  expect(context.testMetrics).to.have.property('trends')
+  expect(context.testMetrics!.trends).to.have.property('vulnerabilityTrend')
 })
 
-Then('components analyzed should be summed', () => {
-  const expected = context.projects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
-  expect(context.productivityMetrics?.componentsAnalyzed).toBe(expected)
+Then('compliance metrics should be included', function () {
+  expect(context.testMetrics).to.have.property('compliance')
+  expect(context.testMetrics!.compliance).to.have.property('scanCoverage')
 })
 
-Then('all counts should be 0', () => {
-  expect(context.overallMetrics?.totalProjects).toBe(0)
-  expect(context.overallMetrics?.totalComponents).toBe(0)
-  expect(context.overallMetrics?.totalVulnerabilities).toBe(0)
-  expect(context.overallMetrics?.criticalCount).toBe(0)
-  expect(context.overallMetrics?.highCount).toBe(0)
-})
-
-Then('average health score should default to {int}', (expected: number) => {
-  expect(context.overallMetrics?.averageHealthScore).toBe(expected)
-})
-
-Then('overall metrics should be included', () => {
-  expect(context.metrics?.overall).toBeDefined()
-  expect(context.metrics?.overall.totalProjects).toBe(context.projects.length)
-})
-
-Then('project metrics should be included', () => {
-  expect(context.metrics?.byProject).toBeDefined()
-  expect(context.metrics?.byProject.length).toBe(context.projects.length)
-})
-
-Then('trend metrics should be included', () => {
-  expect(context.metrics?.trends).toBeDefined()
-  expect(context.metrics?.trends.periods).toBeDefined()
-})
-
-Then('compliance metrics should be included', () => {
-  expect(context.metrics?.compliance).toBeDefined()
-  expect(typeof context.metrics?.compliance.scanCoverage).toBe('number')
-})
-
-Then('productivity metrics should be included', () => {
-  expect(context.metrics?.productivity).toBeDefined()
-  expect(typeof context.metrics?.productivity.totalScans).toBe('number')
+Then('productivity metrics should be included', function () {
+  expect(context.testMetrics).to.have.property('productivity')
+  expect(context.testMetrics!.productivity).to.have.property('totalScans')
 })

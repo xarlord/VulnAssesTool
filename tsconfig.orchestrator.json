@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "outDir": "./dist/orchestrator",
+    "rootDir": "./orchestrator",
+    "downlevelIteration": true,
+    "noImplicitAny": false
+  },
+  "include": ["orchestrator/**/*.ts"],
+  "exclude": ["node_modules"]
+}

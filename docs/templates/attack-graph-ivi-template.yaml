@@ -1,0 +1,512 @@
+# Attack Graph Template for In-Vehicle Infotainment (IVI) Systems
+# False Positive Filter - Tier 2 Attack Path Analysis
+#
+# This template defines a typical IVI system architecture with:
+# - Entry points: USB, Bluetooth, WiFi, Cellular
+# - Interfaces: Ethernet, CAN, etc.
+# - Services: OpenSSL, BlueZ, wpa_supplicant, etc.
+# - Data/control flow edges
+
+name: "IVI Attack Graph Template"
+description: "Pre-built attack graph template for In-Vehicle Infotainment systems"
+version: "1.0.0"
+compatible_with: "fpf-config-1.0"
+
+# =============================================================================
+# NODES
+# =============================================================================
+
+# Entry Points (External Attack Surface)
+entry_points:
+  - id: "entry:usb"
+    name: "External USB Port"
+    enabled: true
+    description: "Physical USB ports accessible from vehicle cabin"
+
+  - id: "entry:bluetooth"
+    name: "External Bluetooth"
+    enabled: true
+    description: "Bluetooth radio accessible from outside vehicle"
+
+  - id: "entry:wifi"
+    name: "External WiFi"
+    enabled: true
+    description: "WiFi radio for hotspot/client mode"
+
+  - id: "entry:cellular"
+    name: "External Cellular"
+    enabled: true
+    description: "Cellular modem (LTE/5G) for internet connectivity"
+
+# Interfaces (Network/Communication Interfaces)
+interfaces:
+  # USB Interface
+  - id: "interface:usb"
+    name: "USB Host Controller"
+    type: "interface"
+    enabled: true
+    exposure: "external"
+    config:
+      modes: ["host", "device"]
+      speed: "high_speed"
+      ports: 4
+      allowedDevices: ["mass_storage", "hid", "cdc_acm"]
+      blockedDevices: []
+
+  # Bluetooth Interface
+  - id: "interface:bluetooth"
+    name: "Bluetooth Controller"
+    type: "interface"
+    enabled: true
+    exposure: "external"
+    config:
+      version: "5.0"
+      pairingMode: "secure"
+      profiles: ["A2DP", "AVRCP", "HFP", "PAN", "SPP"]
+      bleEnabled: true
+      bleRole: "both"
+
+  # WiFi Interface
+  - id: "interface:wifi"
+    name: "WiFi Adapter"
+    type: "interface"
+    enabled: true
+    exposure: "external"
+    config:
+      modes: ["station", "ap"]
+      wpaVersion: 3
+      frequencies: ["2.4GHz", "5GHz"]
+      dataOnly: false
+
+  # Cellular Interface
+  - id: "interface:cellular"
+    name: "Cellular Modem"
+    type: "interface"
+    enabled: true
+    exposure: "external"
+    config:
+      generations: ["4G", "5G"]
+      dataOnly: false
+      apnConfig: "carrier_specific"
+
+  # Ethernet Interface (Internal)
+  - id: "interface:ethernet"
+    name: "Ethernet"
+    type: "interface"
+    enabled: true
+    exposure: "internal"
+    config:
+      speed: "1Gbps"
+      vlan_support: true
+
+  # CAN Bus Interface (Safety-Critical)
+  - id: "interface:can"
+    name: "CAN Bus"
+    type: "interface"
+    enabled: true
+    exposure: "isolated"
+    config:
+      speed: "500kbps"
+      safetyCritical: true
+      gateway_protected: true
+
+  # Ethernet Switch (Internal)
+  - id: "interface:ethernet_switch"
+    name: "Ethernet Switch"
+    type: "interface"
+    enabled: true
+    exposure: "internal"
+    config:
+      ports: 8
+      vlan_aware: true
+
+  # GPS Interface
+  - id: "interface:gps"
+    name: "GPS Receiver"
+    type: "interface"
+    enabled: true
+    exposure: "external"
+    config:
+      type: "GNSS"
+      offlineMaps: true
+      onlineMaps: true
+
+# Services (Software Services)
+services:
+  # OpenSSL - Cryptographic Library
+  - id: "service:openssl"
+    name: "OpenSSL"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: false
+      usage: "cryptographic_operations"
+      version: "3.0.x"
+
+  # BlueZ - Bluetooth Stack
+  - id: "service:bluez"
+    name: "BlueZ"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: true
+      usage: "bluetooth_management"
+
+  # wpa_supplicant - WiFi Authentication
+  - id: "service:wpa_supplicant"
+    name: "wpa_supplicant"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: false
+      usage: "wifi_authentication"
+
+  # Hostapd - WiFi Access Point
+  - id: "service:hostapd"
+    name: "hostapd"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: true
+      usage: "wifi_ap_mode"
+
+  # ModemManager - Cellular Modem Control
+  - id: "service:modem_manager"
+    name: "ModemManager"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: false
+      usage: "cellular_modem_control"
+
+  # GPSD - GPS Daemon
+  - id: "service:gpsd"
+    name: "gpsd"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: false
+      usage: "location_services"
+
+  # ConnMan - Connection Manager
+  - id: "service:connman"
+    name: "ConnMan"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: false
+      usage: "network_management"
+
+  # SSH Server (Disabled by default)
+  - id: "service:sshd"
+    name: "SSH Server"
+    type: "service"
+    enabled: false
+    exposure: "internal"
+    config:
+      externalAccess: false
+      usage: "remote_access"
+      reason: "Disabled in production"
+
+  # Avahi - mDNS/DNS-SD
+  - id: "service:avahi"
+    name: "Avahi"
+    type: "service"
+    enabled: true
+    exposure: "internal"
+    config:
+      externalAccess: true
+      usage: "service_discovery"
+
+  # CAN Gateway Service
+  - id: "service:can_gateway"
+    name: "CAN Gateway"
+    type: "service"
+    enabled: true
+    exposure: "isolated"
+    config:
+      externalAccess: false
+      usage: "can_bus_isolation"
+      safetyCritical: true
+
+# Components (Libraries/Modules)
+components:
+  # libssl
+  - id: "component:libssl"
+    name: "libssl"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # libcrypto
+  - id: "component:libcrypto"
+    name: "libcrypto"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # Bluetooth Daemon
+  - id: "component:bluetoothd"
+    name: "bluetoothd"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # OBEX Daemon
+  - id: "component:obexd"
+    name: "obexd"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # GATT
+  - id: "component:gatt"
+    name: "GATT"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # WPA Client
+  - id: "component:wpa_client"
+    name: "wpa_client"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # DHCP Client
+  - id: "component:dhclient"
+    name: "dhclient"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # DNS Resolver
+  - id: "component:dns_resolver"
+    name: "DNS Resolver"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # QMI
+  - id: "component:qmi"
+    name: "QMI"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # MBIM
+  - id: "component:mbim"
+    name: "MBIM"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # PPPD
+  - id: "component:pppd"
+    name: "pppd"
+    type: "component"
+    enabled: false
+    exposure: "internal"
+
+  # NMEA Parser
+  - id: "component:nmea_parser"
+    name: "NMEA Parser"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # Serial
+  - id: "component:serial"
+    name: "Serial"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # mDNS
+  - id: "component:mdns"
+    name: "mDNS"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+  # DNS-SD
+  - id: "component:dns_sd"
+    name: "DNS-SD"
+    type: "component"
+    enabled: true
+    exposure: "internal"
+
+# =============================================================================
+# EDGES (Data Flow and Control Flow)
+# =============================================================================
+
+edges:
+  # Entry Point -> Interface connections
+  - from: "entry:usb"
+    to: "interface:usb"
+    type: "data_flow"
+    protocol: "USB"
+
+  - from: "entry:bluetooth"
+    to: "interface:bluetooth"
+    type: "data_flow"
+    protocol: "Bluetooth"
+
+  - from: "entry:wifi"
+    to: "interface:wifi"
+    type: "data_flow"
+    protocol: "802.11"
+
+  - from: "entry:cellular"
+    to: "interface:cellular"
+    type: "data_flow"
+    protocol: "LTE/5G"
+
+  # USB -> Services
+  - from: "interface:usb"
+    to: "service:connman"
+    type: "data_flow"
+    protocol: "USB"
+
+  # Bluetooth -> BlueZ Stack
+  - from: "interface:bluetooth"
+    to: "service:bluez"
+    type: "data_flow"
+    protocol: "HCI"
+
+  - from: "service:bluez"
+    to: "component:bluetoothd"
+    type: "control_flow"
+
+  - from: "service:bluez"
+    to: "component:obexd"
+    type: "control_flow"
+
+  - from: "service:bluez"
+    to: "component:gatt"
+    type: "control_flow"
+
+  # WiFi -> wpa_supplicant/hostapd
+  - from: "interface:wifi"
+    to: "service:wpa_supplicant"
+    type: "data_flow"
+    protocol: "802.11"
+
+  - from: "interface:wifi"
+    to: "service:hostapd"
+    type: "data_flow"
+    protocol: "802.11"
+
+  - from: "service:wpa_supplicant"
+    to: "component:wpa_client"
+    type: "control_flow"
+
+  - from: "service:wpa_supplicant"
+    to: "service:openssl"
+    type: "data_flow"
+    protocol: "TLS"
+
+  # Cellular -> ModemManager
+  - from: "interface:cellular"
+    to: "service:modem_manager"
+    type: "data_flow"
+    protocol: "QMI/MBIM"
+
+  - from: "service:modem_manager"
+    to: "component:qmi"
+    type: "control_flow"
+
+  - from: "service:modem_manager"
+    to: "component:mbim"
+    type: "control_flow"
+
+  - from: "service:modem_manager"
+    to: "component:pppd"
+    type: "control_flow"
+
+  # GPS -> gpsd
+  - from: "interface:gps"
+    to: "service:gpsd"
+    type: "data_flow"
+    protocol: "NMEA"
+
+  - from: "service:gpsd"
+    to: "component:nmea_parser"
+    type: "control_flow"
+
+  - from: "service:gpsd"
+    to: "component:serial"
+    type: "data_flow"
+    protocol: "UART"
+
+  # Ethernet -> Network Services
+  - from: "interface:ethernet"
+    to: "interface:ethernet_switch"
+    type: "data_flow"
+    protocol: "Ethernet"
+
+  - from: "interface:ethernet_switch"
+    to: "service:connman"
+    type: "data_flow"
+    protocol: "TCP/IP"
+
+  - from: "service:connman"
+    to: "component:dhclient"
+    type: "control_flow"
+
+  - from: "service:connman"
+    to: "component:dns_resolver"
+    type: "control_flow"
+
+  # OpenSSL -> Crypto Libraries
+  - from: "service:openssl"
+    to: "component:libssl"
+    type: "control_flow"
+
+  - from: "service:openssl"
+    to: "component:libcrypto"
+    type: "control_flow"
+
+  # Avahi -> mDNS/DNS-SD
+  - from: "service:avahi"
+    to: "component:mdns"
+    type: "control_flow"
+
+  - from: "service:avahi"
+    to: "component:dns_sd"
+    type: "control_flow"
+
+  # CAN Bus - Isolated Path
+  - from: "interface:can"
+    to: "service:can_gateway"
+    type: "data_flow"
+    protocol: "CAN"
+
+  # SSH (Disabled - Blocking Edge)
+  - from: "interface:ethernet"
+    to: "service:sshd"
+    type: "blocking"
+    condition: "SSH disabled in production"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+metadata:
+  created_at: "2026-02-19"
+  author: "FPF System"
+  iso21434_compliant: true
+  safety_integrity_level: "ASIL-B"
+  notes: |
+    This template represents a typical IVI system architecture.
+    - Entry points are external-facing and represent the primary attack surface
+    - CAN bus is isolated via gateway to prevent vehicle network attacks
+    - SSH is disabled in production (blocking edge)
+    - All paths through OpenSSL are considered reachable from multiple entry points

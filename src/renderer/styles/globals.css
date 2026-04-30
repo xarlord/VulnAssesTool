@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 239 84% 57%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 38.5%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 239 84% 57%;
+    --radius: 0.5rem;
+
+    /* Severity Colors - Light Mode */
+    --severity-critical: 0 84.2% 60.2%;
+    --severity-critical-foreground: 0 0% 100%;
+    --severity-high: 25 95% 53%;
+    --severity-high-foreground: 0 0% 100%;
+    --severity-medium: 45 93% 47%;
+    --severity-medium-foreground: 0 0% 100%;
+    --severity-low: 142 71% 45%;
+    --severity-low-foreground: 0 0% 100%;
+    --severity-none: 220 9% 46%;
+    --severity-none-foreground: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 239 84% 57%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 239 84% 57%;
+
+    /* Severity Colors - Dark Mode */
+    --severity-critical: 0 72% 51%;
+    --severity-critical-foreground: 0 0% 100%;
+    --severity-high: 25 90% 60%;
+    --severity-high-foreground: 0 0% 100%;
+    --severity-medium: 45 90% 55%;
+    --severity-medium-foreground: 0 0% 100%;
+    --severity-low: 142 70% 50%;
+    --severity-low-foreground: 0 0% 100%;
+    --severity-none: 220 9% 60%;
+    --severity-none-foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
+  }
+}
+
+/* Severity colors using CSS custom properties */
+.severity-critical {
+  background-color: hsl(var(--severity-critical));
+  color: hsl(var(--severity-critical-foreground));
+}
+
+.severity-high {
+  background-color: hsl(var(--severity-high));
+  color: hsl(var(--severity-high-foreground));
+}
+
+.severity-medium {
+  background-color: hsl(var(--severity-medium));
+  color: hsl(var(--severity-medium-foreground));
+}
+
+.severity-low {
+  background-color: hsl(var(--severity-low));
+  color: hsl(var(--severity-low-foreground));
+}
+
+.severity-none {
+  background-color: hsl(var(--severity-none));
+  color: hsl(var(--severity-none-foreground));
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-md;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
+
+/* Shimmer animation for skeleton loaders */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+}

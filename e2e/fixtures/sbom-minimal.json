@@ -1,0 +1,23 @@
+{
+  "$schema": "https://cyclonedx.org/schema/bom-1.5.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:12345678-1234-1234-1234-123456789012",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-03-24T10:00:00Z",
+    "component": {
+      "type": "application",
+      "name": "Minimal Test App",
+      "version": "1.0.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "uuid",
+      "version": "9.0.0",
+      "purl": "pkg:npm/uuid@9.0.0"
+    }
+  ]
+}

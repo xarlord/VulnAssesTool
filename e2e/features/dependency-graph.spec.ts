@@ -1,20 +1,6 @@
 import { test, expect, resetAppState } from '../electron-helper'
 import type { Page } from '@playwright/test'
-
-/**
- * E2E Tests for Dependency Graph Page
- *
- * Tests the dependency visualization functionality:
- * - Page load and display
- * - Filter controls
- * - Navigation
- * - Responsive design
- */
-
-// E2E timeout constants
-const E2E_DEFAULT_TIMEOUT = 30000
-const E2E_SELECTOR_TIMEOUT = 15000
-const E2E_UI_DELAY = 500
+import { E2E_UI_DELAY, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
 
 test.describe('Dependency Graph', () => {
   test.beforeEach(async ({ page }) => {
@@ -56,12 +42,20 @@ test.describe('Dependency Graph', () => {
     test('should have all severity options in dropdown', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
-      await expect(severitySelect.locator('option:has-text("All Severities")')).toBeVisible()
-      await expect(severitySelect.locator('option:has-text("Critical")')).toBeVisible()
-      await expect(severitySelect.locator('option:has-text("High")')).toBeVisible()
-      await expect(severitySelect.locator('option:has-text("Medium")')).toBeVisible()
-      await expect(severitySelect.locator('option:has-text("Low")')).toBeVisible()
+      // Find the severity filter select by its aria-label or specific context
+      const severitySelect = page.locator('header select').first()
+      await expect(severitySelect).toBeVisible()
+
+      // <option> elements inside a <select> are not "visible" when dropdown is closed.
+      // Verify they exist by checking the select's option values via evaluate.
+      const optionTexts = await severitySelect.evaluate((el: HTMLSelectElement) =>
+        Array.from(el.options).map((o) => o.text),
+      )
+      expect(optionTexts).toContain('All Severities')
+      expect(optionTexts).toContain('Critical')
+      expect(optionTexts).toContain('High')
+      expect(optionTexts).toContain('Medium')
+      expect(optionTexts).toContain('Low')
     })
 
     test('should show "Vulnerable Only" toggle button', async ({ page }) => {
@@ -293,16 +287,17 @@ test.describe('Dependency Graph', () => {
     })
 
     test('should handle project not found', async ({ page }) => {
-      // Navigate to non-existent project graph
-      await page.goto('/project/non-existent-id/graph')
-      await page.waitForLoadState('domcontentloaded')
+      // Navigate to non-existent project graph using SPA navigation
+      await page.evaluate((path) => {
+        const nav = (window as unknown as Record<string, unknown>).__navigate
+        if (typeof nav === 'function') {
+          nav(path)
+        }
+      }, '/project/non-existent-id/graph')
       await page.waitForTimeout(E2E_UI_DELAY)
 
-      // Should show error or redirect
-      const hasError = await page.locator('text=/not found|error/i').isVisible().catch(() => false)
-      const redirected = !page.url().includes('/graph')
-
-      expect(hasError || redirected || true).toBe(true)
+      // Should show "Project not found" message
+      await expect(page.locator('text=/Project not found/i')).toBeVisible({ timeout: 5000 })
     })
   })
 
@@ -413,17 +408,17 @@ async function createProjectAndNavigateToGraph(page: Page, name = 'Graph Test Pr
   await expect(page.getByRole('heading', { name: new RegExp(name, 'i') })).toBeVisible({ timeout: 10000 })
   await page.waitForTimeout(E2E_UI_DELAY)
 
-  // Navigate to dependency graph
-  const graphButton = page.locator('button:has-text("Dependency Graph")')
-  if (await graphButton.count() > 0) {
-    await graphButton.click()
-  } else {
-    // Direct navigation if button not found
-    const url = page.url()
-    const projectId = url.match(/\/project\/([^/]+)/)?.[1]
-    if (projectId) {
-      await page.goto(`/project/${projectId}/graph`)
-    }
+  // Navigate to dependency graph using SPA navigation
+  const url = page.url()
+  const projectId = url.match(/\/project\/([^/]+)/)?.[1]
+  if (projectId) {
+    // Use React Router's navigate function to avoid full page reload
+    await page.evaluate((path) => {
+      const nav = (window as unknown as Record<string, unknown>).__navigate
+      if (typeof nav === 'function') {
+        nav(path)
+      }
+    }, `/project/${projectId}/graph`)
   }
 
   await page.waitForTimeout(E2E_UI_DELAY)
