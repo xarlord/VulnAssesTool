@@ -80,12 +80,14 @@ interface AuditEventRow {
  * Provides ISO 21434 compliant audit trail for filter decisions
  */
 export class FilterAuditLogger {
-  private db: Database
+  private db: Database | null
   private hashCache: Map<string, string> = new Map()
 
-  constructor(db: Database) {
-    this.db = db
-    this.initializeSchema()
+  constructor(db?: Database) {
+    this.db = db ?? null
+    if (this.db) {
+      this.initializeSchema()
+    }
   }
 
   /**
