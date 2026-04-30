@@ -157,6 +157,7 @@ export class FilterAuditLogger {
    * Get the hash of the last event in the chain
    */
   private async getLastEventHash(): Promise<string> {
+    if (!this.db) return '0'.repeat(64)
     const result = this.db.exec('SELECT hash FROM fpf_audit_events ORDER BY created_at DESC LIMIT 1')
 
     if (result.length === 0 || result[0].values.length === 0) {
@@ -221,6 +222,7 @@ export class FilterAuditLogger {
    * Log a filter audit event with hash chain integrity
    */
   async logEvent(event: AuditEventInput): Promise<void> {
+    if (!this.db) return
     const id = this.generateEventId()
     const timestamp = new Date().toISOString()
     const previousHash = await this.getLastEventHash()
@@ -267,6 +269,7 @@ export class FilterAuditLogger {
    * Get all audit events for a project
    */
   async getProjectAuditLog(projectId: string): Promise<FilterAuditEvent[]> {
+    if (!this.db) return []
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE project_id = ?
