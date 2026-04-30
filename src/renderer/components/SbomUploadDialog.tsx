@@ -190,7 +190,9 @@ export default function SbomUploadDialog({ open, onClose, projectId }: SbomUploa
       id: sbomFileId,
       filename: fileInputRef.current?.files?.[0]?.name || 'sbom.json',
       format: parsedData.format,
+      formatVersion: parsedData.format === 'cyclonedx' ? '1.5' : '2.3',
       uploadedAt: new Date(),
+      fileHash: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       componentCount: parsedData.components.length,
     }
 
