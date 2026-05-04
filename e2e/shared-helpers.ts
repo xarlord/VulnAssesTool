@@ -230,13 +230,49 @@ export async function navigateToExecutiveDashboard(page: Page): Promise<void> {
   } else if ((await executiveButton.isVisible().catch(() => false)) && (await executiveButton.isEnabled())) {
     await executiveButton.click()
   } else {
-    await page.evaluate(() => {
-      const nav = (window as unknown as Record<string, unknown>).__navigate
-      if (typeof nav === 'function') nav('/executive')
-    })
+    await spaNavigate(page, '/executive')
   }
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(E2E_UI_DELAY)
+}
+
+/**
+ * Navigate to the Settings page via link, button, or SPA fallback
+ */
+export async function navigateToSettingsPage(page: Page): Promise<void> {
+  const settingsLink = page.getByRole('link', { name: /settings/i })
+  const settingsButton = page.getByRole('button', { name: /settings/i })
+
+  if (await settingsLink.isVisible().catch(() => false)) {
+    await settingsLink.click()
+  } else if (await settingsButton.isVisible().catch(() => false)) {
+    await settingsButton.click()
+  } else {
+    await spaNavigate(page, '/settings')
+  }
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForTimeout(E2E_UI_DELAY)
+}
+
+/**
+ * Navigate to the Dashboard (home) via SPA router.
+ * page.goto('/') doesn't work in SPA test mode — use this instead.
+ */
+export async function navigateToDashboard(page: Page): Promise<void> {
+  await spaNavigate(page, '/')
+  await page.waitForTimeout(E2E_UI_DELAY * 2)
+}
+
+/**
+ * SPA-safe navigation using the router's navigate function.
+ * page.goto() causes a full reload which breaks mocked Electron APIs.
+ */
+export async function spaNavigate(page: Page, path: string): Promise<void> {
+  await page.evaluate((p: string) => {
+    const nav = (window as unknown as Record<string, unknown>).__navigate
+    if (typeof nav === 'function') nav(p)
+  }, path)
+  await page.waitForTimeout(E2E_UI_DELAY * 2)
 }
 
 /**

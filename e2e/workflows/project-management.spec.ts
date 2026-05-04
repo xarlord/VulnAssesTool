@@ -1,6 +1,12 @@
 import { test, expect, resetAppState } from '../electron-helper'
 import type { Page } from '@playwright/test'
-import { createProjectOnly, navigateToProjectDetail, E2E_UI_DELAY } from '../shared-helpers'
+import {
+  createProjectOnly,
+  navigateToProjectDetail,
+  navigateToDashboard,
+  navigateToSettingsPage,
+  E2E_UI_DELAY,
+} from '../shared-helpers'
 
 test.describe('Project Management Workflow', () => {
   test.beforeEach(async ({ page }) => {
@@ -97,8 +103,7 @@ test.describe('Project Management Workflow', () => {
       await navigateToProjectDetail(page, projectName)
 
       // Go back to dashboard
-      await page.goto('/')
-      await page.waitForTimeout(E2E_UI_DELAY)
+      await navigateToDashboard(page)
 
       await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
     })
@@ -112,8 +117,7 @@ test.describe('Project Management Workflow', () => {
       await expect(page.getByRole('heading', { name: /Project Alpha/i })).toBeVisible()
 
       // Go back and navigate to second
-      await page.goto('/')
-      await page.waitForTimeout(E2E_UI_DELAY)
+      await navigateToDashboard(page)
       await navigateToProjectDetail(page, 'Project Beta')
       await expect(page.getByRole('heading', { name: /Project Beta/i })).toBeVisible()
     })
@@ -237,7 +241,7 @@ test.describe('Project Management Workflow', () => {
           await page.waitForTimeout(E2E_UI_DELAY)
 
           // Project should still exist
-          await page.goto('/')
+          await navigateToDashboard(page)
           await expect(page.getByText(projectName)).toBeVisible()
         }
       }
@@ -318,18 +322,7 @@ test.describe('Project Management Workflow', () => {
 
   test.describe('Settings Workflow', () => {
     test('should navigate to settings', async ({ page }) => {
-      const settingsLink = page.getByRole('link', { name: /settings/i })
-      const settingsButton = page.getByRole('button', { name: /settings/i })
-
-      if ((await settingsLink.count()) > 0) {
-        await settingsLink.click()
-      } else if ((await settingsButton.count()) > 0) {
-        await settingsButton.click()
-      } else {
-        await page.goto('/settings')
-      }
-
-      await page.waitForTimeout(E2E_UI_DELAY)
+      await navigateToSettingsPage(page)
 
       // Should show settings content
       const settingsContent = page.locator('text=/Settings|Theme|Appearance/i')
@@ -337,8 +330,7 @@ test.describe('Project Management Workflow', () => {
     })
 
     test('should toggle theme', async ({ page }) => {
-      await page.goto('/settings')
-      await page.waitForTimeout(E2E_UI_DELAY)
+      await navigateToSettingsPage(page)
 
       // Look for theme toggle
       const themeToggle = page.locator('button:has-text("Theme"), [data-testid="theme-toggle"]')
@@ -349,8 +341,7 @@ test.describe('Project Management Workflow', () => {
     })
 
     test('should save settings', async ({ page }) => {
-      await page.goto('/settings')
-      await page.waitForTimeout(E2E_UI_DELAY)
+      await navigateToSettingsPage(page)
 
       // Look for save button
       const saveButton = page.locator('button:has-text("Save")')
