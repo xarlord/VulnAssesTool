@@ -23,6 +23,52 @@ async function mockElectronAPIs(page: Page) {
         console.log('Opening external URL:', url)
         return true
       },
+      // NVD mock handlers
+      'nvd:search': async (_channel: unknown, params: Record<string, unknown>) => {
+        const query = (params?.query || params?.keyword || '').toString().toLowerCase()
+        const mockCves =
+          ((window as unknown as Record<string, unknown>).__mockCves as Array<Record<string, unknown>>) || []
+        const filtered = query
+          ? mockCves.filter(
+              (c) =>
+                (c.id as string).toLowerCase().includes(query) ||
+                (c.description as string).toLowerCase().includes(query),
+            )
+          : mockCves
+        return {
+          success: true,
+          results: filtered.slice(0, (params?.limit as number) || 20),
+          totalResults: filtered.length,
+          startIndex: 0,
+          resultsPerPage: Math.min(filtered.length, (params?.limit as number) || 20),
+        }
+      },
+      'nvd:getCve': async (_channel: unknown, params: Record<string, unknown>) => {
+        const cveId = (params?.id || params?.cveId || '').toString()
+        const mockCves =
+          ((window as unknown as Record<string, unknown>).__mockCves as Array<Record<string, unknown>>) || []
+        const cve = mockCves.find((c) => c.id === cveId)
+        return cve ? { success: true, cve } : { success: false, error: 'CVE not found' }
+      },
+      'nvd:getStats': async () => ({
+        success: true,
+        stats: {
+          dbSize: 987000000,
+          totalCves: 331567,
+          totalCpes: 2500000,
+          lastUpdate: '2025-01-15T00:00:00Z',
+        },
+      }),
+      // OSV mock handlers
+      'osv:query': async (_channel: unknown, _params: unknown) => ({
+        success: true,
+        results: [],
+        totalResults: 0,
+      }),
+      'osv:getVulnerability': async (_channel: unknown, _params: unknown) => ({
+        success: false,
+        error: 'Not found',
+      }),
     }
 
     // Mock store data - backed by localStorage for persistence across reloads
@@ -167,6 +213,40 @@ async function mockElectronAPIs(page: Page) {
         reset: async () => ({ success: true }),
         rebuildIndexes: async () => ({ success: true }),
         sync: async () => ({ success: true }),
+        onSyncProgress: async (_callback: (...args: unknown[]) => void) => {},
+        search: async (params: Record<string, unknown>) => {
+          const query = (params?.query || params?.keyword || '').toString().toLowerCase()
+          const mockCves =
+            ((window as unknown as Record<string, unknown>).__mockCves as Array<Record<string, unknown>>) || []
+          const filtered = query
+            ? mockCves.filter(
+                (c) =>
+                  (c.id as string).toLowerCase().includes(query) ||
+                  (c.description as string).toLowerCase().includes(query),
+              )
+            : mockCves
+          return {
+            success: true,
+            results: filtered.slice(0, (params?.limit as number) || 20),
+            totalResults: filtered.length,
+          }
+        },
+        getCve: async (params: Record<string, unknown>) => {
+          const cveId = (params?.id || params?.cveId || '').toString()
+          const mockCves =
+            ((window as unknown as Record<string, unknown>).__mockCves as Array<Record<string, unknown>>) || []
+          const cve = mockCves.find((c) => c.id === cveId)
+          return cve ? { success: true, cve } : { success: false, error: 'CVE not found' }
+        },
+        getStats: async () => ({
+          success: true,
+          stats: {
+            dbSize: 987000000,
+            totalCves: 331567,
+            totalCpes: 2500000,
+            lastUpdate: '2025-01-15T00:00:00Z',
+          },
+        }),
       },
 
       // Platform info
@@ -190,6 +270,9 @@ async function mockElectronAPIs(page: Page) {
       _emitEvent: emitEvent,
     }
 
+    // Expose mock CVE data injection point for tests
+    ;(window as unknown as Record<string, unknown>).__mockCves = []
+
     console.log('[Mock] Electron API mock installed')
   })
 }
@@ -211,6 +294,15 @@ async function getPage(): Promise<Page> {
 
   // This shouldn't happen with proper fixtures, but just in case
   throw new Error('Page not initialized. Use the page fixture from test.extend().')
+}
+
+/**
+ * Inject mock CVE data into the browser for NVD search tests
+ */
+export async function injectMockCves(page: Page, cves: Array<Record<string, unknown>>): Promise<void> {
+  await page.evaluate((data) => {
+    ;(window as unknown as Record<string, unknown>).__mockCves = data
+  }, cves)
 }
 
 /**

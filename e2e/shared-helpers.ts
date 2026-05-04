@@ -261,6 +261,65 @@ export async function closeDialog(page: Page): Promise<void> {
 }
 
 // =============================================================================
+// SBOM Upload Helpers
+// =============================================================================
+
+/**
+ * Upload an SBOM file to the current project via the upload dialog.
+ * Opens the dialog, sets the file on the hidden input, waits for parsing,
+ * then confirms the upload.
+ * @param page - Playwright page object
+ * @param filePath - Absolute or relative path to the SBOM file
+ * @param waitForComponents - Whether to wait for components to appear (default: true)
+ */
+export async function uploadSbomFile(page: Page, filePath: string, waitForComponents = true): Promise<void> {
+  // Open the SBOM upload dialog — use exact text match to avoid "Export" false positive
+  const uploadButton = page.getByRole('button', { name: /upload sbom/i }).first()
+  await uploadButton.waitFor({ state: 'visible', timeout: E2E_SELECTOR_TIMEOUT })
+  await uploadButton.click({ force: true })
+
+  // Wait for dialog to appear
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+
+  // Set the file on the hidden file input
+  const fileInput = dialog.locator('input[type="file"]')
+  await fileInput.setInputFiles(filePath)
+
+  // Wait for parsing to complete — the "Add to Project" button only appears on success
+  const confirmButton = dialog.getByRole('button', { name: /add to project/i })
+  const errorButton = dialog.getByRole('button', { name: /try again/i })
+  await Promise.race([
+    confirmButton.waitFor({ state: 'visible', timeout: 30000 }),
+    errorButton.waitFor({ state: 'visible', timeout: 30000 }),
+  ])
+
+  // Dismiss CPE match dialog if it appeared (covers the Add to Project button)
+  const cpeDialog = page.getByRole('dialog', { name: /cpe|match/i })
+  if (await cpeDialog.isVisible().catch(() => false)) {
+    const skipButton = cpeDialog.getByRole('button', { name: /skip|cancel|close/i }).first()
+    if (await skipButton.isVisible().catch(() => false)) {
+      await skipButton.click()
+      await page.waitForTimeout(E2E_UI_DELAY)
+    }
+  }
+
+  // Click "Add to Project" to confirm (only visible in success state)
+  if (await confirmButton.isVisible().catch(() => false)) {
+    await confirmButton.click({ force: true })
+    await page.waitForTimeout(E2E_UI_DELAY)
+  }
+
+  // Wait for dialog to close
+  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+
+  // Optionally wait for components to appear in the UI
+  if (waitForComponents) {
+    await page.waitForTimeout(E2E_UI_DELAY)
+  }
+}
+
+// =============================================================================
 // Selection Helpers
 // =============================================================================
 

@@ -292,7 +292,12 @@ export default function SbomUploadDialog({ open, onClose, projectId }: SbomUploa
       <div className="fixed inset-0 bg-black/50" onClick={handleClose} aria-hidden="true" />
 
       {/* Dialog */}
-      <div className="relative z-50 w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Upload SBOM"
+        className="relative z-50 w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg"
+      >
         {/* Close Button */}
         <button
           onClick={handleClose}

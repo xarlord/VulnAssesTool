@@ -11,7 +11,7 @@
  */
 
 import { type Database } from 'sql.js'
-import { type Vulnerability, type Component } from '@@/shared/types'
+import { type Vulnerability, type Component } from '@@/types'
 import {
   type SystemConfig,
   type FilterResult,
@@ -20,9 +20,10 @@ import {
   type UserRef,
   type FilterContext,
   DEFAULT_FILTER_SETTINGS,
-} from '@@/shared/types/fpf'
+} from '@@/types/fpf'
 import { Tier1QuickFilter } from './tier1QuickFilter'
-import { Tier2AttackGraphFilter, AttackGraph } from './attackGraph'
+import { Tier2AttackGraphFilter } from './tier2AttackGraphFilter'
+import { AttackGraph } from './attackGraph'
 import { FilterAuditLogger } from './filterAuditLogger'
 
 /**
@@ -63,7 +64,7 @@ export class FalsePositiveFilter {
   private auditLogger: FilterAuditLogger
   private defaultUser: UserRef
 
-  constructor(config: SystemConfig, db: Database) {
+  constructor(config: SystemConfig, db?: Database) {
     this.config = config
     this.tier1Filter = new Tier1QuickFilter(config)
     this.auditLogger = new FilterAuditLogger(db)

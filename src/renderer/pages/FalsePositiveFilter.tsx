@@ -6,7 +6,8 @@ import { FilterDashboard } from '@/components/FPF/FilterDashboard'
 import { FilteredItemsReview } from '@/components/FPF/FilteredItemsReview'
 import { ConfigWizard } from '@/components/FPF/ConfigWizard'
 import { MissFilterPanel } from '@/components/FPF/MissFilterPanel'
-import type { SystemConfig, FilterBatchResult, FilterResult } from '@@/types/fpf'
+import type { SystemConfig, FilterBatchResult } from '@@/types/fpf'
+import { FalsePositiveFilter } from '@/lib/services/fpf/falsePositiveFilter'
 
 type TabType = 'dashboard' | 'review' | 'config' | 'missfilter'
 
@@ -51,35 +52,35 @@ export default function FalsePositiveFilterPage() {
 
     setIsFiltering(true)
     try {
-      // Simulate filtering - in real implementation, this would call the FPF service
-      const mockResults: FilterResult[] = project.vulnerabilities.slice(0, 10).map((vuln, idx) => ({
-        vulnerabilityId: vuln.id,
-        componentId: project.components[idx]?.id || 'unknown',
-        action: idx < 5 ? 'filtered' : ('kept' as const),
-        tier: 1 as const,
-        filterType: 'disabled_interface' as const,
-        reason: idx < 5 ? 'Interface disabled in configuration' : 'No matching filter rule',
-        confidence: 75 + idx * 2,
-        timestamp: new Date().toISOString(),
-      }))
+      const fpf = new FalsePositiveFilter(config)
 
-      const result: FilterBatchResult = {
-        total: mockResults.length,
-        filtered: mockResults.filter((r) => r.action === 'filtered').length,
-        kept: mockResults.filter((r) => r.action === 'kept').length,
-        escalated: 0,
-        bySeverity: {
-          critical: { filtered: 0, kept: 1, escalated: 0 },
-          high: { filtered: 1, kept: 1, escalated: 0 },
-          medium: { filtered: 2, kept: 1, escalated: 0 },
-          low: { filtered: 2, kept: 1, escalated: 0 },
-        },
-        results: mockResults,
-        processingTimeMs: 150,
-      }
+      // Pair vulnerabilities with their first affected component
+      const items = project.vulnerabilities.map((vuln) => {
+        const componentId = vuln.affectedComponents?.[0]
+        const component = componentId ? project.components.find((c) => c.id === componentId) : project.components[0]
+        return {
+          vulnerability: vuln,
+          component: component || {
+            id: 'unknown',
+            name: 'Unknown',
+            version: '0.0.0',
+            type: 'other' as const,
+            licenses: [],
+            vulnerabilities: [],
+          },
+        }
+      })
+
+      const result = await fpf.filterBatch(items, {
+        projectId: project.id,
+        projectName: project.name,
+        configVersion: '1.0.0',
+      })
 
       setFilterResult(result)
-      setActiveTab('review')
+      if (result.results.length > 0) {
+        setActiveTab('review')
+      }
     } finally {
       setIsFiltering(false)
     }

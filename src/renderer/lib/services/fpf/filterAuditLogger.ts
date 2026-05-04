@@ -295,6 +295,7 @@ export class FilterAuditLogger {
    * Get all decisions for a specific CVE
    */
   async getCVEDecisions(cveId: string): Promise<FilterAuditEvent[]> {
+    if (!this.db) return []
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE vulnerability_id = ?
@@ -320,6 +321,7 @@ export class FilterAuditLogger {
    * Get decisions with confidence below threshold (for review)
    */
   async getLowConfidenceDecisions(threshold: number): Promise<FilterAuditEvent[]> {
+    if (!this.db) return []
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE undone = 0
@@ -353,6 +355,7 @@ export class FilterAuditLogger {
    * Verify the integrity of the audit log hash chain
    */
   async verifyIntegrity(): Promise<IntegrityVerificationResult> {
+    if (!this.db) return { valid: true, tamperedEvents: [] }
     const result = this.db.exec('SELECT * FROM fpf_audit_events ORDER BY created_at ASC')
 
     if (result.length === 0) {
@@ -413,6 +416,7 @@ export class FilterAuditLogger {
    * This does not delete the event but marks it as undone
    */
   async undoDecision(eventId: string, user: UserRef): Promise<void> {
+    if (!this.db) return
     const timestamp = new Date().toISOString()
     const undoRecord: UndoRecord = {
       id: this.generateEventId(),
@@ -434,6 +438,7 @@ export class FilterAuditLogger {
    * Get undone status for an event
    */
   async getUndoStatus(eventId: string): Promise<{ undone: boolean; undoneBy?: UndoRecord } | null> {
+    if (!this.db) return null
     const result = this.db.exec('SELECT undone, undone_by_json FROM fpf_audit_events WHERE id = ?', [eventId])
 
     if (result.length === 0 || result[0].values.length === 0) {
