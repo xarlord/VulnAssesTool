@@ -89,9 +89,16 @@ export async function navigateToProjectDetail(page: Page, projectName: string): 
  */
 export async function deleteProject(page: Page, projectName: string): Promise<void> {
   await navigateToProjectDetail(page, projectName)
-  await page.getByRole('button', { name: /delete/i }).click()
+  // Use .first() in case multiple delete buttons are visible (sidebar + main)
+  await page
+    .getByRole('button', { name: /delete/i })
+    .first()
+    .click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
-  await page.getByRole('button', { name: /confirm|delete/i }).click()
+  await page
+    .getByRole('button', { name: /confirm|delete/i })
+    .first()
+    .click()
   await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 })
 }
 
