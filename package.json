@@ -34,6 +34,7 @@
     "test:e2e:features": "playwright test --project=features",
     "test:e2e:workflows": "playwright test --project=workflows",
     "test:e2e:visual": "playwright test --project=visual",
+    "mcp:serve": "npm run build && npx vite preview --port 4173 --strictPort",
     "test:bdd": "vitest --run tests/bdd-simple.test.ts",
     "test:bdd:watch": "vitest tests/bdd-simple.test.ts",
     "pack": "electron-builder --dir",

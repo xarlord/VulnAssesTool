@@ -36,6 +36,13 @@ test-*.json
 playwright-report/
 test-results/
 
+# MCP test results (generated during interactive execution)
+e2e/mcp/results/screenshots/
+e2e/mcp/results/traces/
+e2e/mcp/results/heap/
+e2e/mcp/results/*.md
+!e2e/mcp/results/.gitkeep
+
 # Old folder structure (cleanup in progress)
 vuln-assess-tool/
 vuln-asses-tool/
