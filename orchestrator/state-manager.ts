@@ -65,18 +65,19 @@ export class StateManager {
 
     try {
       const data = fs.readFileSync(statePath, 'utf-8')
-      this.state = JSON.parse(data)
+      const parsed = JSON.parse(data) as SessionState
 
       // Convert date strings back to Date objects
-      this.state.startedAt = new Date(this.state.startedAt)
-      this.state.lastUpdatedAt = new Date(this.state.lastUpdatedAt)
-      this.state.phaseResults = this.state.phaseResults.map((r) => ({
+      parsed.startedAt = new Date(parsed.startedAt)
+      parsed.lastUpdatedAt = new Date(parsed.lastUpdatedAt)
+      parsed.phaseResults = parsed.phaseResults.map((r) => ({
         ...r,
         timestamp: new Date(r.timestamp),
       }))
 
       // Reset status to running
-      this.state.status = 'running'
+      parsed.status = 'running'
+      this.state = parsed
       this.saveState()
 
       return this.state

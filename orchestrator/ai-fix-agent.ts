@@ -186,7 +186,7 @@ export class AIFixAgent {
       throw new Error(`GLM API request failed: ${response.status} - ${errorText}`)
     }
 
-    return response.json()
+    return (await response.json()) as GLMResponse
   }
 
   /**

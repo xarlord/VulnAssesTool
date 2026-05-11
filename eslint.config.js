@@ -37,9 +37,29 @@ export default defineConfig([
     },
     rules: {
       // Allow unused variables that start with underscore
+      // NOTE: Google TS forbids `_` prefix; the underscore allowance here is a
+      // legacy escape hatch that PR 4 will remove (see remediation plan).
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      // Warn instead of error for any type (can be fixed incrementally)
+      // Google TS Style: any is forbidden. Currently `warn` so existing ~600
+      // instances surface in CI output. PR 5 flips this to `error` once cleared.
       '@typescript-eslint/no-explicit-any': 'warn',
+      // Google TS Style: non-null assertions require justifying comments.
+      // Surfaces ~220 existing assertions; PR 4 audits/converts each one.
+      '@typescript-eslint/no-non-null-assertion': 'warn',
+      // Google TS/JS Style: default exports are banned. Override below for
+      // framework-required configs (vite, vitest, playwright, eslint, etc.).
+      // Surfaces 58 renderer + 1 orchestrator default exports; PR 3 codemods
+      // them to named exports via ts-morph.
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector: 'ExportDefaultDeclaration',
+          message: 'Default exports are banned by Google TS Style. Use named exports.',
+        },
+      ],
+      // Google TS Style: no `_` prefix/suffix on identifiers. Small footprint
+      // (~15 places); PR 4 renames them.
+      'no-underscore-dangle': ['warn', { allow: [] }],
       // Warn instead of error for react-refresh issues
       'react-refresh/only-export-components': 'warn',
       // Warn for empty blocks
@@ -84,14 +104,49 @@ export default defineConfig([
       reportUnusedDisableDirectives: false,
     },
   },
+  // Framework-required default exports (vite, vitest, playwright, eslint, etc.).
+  // These tools resolve their config via `export default`, so the Google TS/JS
+  // ban on default exports does not apply.
+  {
+    files: [
+      '*.config.{ts,js,mjs,cjs}',
+      'vite.config.ts',
+      'vite.config.electron.ts',
+      'vitest.config.ts',
+      'playwright.config.ts',
+      'playwright.e2e.config.ts',
+      'watchdog.config.ts',
+      'eslint.config.js',
+      'commitlint.config.js',
+      'postcss.config.js',
+      'tailwind.config.js',
+      'tests/**/vitest.*.config.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
+    },
+  },
   // Less strict rules for test files
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', 'tests/**/*', 'e2e/**/*'],
+    files: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      'tests/**/*',
+      'e2e/**/*',
+      '**/tests/**/*',
+      '**/__tests__/**/*',
+      '**/setup.ts',
+    ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-unused-expressions': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      'no-restricted-syntax': 'off',
+      'no-underscore-dangle': 'off',
       'react-hooks/rules-of-hooks': 'off',
       'react-refresh/only-export-components': 'off',
       'no-empty': 'warn',
