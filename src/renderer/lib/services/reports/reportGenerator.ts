@@ -229,4 +229,4 @@ export const ReportGenerator = {
   calculateMetrics,
 }
 
-export default ReportGenerator
+export { ReportGenerator }

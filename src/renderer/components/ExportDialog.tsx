@@ -11,7 +11,7 @@ interface ExportDialogProps {
   projects?: Project[]
 }
 
-export default function ExportDialog({ open, onClose, project, projects }: ExportDialogProps) {
+export function ExportDialog({ open, onClose, project, projects }: ExportDialogProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('csv')
   const [selectedDataType, setSelectedDataType] = useState<ExportDataType>('vulnerabilities')

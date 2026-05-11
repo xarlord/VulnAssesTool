@@ -218,7 +218,7 @@ export function filterHighEpss(vulnerabilities: Vulnerability[], threshold = 0.5
   return vulnerabilities.filter((v) => v.epssPercentile !== undefined && v.epssPercentile >= threshold)
 }
 
-export default {
+export const EnrichVulnerabilitiesDefault = {
   enrichVulnerability,
   enrichVulnerabilities,
   enrichVulnerabilityMap,

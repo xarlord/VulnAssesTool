@@ -11,7 +11,7 @@ import { FalsePositiveFilter } from '@/lib/services/fpf/falsePositiveFilter'
 
 type TabType = 'dashboard' | 'review' | 'config' | 'missfilter'
 
-export default function FalsePositiveFilterPage() {
+export function FalsePositiveFilterPage() {
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
   const projects = useProjects()

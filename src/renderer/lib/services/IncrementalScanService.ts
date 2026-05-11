@@ -321,5 +321,3 @@ export function getComponentsNeedingScan(
     needsFullRescan: result.needsFullRescan,
   }
 }
-
-export default IncrementalScanService

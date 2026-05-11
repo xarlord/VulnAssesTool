@@ -277,5 +277,3 @@ export function DashboardEditor({ open, onOpenChange }: DashboardEditorProps) {
     </>
   )
 }
-
-export default DashboardEditor

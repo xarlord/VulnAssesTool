@@ -95,5 +95,3 @@ export function AppLogo({ size = 'md', showText = true, className = '' }: AppLog
     </div>
   )
 }
-
-export default AppLogo

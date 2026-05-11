@@ -80,7 +80,7 @@ function getMatchTypeLabel(matchType: CPEMatchResult['matchType']): string {
   }
 }
 
-export default function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }: CPEMatchDialogProps) {
+export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }: CPEMatchDialogProps) {
   const [selections, setSelections] = useState<Map<string, string>>(new Map())
   const [isLoading, setIsLoading] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)

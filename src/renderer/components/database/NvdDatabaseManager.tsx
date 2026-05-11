@@ -545,4 +545,4 @@ export const NvdDatabaseManager: React.FC<NvdDatabaseManagerProps> = ({ classNam
   )
 }
 
-export default NvdDatabaseManager
+export { NvdDatabaseManager }

@@ -548,5 +548,3 @@ export function FilteredItemsReview({
     </div>
   )
 }
-
-export default FilteredItemsReview

@@ -23,8 +23,8 @@ import {
 } from '@/lib/search'
 import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
-import EmptyState from '@/components/EmptyState'
-import NvdCveDetailModal from '@/components/NvdCveDetailModal'
+import { EmptyState } from '@/components/EmptyState'
+import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
 import type { NvdSearchRequest, NvdSearchResponse } from '@@/types'
 
 // Type definitions for Electron API
@@ -96,7 +96,7 @@ declare global {
 type SearchMode = 'projects' | 'nvd'
 type NvdSearchMode = 'fts' | 'standard'
 
-export default function Search() {
+export function Search() {
   const navigate = useNavigate()
   const projects = useProjects()
   const [query, setQuery] = useState('')

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import ProjectCard from './ProjectCard'
+import { ProjectCard } from './ProjectCard'
 import type { Project } from '@@/types'
 
 const createMockProject = (overrides?: Partial<Project>): Project => ({

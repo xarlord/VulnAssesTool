@@ -325,5 +325,3 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
     </Dialog>
   )
 }
-
-export default ReportPreview

@@ -115,5 +115,3 @@ export function KevBadgeWithTooltip({
     </div>
   )
 }
-
-export default KevBadge

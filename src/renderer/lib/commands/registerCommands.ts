@@ -241,5 +241,3 @@ export function unregisterAppCommands(): void {
   const registry = getCommandRegistry()
   registry.clear()
 }
-
-export default registerAppCommands

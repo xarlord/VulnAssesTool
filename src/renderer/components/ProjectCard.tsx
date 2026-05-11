@@ -163,4 +163,4 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
     </div>
   )
 })
-export default ProjectCard
+export { ProjectCard }

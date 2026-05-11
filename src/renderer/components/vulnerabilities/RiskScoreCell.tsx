@@ -217,5 +217,3 @@ export function RiskScoreSortIndicator({
 
   return <span className={cn('text-muted-foreground', className)}>{direction === 'desc' ? '↓' : '↑'}</span>
 }
-
-export default RiskScoreCell

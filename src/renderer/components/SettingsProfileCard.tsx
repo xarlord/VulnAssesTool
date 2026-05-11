@@ -9,7 +9,7 @@ interface SettingsProfileCardProps {
   onDelete: (profileId: string) => void
 }
 
-export default function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: SettingsProfileCardProps) {
+export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: SettingsProfileCardProps) {
   const handleDelete = () => {
     if (confirm(`Are you sure you want to delete the profile "${profile.name}"?`)) {
       onDelete(profile.id)

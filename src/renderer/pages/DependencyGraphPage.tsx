@@ -14,7 +14,7 @@ import type { Component } from '@@/types'
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low'
 
-export default function DependencyGraphPage() {
+export function DependencyGraphPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const projects = useProjects()

@@ -311,10 +311,6 @@ export function MissFilterPanel({
   isLoading = false,
   llmLoadingIds = [],
   filterResult,
-  confidenceThreshold = 70,
-  onThresholdChange,
-  onFlagForReview,
-  onLLMAnalysis,
   className = '',
 }: MissFilterPanelProps) {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
@@ -608,5 +604,3 @@ export function MissFilterPanel({
     </div>
   )
 }
-
-export default MissFilterPanel

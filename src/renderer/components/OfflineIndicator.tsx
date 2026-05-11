@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react'
-import { Wifi, WifiOff, Cloud, CloudOff, RefreshCw, CheckCircle } from 'lucide-react'
+import { Wifi, WifiOff, Cloud, CloudOff, RefreshCw } from 'lucide-react'
 import { getOfflineQueue, type OfflineQueueEvent, type QueueStats } from '@/lib/services/OfflineQueue'
 
 /**
@@ -298,5 +298,3 @@ export function OfflineBanner({ className = '' }: { className?: string }) {
     </div>
   )
 }
-
-export default OfflineIndicator

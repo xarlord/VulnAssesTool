@@ -41,8 +41,8 @@ import {
   DEFAULT_DATABASE_SETTINGS,
 } from '@@/constants'
 import type { SyncSchedule, DatabaseStorageSettings, DatabasePerformanceSettings } from '@@/types'
-import SettingsProfileCard from '@/components/SettingsProfileCard'
-import CreateProfileDialog from '@/components/CreateProfileDialog'
+import { SettingsProfileCard } from '@/components/SettingsProfileCard'
+import { CreateProfileDialog } from '@/components/CreateProfileDialog'
 // DatabaseStatus removed - unused
 
 /**
@@ -107,7 +107,7 @@ function ConfirmDialog({
   )
 }
 
-export default function Settings() {
+export function Settings() {
   const navigate = useNavigate()
   const {
     settings,
@@ -196,7 +196,6 @@ export default function Settings() {
     sizeBytes: number
     hitRate: number
   } | null>(null)
-  const [_isClearingCache, setIsClearingCache] = useState(false)
 
   // Intelligence (KEV/EPSS) state
   const [kevStats, setKevStats] = useState<{
@@ -564,20 +563,6 @@ export default function Settings() {
   }
 
   // Clear all caches
-  const _handleClearCache = async () => {
-    setIsClearingCache(true)
-    try {
-      const result = await getPlatform().database.clearCache?.()
-      if (result && result.success) {
-        setCacheStats(null)
-        await loadCacheStats()
-      }
-    } catch (error) {
-      console.error('Failed to clear cache:', error)
-    } finally {
-      setIsClearingCache(false)
-    }
-  }
 
   // Load cache stats on mount and when cache settings change
   useEffect(() => {

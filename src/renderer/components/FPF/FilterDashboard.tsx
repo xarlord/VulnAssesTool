@@ -330,5 +330,3 @@ export function FilterDashboard({
     </div>
   )
 }
-
-export default FilterDashboard

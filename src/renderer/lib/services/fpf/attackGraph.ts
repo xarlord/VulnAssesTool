@@ -619,5 +619,3 @@ export class AttackGraph {
     this.edgeTypes.clear()
   }
 }
-
-export default AttackGraph

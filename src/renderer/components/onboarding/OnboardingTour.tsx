@@ -273,5 +273,3 @@ export function useOnboardingTour() {
     hasLaunchedBefore,
   }
 }
-
-export default OnboardingTour

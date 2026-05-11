@@ -583,5 +583,3 @@ export function generateExecutiveReportHTML(
 </html>
   `
 }
-
-export default generateExecutiveReportHTML

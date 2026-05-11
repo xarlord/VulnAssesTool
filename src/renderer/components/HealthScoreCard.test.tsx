@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import HealthScoreCard from './HealthScoreCard'
+import { HealthScoreCard } from './HealthScoreCard'
 import type { Component, ComponentHealth } from '@@/types'
 
 const createMockComponent = (overrides?: Partial<Component>): Component => ({

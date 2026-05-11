@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
-import Dashboard from './Dashboard'
+import { Dashboard } from './Dashboard'
 import { useStore } from '@/store/useStore'
 
 // Mock the store

@@ -206,5 +206,3 @@ export class Tier2AttackGraphFilter {
     }
   }
 }
-
-export default Tier2AttackGraphFilter

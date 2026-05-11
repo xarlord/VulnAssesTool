@@ -492,5 +492,3 @@ export async function executeCommand(id: string): Promise<void> {
 export function searchCommands(query: string, filter?: CommandFilter): CommandSearchResult[] {
   return getCommandRegistry().search(query, filter)
 }
-
-export default CommandRegistry

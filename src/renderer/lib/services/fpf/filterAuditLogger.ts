@@ -509,5 +509,3 @@ export class FilterAuditLogger {
     }
   }
 }
-
-export default FilterAuditLogger

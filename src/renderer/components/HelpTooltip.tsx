@@ -41,7 +41,6 @@ interface HelpTooltipProps {
 export function HelpTooltip({
   content,
   icon = 'help',
-  _side = 'top',
   className,
   disabled = false,
   delayDuration = 300,
@@ -228,5 +227,3 @@ export const HELP_CONTENT = {
 export function getHelpContent(key: keyof typeof HELP_CONTENT): React.ReactNode {
   return HELP_CONTENT[key]
 }
-
-export default HelpTooltip

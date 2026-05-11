@@ -22,10 +22,10 @@ import {
   AlertTriangle,
   Check,
 } from 'lucide-react'
-import SettingsProfileCard from '@/components/SettingsProfileCard'
-import CreateProfileDialog from '@/components/CreateProfileDialog'
+import { SettingsProfileCard } from '@/components/SettingsProfileCard'
+import { CreateProfileDialog } from '@/components/CreateProfileDialog'
 
-export default function SettingsPage() {
+export function SettingsPage() {
   const navigate = useNavigate()
   const {
     settings,

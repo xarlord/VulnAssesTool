@@ -41,7 +41,7 @@ const PRESET_CONFIGS = {
   },
 } as const
 
-export default function EmptyState({ type, icon, title, description, action }: EmptyStateProps) {
+export function EmptyState({ type, icon, title, description, action }: EmptyStateProps) {
   // Use preset config if type is provided, otherwise use direct props
   const presetConfig = type ? PRESET_CONFIGS[type] : null
   const Icon = icon || presetConfig?.icon || Search

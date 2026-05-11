@@ -301,4 +301,4 @@ function getNextUpdateText(schedule: UpdateSchedule): string {
   return next.toLocaleString()
 }
 
-export default UpdateSettings
+export { UpdateSettings }

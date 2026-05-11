@@ -661,5 +661,3 @@ export function resetOfflineQueue(): void {
     defaultInstance = null
   }
 }
-
-export default OfflineQueue

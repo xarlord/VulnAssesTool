@@ -6,7 +6,7 @@ import { parseSpdx } from '@/lib/parsers/spdx'
 import { estimateCpesForComponents } from '@/lib/services/cpeEstimationPipeline'
 import type { SbomFile, Component, Vulnerability } from '@@/types'
 import type { AmbiguousComponent } from '@/lib/generators/excelParser'
-import CPEMatchDialog from './CPEMatchDialog'
+import { CPEMatchDialog } from './CPEMatchDialog'
 
 interface SbomUploadDialogProps {
   open: boolean
@@ -29,7 +29,7 @@ function formatFileSize(bytes: number): string {
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
 
-export default function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogProps) {
+export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogProps) {
   const currentProject = useCurrentProject()
   const updateProject = useStore((s) => s.updateProject)
   const [step, setStep] = useState<UploadStep>('idle')

@@ -50,7 +50,7 @@ const AVAILABLE_COLUMNS = [
   { key: 'group', label: 'Group', required: false },
 ]
 
-export default function SbomGeneratorDialog({ open, onClose }: SbomGeneratorDialogProps) {
+export function SbomGeneratorDialog({ open, onClose }: SbomGeneratorDialogProps) {
   const [step, setStep] = useState<GeneratorStep>('idle')
   const [error, setError] = useState('')
   const [excelRows, setExcelRows] = useState<ExcelRow[]>([])

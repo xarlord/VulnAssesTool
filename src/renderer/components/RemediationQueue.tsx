@@ -19,7 +19,7 @@ interface GroupedRemediation {
   low: Array<{ component: Component; health: ComponentHealth }>
 }
 
-export default function RemediationQueue({
+export function RemediationQueue({
   componentHealths,
   components,
   vulnerabilities,

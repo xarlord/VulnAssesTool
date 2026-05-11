@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import CreateProfileDialog from './CreateProfileDialog'
+import { CreateProfileDialog } from './CreateProfileDialog'
 import type { SettingsProfile, AppSettings } from '@@/types'
 
 const mockSettings: AppSettings = {

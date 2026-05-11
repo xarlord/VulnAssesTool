@@ -11,29 +11,6 @@
 import type { Component } from '../../../shared/types'
 
 /**
- * Simple SHA-256 hash implementation using Web Crypto API
- * Falls back to a simple hash for non-secure contexts
- */
-async function _sha256(message: string): Promise<string> {
-  // Try to use Web Crypto API if available
-  if (typeof window !== 'undefined' && window.crypto?.subtle) {
-    const msgBuffer = new TextEncoder().encode(message)
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-  }
-
-  // Fallback to simple hash (djb2 algorithm)
-  let hash = 5381
-  for (let i = 0; i < message.length; i++) {
-    const char = message.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32-bit integer
-  }
-  return Math.abs(hash).toString(16).padStart(8, '0')
-}
-
-/**
  * Synchronous hash function for cases where async is not needed
  * Uses djb2 algorithm as a fast, simple hash
  */
@@ -428,5 +405,3 @@ export function computeHash(component: Component): string {
   const engine = new DiffEngine()
   return engine.computeComponentHash(component)
 }
-
-export default DiffEngine

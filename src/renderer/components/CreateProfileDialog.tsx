@@ -10,7 +10,7 @@ interface CreateProfileDialogProps {
   currentSettings: AppSettings
 }
 
-export default function CreateProfileDialog({
+export function CreateProfileDialog({
   open,
   onClose,
   onCreate,

@@ -554,5 +554,3 @@ ENVIRONMENT:
 
 // Run CLI when executed directly via tsx
 runCLI()
-
-export default WatchdogOrchestrator

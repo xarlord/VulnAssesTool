@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import HealthDashboard from './HealthDashboard'
+import { HealthDashboard } from './HealthDashboard'
 import type { Component, ComponentHealth, ProjectHealthSummary, Vulnerability } from '@@/types'
 
 const createMockComponent = (id: string, name: string): Component => ({

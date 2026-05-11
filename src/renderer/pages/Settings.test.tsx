@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import Settings from './Settings'
+import { Settings } from './Settings'
 import type { AppSettings } from '@@/types'
 import { useStore } from '@/store/useStore'
 

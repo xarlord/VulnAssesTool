@@ -91,5 +91,3 @@ export function useSyncNotifications() {
 
   return null
 }
-
-export default useSyncNotifications

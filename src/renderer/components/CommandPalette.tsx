@@ -8,14 +8,13 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { Search, Navigation, Settings, HelpCircle, FileText, Eye, Edit, type LucideIcon } from 'lucide-react'
-import { getCommandRegistry, searchCommands } from '@/lib/commands'
+import { searchCommands } from '@/lib/commands'
 import type { Command, CommandCategory, CommandSearchResult } from '@/lib/commands/types'
 
 // Icon mapping for categories
@@ -50,7 +49,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const navigate = useNavigate()
 
   // Search results
   const results = useMemo(() => {
@@ -275,5 +273,3 @@ export function CommandPaletteTrigger({ onTrigger }: { onTrigger: () => void }) 
 
   return null
 }
-
-export default CommandPalette

@@ -7,7 +7,7 @@ interface HealthDistributionChartProps {
   distribution: Record<ComponentHealth['category'], number>
 }
 
-export default function HealthDistributionChart({ distribution }: HealthDistributionChartProps) {
+export function HealthDistributionChart({ distribution }: HealthDistributionChartProps) {
   const chartData = [
     { name: 'Excellent', value: distribution.excellent, color: getHealthChartColor('excellent') },
     { name: 'Good', value: distribution.good, color: getHealthChartColor('good') },

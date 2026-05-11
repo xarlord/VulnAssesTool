@@ -7,7 +7,7 @@ interface CreateProjectDialogProps {
   onClose: () => void
 }
 
-export default function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps) {
+export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps) {
   const addProject = useStore((s) => s.addProject)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')

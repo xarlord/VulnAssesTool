@@ -110,7 +110,6 @@ export class ISO21434ReportGenerator {
    * Generate ISO 21434 compliance report
    */
   async generate(
-    projectId: string,
     projectName: string,
     projectVersion: string,
     auditLog: FilterAuditEvent[],
@@ -469,5 +468,3 @@ export class ISO21434ReportGenerator {
     }
   }
 }
-
-export default ISO21434ReportGenerator

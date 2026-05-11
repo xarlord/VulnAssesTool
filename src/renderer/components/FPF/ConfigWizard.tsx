@@ -792,5 +792,3 @@ export function ConfigWizard({
     </div>
   )
 }
-
-export default ConfigWizard

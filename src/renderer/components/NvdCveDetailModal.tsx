@@ -212,7 +212,7 @@ const getTagStyle = (tag: string): { bg: string; text: string; border: string } 
   return REFERENCE_TAG_COLORS.default
 }
 
-export default function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalProps) {
+export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalProps) {
   const [cve, setCve] = useState<CveFullDetails | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

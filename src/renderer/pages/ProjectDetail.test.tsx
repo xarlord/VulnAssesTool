@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useNavigate, useParams } from 'react-router-dom'
-import ProjectDetail from './ProjectDetail'
+import { ProjectDetail } from './ProjectDetail'
 import type { Project, Component, Vulnerability } from '@@/types'
 
 // Mock navigate

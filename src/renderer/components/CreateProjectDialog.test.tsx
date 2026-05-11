@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import CreateProjectDialog from './CreateProjectDialog'
+import { CreateProjectDialog } from './CreateProjectDialog'
 import { useStore } from '@/store/useStore'
 
 // Mock the store

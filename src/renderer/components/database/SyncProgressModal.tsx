@@ -361,4 +361,4 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
   )
 }
 
-export default SyncProgressModal
+export { SyncProgressModal }

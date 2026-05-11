@@ -152,4 +152,4 @@ const HealthScoreCard = React.memo(function HealthScoreCard({
     </div>
   )
 })
-export default HealthScoreCard
+export { HealthScoreCard }

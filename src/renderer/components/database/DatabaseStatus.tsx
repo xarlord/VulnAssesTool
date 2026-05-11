@@ -674,4 +674,4 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
   )
 }
 
-export default DatabaseStatus
+export { DatabaseStatus }

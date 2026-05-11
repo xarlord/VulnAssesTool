@@ -12,7 +12,7 @@ interface HealthDashboardProps {
   onViewComponent?: (component: Component) => void
 }
 
-export default function HealthDashboard({
+export function HealthDashboard({
   projectHealth,
   componentHealths: _componentHealths,
   components: _components,

@@ -151,5 +151,3 @@ export function EpssProgressBar({
     </div>
   )
 }
-
-export default EpssCell

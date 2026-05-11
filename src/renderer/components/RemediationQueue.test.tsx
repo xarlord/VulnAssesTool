@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import RemediationQueue from './RemediationQueue'
+import { RemediationQueue } from './RemediationQueue'
 import type { Component, ComponentHealth, Vulnerability } from '@@/types'
 
 const createMockComponent = (id: string, name: string, overrides?: Partial<Component>): Component => ({

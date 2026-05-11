@@ -11,12 +11,16 @@ import { useSyncNotifications } from './lib/hooks'
 import { registerAppCommands, unregisterAppCommands } from './lib/commands'
 
 // Lazy-loaded pages for better startup performance
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Settings = lazy(() => import('./pages/Settings'))
-const ProjectDetail = lazy(() => import('./pages/ProjectDetail'))
-const Search = lazy(() => import('./pages/Search'))
-const FalsePositiveFilterPage = lazy(() => import('./pages/FalsePositiveFilter'))
-const DependencyGraphPage = lazy(() => import('./pages/DependencyGraphPage'))
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
+const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then((m) => ({ default: m.ProjectDetail })))
+const Search = lazy(() => import('./pages/Search').then((m) => ({ default: m.Search })))
+const FalsePositiveFilterPage = lazy(() =>
+  import('./pages/FalsePositiveFilter').then((m) => ({ default: m.FalsePositiveFilterPage })),
+)
+const DependencyGraphPage = lazy(() =>
+  import('./pages/DependencyGraphPage').then((m) => ({ default: m.DependencyGraphPage })),
+)
 
 const ExecutiveDashboard = lazy(() => import('./components/executive').then((m) => ({ default: m.ExecutiveDashboard })))
 
@@ -29,7 +33,7 @@ function PageLoader() {
   )
 }
 
-function App() {
+export function App() {
   const settings = useSettings()
   const setSidebarOpen = useSetSidebarOpen()
   const sidebarOpen = useSidebarOpen()
@@ -152,5 +156,3 @@ function App() {
     </ErrorBoundary>
   )
 }
-
-export default App

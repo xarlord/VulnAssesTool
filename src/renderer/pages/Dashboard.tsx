@@ -1,12 +1,12 @@
 import React, { useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useStore, useProjects, useSettings, useRefreshingProjectIds } from '@/store/useStore'
+import { useStore, useProjects, useSettings } from '@/store/useStore'
 import { Shield, Plus, Upload, Download, Search, BarChart3, FileText } from 'lucide-react'
-import CreateProjectDialog from '@/components/CreateProjectDialog'
-import SbomUploadDialog from '@/components/SbomUploadDialog'
-import SbomGeneratorDialog from '@/components/SbomGeneratorDialog'
-import ExportDialog from '@/components/ExportDialog'
-import ProjectCard from '@/components/ProjectCard'
+import { CreateProjectDialog } from '@/components/CreateProjectDialog'
+import { SbomUploadDialog } from '@/components/SbomUploadDialog'
+import { SbomGeneratorDialog } from '@/components/SbomGeneratorDialog'
+import { ExportDialog } from '@/components/ExportDialog'
+import { ProjectCard } from '@/components/ProjectCard'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { useMenuActionListener } from '@/components/MenuActionListener'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
@@ -14,12 +14,11 @@ import { refreshVulnerabilityData } from '@/lib/refresh'
 import { AppLogo } from '@/components/AppLogo'
 import type { Project } from '@@/types'
 
-export default function Dashboard() {
+export function Dashboard() {
   const navigate = useNavigate()
   const projects = useProjects()
   const deleteProject = useStore((s) => s.deleteProject)
   const settings = useSettings()
-  const _refreshingProjectIds = useRefreshingProjectIds()
   const updateProject = useStore((s) => s.updateProject)
   const [showCreateDialog, setShowCreateDialog] = React.useState(false)
   const [showUploadDialog, setShowUploadDialog] = React.useState(false)

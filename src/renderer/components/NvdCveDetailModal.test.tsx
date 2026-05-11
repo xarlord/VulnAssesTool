@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import NvdCveDetailModal from './NvdCveDetailModal'
+import { NvdCveDetailModal } from './NvdCveDetailModal'
 
 // Mock Toaster
 vi.mock('./Toaster', () => ({

@@ -68,7 +68,7 @@ const RUNTIMES = [
   { value: 'podman' as const, label: 'Podman' },
 ]
 
-export default function ContainerScanDialog({ open, onClose, projectId }: ContainerScanDialogProps) {
+export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanDialogProps) {
   const currentProject = useCurrentProject()
   const updateProject = useStore((s) => s.updateProject)
 

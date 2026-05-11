@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import SbomUploadDialog from './SbomUploadDialog'
+import { SbomUploadDialog } from './SbomUploadDialog'
 import * as cyclonedxParser from '@/lib/parsers/cyclonedx'
 import * as spdxParser from '@/lib/parsers/spdx'
 

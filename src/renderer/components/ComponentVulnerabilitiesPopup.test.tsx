@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import ComponentVulnerabilitiesPopup from './ComponentVulnerabilitiesPopup'
+import { ComponentVulnerabilitiesPopup } from './ComponentVulnerabilitiesPopup'
 import type { Component, Vulnerability } from '@@/types'
 
 // Mock the VirtualList component

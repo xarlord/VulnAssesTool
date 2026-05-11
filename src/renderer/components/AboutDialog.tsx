@@ -209,5 +209,3 @@ function isNewerVersion(local: string, remote: string): boolean {
   }
   return false
 }
-
-export default AboutDialog

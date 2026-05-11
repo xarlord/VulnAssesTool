@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import SbomGeneratorDialog from '../SbomGeneratorDialog'
+import { SbomGeneratorDialog } from '../SbomGeneratorDialog'
 import * as generators from '@/lib/generators'
 
 // Mock File.prototype.arrayBuffer for jsdom environment

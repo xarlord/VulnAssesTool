@@ -51,7 +51,7 @@ const severityConfig = {
   },
 }
 
-export default function ComponentVulnerabilitiesPopup({
+export function ComponentVulnerabilitiesPopup({
   component,
   vulnerabilities,
   open,

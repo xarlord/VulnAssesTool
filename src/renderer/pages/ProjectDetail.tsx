@@ -16,15 +16,15 @@ import {
 } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { toast } from '@/components/Toaster'
-import SbomUploadDialog from '@/components/SbomUploadDialog'
-import ContainerScanDialog from '@/components/ContainerScanDialog'
-import ExportDialog from '@/components/ExportDialog'
-import VulnerabilityDetailModal from '@/components/VulnerabilityDetailModal'
-import ComponentVulnerabilitiesPopup from '@/components/ComponentVulnerabilitiesPopup'
+import { SbomUploadDialog } from '@/components/SbomUploadDialog'
+import { ContainerScanDialog } from '@/components/ContainerScanDialog'
+import { ExportDialog } from '@/components/ExportDialog'
+import { VulnerabilityDetailModal } from '@/components/VulnerabilityDetailModal'
+import { ComponentVulnerabilitiesPopup } from '@/components/ComponentVulnerabilitiesPopup'
 import { StalenessIndicator } from '@/components/StalenessIndicator'
 import { FilterPresets, CvssRangeSlider, MultiSelectFilter } from '@/components/FilterPresets'
-import HealthDashboard from '@/components/HealthDashboard'
-import RemediationQueue from '@/components/RemediationQueue'
+import { HealthDashboard } from '@/components/HealthDashboard'
+import { RemediationQueue } from '@/components/RemediationQueue'
 import { VirtualList } from '@/components/VirtualList'
 import { KevBadge } from '@/components/vulnerabilities/KevBadge'
 import { RiskScoreBadge } from '@/components/vulnerabilities/RiskScoreCell'
@@ -38,7 +38,7 @@ import type { Vulnerability, FilterPreset, ComponentHealth, ProjectHealthSummary
 
 type TabValue = 'overview' | 'components' | 'vulnerabilities' | 'health'
 
-export default function ProjectDetail() {
+export function ProjectDetail() {
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
   const { projects, currentProject, setCurrentProject, deleteProject, updateProject, settings, refreshingProjectIds } =
