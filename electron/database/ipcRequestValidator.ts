@@ -27,28 +27,33 @@ export class ValidationError extends Error {
  * @throws ValidationError if request is invalid
  * @returns Validated request
  */
-export function validateNvdSearchRequest(request: any): NvdSearchRequest {
+export function validateNvdSearchRequest(request: unknown): NvdSearchRequest {
+  if (!request || typeof request !== 'object') {
+    throw new ValidationError('Invalid request structure', 'request')
+  }
+
+  const req = request as Record<string, unknown>
   if (!request || typeof request !== 'object') {
     throw new ValidationError('Invalid request structure', 'request')
   }
 
   // Validate type
   const validTypes = ['cve-id', 'cpe', 'text']
-  if (!request.type || typeof request.type !== 'string') {
+  if (!req.type || typeof req.type !== 'string') {
     throw new ValidationError('Missing or invalid search type', 'type')
   }
-  if (!validTypes.includes(request.type)) {
+  if (!validTypes.includes(req.type)) {
     throw new ValidationError(`Invalid search type. Must be one of: ${validTypes.join(', ')}`, 'type')
   }
 
   // Validate query
-  if (!request.query || typeof request.query !== 'string') {
+  if (!req.query || typeof req.query !== 'string') {
     throw new ValidationError('Missing or invalid query parameter', 'query')
   }
-  if (request.query.length === 0) {
+  if ((req.query as string).length === 0) {
     throw new ValidationError('Query parameter cannot be empty', 'query')
   }
-  if (request.query.length > 500) {
+  if ((req.query as string).length > 500) {
     throw new ValidationError('Query parameter exceeds maximum length of 500 characters', 'query')
   }
 
@@ -64,7 +69,7 @@ export function validateNvdSearchRequest(request: any): NvdSearchRequest {
   ]
 
   for (const pattern of dangerousPatterns) {
-    if (pattern.test(request.query)) {
+    if (pattern.test(req.query as string)) {
       throw new ValidationError('Query contains potentially malicious patterns', 'query')
     }
   }
@@ -72,10 +77,10 @@ export function validateNvdSearchRequest(request: any): NvdSearchRequest {
   // Validate CVE ID format for cve-id searches
   // Note: cve-id type should only be used for complete CVE IDs
   // Text searches can also search for CVE-like patterns
-  if (request.type === 'cve-id') {
+  if (req.type === 'cve-id') {
     // Complete CVE ID requires 4-7 digits after the year
     const completeCveIdPattern = /^CVE-\d{4}-\d{4,7}$/i
-    if (!completeCveIdPattern.test(request.query)) {
+    if (!completeCveIdPattern.test(req.query as string)) {
       throw new ValidationError(
         'Invalid CVE ID format. Expected CVE-YYYY-NNNNN (4-7 digits after year). For partial CVE searches, use text search type.',
         'query',
@@ -85,28 +90,33 @@ export function validateNvdSearchRequest(request: any): NvdSearchRequest {
 
   // For text searches, validate that the query doesn't look like a maliciously crafted CVE pattern
   // but allow partial CVE-like patterns for searching
-  if (request.type === 'text') {
+  if (req.type === 'text') {
     // Allow CVE-like patterns but ensure they don't contain injection attempts
     // The general query validation above already checks for SQL injection
   }
 
   // Validate limit
-  if (request.limit !== undefined) {
-    const limit = Number(request.limit)
+  if (req.limit !== undefined) {
+    const limit = Number(req.limit)
     if (isNaN(limit) || limit < 1 || limit > 1000) {
       throw new ValidationError('Limit must be between 1 and 1000', 'limit')
     }
   }
 
   // Validate offset
-  if (request.offset !== undefined) {
-    const offset = Number(request.offset)
+  if (req.offset !== undefined) {
+    const offset = Number(req.offset)
     if (isNaN(offset) || offset < 0) {
       throw new ValidationError('Offset must be a non-negative number', 'offset')
     }
   }
 
-  return request as NvdSearchRequest
+  return {
+    type: req.type as NvdSearchRequest['type'],
+    query: req.query as string,
+    limit: req.limit as number | undefined,
+    offset: req.offset as number | undefined,
+  }
 }
 
 /**
@@ -116,23 +126,25 @@ export function validateNvdSearchRequest(request: any): NvdSearchRequest {
  * @throws ValidationError if request is invalid
  * @returns Validated request
  */
-export function validateGetCveRequest(request: any): GetCveRequest {
+export function validateGetCveRequest(request: unknown): GetCveRequest {
   if (!request || typeof request !== 'object') {
     throw new ValidationError('Invalid request structure', 'request')
   }
 
-  if (!request.cveId || typeof request.cveId !== 'string') {
+  const req = request as Record<string, unknown>
+
+  if (!req.cveId || typeof req.cveId !== 'string') {
     throw new ValidationError('Missing or invalid CVE ID', 'cveId')
   }
 
-  const cveId = request.cveId.trim()
+  const cveId = (req.cveId as string).trim()
   const cveIdPattern = /^CVE-\d{4}-\d{4,7}$/i
 
   if (!cveIdPattern.test(cveId)) {
     throw new ValidationError('Invalid CVE ID format. Expected CVE-YYYY-NNNNN', 'cveId')
   }
 
-  return { cveId } as GetCveRequest
+  return { cveId }
 }
 
 /**
@@ -142,19 +154,21 @@ export function validateGetCveRequest(request: any): GetCveRequest {
  * @throws ValidationError if request is invalid
  * @returns Validated request
  */
-export function validateStartSyncRequest(request: any = {}): StartSyncRequest {
+export function validateStartSyncRequest(request: unknown = {}): StartSyncRequest {
   if (request && typeof request !== 'object') {
     throw new ValidationError('Invalid request structure', 'request')
   }
 
+  const req = (request ?? {}) as Record<string, unknown>
+
   // Validate years array if provided
-  if (request.years !== undefined) {
-    if (!Array.isArray(request.years)) {
+  if (req.years !== undefined) {
+    if (!Array.isArray(req.years)) {
       throw new ValidationError('Years must be an array', 'years')
     }
 
     const currentYear = new Date().getFullYear()
-    for (const year of request.years) {
+    for (const year of req.years) {
       const yearNum = Number(year)
       if (isNaN(yearNum) || yearNum < 1999 || yearNum > currentYear + 1) {
         throw new ValidationError(`Invalid year: ${year}. Must be between 1999 and ${currentYear + 1}`, 'years')
@@ -162,7 +176,7 @@ export function validateStartSyncRequest(request: any = {}): StartSyncRequest {
     }
   }
 
-  return request as StartSyncRequest
+  return { force: req.force as boolean | undefined, years: req.years as number[] | undefined }
 }
 
 /**
@@ -172,28 +186,30 @@ export function validateStartSyncRequest(request: any = {}): StartSyncRequest {
  * @throws ValidationError if request is invalid
  * @returns Validated request
  */
-export function validateSetApiKeyRequest(request: any): SetApiKeyRequest {
+export function validateSetApiKeyRequest(request: unknown): SetApiKeyRequest {
   if (!request || typeof request !== 'object') {
     throw new ValidationError('Invalid request structure', 'request')
   }
 
+  const req = request as Record<string, unknown>
+
   const validKeyTypes = ['nvd', 'osv', 'github']
-  if (!request.keyType || typeof request.keyType !== 'string') {
+  if (!req.keyType || typeof req.keyType !== 'string') {
     throw new ValidationError('Missing or invalid keyType', 'keyType')
   }
-  if (!validKeyTypes.includes(request.keyType)) {
+  if (!validKeyTypes.includes(req.keyType)) {
     throw new ValidationError(`Invalid keyType. Must be one of: ${validKeyTypes.join(', ')}`, 'keyType')
   }
 
-  if (!request.apiKey || typeof request.apiKey !== 'string') {
+  if (!req.apiKey || typeof req.apiKey !== 'string') {
     throw new ValidationError('Missing or invalid apiKey', 'apiKey')
   }
 
   // Trim whitespace from API key
-  const apiKey = request.apiKey.trim()
+  const apiKey = (req.apiKey as string).trim()
 
   // Validate NVD API key format (UUID-like)
-  if (request.keyType === 'nvd' && apiKey.length > 0) {
+  if (req.keyType === 'nvd' && apiKey.length > 0) {
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     if (!uuidPattern.test(apiKey)) {
       throw new ValidationError('NVD API key must be in UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)', 'apiKey')
@@ -205,7 +221,7 @@ export function validateSetApiKeyRequest(request: any): SetApiKeyRequest {
     throw new ValidationError('API key exceeds maximum length of 256 characters', 'apiKey')
   }
 
-  return { keyType: request.keyType, apiKey } as SetApiKeyRequest
+  return { keyType: req.keyType as SetApiKeyRequest['keyType'], apiKey }
 }
 
 /**
@@ -215,20 +231,22 @@ export function validateSetApiKeyRequest(request: any): SetApiKeyRequest {
  * @throws ValidationError if request is invalid
  * @returns Validated request
  */
-export function validateGetApiKeyRequest(request: any): GetApiKeyRequest {
+export function validateGetApiKeyRequest(request: unknown): GetApiKeyRequest {
   if (!request || typeof request !== 'object') {
     throw new ValidationError('Invalid request structure', 'request')
   }
 
+  const req = request as Record<string, unknown>
+
   const validKeyTypes = ['nvd', 'osv', 'github']
-  if (!request.keyType || typeof request.keyType !== 'string') {
+  if (!req.keyType || typeof req.keyType !== 'string') {
     throw new ValidationError('Missing or invalid keyType', 'keyType')
   }
-  if (!validKeyTypes.includes(request.keyType)) {
+  if (!validKeyTypes.includes(req.keyType)) {
     throw new ValidationError(`Invalid keyType. Must be one of: ${validKeyTypes.join(', ')}`, 'keyType')
   }
 
-  return request as GetApiKeyRequest
+  return { keyType: req.keyType as GetApiKeyRequest['keyType'] }
 }
 
 /**
@@ -238,7 +256,7 @@ export function validateGetApiKeyRequest(request: any): GetApiKeyRequest {
  * @throws ValidationError if request is invalid
  * @returns Validated request
  */
-export function validateDeleteApiKeyRequest(request: any): DeleteApiKeyRequest {
+export function validateDeleteApiKeyRequest(request: unknown): DeleteApiKeyRequest {
   return validateGetApiKeyRequest(request) as DeleteApiKeyRequest
 }
 
@@ -249,7 +267,7 @@ export function validateDeleteApiKeyRequest(request: any): DeleteApiKeyRequest {
  * @throws ValidationError if request is invalid
  * @returns Validated request
  */
-export function validateHasApiKeyRequest(request: any): HasApiKeyRequest {
+export function validateHasApiKeyRequest(request: unknown): HasApiKeyRequest {
   return validateGetApiKeyRequest(request) as HasApiKeyRequest
 }
 
@@ -259,32 +277,38 @@ export function validateHasApiKeyRequest(request: any): HasApiKeyRequest {
  * @param request - The CPE search request to validate
  * @returns Object with validated limit and optional error message
  */
-export function validateCpeSearchRequest(request: any): { limit: number; error?: string } {
+export function validateCpeSearchRequest(request: unknown): { limit: number; error?: string } {
   const MAX_PRODUCT_NAME_LENGTH = 256
   const MAX_TOKENS = 20
   const MAX_TOKEN_LENGTH = 128
   const MAX_LIMIT = 1000
   const DEFAULT_LIMIT = 100
 
+  if (!request || typeof request !== 'object') {
+    return { limit: DEFAULT_LIMIT, error: 'Invalid request structure' }
+  }
+
+  const req = request as Record<string, unknown>
+
   // Validate productName
-  if (request.productName !== undefined) {
-    if (typeof request.productName !== 'string') {
+  if (req.productName !== undefined) {
+    if (typeof req.productName !== 'string') {
       return { limit: DEFAULT_LIMIT, error: 'productName must be a string' }
     }
-    if (request.productName.length > MAX_PRODUCT_NAME_LENGTH) {
+    if ((req.productName as string).length > MAX_PRODUCT_NAME_LENGTH) {
       return { limit: DEFAULT_LIMIT, error: 'productName exceeds maximum length' }
     }
   }
 
   // Validate tokens
-  if (request.tokens !== undefined) {
-    if (!Array.isArray(request.tokens)) {
+  if (req.tokens !== undefined) {
+    if (!Array.isArray(req.tokens)) {
       return { limit: DEFAULT_LIMIT, error: 'tokens must be an array' }
     }
-    if (request.tokens.length > MAX_TOKENS) {
+    if (req.tokens.length > MAX_TOKENS) {
       return { limit: DEFAULT_LIMIT, error: 'Too many tokens' }
     }
-    for (const token of request.tokens) {
+    for (const token of req.tokens) {
       if (typeof token !== 'string') {
         return { limit: DEFAULT_LIMIT, error: 'All tokens must be strings' }
       }
@@ -295,10 +319,7 @@ export function validateCpeSearchRequest(request: any): { limit: number; error?:
   }
 
   // Validate limit
-  const limit = Math.min(
-    typeof request.limit === 'number' && request.limit > 0 ? request.limit : DEFAULT_LIMIT,
-    MAX_LIMIT,
-  )
+  const limit = Math.min(typeof req.limit === 'number' && req.limit > 0 ? req.limit : DEFAULT_LIMIT, MAX_LIMIT)
 
   return { limit }
 }

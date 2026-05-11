@@ -1,5 +1,20 @@
 # CLAUDE.md
 
+## Operational Rules (apply to every task)
+
+1. **Think Before Coding** — State assumptions. If uncertain, ask. Present multiple interpretations on ambiguity. Push back when simpler approach exists. Stop when confused.
+2. **Simplicity First** — Minimum code that solves the problem. Nothing speculative. No features beyond what was asked. No abstractions for single-use code.
+3. **Surgical Changes** — Touch only what you must. Clean up only your own mess. Don't refactor what isn't broken. Match existing style.
+4. **Goal-Driven Execution** — Define success criteria. Loop until verified. Don't follow steps — define success and iterate.
+5. **Use the model only for judgment calls** — Classification, drafting, summarization, extraction. NOT for routing, retries, deterministic transforms. If code can answer, code answers.
+6. **Token budgets are not advisory** — Per-task: 4,000. Per-session: 30,000. If approaching budget, summarize and start fresh. Surface the breach.
+7. **Surface conflicts, don't average them** — Pick one pattern (more recent / more tested). Explain why. Flag the other for cleanup.
+8. **Read before you write** — Before adding code, read exports, callers, shared utilities. "Looks orthogonal" is dangerous.
+9. **Tests verify intent, not just behavior** — Tests encode WHY behavior matters. A test that can't fail when business logic changes is wrong.
+10. **Checkpoint after every significant step** — Summarize what was done, what's verified, what's left. If you lose track, stop and restate.
+11. **Match the codebase's conventions** — Conformance > taste. If a convention seems harmful, surface it — don't fork silently.
+12. **Fail loud** — "Completed" is wrong if anything was skipped silently. Default to surfacing uncertainty.
+
 ## Project Overview
 
 VulnAssesTool — Electron + React + TypeScript desktop application for vulnerability assessment.
@@ -51,7 +66,7 @@ Run after every change:
 | Domain types           | `src/shared/types.ts` (`Vulnerability`, `CveResult`, `Component`, `Project`, `ScanResult`) |
 | CVSS metrics           | `src/shared/types/cvss.ts`                                                                 |
 | FPF types              | `src/shared/types/fpf.ts`                                                                  |
-| IPC request/response   | `electron/types/database.ts`                                                               |
+| IPC request/response   | `src/shared/types/ipc.ts` + `electron/types/database.ts`                                   |
 | Database API contract  | `src/renderer/lib/platform/types.ts`                                                       |
 | Recharts custom render | recharts exports (`TooltipProps`, `LabelProps`, `PieLabelRenderProps`)                     |
 | sql.js types           | `@types/sql.js` (`SqlJsStatic`, `Database`)                                                |
@@ -71,8 +86,8 @@ See `coding-guide-fixed.md` for full details. Current status:
 | PR   | Status  | Description                                                           |
 | ---- | ------- | --------------------------------------------------------------------- |
 | PR 1 | DONE    | Tooling & guardrails (ESLint rules, tsconfig strict, ts-morph devDep) |
-| PR 2 | NEXT    | Type the IPC boundary — rewrite PlatformAPI types                     |
-| PR 3 | Pending | Default exports → named (ts-morph codemod)                            |
+| PR 2 | DONE    | Type the IPC boundary — shared IPC types, platform/types.ts rewrite   |
+| PR 3 | NEXT    | Default exports → named (ts-morph codemod)                            |
 | PR 4 | Pending | Targeted any/!/as cleanup, Recharts types, catch comments             |
 | PR 5 | Pending | Long-tail any sweep, main.ts split, rules → error                     |
 

@@ -308,7 +308,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     /**
      * Listen to sync errors
      */
-    onSyncError: (callback: (error: any) => void) => {
+    onSyncError: (callback: (error: string) => void) => {
       const listener = (_event: IpcRendererEvent, data: { type: string; error: string }) => {
         callback(data.error)
       }
@@ -617,6 +617,80 @@ contextBridge.exposeInMainWorld('electronAPI', {
       }
     },
   } as ContainerAPI,
+})
+
+// ============================================================================
+// Error Interceptor — Renderer Side
+// ============================================================================
+
+// Patch console.error to forward to main process
+const _origConsoleError = console.error
+console.error = (...args: unknown[]) => {
+  _origConsoleError.apply(console, args)
+  try {
+    const message = args.map((a) => (a instanceof Error ? a.message + '\n' + a.stack : String(a))).join(' ')
+    if (!message.includes('[Mock]') && !message.includes('CSP directive')) {
+      ipcRenderer
+        .invoke('error-interceptor:report', {
+          timestamp: new Date().toISOString(),
+          source: 'renderer' as const,
+          level: 'error' as const,
+          message,
+          stack: args.find((a) => a instanceof Error)?.stack,
+        })
+        .catch(() => {})
+    }
+  } catch {}
+}
+
+// Patch console.warn
+const _origConsoleWarn = console.warn
+console.warn = (...args: unknown[]) => {
+  _origConsoleWarn.apply(console, args)
+  try {
+    const message = args.map((a) => String(a)).join(' ')
+    if (!message.includes('[Mock]')) {
+      ipcRenderer
+        .invoke('error-interceptor:report', {
+          timestamp: new Date().toISOString(),
+          source: 'renderer' as const,
+          level: 'warn' as const,
+          message,
+        })
+        .catch(() => {})
+    }
+  } catch {}
+}
+
+// Catch unhandled errors
+window.onerror = (message, source, lineno, colno, error) => {
+  try {
+    ipcRenderer
+      .invoke('error-interceptor:report', {
+        timestamp: new Date().toISOString(),
+        source: 'renderer' as const,
+        level: 'error' as const,
+        message: String(message),
+        stack: error?.stack || `${source}:${lineno}:${colno}`,
+      })
+      .catch(() => {})
+  } catch {}
+}
+
+// Catch unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  try {
+    const reason = event.reason
+    ipcRenderer
+      .invoke('error-interceptor:report', {
+        timestamp: new Date().toISOString(),
+        source: 'renderer' as const,
+        level: 'error' as const,
+        message: `Unhandled Rejection: ${reason instanceof Error ? reason.message : String(reason)}`,
+        stack: reason instanceof Error ? reason.stack : undefined,
+      })
+      .catch(() => {})
+  } catch {}
 })
 
 // Type augmentation for TypeScript

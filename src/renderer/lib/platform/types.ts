@@ -6,11 +6,70 @@
  * The browser adapter provides stubs or web-based alternatives.
  */
 
-/**
- * Full platform API exposed to the renderer
- */
+import type {
+  BulkDownloadProgress,
+  BulkDownloadResult,
+  CacheStats,
+  CheckKevResponse,
+  CheckRuntimeResponse,
+  ConfigUpdateResponse,
+  ContainerRuntime,
+  ContainerScanProgress,
+  DeltaSyncProgress,
+  DeltaSyncResult,
+  ExtractPackagesResponse,
+  FtsSearchResult,
+  FtsStats,
+  GetCveFullRequest,
+  GetCveFullResponse,
+  GetCveRequest,
+  GetCveResponse,
+  GetDetailedStatsResponse,
+  GetEpssScoreResponse,
+  GetEpssScoresResponse,
+  GetEpssStatsResponse,
+  GetKevDetailsResponse,
+  GetKevStatsResponse,
+  GetManifestResponse,
+  GetStatsResponse,
+  InspectImageResponse,
+  IsAvailableResponse,
+  DeleteApiKeyResponse,
+  GetAllKeysResponse,
+  GetApiKeyResponse,
+  HasApiKeyResponse,
+  KevSyncResult,
+  MigrateKeysResponse,
+  NeedsMigrationResponse,
+  NvdSearchRequest,
+  NvdSearchResponse,
+  PerformanceConfigUpdate,
+  PullImageRequest,
+  PullImageResponse,
+  RefreshEpssScoreResponse,
+  ScanImageResponse,
+  SetApiKeyResponse,
+  StartBulkDownloadRequest,
+  StartSyncRequest,
+  StartSyncResponse,
+  SyncConfigResponse,
+  SyncConfigUpdate,
+  SyncStatusResponse,
+  UpdateAvailableEvent,
+  UpdateDownloadedEvent,
+  UpdateDownloadProgress,
+  UpdateErrorEvent,
+  UpdateNotAvailableEvent,
+  BackupConfig,
+  BackupInfo,
+  BackupResult,
+  BackupStats,
+  StorageConfigUpdate,
+  CPESearchRequest,
+  CPESearchResponse,
+} from '@@/types/ipc'
+
 export interface PlatformAPI {
-  // Top-level convenience methods
   ping(): Promise<string>
   getAppVersion(): Promise<string>
   getPlatform(): Promise<string>
@@ -20,7 +79,6 @@ export interface PlatformAPI {
   onMenuAction(callback: (action: string) => void): () => void
   generatePDF(htmlContent: string): Promise<Uint8Array>
 
-  // Namespaced APIs
   database: DatabaseAPI
   secureStorage: SecureStorageAPI
   backup: BackupAPI
@@ -34,31 +92,31 @@ export interface PlatformAPI {
 // ---------------------------------------------------------------------------
 
 export interface DatabaseAPI {
-  search(request: any): Promise<any>
-  getCve(request: any): Promise<any>
-  getCveFull(request: any): Promise<any>
-  getStats(): Promise<any>
-  getSyncStatus(): Promise<any>
-  startSync(request?: any): Promise<any>
-  getDetailedStats(): Promise<any>
-  startDeltaSync(force?: boolean): Promise<any>
+  search(request: NvdSearchRequest): Promise<NvdSearchResponse>
+  getCve(request: GetCveRequest): Promise<GetCveResponse>
+  getCveFull(request: GetCveFullRequest): Promise<GetCveFullResponse>
+  getStats(): Promise<GetStatsResponse>
+  getSyncStatus(): Promise<SyncStatusResponse>
+  startSync(request?: StartSyncRequest): Promise<StartSyncResponse>
+  getDetailedStats(): Promise<GetDetailedStatsResponse>
+  startDeltaSync(force?: boolean): Promise<DeltaSyncResult>
   cancelSync(): Promise<{ success: boolean }>
-  startBulkDownload(request: any): Promise<any>
+  startBulkDownload(request: StartBulkDownloadRequest): Promise<BulkDownloadResult>
   setAutoSync(enabled: boolean, intervalHours: number): Promise<{ success: boolean }>
-  onSyncProgress(callback: (progress: any) => void): () => void
-  onSyncComplete(callback: (result: any) => void): () => void
-  onSyncError(callback: (error: any) => void): () => void
-  onBulkDownloadProgress(callback: (progress: any) => void): () => void
-  cpeSearch(request: any): Promise<any>
-  getSyncConfig(): Promise<any>
-  updateSyncConfig(config: any): Promise<any>
-  updateStorageConfig(config: any): Promise<any>
-  updatePerformanceConfig(config: any): Promise<any>
+  onSyncProgress(callback: (progress: DeltaSyncProgress) => void): () => void
+  onSyncComplete(callback: (result: DeltaSyncResult) => void): () => void
+  onSyncError(callback: (error: string) => void): () => void
+  onBulkDownloadProgress(callback: (progress: BulkDownloadProgress) => void): () => void
+  cpeSearch(request: CPESearchRequest): Promise<CPESearchResponse>
+  getSyncConfig(): Promise<SyncConfigResponse>
+  updateSyncConfig(config: SyncConfigUpdate): Promise<ConfigUpdateResponse>
+  updateStorageConfig(config: StorageConfigUpdate): Promise<ConfigUpdateResponse>
+  updatePerformanceConfig(config: PerformanceConfigUpdate): Promise<ConfigUpdateResponse>
   resetDatabase(): Promise<{ success: boolean; error?: string }>
   rebuildIndexes(): Promise<{ success: boolean; error?: string }>
-  searchFts(query: string, limit?: number): Promise<any>
-  getFtsStats(): Promise<any>
-  getCacheStats(): Promise<any>
+  searchFts(query: string, limit?: number): Promise<{ success: boolean; results?: FtsSearchResult[]; error?: string }>
+  getFtsStats(): Promise<{ success: boolean; stats?: FtsStats; error?: string }>
+  getCacheStats(): Promise<{ success: boolean; stats?: CacheStats; error?: string }>
   clearCache(): Promise<{ success: boolean; error?: string }>
 }
 
@@ -67,14 +125,14 @@ export interface DatabaseAPI {
 // ---------------------------------------------------------------------------
 
 export interface SecureStorageAPI {
-  isAvailable(): Promise<any>
-  setApiKey(request: { keyType: string; apiKey: string }): Promise<any>
-  getApiKey(request: { keyType: string }): Promise<any>
-  deleteApiKey(request: { keyType: string }): Promise<any>
-  hasApiKey(request: { keyType: string }): Promise<any>
-  needsMigration(): Promise<any>
-  migrateKeys(): Promise<any>
-  getAllKeys(): Promise<any>
+  isAvailable(): Promise<IsAvailableResponse>
+  setApiKey(request: { keyType: string; apiKey: string }): Promise<SetApiKeyResponse>
+  getApiKey(request: { keyType: string }): Promise<GetApiKeyResponse>
+  deleteApiKey(request: { keyType: string }): Promise<DeleteApiKeyResponse>
+  hasApiKey(request: { keyType: string }): Promise<HasApiKeyResponse>
+  needsMigration(): Promise<NeedsMigrationResponse>
+  migrateKeys(): Promise<MigrateKeysResponse>
+  getAllKeys(): Promise<GetAllKeysResponse>
 }
 
 // ---------------------------------------------------------------------------
@@ -82,16 +140,18 @@ export interface SecureStorageAPI {
 // ---------------------------------------------------------------------------
 
 export interface BackupAPI {
-  initialize(): Promise<any>
+  initialize(): Promise<{ success: boolean; error?: string }>
   shutdown(): Promise<{ success: boolean }>
-  createBackup(): Promise<any>
-  listBackups(): Promise<any>
-  restoreBackup(backupId: string): Promise<any>
-  deleteBackup(backupId: string): Promise<any>
-  verifyBackup(backupPath: string): Promise<any>
-  getConfig(): Promise<any>
-  updateConfig(config: any): Promise<any>
-  getStats(): Promise<any>
+  createBackup(): Promise<BackupResult>
+  listBackups(): Promise<{ success: boolean; backups?: BackupInfo[]; error?: string }>
+  restoreBackup(backupId: string): Promise<BackupResult>
+  deleteBackup(backupId: string): Promise<BackupResult>
+  verifyBackup(
+    backupPath: string,
+  ): Promise<{ success: boolean; integrity?: 'valid' | 'invalid' | 'unknown'; error?: string }>
+  getConfig(): Promise<{ success: boolean; config?: BackupConfig; error?: string }>
+  updateConfig(config: Partial<BackupConfig>): Promise<{ success: boolean; error?: string }>
+  getStats(): Promise<{ success: boolean; stats?: BackupStats; error?: string }>
 }
 
 // ---------------------------------------------------------------------------
@@ -99,16 +159,16 @@ export interface BackupAPI {
 // ---------------------------------------------------------------------------
 
 export interface IntelligenceAPI {
-  checkKev(cveId: string): Promise<any>
-  getKevDetails(cveId: string): Promise<any>
-  getKevStats(): Promise<any>
-  syncKev(): Promise<any>
-  getEpssScore(cveId: string): Promise<any>
-  getEpssScores(cveIds: string[]): Promise<any>
-  refreshEpssScore(cveId: string): Promise<any>
-  getEpssStats(): Promise<any>
-  cleanupEpssCache(): Promise<any>
-  onKevSynced(callback: (result: any) => void): () => void
+  checkKev(cveId: string): Promise<CheckKevResponse>
+  getKevDetails(cveId: string): Promise<GetKevDetailsResponse>
+  getKevStats(): Promise<GetKevStatsResponse>
+  syncKev(): Promise<{ success: boolean; result: KevSyncResult | null; error?: string }>
+  getEpssScore(cveId: string): Promise<GetEpssScoreResponse>
+  getEpssScores(cveIds: string[]): Promise<GetEpssScoresResponse>
+  refreshEpssScore(cveId: string): Promise<RefreshEpssScoreResponse>
+  getEpssStats(): Promise<GetEpssStatsResponse>
+  cleanupEpssCache(): Promise<{ success: boolean; cleanedCount: number; error?: string }>
+  onKevSynced(callback: (result: KevSyncResult) => void): () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -116,13 +176,22 @@ export interface IntelligenceAPI {
 // ---------------------------------------------------------------------------
 
 export interface ContainerPlatformAPI {
-  checkRuntime(runtime: string): Promise<any>
-  pullImage(request: any): Promise<any>
-  getManifest(request: any): Promise<any>
-  inspectImage(request: any): Promise<any>
-  scanImage(request: any): Promise<any>
-  extractPackages(request: any): Promise<any>
-  onScanProgress(callback: (progress: any) => void): () => void
+  checkRuntime(runtime: ContainerRuntime): Promise<CheckRuntimeResponse>
+  pullImage(request: PullImageRequest): Promise<PullImageResponse>
+  getManifest(request: { imageRef: string; runtime: ContainerRuntime }): Promise<GetManifestResponse>
+  inspectImage(request: { imageRef: string; runtime: ContainerRuntime }): Promise<InspectImageResponse>
+  scanImage(request: {
+    imageRef: string
+    runtime: ContainerRuntime
+    platform?: string
+    maxLayers?: number
+  }): Promise<ScanImageResponse>
+  extractPackages(request: {
+    imageRef: string
+    runtime: ContainerRuntime
+    layerDigests: string[]
+  }): Promise<ExtractPackagesResponse>
+  onScanProgress(callback: (progress: ContainerScanProgress) => void): () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +199,60 @@ export interface ContainerPlatformAPI {
 // ---------------------------------------------------------------------------
 
 export interface UpdaterPlatformAPI {
-  onUpdateAvailable(callback: (info: any) => void): () => void
-  onUpdateNotAvailable(callback: (info: any) => void): () => void
-  onUpdateDownloadProgress(callback: (progress: any) => void): () => void
-  onUpdateDownloaded(callback: (info: any) => void): () => void
-  onUpdateError(callback: (error: any) => void): () => void
+  onUpdateAvailable(callback: (info: UpdateAvailableEvent) => void): () => void
+  onUpdateNotAvailable(callback: (info: UpdateNotAvailableEvent) => void): () => void
+  onUpdateDownloadProgress(callback: (progress: UpdateDownloadProgress) => void): () => void
+  onUpdateDownloaded(callback: (info: UpdateDownloadedEvent) => void): () => void
+  onUpdateError(callback: (error: UpdateErrorEvent) => void): () => void
   onCheckingForUpdate(callback: () => void): () => void
 }
+
+// Re-export IPC types for renderer consumers
+export type {
+  BulkDownloadProgress,
+  BulkDownloadResult,
+  CacheStats,
+  CheckKevResponse,
+  CheckRuntimeResponse,
+  ConfigUpdateResponse,
+  ContainerPackage,
+  ContainerRuntime,
+  ContainerScanProgress,
+  CveFullDetails,
+  DeltaSyncProgress,
+  DeltaSyncResult,
+  EpssScore,
+  EpssStats,
+  ExtractPackagesResponse,
+  FtsSearchResult,
+  FtsStats,
+  GetCveFullRequest,
+  GetCveFullResponse,
+  GetCveRequest,
+  GetCveResponse,
+  GetDetailedStatsResponse,
+  GetEpssScoreResponse,
+  GetEpssScoresResponse,
+  GetEpssStatsResponse,
+  GetKevDetailsResponse,
+  GetKevStatsResponse,
+  GetManifestResponse,
+  GetStatsResponse,
+  InspectImageResponse,
+  SyncStatusResponse,
+  StartSyncResponse,
+  StartBulkDownloadRequest,
+  UpdateAvailableEvent,
+  UpdateDownloadedEvent,
+  UpdateDownloadProgress,
+  UpdateErrorEvent,
+  UpdateNotAvailableEvent,
+  BackupInfo,
+  BackupResult,
+  BackupStats,
+  KevSyncResult,
+  PullImageRequest,
+  PullImageResponse,
+  ScanImageResponse,
+  SyncConfigResponse,
+} from '@@/types/ipc'

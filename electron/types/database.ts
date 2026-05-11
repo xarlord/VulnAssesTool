@@ -489,7 +489,7 @@ export interface DatabaseAPI {
    * @param callback Error callback
    * @returns Cleanup function
    */
-  onSyncError(callback: (error: any) => void): () => void
+  onSyncError(callback: (error: string) => void): () => void
 
   /**
    * Listen to bulk download progress
