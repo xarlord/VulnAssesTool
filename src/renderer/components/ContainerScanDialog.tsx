@@ -146,7 +146,8 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
       }
 
       // Build result for display
-      const scanData = result.result!
+      if (!result.result) throw new Error('Scan result missing')
+      const scanData = result.result
       setScanResult({
         image: scanData.image.original,
         platform: scanData.platform,

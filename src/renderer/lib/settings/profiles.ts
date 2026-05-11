@@ -118,7 +118,8 @@ export function updateProfile(
 
   // If updating name, check for duplicates
   if (updates.name && updates.name !== profiles[profileIndex].name) {
-    const nameExists = profiles.some((p) => p.id !== profileId && p.name.toLowerCase() === updates.name!.toLowerCase())
+    const updateName = updates.name
+    const nameExists = profiles.some((p) => p.id !== profileId && p.name.toLowerCase() === updateName.toLowerCase())
     if (nameExists) {
       throw new Error(`A profile with the name "${updates.name}" already exists`)
     }

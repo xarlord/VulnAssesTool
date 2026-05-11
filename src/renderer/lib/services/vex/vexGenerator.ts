@@ -203,7 +203,7 @@ export class VexGenerator {
 
     // Filter events if needed
     const filteredEvents = this.options.filterActions
-      ? events.filter((e) => this.options.filterActions!.includes(e.decision.action))
+      ? events.filter((e) => this.options.filterActions?.includes(e.decision.action) ?? false)
       : events
 
     // Group events by vulnerability
@@ -359,7 +359,8 @@ export class VexGenerator {
       if (!grouped.has(vulnId)) {
         grouped.set(vulnId, [])
       }
-      grouped.get(vulnId)!.push(event)
+      const entry = grouped.get(vulnId)
+      if (entry) entry.push(event)
     }
 
     return grouped

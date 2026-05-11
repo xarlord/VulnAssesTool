@@ -70,13 +70,13 @@ class SimpleStore {
 }
 
 // Lazy credential store - won't be initialized until first use
-let _credentialStore: SimpleStore | null = null
+let credentialStore: SimpleStore | null = null
 
 function getCredentialStore(): SimpleStore {
-  if (!_credentialStore) {
-    _credentialStore = new SimpleStore('secure-credentials')
+  if (!credentialStore) {
+    credentialStore = new SimpleStore('secure-credentials')
   }
-  return _credentialStore
+  return credentialStore
 }
 
 /**

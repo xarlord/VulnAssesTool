@@ -32,7 +32,7 @@ interface TourState {
   /** Mark app as launched */
   markAsLaunched: () => void
   /** Reset tour progress (for testing) */
-  _resetStore: () => void
+  resetStore: () => void
 }
 
 export const useTourStore = create<TourState>()(
@@ -160,7 +160,7 @@ export const useTourStore = create<TourState>()(
         set({ hasLaunchedBefore: true })
       },
 
-      _resetStore: () =>
+      resetStore: () =>
         set({
           toursProgress: {},
           activeTourId: null,

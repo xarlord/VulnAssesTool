@@ -12,7 +12,7 @@ import { ulid } from '@/lib/audit/ulid'
 
 describe('AuditLogPanel', () => {
   beforeEach(() => {
-    useAuditStore.getState()._resetStore()
+    useAuditStore.getState().resetStore()
 
     // Add test events
     const store = useAuditStore.getState()
@@ -168,7 +168,7 @@ describe('AuditLogPanel', () => {
 
   describe('Empty State', () => {
     it('should show empty state when no events', () => {
-      useAuditStore.getState()._resetStore()
+      useAuditStore.getState().resetStore()
 
       render(<AuditLogPanel />)
 
@@ -176,7 +176,7 @@ describe('AuditLogPanel', () => {
     })
 
     it('should show 0 events count when empty', () => {
-      useAuditStore.getState()._resetStore()
+      useAuditStore.getState().resetStore()
 
       render(<AuditLogPanel />)
 

@@ -139,7 +139,9 @@ export function findPaths(
   const visited = new Set<string>()
 
   while (queue.length > 0) {
-    const { nodeId, path } = queue.shift()!
+    const item = queue.shift()
+    if (!item) continue
+    const { nodeId, path } = item
 
     if (path.length > maxDepth) continue
 
@@ -172,12 +174,15 @@ export function findPaths(
       if (!reverseAdjacencyList.has(depId)) {
         reverseAdjacencyList.set(depId, [])
       }
-      reverseAdjacencyList.get(depId)!.push(component.id)
+      const entry = reverseAdjacencyList.get(depId)
+      if (entry) entry.push(component.id)
     })
   })
 
   while (reverseQueue.length > 0) {
-    const { nodeId, path } = reverseQueue.shift()!
+    const item = reverseQueue.shift()
+    if (!item) continue
+    const { nodeId, path } = item
 
     if (path.length > maxDepth) continue
 

@@ -188,7 +188,9 @@ export class WatchdogOrchestrator {
           }
 
           this.stateManager.setPhase(phaseName)
-          this.reporter.printStatus(this.stateManager.getState()!)
+          const currentState = this.stateManager.getState()
+          if (!currentState) throw new Error('Session state not initialized')
+          this.reporter.printStatus(currentState)
 
           const result = await this.runPhase(phaseName, state.attemptNumber)
           this.stateManager.addPhaseResult(result)
@@ -248,7 +250,8 @@ export class WatchdogOrchestrator {
     }
 
     // Generate final report
-    const finalState = this.stateManager.getState()!
+    const finalState = this.stateManager.getState()
+    if (!finalState) throw new Error('Session state not available for report generation')
     const report = this.reporter.generateReport(finalState)
 
     this.emit({ type: 'session:complete', report })

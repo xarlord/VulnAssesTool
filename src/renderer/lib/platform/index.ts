@@ -27,19 +27,19 @@ export type {
   UpdaterPlatformAPI,
 } from './types'
 
-let _platform: PlatformAPI | null = null
+let platform: PlatformAPI | null = null
 
 /**
  * Initialize the platform adapter.
  * Called once at app startup before any component renders.
  */
 export function initPlatform(): PlatformAPI {
-  if (_platform) return _platform
+  if (platform) return platform
 
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
-  _platform = isElectron ? createElectronAdapter() : createBrowserAdapter()
+  platform = isElectron ? createElectronAdapter() : createBrowserAdapter()
 
-  return _platform
+  return platform
 }
 
 /**
@@ -47,8 +47,8 @@ export function initPlatform(): PlatformAPI {
  * Automatically initializes if not yet called.
  */
 export function getPlatform(): PlatformAPI {
-  if (!_platform) return initPlatform()
-  return _platform
+  if (!platform) return initPlatform()
+  return platform
 }
 
 /**

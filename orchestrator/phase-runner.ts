@@ -35,7 +35,6 @@ export class PhaseRunner extends EventEmitter {
    * Run a specific phase
    */
   async runPhase(phaseName: PhaseName, attempt: number): Promise<PhaseResult> {
-    const _startTime = Date.now()
     const interceptor = createErrorInterceptor()
     const phaseConfig = this.config.phases[phaseName]
 

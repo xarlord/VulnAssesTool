@@ -336,7 +336,7 @@ export const useLayoutStore = create<LayoutState>()(
       },
 
       // Utility actions
-      _resetStore: () => {
+      resetStore: () => {
         set({
           activeLayoutId: 'default',
           layouts: [...BUILTIN_PRESETS],

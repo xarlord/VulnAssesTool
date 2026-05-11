@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, Menu } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import { initMainErrorInterceptor } from '../scripts/error-interceptor.js'
 import { setupMenu } from './menu.js'
 import { getDatabase } from './database/index.js'
 import { downloadAndImportNVDData, getAvailableYears } from './database/nvdDownloader.js'
@@ -126,13 +127,16 @@ function normalizeDisplaySeverity(severity: string | null | undefined): string {
 }
 
 // Determine if we're in development mode (lazy evaluation to avoid accessing app before ready)
-let _isDev: boolean | null = null
+let isDev: boolean | null = null
 function getIsDev(): boolean {
-  if (_isDev === null) {
-    _isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged
+  if (isDev === null) {
+    isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged
   }
-  return _isDev
+  return isDev
 }
+
+// Initialize error interceptor before anything else
+initMainErrorInterceptor()
 
 // Get the E2E test URL (for preview server during testing)
 const e2eTestUrl = process.env.E2E_TEST_URL
@@ -2218,7 +2222,8 @@ function parseImageRef(ref: string) {
   if (ref.includes('/')) {
     const parts = ref.split('/')
     if (parts[0].includes('.') || parts[0].includes(':')) {
-      registry = parts.shift()!
+      const shifted = parts.shift()
+      if (shifted) registry = shifted
       repository = parts.join('/')
     }
   }

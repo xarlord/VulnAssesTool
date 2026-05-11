@@ -28,7 +28,7 @@ vi.mock('../export/pdf', () => ({
 
 describe('Audit Exporters', () => {
   beforeEach(() => {
-    useAuditStore.getState()._resetStore()
+    useAuditStore.getState().resetStore()
 
     // Add test events
     const store = useAuditStore.getState()

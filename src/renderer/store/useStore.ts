@@ -52,7 +52,7 @@ interface AppState {
   updateNotificationPreferences: (preferences: Partial<NotificationPreferences>) => void
 
   // Test helpers (only exposed in test mode)
-  _resetStore: () => void
+  resetStore: () => void
 }
 
 export const useStore = create<AppState>()(
@@ -165,7 +165,7 @@ export const useStore = create<AppState>()(
             const existingNames = new Set(currentProfiles.map((p) => p.name.toLowerCase()))
 
             // Merge profiles, avoiding name conflicts
-            const _importedProfiles = result.data.profiles.map((profile) => {
+            result.data.profiles.map((profile) => {
               let finalName = profile.name
               let counter = 1
 
@@ -336,7 +336,7 @@ export const useStore = create<AppState>()(
         })),
 
       // Test helpers - reset store to initial state
-      _resetStore: () =>
+      resetStore: () =>
         set({
           settings: DEFAULT_SETTINGS,
           settingsProfiles: [],

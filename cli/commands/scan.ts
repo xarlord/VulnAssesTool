@@ -81,7 +81,7 @@ export function isFailure(vuln: Vulnerability, threshold?: string): boolean {
 export function filterByEpss(vulns: Vulnerability[], minEpss?: number): Vulnerability[] {
   if (minEpss === undefined) return vulns
 
-  return vulns.filter((v) => (v.epssScore ?? 1) >= minEpss!)
+  return vulns.filter((v) => (v.epssScore ?? 1) >= minEpss)
 }
 /**
  * Filters vulnerabilities by KEV status only
@@ -102,7 +102,7 @@ export function filterVulnerabilities(vulnerabilities: Vulnerability[], options:
     filtered = filtered.filter((v) => (SEVERITY_PRIORITY[v.severity] ?? 0) >= minPriority)
   }
   if (options.minEpss !== undefined) {
-    filtered = filtered.filter((v) => (v.epssScore ?? 1) >= options.minEpss!)
+    filtered = filtered.filter((v) => (v.epssScore ?? 1) >= options.minEpss)
   }
   if (options.onlyKev) {
     filtered = filtered.filter((v) => v.isKev === true)

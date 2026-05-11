@@ -107,7 +107,6 @@ export class FalsePositiveFilter {
   ): Promise<FilterResult> {
     const user = options.user || this.defaultUser
     const settings = this.config.filterSettings || DEFAULT_FILTER_SETTINGS
-    const _startTime = Date.now()
 
     // Force escalate if requested
     if (options.forceEscalate) {

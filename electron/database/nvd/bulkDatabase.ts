@@ -213,14 +213,12 @@ export class BulkDatabaseManager {
     // This is a limitation - we can't do real bulk inserts without direct SQL access
     // For now, we'll call individual upserts but batch the saveToDisk calls
 
-    const _count = 0
     for (const cve of this.pendingCVEs) {
       await this.db.upsertCVE(cve)
       const cpeMatches = this.pendingCPEMatches.get(cve.id) || []
       await this.db.insertCPEMatches(cve.id, cpeMatches)
       const references = this.pendingReferences.get(cve.id) || []
       await this.db.insertReferences(cve.id, references)
-      _count++
     }
 
     this.pendingCVEs = []
@@ -249,7 +247,8 @@ export class BulkDatabaseManager {
     if (!this.pendingCPEMatches.has(cveId)) {
       this.pendingCPEMatches.set(cveId, [])
     }
-    this.pendingCPEMatches.get(cveId)!.push(...matches)
+    const entry = this.pendingCPEMatches.get(cveId)
+    if (entry) entry.push(...matches)
   }
 
   /**
@@ -259,7 +258,8 @@ export class BulkDatabaseManager {
     if (!this.pendingReferences.has(cveId)) {
       this.pendingReferences.set(cveId, [])
     }
-    this.pendingReferences.get(cveId)!.push(...refs)
+    const entry = this.pendingReferences.get(cveId)
+    if (entry) entry.push(...refs)
   }
 
   /**

@@ -128,9 +128,11 @@ export async function enrichVulnerabilities(
 
         // Use pre-fetched EPSS score
         if (options.includeEpss && epssScores.has(vuln.id)) {
-          const score = epssScores.get(vuln.id)!
-          result.epssScore = score.score
-          result.epssPercentile = score.percentile
+          const score = epssScores.get(vuln.id)
+          if (score) {
+            result.epssScore = score.score
+            result.epssPercentile = score.percentile
+          }
         }
 
         // Calculate risk score

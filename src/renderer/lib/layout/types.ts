@@ -99,7 +99,7 @@ export interface LayoutState {
 
   // Utility actions
   /** Reset store to initial state (for testing) */
-  _resetStore: () => void
+  resetStore: () => void
 }
 
 /**

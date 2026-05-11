@@ -77,8 +77,8 @@ export class AttackGraph {
   addNode(node: AttackGraphNode): void {
     if (this.nodes.has(node.id)) {
       // Update existing node
-      const existing = this.nodes.get(node.id)!
-      this.nodes.set(node.id, { ...existing, ...node })
+      const existing = this.nodes.get(node.id)
+      if (existing) this.nodes.set(node.id, { ...existing, ...node })
     } else {
       this.nodes.set(node.id, node)
     }
@@ -163,7 +163,8 @@ export class AttackGraph {
     visited.add(from)
 
     while (queue.length > 0) {
-      const current = queue.shift()!
+      const current = queue.shift()
+      if (!current) break
 
       const neighbors = this.adjacencyList.get(current.nodeId) || []
       for (const neighbor of neighbors) {

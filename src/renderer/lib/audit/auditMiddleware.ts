@@ -132,19 +132,6 @@ function logChange(change: StateChange) {
 
   if (!entityType) return
 
-  // Determine action type
-  let _actionType: AuditEvent['actionType'] = 'UPDATE'
-
-  if (change.action === 'CREATE') {
-    _actionType = 'CREATE'
-  } else if (Array.isArray(change.newValue) && Array.isArray(change.previousValue)) {
-    if (change.newValue.length < change.previousValue.length) {
-      _actionType = 'DELETE'
-    } else if (change.newValue.length > change.previousValue.length) {
-      _actionType = 'CREATE'
-    }
-  }
-
   // For projects array, check individual project changes
   if (change.field === 'projects' && Array.isArray(change.newValue)) {
     const prevProjects = (Array.isArray(change.previousValue) ? change.previousValue : []) as Project[]

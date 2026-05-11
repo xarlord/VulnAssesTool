@@ -410,7 +410,7 @@ export class Tier1QuickFilter {
           // Check if specific vulnerable feature is disabled
           if (
             Array.isArray(featureConfig.disabled) &&
-            mapping.patterns.some((p) => featureConfig.disabled!.includes(p))
+            mapping.patterns.some((p) => featureConfig.disabled.includes(p))
           ) {
             return {
               vulnerabilityId: vuln.id,

@@ -624,9 +624,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 // ============================================================================
 
 // Patch console.error to forward to main process
-const _origConsoleError = console.error
+const origConsoleError = console.error
 console.error = (...args: unknown[]) => {
-  _origConsoleError.apply(console, args)
+  origConsoleError.apply(console, args)
   try {
     const message = args.map((a) => (a instanceof Error ? a.message + '\n' + a.stack : String(a))).join(' ')
     if (!message.includes('[Mock]') && !message.includes('CSP directive')) {
@@ -640,13 +640,15 @@ console.error = (...args: unknown[]) => {
         })
         .catch(() => {})
     }
-  } catch {}
+  } catch {
+    // best-effort: error reporting must not throw
+  }
 }
 
 // Patch console.warn
-const _origConsoleWarn = console.warn
+const origConsoleWarn = console.warn
 console.warn = (...args: unknown[]) => {
-  _origConsoleWarn.apply(console, args)
+  origConsoleWarn.apply(console, args)
   try {
     const message = args.map((a) => String(a)).join(' ')
     if (!message.includes('[Mock]')) {
@@ -659,7 +661,9 @@ console.warn = (...args: unknown[]) => {
         })
         .catch(() => {})
     }
-  } catch {}
+  } catch {
+    // best-effort: error reporting must not throw
+  }
 }
 
 // Catch unhandled errors
@@ -674,7 +678,9 @@ window.onerror = (message, source, lineno, colno, error) => {
         stack: error?.stack || `${source}:${lineno}:${colno}`,
       })
       .catch(() => {})
-  } catch {}
+  } catch {
+    // best-effort: error reporting must not throw
+  }
 }
 
 // Catch unhandled promise rejections
@@ -690,7 +696,9 @@ window.addEventListener('unhandledrejection', (event) => {
         stack: reason instanceof Error ? reason.stack : undefined,
       })
       .catch(() => {})
-  } catch {}
+  } catch {
+    // best-effort: error reporting must not throw
+  }
 })
 
 // Type augmentation for TypeScript

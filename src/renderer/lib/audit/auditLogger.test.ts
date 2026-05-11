@@ -77,7 +77,7 @@ describe('Audit Logger', () => {
   }
 
   beforeEach(() => {
-    useAuditStore.getState()._resetStore()
+    useAuditStore.getState().resetStore()
   })
 
   describe('Project Events', () => {

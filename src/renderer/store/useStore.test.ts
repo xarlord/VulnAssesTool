@@ -114,8 +114,7 @@ describe('useStore', () => {
 
     // Reset store to initial state before each test
     const state = useStore.getState()
-    // @ts-expect-error - _resetStore is a test helper
-    useStore.getState()._resetStore()
+    useStore.getState().resetStore()
   })
 
   afterEach(() => {
@@ -689,8 +688,7 @@ describe('useStore', () => {
     beforeEach(() => {
       // Reset projects to empty array before each test in this describe block
       const state = useStore.getState()
-      // @ts-expect-error - _resetStore is a test helper
-      useStore.getState()._resetStore()
+      useStore.getState().resetStore()
     })
 
     it('should initialize with empty projects array', () => {
@@ -1532,8 +1530,7 @@ describe('useStore', () => {
       expect(result.current.notificationPreferences.enabled).toBe(false)
 
       act(() => {
-        // @ts-expect-error - _resetStore is a test helper
-        result.current._resetStore()
+        result.current.resetStore()
       })
 
       expect(result.current.settings.theme).toBe('system')
@@ -1558,8 +1555,7 @@ describe('useStore', () => {
       expect(result.current.refreshingProjectIds.has('project-1')).toBe(true)
 
       act(() => {
-        // @ts-expect-error - _resetStore is a test helper
-        result.current._resetStore()
+        result.current.resetStore()
       })
 
       expect(result.current.refreshingProjectIds).toEqual(new Set())
@@ -1802,8 +1798,7 @@ describe('useStore', () => {
 
     it('should handle empty settings profiles when loading', () => {
       // Reset store first to clear any existing profiles
-      // @ts-expect-error - _resetStore is a test helper
-      useStore.getState()._resetStore()
+      useStore.getState().resetStore()
       vi.clearAllMocks()
 
       vi.mocked(getProfiles).mockReturnValue([])
@@ -1820,8 +1815,7 @@ describe('useStore', () => {
 
     it('should handle switching profiles when no profiles exist', () => {
       // Reset store first to clear any existing state
-      // @ts-expect-error - _resetStore is a test helper
-      useStore.getState()._resetStore()
+      useStore.getState().resetStore()
 
       const { result } = renderHook(() => useStore())
 

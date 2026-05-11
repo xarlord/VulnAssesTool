@@ -37,8 +37,8 @@ class AsyncMutex {
   private release(): void {
     this.locked = false
     if (this.queue.length > 0) {
-      const next = this.queue.shift()!
-      next()
+      const next = this.queue.shift()
+      if (next) next()
     }
   }
 }
@@ -882,7 +882,7 @@ export class NvdDatabase {
       }
     }
 
-    return cves.map((cve) => this.getCVEById(cve.id)!).filter(Boolean)
+    return cves.map((cve) => this.getCVEById(cve.id)).filter((r): r is CVEWithDetails => r !== undefined)
   }
 
   /**
@@ -912,7 +912,7 @@ export class NvdDatabase {
       }
     }
 
-    return cves.map((cve) => this.getCVEById(cve.id)!).filter(Boolean)
+    return cves.map((cve) => this.getCVEById(cve.id)).filter((r): r is CVEWithDetails => r !== undefined)
   }
 
   /**

@@ -45,10 +45,12 @@ export function App() {
   // Expose navigate for E2E testing
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-underscore-dangle
       ;(window as unknown as Record<string, unknown>).__navigate = navigate
     }
     return () => {
       if (typeof window !== 'undefined') {
+        // eslint-disable-next-line no-underscore-dangle
         delete (window as unknown as Record<string, unknown>).__navigate
       }
     }

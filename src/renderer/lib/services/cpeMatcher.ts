@@ -451,11 +451,6 @@ export class CPEMatcher {
 
     if (knownCPE) {
       const cpeUri = this.buildCPE(knownCPE.vendor, knownCPE.product, version)
-      const _parsedCPE: ParsedCPE = {
-        ...knownCPE,
-        version,
-        uri: cpeUri,
-      }
 
       return {
         cpe: cpeUri,
@@ -483,11 +478,6 @@ export class CPEMatcher {
 
       if (overlap >= 0.5) {
         const cpeUri = this.buildCPE(cpe.vendor, cpe.product, version)
-        const _parsedCPE: ParsedCPE = {
-          ...cpe,
-          version,
-          uri: cpeUri,
-        }
 
         const confidence = Math.round(50 + overlap * 30)
 

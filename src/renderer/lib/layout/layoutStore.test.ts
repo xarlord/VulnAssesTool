@@ -8,7 +8,7 @@ import type { WidgetConfig, WidgetId } from './types'
 
 describe('Layout Store', () => {
   beforeEach(() => {
-    useLayoutStore.getState()._resetStore()
+    useLayoutStore.getState().resetStore()
   })
 
   describe('Initial State', () => {
@@ -391,7 +391,7 @@ describe('Layout Store', () => {
     })
   })
 
-  describe('_resetStore', () => {
+  describe('resetStore', () => {
     it('should reset all state to initial values', () => {
       const store = useLayoutStore.getState()
 
@@ -402,7 +402,7 @@ describe('Layout Store', () => {
       store.toggleWidgetVisibility('recent-projects')
 
       // Reset
-      useLayoutStore.getState()._resetStore()
+      useLayoutStore.getState().resetStore()
 
       const state = useLayoutStore.getState()
       expect(state.activeLayoutId).toBe('default')
@@ -415,7 +415,7 @@ describe('Layout Store', () => {
 
 describe('Layout Hooks', () => {
   beforeEach(() => {
-    useLayoutStore.getState()._resetStore()
+    useLayoutStore.getState().resetStore()
   })
 
   describe('useVisibleWidgets', () => {
@@ -463,7 +463,7 @@ describe('Layout Hooks', () => {
 
 describe('Layout Presets', () => {
   beforeEach(() => {
-    useLayoutStore.getState()._resetStore()
+    useLayoutStore.getState().resetStore()
   })
 
   describe('Default Layout', () => {
@@ -537,7 +537,7 @@ describe('Layout Presets', () => {
 
 describe('Edge Cases', () => {
   beforeEach(() => {
-    useLayoutStore.getState()._resetStore()
+    useLayoutStore.getState().resetStore()
   })
 
   describe('updateWidgetSize with non-existent widget', () => {

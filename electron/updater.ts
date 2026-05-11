@@ -8,19 +8,19 @@
 import { app, BrowserWindow, dialog } from 'electron'
 
 // Lazy-loaded autoUpdater to avoid initialization before app is ready
-let _autoUpdater: any = null
-let _updateCheckInterval: ReturnType<typeof setInterval> | null = null
+let autoUpdater: any = null
+let updateCheckInterval: ReturnType<typeof setInterval> | null = null
 
 /**
  * Get or initialize the autoUpdater (lazy loading)
  */
 function getAutoUpdater(): any {
-  if (!_autoUpdater) {
-    const { autoUpdater } = require('electron-updater')
-    _autoUpdater = autoUpdater
+  if (!autoUpdater) {
+    const { autoUpdater: updater } = require('electron-updater')
+    autoUpdater = updater
 
     // Configure update source (GitHub Releases)
-    _autoUpdater.setFeedURL({
+    autoUpdater.setFeedURL({
       provider: 'github',
       owner: 'xarlord',
       repo: 'd-fence-vulnerability-assesment-tool',
@@ -29,16 +29,16 @@ function getAutoUpdater(): any {
     // Configure logger (if available in production)
     try {
       const electronLog = require('electron-log')
-      _autoUpdater.logger = electronLog
-      if (_autoUpdater.logger) {
-        _autoUpdater.logger.transports.file.level = 'info'
+      autoUpdater.logger = electronLog
+      if (autoUpdater.logger) {
+        autoUpdater.logger.transports.file.level = 'info'
       }
     } catch {
       // electron-log not available, continue without logging
       console.log('electron-log not available, updater logging to console only')
     }
   }
-  return _autoUpdater
+  return autoUpdater
 }
 
 // Simple logger for the updater
@@ -294,9 +294,9 @@ export function setAutoInstallOnQuit(enabled: boolean): void {
  */
 export function setUpdateCheckInterval(hours: number): void {
   // Clear existing interval if any
-  if (_updateCheckInterval) {
-    clearInterval(_updateCheckInterval)
-    _updateCheckInterval = null
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval)
+    updateCheckInterval = null
   }
 
   if (hours <= 0) {
@@ -307,7 +307,7 @@ export function setUpdateCheckInterval(hours: number): void {
   const intervalMs = hours * 60 * 60 * 1000
   log.info(`Setting update check interval to ${hours} hours`)
 
-  _updateCheckInterval = setInterval(() => {
+  updateCheckInterval = setInterval(() => {
     if (app.isPackaged && !updateDownloaded) {
       log.info('Periodic update check triggered')
       try {

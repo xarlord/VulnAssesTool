@@ -443,8 +443,8 @@ export class NvdBulkImporter {
       result.failed += importResult.failedCves
 
       // Track last CVE ID for resume capability
-      if (batch.length > 0) {
-        this.state!.lastCveId = batch[batch.length - 1].id
+      if (batch.length > 0 && this.state) {
+        this.state.lastCveId = batch[batch.length - 1].id
       }
 
       // Handle import errors

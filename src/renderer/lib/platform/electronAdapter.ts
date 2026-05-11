@@ -8,7 +8,8 @@
 import type { PlatformAPI } from './types'
 
 export function createElectronAdapter(): PlatformAPI {
-  const api = window.electronAPI!
+  const api = window.electronAPI
+  if (!api) throw new Error('window.electronAPI is not available')
 
   return {
     // Top-level

@@ -116,7 +116,8 @@ export class CommandRegistry {
 
     if (filter) {
       if (filter.categories && filter.categories.length > 0) {
-        commands = commands.filter((cmd) => filter.categories!.includes(cmd.category))
+        const categories = filter.categories
+        commands = commands.filter((cmd) => categories.includes(cmd.category))
       }
 
       if (filter.enabledOnly) {

@@ -37,7 +37,7 @@ interface AuditState {
   /** Get statistics */
   getStatistics: () => AuditStatistics
   /** Reset store (for testing) */
-  _resetStore: () => void
+  resetStore: () => void
 }
 
 /**
@@ -92,12 +92,14 @@ export const useAuditStore = create<AuditState>()(
         if (filter) {
           // Filter by action type
           if (filter.actionType && filter.actionType.length > 0) {
-            events = events.filter((e) => filter.actionType!.includes(e.actionType))
+            const actionTypes = filter.actionType
+            events = events.filter((e) => actionTypes.includes(e.actionType))
           }
 
           // Filter by entity type
           if (filter.entityType && filter.entityType.length > 0) {
-            events = events.filter((e) => filter.entityType!.includes(e.entityType))
+            const entityTypes = filter.entityType
+            events = events.filter((e) => entityTypes.includes(e.entityType))
           }
 
           // Filter by entity ID
@@ -107,9 +109,10 @@ export const useAuditStore = create<AuditState>()(
 
           // Filter by date range
           if (filter.dateRange) {
+            const dateRange = filter.dateRange
             events = events.filter((e) => {
               const timestamp = new Date(e.timestamp).getTime()
-              return timestamp >= filter.dateRange!.start.getTime() && timestamp <= filter.dateRange!.end.getTime()
+              return timestamp >= dateRange.start.getTime() && timestamp <= dateRange.end.getTime()
             })
           }
 
@@ -245,7 +248,7 @@ export const useAuditStore = create<AuditState>()(
         }
       },
 
-      _resetStore: () =>
+      resetStore: () =>
         set((state) => ({
           ...state,
           events: [],

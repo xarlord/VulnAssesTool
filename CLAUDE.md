@@ -87,19 +87,19 @@ See `coding-guide-fixed.md` for full details. Current status:
 | ---- | ------- | --------------------------------------------------------------------- |
 | PR 1 | DONE    | Tooling & guardrails (ESLint rules, tsconfig strict, ts-morph devDep) |
 | PR 2 | DONE    | Type the IPC boundary — shared IPC types, platform/types.ts rewrite   |
-| PR 3 | NEXT    | Default exports → named (ts-morph codemod)                            |
-| PR 4 | Pending | Targeted any/!/as cleanup, Recharts types, catch comments             |
+| PR 3 | DONE    | Default exports → named (ts-morph codemod)                            |
+| PR 4 | NEXT    | Targeted any/!/as cleanup, Recharts types, catch comments             |
 | PR 5 | Pending | Long-tail any sweep, main.ts split, rules → error                     |
 
-### Baseline Warning Counts (post-PR 1)
+### Warning Counts (post-PR 3: 242 total, down from 384)
 
-| Rule                  | Count | Targeted by   |
-| --------------------- | ----- | ------------- |
-| no-explicit-any       | 201   | PR 2 + PR 4-5 |
-| default exports       | 54    | PR 3          |
-| no-non-null-assertion | 53    | PR 4          |
-| no-underscore-dangle  | 28    | PR 4          |
-| no-empty              | 19    | PR 4          |
+| Rule                  | Count | Targeted by |
+| --------------------- | ----- | ----------- |
+| no-explicit-any       | 140   | PR 4-5      |
+| default exports       | 0     | PR 3 (done) |
+| no-non-null-assertion | 53    | PR 4        |
+| no-underscore-dangle  | 28    | PR 4        |
+| no-empty              | 19    | PR 4        |
 
 ## Pre-existing Issues
 

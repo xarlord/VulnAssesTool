@@ -78,10 +78,13 @@ function runApp() {
   console.log('[Dev Launcher] Starting application...');
   console.log('[Dev Launcher] Executable:', exePath);
 
-  const appProcess = spawn(exePath, [], {
+  const env = { ...process.env, NODE_ENV: 'development' }
+  delete env.ELECTRON_RUN_AS_NODE
+
+  const appProcess = spawn(exePath, ['--no-sandbox', '--use-gl=angle', '--use-angle=default'], {
     stdio: 'inherit',
     cwd: releaseDir,
-    env: { ...process.env, NODE_ENV: 'development' }
+    env
   });
 
   appProcess.on('error', (err) => {

@@ -480,7 +480,8 @@ export class OfflineQueue {
     const permanentlyFailed: QueuedRequest[] = []
 
     while (this.queue.length > 0) {
-      const request = this.queue.shift()!
+      const request = this.queue.shift()
+      if (!request) break
 
       // Check if we have a handler for this request type
       const handler = this.handlers.get(request.type)

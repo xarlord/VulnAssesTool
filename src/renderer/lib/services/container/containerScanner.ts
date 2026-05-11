@@ -297,7 +297,8 @@ export class ContainerScanner {
         throw new Error(result.error || 'Container scan failed')
       }
 
-      const scanData = result.result!
+      if (!result.result) throw new Error('Container scan result missing')
+      const scanData = result.result
       return {
         image: scanData.image,
         imageDigest: scanData.imageDigest,
@@ -384,7 +385,8 @@ export class ContainerScanner {
     if (ref.includes('/')) {
       const parts = ref.split('/')
       if (parts[0].includes('.') || parts[0].includes(':')) {
-        registry = parts.shift()!
+        const shifted = parts.shift()
+        if (shifted) registry = shifted
         repository = parts.join('/')
       }
     }

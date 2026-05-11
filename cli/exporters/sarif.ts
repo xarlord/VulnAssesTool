@@ -144,7 +144,7 @@ export function exportToSarif(vulnerabilities: Vulnerability[], options: SarifEx
 
   // Filter by minimum EPSS
   if (options.minEpss !== undefined) {
-    filteredVulns = filteredVulns.filter((v) => (v.epssScore ?? 0) >= options.minEpss!)
+    filteredVulns = filteredVulns.filter((v) => (v.epssScore ?? 0) >= options.minEpss)
   }
 
   // Filter by KEV status
@@ -180,10 +180,6 @@ export function exportToSarif(vulnerabilities: Vulnerability[], options: SarifEx
 
   // Generate results
   const results: SarifResult[] = filteredVulns.map((vuln) => {
-    // Build component info
-    const componentInfo = vuln.affectedComponents?.[0] ?? 'unknown component'
-    const _componentName = componentInfo.split('@')[0] ?? 'unknown'
-
     // Build message text
     const messageText = `${vuln.id}: ${vuln.description} in ${componentInfo}. Severity: ${vuln.severity.toUpperCase()}. CVSS: ${vuln.cvssScore ?? 'N/A'}`
 

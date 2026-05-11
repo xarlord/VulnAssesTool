@@ -153,19 +153,19 @@ export class CPESearch {
     // Check cache
     if (useCache && !forceRefresh) {
       const cacheKey = this.getCacheKey('productName', productName, limit)
-      const cached = this.cacheManager!.get<CPESearchResult[]>(cacheKey, CACHE_NAMESPACE)
+      const cached = this.cacheManager?.get<CPESearchResult[]>(cacheKey, CACHE_NAMESPACE)
       if (cached) {
         return cached
       }
     }
 
     // Perform search
-    const results = await this._searchByProductNameInternal(productName, limit)
+    const results = await this.searchByProductNameInternal(productName, limit)
 
     // Cache results
     if (useCache) {
       const cacheKey = this.getCacheKey('productName', productName, limit)
-      this.cacheManager!.set(cacheKey, results, CACHE_NAMESPACE)
+      this.cacheManager?.set(cacheKey, results, CACHE_NAMESPACE)
     }
 
     return results
@@ -174,7 +174,7 @@ export class CPESearch {
   /**
    * Internal implementation of search by product name
    */
-  private async _searchByProductNameInternal(productName: string, limit?: number): Promise<CPESearchResult[]> {
+  private async searchByProductNameInternal(productName: string, limit?: number): Promise<CPESearchResult[]> {
     const sanitizedProduct = sanitizeSqlInput(productName.toLowerCase())
     if (!sanitizedProduct) {
       return []

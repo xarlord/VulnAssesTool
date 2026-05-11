@@ -426,7 +426,8 @@ export class OsvProvider extends BaseVulnerabilityProvider {
         if (!purlMap.has(component.purl)) {
           purlMap.set(component.purl, [])
         }
-        purlMap.get(component.purl)!.push(component.id)
+        const entry = purlMap.get(component.purl)
+        if (entry) entry.push(component.id)
       }
     }
 

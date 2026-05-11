@@ -176,7 +176,9 @@ export class NvdImportManager {
           // Clean up downloaded file
           try {
             await fs.unlink(filePath)
-          } catch {}
+          } catch {
+            // best-effort: stream cleanup on error
+          }
         } catch (error) {
           console.error(`Failed to process year ${year}:`, error)
           yearsFailed.push(year)

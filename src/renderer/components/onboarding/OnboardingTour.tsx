@@ -137,16 +137,22 @@ function getTourConfig(tourId: string): TourConfig | undefined {
 export function OnboardingTour({
   tourId = 'main-onboarding',
   startImmediately = false,
-  onComplete: _onComplete,
-  onSkip: _onSkip,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onComplete: onCompleteCallback,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onSkip: onSkipCallback,
 }: OnboardingTourProps) {
   const driverRef = useRef<ReturnType<typeof driver> | null>(null)
   const {
     startTour,
-    nextStep: _nextStep,
-    prevStep: _prevStep,
-    skipTour: _skipTour,
-    completeTour: _completeTour,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    nextStep: nextTourStep,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    prevStep: prevTourStep,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    skipTour: skipTourAction,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    completeTour: completeTourAction,
     activeTourId,
   } = useTourStore()
 

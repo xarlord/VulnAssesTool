@@ -230,8 +230,6 @@ export class DbVersionManager {
    * Record successful seed operation
    */
   recordSeed(version: string, cveCount: number, seedDate: string): void {
-    const _parsed = this.parseVersion(version)
-
     this.setVersion({
       version,
       schemaVersion: this.options.schemaVersion,

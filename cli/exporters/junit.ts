@@ -40,7 +40,7 @@ export interface JunitTestCase {
     }>
   }
   failure?: Array<{
-    _text: string
+    text: string
     message?: string
     type?: string
   }>
@@ -107,7 +107,7 @@ export function exportToJunit(vulnerabilities: Vulnerability[], options: JunitEx
 
   // Filter by minimum EPSS
   if (options.minEpss !== undefined) {
-    filteredVulns = filteredVulns.filter((v) => (v.epssScore ?? 0) >= options.minEpss!)
+    filteredVulns = filteredVulns.filter((v) => (v.epssScore ?? 0) >= options.minEpss)
   }
 
   // Filter by KEV status
@@ -142,7 +142,7 @@ export function exportToJunit(vulnerabilities: Vulnerability[], options: JunitEx
     properties.push({ name: 'component', value: componentInfo })
 
     // Build failure message if applicable
-    let failure: Array<{ _text: string; message?: string; type?: string }> | undefined
+    let failure: Array<{ text: string; message?: string; type?: string }> | undefined
 
     if (isFailure(vuln, options.failureThreshold)) {
       const lines = [
@@ -172,7 +172,7 @@ export function exportToJunit(vulnerabilities: Vulnerability[], options: JunitEx
 
       failure = [
         {
-          _text: lines.join('\n'),
+          text: lines.join('\n'),
           message: `${vuln.severity.toUpperCase()}: ${vuln.id} in ${componentName}`,
           type: vuln.severity,
         },
@@ -268,7 +268,7 @@ export function junitToXml(report: JunitReport): string {
           if (fail.type) {
             xml += ` type="${escapeXml(fail.type)}"`
           }
-          xml += `>${escapeXml(fail._text)}</failure>\n`
+          xml += `>${escapeXml(fail.text)}</failure>\n`
         }
       }
 

@@ -25,27 +25,6 @@ const ActionItems = lazy(() => import('./widgets/ActionItems').then((m) => ({ de
 const DashboardConfig = lazy(() => import('./widgets/DashboardConfig').then((m) => ({ default: m.DashboardConfig })))
 import { ArrowLeft, Download, Loader2 } from 'lucide-react'
 
-interface Layout {
-  i: string
-  x: number
-  y: number
-  w: number
-  h: number
-  minW?: number
-  minH?: number
-  maxW?: number
-  maxH?: number
-}
-
-const _DEFAULT_LAYOUTS: Layout[] = [
-  { i: 'risk', x: 0, y: 0, w: 3, h: 4, minW: 2, minH: 3 },
-  { i: 'compliance', x: 3, y: 0, w: 3, h: 4, minW: 2, minH: 3 },
-  { i: 'productivity', x: 6, y: 0, w: 3, h: 4, minW: 2, minH: 3 },
-  { i: 'health', x: 0, y: 4, w: 6, h: 4, minW: 4, minH: 3 },
-  { i: 'trends', x: 6, y: 4, w: 3, h: 4, minW: 2, minH: 3 },
-  { i: 'actions', x: 0, y: 8, w: 9, h: 4, minW: 6, minH: 3 },
-]
-
 export function ExecutiveDashboard() {
   const navigate = useNavigate()
   const projects = useProjects()

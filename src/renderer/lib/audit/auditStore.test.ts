@@ -9,7 +9,7 @@ import { ulid } from './ulid'
 
 describe('Audit Store', () => {
   beforeEach(() => {
-    useAuditStore.getState()._resetStore()
+    useAuditStore.getState().resetStore()
   })
 
   describe('addEvent', () => {
@@ -411,7 +411,7 @@ describe('Audit Store', () => {
     })
 
     it('should return empty statistics when no events', () => {
-      useAuditStore.getState()._resetStore()
+      useAuditStore.getState().resetStore()
       const stats = useAuditStore.getState().getStatistics()
 
       expect(stats.totalEvents).toBe(0)
@@ -428,7 +428,7 @@ describe('Audit Store', () => {
     })
   })
 
-  describe('_resetStore', () => {
+  describe('resetStore', () => {
     it('should clear all events', () => {
       const store = useAuditStore.getState()
 
@@ -440,7 +440,7 @@ describe('Audit Store', () => {
 
       expect(useAuditStore.getState().events).toHaveLength(1)
 
-      useAuditStore.getState()._resetStore()
+      useAuditStore.getState().resetStore()
 
       expect(useAuditStore.getState().events).toHaveLength(0)
     })
@@ -448,10 +448,10 @@ describe('Audit Store', () => {
     it('should reset session ID', () => {
       const oldSessionId = useAuditStore.getState().sessionId
 
-      useAuditStore.getState()._resetStore()
+      useAuditStore.getState().resetStore()
 
       // Get the new session after reset
-      // Note: _resetStore should generate a new session ID
+      // Note: resetStore should generate a new session ID
       // But the implementation might reuse the constant
       const newSessionId = useAuditStore.getState().sessionId
 

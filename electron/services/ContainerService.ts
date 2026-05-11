@@ -315,12 +315,10 @@ export class ContainerService {
         }
 
         // Find the corresponding command from history
-        let _command: string | undefined
         while (nonEmptyHistoryIndex < history.length) {
           const entry = history[nonEmptyHistoryIndex]
           nonEmptyHistoryIndex++
           if (!entry.emptyLayer) {
-            const _command = entry.createdBy
             break
           }
         }

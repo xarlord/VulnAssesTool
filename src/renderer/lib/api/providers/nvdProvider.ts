@@ -455,7 +455,8 @@ export class NvdProvider extends BaseVulnerabilityProvider {
         if (!cpeMap.has(component.cpe)) {
           cpeMap.set(component.cpe, [])
         }
-        cpeMap.get(component.cpe)!.push(component.id)
+        const entry = cpeMap.get(component.cpe)
+        if (entry) entry.push(component.id)
       }
     }
 

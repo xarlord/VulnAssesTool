@@ -409,7 +409,9 @@ export class MultiThreadedDownloader {
       // Clean up partial files
       try {
         await fs.unlink(gzPath)
-      } catch {}
+      } catch {
+        // best-effort: thread cleanup on error
+      }
       throw error
     }
   }

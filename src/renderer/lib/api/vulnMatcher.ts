@@ -388,7 +388,8 @@ export async function matchVulnerabilitiesForComponents(
           if (!vulnerabilityMap.has(vuln.id)) {
             vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
           }
-          vulnerabilityMap.get(vuln.id)!.affectedComponents.push(component.id)
+          const entry = vulnerabilityMap.get(vuln.id)
+          if (entry) entry.affectedComponents.push(component.id)
         }
       } catch (error) {
         console.error(`[VulnMatcher] Failed to search local NVD for CPE ${component.cpe}:`, error)
@@ -412,7 +413,8 @@ export async function matchVulnerabilitiesForComponents(
               if (!vulnerabilityMap.has(vuln.id)) {
                 vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
               }
-              vulnerabilityMap.get(vuln.id)!.affectedComponents.push(component.id)
+              const entry = vulnerabilityMap.get(vuln.id)
+              if (entry) entry.affectedComponents.push(component.id)
               foundVulns = true
             }
             // If we found results from a high-confidence CPE, stop searching
@@ -434,7 +436,8 @@ export async function matchVulnerabilitiesForComponents(
             if (!vulnerabilityMap.has(vuln.id)) {
               vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
             }
-            vulnerabilityMap.get(vuln.id)!.affectedComponents.push(component.id)
+            const entry = vulnerabilityMap.get(vuln.id)
+            if (entry) entry.affectedComponents.push(component.id)
           }
         } catch (error) {
           console.error(`[VulnMatcher] Failed to search local NVD for name ${component.name}:`, error)
@@ -451,7 +454,8 @@ export async function matchVulnerabilitiesForComponents(
           if (!vulnerabilityMap.has(vuln.id)) {
             vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
           }
-          vulnerabilityMap.get(vuln.id)!.affectedComponents.push(component.id)
+          const entry = vulnerabilityMap.get(vuln.id)
+          if (entry) entry.affectedComponents.push(component.id)
         }
       } catch (error) {
         console.error(`[VulnMatcher] Failed to search local NVD for name ${component.name}:`, error)
@@ -473,7 +477,8 @@ export async function matchVulnerabilitiesForComponents(
             if (!vulnerabilityMap.has(vuln.id)) {
               vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
             }
-            vulnerabilityMap.get(vuln.id)!.affectedComponents.push(component.id)
+            const entry = vulnerabilityMap.get(vuln.id)
+            if (entry) entry.affectedComponents.push(component.id)
           }
         }
       }

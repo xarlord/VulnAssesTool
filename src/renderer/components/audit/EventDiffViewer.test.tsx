@@ -13,7 +13,7 @@ describe('EventDiffViewer', () => {
   let mockEvent: AuditEvent
 
   beforeEach(() => {
-    useAuditStore.getState()._resetStore()
+    useAuditStore.getState().resetStore()
 
     mockEvent = {
       id: 'test-event-1',

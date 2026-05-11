@@ -277,12 +277,15 @@ export function mapRowToComponent(row: ExcelRow, type?: ComponentType): Componen
     : []
 
   // Generate component ID
-  const id = row.purl || generateComponentId(row.name!, row.version!)
+  const name = row.name
+  const version = row.version
+  if (!name || !version) throw new Error('Row must have name and version after validation')
+  const id = row.purl || generateComponentId(name, version)
 
   return {
     id,
-    name: row.name!,
-    version: row.version!,
+    name,
+    version,
     type: normalizedType,
     licenses,
     purl: row.purl,

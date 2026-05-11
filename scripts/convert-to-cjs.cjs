@@ -117,6 +117,39 @@ function convertFile(filePath) {
   if (content !== original) {
     fs.writeFileSync(filePath, content);
     console.log(`  File updated (new length: ${content.length})`);
+  }
+
+  // For main.cjs: hoist top-level require('electron') into the __commonJS wrapper
+  // Electron's require('electron') may not return the full API at file top-level
+  // when loaded as the entry point, but works correctly inside the module function.
+  if (path.basename(filePath) === 'main.cjs') {
+    const electronRequireMatch = content.match(
+      /^const \{([^}]+)\} = require\(['"]electron['"]\)\s*$/m
+    );
+    if (electronRequireMatch) {
+      const originalRequire = electronRequireMatch[0];
+      const imports = electronRequireMatch[1];
+
+      // Remove the top-level require
+      content = content.replace(originalRequire + '\n', '');
+
+      // Find the __commonJS callback start: the first occurrence of '"main.cjs"() {' or similar
+      // and inject the require right after it
+      const moduleStart = content.match(
+        /__commonJS\(\{\s*["'][^"']+["']\(\)\s*\{/
+      );
+      if (moduleStart) {
+        content = content.replace(
+          moduleStart[0],
+          moduleStart[0] + '\n    ' + originalRequire.replace('const ', 'const ') + ';'
+        );
+        fs.writeFileSync(filePath, content);
+        console.log(`  Hoisted require(electron) into __commonJS wrapper (new length: ${content.length})`);
+      }
+    }
+  }
+
+  if (content !== original) {
     return true;
   }
   console.log(`  No changes made`);
