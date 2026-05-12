@@ -53,15 +53,18 @@ export default defineConfig({
           // and prevents Electron from initializing its main process APIs
           const env = { ...process.env }
           delete env.ELECTRON_RUN_AS_NODE
-          await startup(['.', '--no-sandbox'], { env })
+          await startup(['.', '--no-sandbox', '--use-gl=angle', '--use-angle=default'], { env })
         },
         vite: {
+          ssr: {
+            noExternal: ['node-cron'],
+          },
           build: {
             outDir: 'dist/electron',
             ssr: true,
             minify: false,
             rollupOptions: {
-              external: ['electron', 'sql.js', 'node-cron', 'better-sqlite3'],
+              external: ['electron', 'sql.js', 'better-sqlite3', 'electron-log'],
               output: {
                 format: 'cjs',
                 entryFileNames: 'main.cjs',
