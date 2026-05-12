@@ -1,0 +1,103 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "Test Application",
+  "documentNamespace": "https://example.com/test-application-1.0.0",
+  "creationInfo": {
+    "created": "2024-01-15T10:30:00Z",
+    "creators": ["Tool: test-tool-1.0.0"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-package-lodash",
+      "name": "lodash",
+      "versionInfo": "4.17.15",
+      "downloadLocation": "https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/lodash@4.17.15"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-package-axios",
+      "name": "axios",
+      "versionInfo": "0.21.1",
+      "downloadLocation": "https://registry.npmjs.org/axios/-/axios-0.21.1.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/axios@0.21.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-package-express",
+      "name": "express",
+      "versionInfo": "4.17.1",
+      "downloadLocation": "https://registry.npmjs.org/express/-/express-4.17.1.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/express@4.17.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-package-react",
+      "name": "react",
+      "versionInfo": "18.2.0",
+      "downloadLocation": "https://registry.npmjs.org/react/-/react-18.2.0.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/react@18.2.0"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-package-lodash",
+      "relationshipType": "DESCRIBES"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-package-axios",
+      "relationshipType": "DESCRIBES"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-package-express",
+      "relationshipType": "DESCRIBES"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-package-react",
+      "relationshipType": "DESCRIBES"
+    }
+  ]
+}

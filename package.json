@@ -1,0 +1,350 @@
+{
+  "name": "vuln-assess-tool",
+  "private": true,
+  "version": "2.0.0",
+  "description": "A vulnerability assessment tool for managing SBOMs and checking against public databases",
+  "author": "VulnAssessTool",
+  "type": "module",
+  "main": "dist/electron/main.cjs",
+  "homepage": "https://github.com/xarlord/d-fence-vulnerability-assesment-tool",
+  "scripts": {
+    "dev": "vite",
+    "dev:renderer": "vite",
+    "dev:app": "node scripts/dev-with-rebuild.cjs",
+    "dev:electron": "node scripts/run-electron.cjs",
+    "run:app": "node scripts/run-electron.cjs --skip",
+    "build": "npm run build:renderer && node scripts/convert-to-cjs.cjs",
+    "build:renderer": "vite build",
+    "build:renderer:e2e": "vite build --config vite.config.electron.ts",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:e2e": "npm run build:renderer:e2e && npm run build:main",
+    "build:analyze": "cross-env ANALYZE=true npm run build:renderer",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:integration": "vitest --config tests/integration/vitest.integration.config.ts",
+    "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:electron": "playwright test --project=electron",
+    "test:e2e:features": "playwright test --project=features",
+    "test:e2e:workflows": "playwright test --project=workflows",
+    "test:e2e:visual": "playwright test --project=visual",
+    "mcp:serve": "npm run build && npx vite preview --port 4173 --strictPort",
+    "test:bdd": "vitest --run tests/bdd-simple.test.ts",
+    "test:bdd:watch": "vitest tests/bdd-simple.test.ts",
+    "pack": "electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:all": "npm run build && electron-builder -mwl",
+    "release": "npm run build && electron-builder --publish always",
+    "release:win": "npm run build && electron-builder --win --publish always",
+    "release:mac": "npm run build && electron-builder --mac --publish always",
+    "release:linux": "npm run build && electron-builder --linux --publish always",
+    "checksums": "node scripts/generate-checksums.js",
+    "release:complete": "npm run release && npm run checksums",
+    "start": "npm run build && electron-builder --win --dir && node scripts/run-unpacked.cjs",
+    "sync": "node scripts/sync.js",
+    "seed-db": "node scripts/seed-test-db.js",
+    "build:seed-db": "tsx scripts/seed-database.ts",
+    "build:with-seed": "npm run build:seed-db && npm run dist",
+    "watchdog": "tsx orchestrator/index.ts",
+    "watchdog:phase": "tsx orchestrator/index.ts --phase",
+    "watchdog:no-fix": "tsx orchestrator/index.ts --no-fix",
+    "prepare": "husky",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,md,css}\"",
+    "type-check": "tsc --noEmit",
+    "errors": "npx tsx scripts/watch-errors.ts",
+    "errors:json": "npx tsx scripts/watch-errors.ts --json",
+    "errors:resolve": "npx tsx scripts/watch-errors.ts --mark-resolved",
+    "errors:clear": "npx tsx scripts/watch-errors.ts --clear",
+    "errors:count": "npx tsx scripts/watch-errors.ts --count"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@radix-ui/react-checkbox": "^1.3.3",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@types/cytoscape": "^3.21.9",
+    "@types/react-grid-layout": "^1.3.6",
+    "axios": "^1.13.4",
+    "better-sqlite3": "^12.6.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cytoscape": "^3.33.1",
+    "date-fns": "^4.1.0",
+    "driver.js": "^1.4.0",
+    "electron-store": "^11.0.2",
+    "fast-xml-parser": "^5.3.4",
+    "jspdf": "^4.1.0",
+    "jspdf-autotable": "^5.0.7",
+    "lucide-react": "^0.563.0",
+    "node-cron": "^4.2.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-grid-layout": "^2.2.2",
+    "react-hook-form": "^7.71.1",
+    "react-router-dom": "^7.13.0",
+    "react-virtuoso": "^4.18.1",
+    "reactflow": "^11.11.4",
+    "recharts": "^3.7.0",
+    "sql.js": "^1.12.0",
+    "tailwind-merge": "^3.4.1",
+    "tailwindcss": "^3.4.19",
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@cucumber/cucumber": "^12.6.0",
+    "@cucumber/pretty-formatter": "^3.0.0",
+    "@electron/notarize": "2.5.0",
+    "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.58.1",
+    "@stryker-mutator/core": "^9.5.1",
+    "@stryker-mutator/vitest-runner": "^9.5.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/keytar": "^4.4.0",
+    "@types/node": "^24.10.9",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@types/sql.js": "^1.4.9",
+    "@types/xlsx": "^0.0.35",
+    "@vitejs/plugin-react": "^5.1.1",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.18",
+    "autoprefixer": "^10.4.24",
+    "cross-env": "^10.1.0",
+    "electron": "^40.1.0",
+    "electron-builder": "^26.7.0",
+    "electron-playwright-helpers": "^2.1.0",
+    "electron-updater": "6.7.3",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "jsdom": "^28.0.0",
+    "lint-staged": "^16.4.0",
+    "postcss": "^8.5.6",
+    "prettier": "^3.8.3",
+    "rollup-plugin-visualizer": "^7.0.1",
+    "ts-morph": "^25.0.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.2.4",
+    "vite-plugin-electron": "^0.29.0",
+    "vitest": "^4.0.18"
+  },
+  "build": {
+    "appId": "com.vulnasstool.app",
+    "productName": "VulnAssessTool",
+    "copyright": "Copyright © 2026 VulnAssessTool",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/node_modules/**/*",
+      "!**/*.ts",
+      "!**/*.map",
+      "!**/src/**",
+      "!**/tests/**",
+      "!**/docs/**",
+      "!**/scripts/**",
+      "!**/build/**",
+      "!**/orchestrator/**",
+      "!**/e2e/**"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/nvd-seed.db",
+        "to": "nvd-seed.db",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "extraMetadata": {
+      "main": "dist/electron/main.cjs"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "xarlord",
+      "repo": "d-fence-vulnerability-assesment-tool"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "forceCodeSigning": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64",
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64",
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "provisioningProfile": "${MAC_PROVISIONING_PROFILE}",
+      "notarize": false
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "maintainer": "VulnAssessTool <info@vulnasstool.com>",
+      "vendor": "VulnAssessTool",
+      "synopsis": "Vulnerability Assessment Tool for SBOM Analysis",
+      "description": "A desktop application for analyzing Software Bill of Materials (SBOM) and checking against NVD and OSV vulnerability databases."
+    },
+    "afterPack": "scripts/afterPack.cjs",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerLanguages": [
+        "en_US"
+      ],
+      "language": "1033",
+      "unicode": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "allowElevation": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeader": "build/header.bmp",
+      "installerSidebar": "build/sidebar.bmp",
+      "uninstallDisplayName": "VulnAssessTool"
+    },
+    "deb": {
+      "depends": [
+        "gconf2",
+        "gconf-service",
+        "libnotify4",
+        "libappindicator1",
+        "libxtst6",
+        "libnss3"
+      ],
+      "packageCategory": "devel"
+    },
+    "appImage": {
+      "license": "LICENSE"
+    },
+    "rpm": {
+      "fpm": [
+        "--rpm-os",
+        "linux"
+      ]
+    },
+    "electronVersion": "40.1.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xarlord/d-fence-vulnerability-assesment-tool.git"
+  }
+}

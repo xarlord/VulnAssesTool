@@ -1,0 +1,53 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "Test SPDX SBOM",
+  "documentNamespace": "https://example.com/test-spdx-sbom",
+  "creationInfo": {
+    "created": "2026-03-24T10:00:00Z",
+    "creators": ["Tool: test-tool"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-uuid",
+      "name": "uuid",
+      "versionInfo": "9.0.0",
+      "downloadLocation": "https://registry.npmjs.org/uuid/-/uuid-9.0.0.tgz",
+      "licenseConcluded": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/uuid@9.0.0"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-lodash",
+      "name": "lodash",
+      "versionInfo": "4.17.21",
+      "downloadLocation": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+      "licenseConcluded": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/lodash@4.17.21"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-Package-uuid",
+      "relationshipType": "DESCRIBES"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relatedSpdxElement": "SPDXRef-Package-lodash",
+      "relationshipType": "DESCRIBES"
+    }
+  ]
+}

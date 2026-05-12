@@ -1,0 +1,61 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+release/
+coverage/
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Test artifacts
+test-*.db
+test-*.json
+*.db-journal
+.vitest-reports/
+playwright-report/
+test-results/
+
+# MCP test results (generated during interactive execution)
+e2e/mcp/results/screenshots/
+e2e/mcp/results/traces/
+e2e/mcp/results/heap/
+e2e/mcp/results/*.md
+!e2e/mcp/results/.gitkeep
+
+# Old folder structure (cleanup in progress)
+vuln-assess-tool/
+vuln-asses-tool/
+
+# Large NVD fixture files (keep small sample files)
+tests/fixtures/nvd-data/*.json.gz
+tests/fixtures/nvd-data/*-recent.json
+tests/fixtures/nvd-data/*-modified.json
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Claude local settings (contains personal tokens)
+.claude/settings.local.json

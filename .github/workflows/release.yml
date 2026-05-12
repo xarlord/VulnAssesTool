@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Release on ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            arch: x64
+          - os: windows-latest
+            platform: win
+            arch: arm64
+          - os: macos-latest
+            platform: mac
+            arch: x64
+          - os: macos-latest
+            platform: mac
+            arch: arm64
+          - os: macos-latest
+            platform: mac
+            arch: universal
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Setup Windows code signing
+        if: matrix.platform == 'win'
+        run: |
+          echo "Setting up Windows code signing..."
+          echo "Certificate file will be loaded from secrets"
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Setup macOS code signing and notarization
+        if: matrix.platform == 'mac'
+        run: |
+          echo "Setting up macOS code signing..."
+          echo "Importing certificate from keychain..."
+          # Create a temporary keychain
+          security create-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          # Import certificate
+          echo "${{ secrets.MAC_CERTS }}" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "${{ secrets.MAC_CERTS_PASSWORD }}" -T /usr/bin/codesign -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          # Enable notarization
+          echo "Notarization credentials configured"
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MAC_CERTS: ${{ secrets.MAC_CERTS }}
+          MAC_CERTS_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      - name: Build and release ${{ matrix.platform }} ${{ matrix.arch }}
+        run: |
+          if [ "${{ matrix.platform }}" = "win" ]; then
+            npm run dist:win -- --${{ matrix.arch }}
+          elif [ "${{ matrix.platform }}" = "mac" ]; then
+            npm run dist:mac -- --${{ matrix.arch }}
+          else
+            npm run dist:linux -- --${{ matrix.arch }}
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/*
+          retention-days: 30
+
+  create-github-release:
+    name: Create GitHub Release
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## VulnAssessTool ${{ github.ref_name }}
+
+            ### What's Changed
+
+            See the changelog below for details.
+
+            ### Downloads
+
+            - **Windows**: Download the `.exe` installer or portable `.zip`
+            - **macOS**: Download the `.dmg` for Intel or Apple Silicon, or the `.zip` for manual installation
+            - **Linux**: Download the `.AppImage` (universal), `.deb` (Debian/Ubuntu), or `.rpm` (Fedora/RHEL)
+
+            ### Installation
+
+            See the [Deployment Guide](https://github.com/vulnasstool/vuln-asses-tool/blob/main/DEPLOYMENT.md) for detailed installation instructions.
+
+            ### Verification
+
+            All binaries are code-signed:
+            - Windows: Signed with EV Code Signing Certificate
+            - macOS: Signed and notarized with Apple Developer Certificate
+            - Linux: Packages are unsigned (GPG key available separately)
+
+            ### Checksums
+
+            SHA256 checksums are available in the `checksums.txt` file.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Notify Release
+    needs: [release, create-github-release]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Send notification
+        run: |
+          echo "Release workflow completed"
+          echo "Status: ${{ needs.create-github-release.result }}"

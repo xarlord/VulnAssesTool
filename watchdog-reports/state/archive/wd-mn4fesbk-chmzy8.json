@@ -1,0 +1,58 @@
+{
+  "sessionId": "wd-mn4fesbk-chmzy8",
+  "startedAt": "2026-03-24T09:42:32.672Z",
+  "lastUpdatedAt": "2026-03-24T09:42:49.931Z",
+  "currentPhase": "render",
+  "attemptNumber": 5,
+  "maxAttempts": 5,
+  "fixedIssues": [],
+  "currentErrors": [],
+  "status": "failed",
+  "phaseResults": [
+    {
+      "success": false,
+      "output": "[stderr] C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928\r\n    ipcMain.handle(\"ping\", async () => \"pong\");\r\n            ^\r\n\r\nTypeError: Cannot read properties of undefined (reading 'handle')\r\n    at main.cjs (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928:13)\r\n    at __require (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:3:50)\r\n    at Object.<anonymous> (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:8533:18)\r\n    at Module._compile (node:internal/modules/cjs/loader:1769:14)\r\n    at Module._extensions..js (node:internal/modules/cjs/loader:1902:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1488:32)\r\n    at Module._load (node:internal/modules/cjs/loader:1307:12)\r\n    at c._load (node:electron/js2c/node_init:2:17999)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:252:24)\r\n\r\nNode.js v24.11.1\r\n\n[watchdog] Electron exited with code 1",
+      "errors": [],
+      "duration": 1981,
+      "phase": "render",
+      "timestamp": "2026-03-24T09:42:34.658Z",
+      "attempts": 1
+    },
+    {
+      "success": false,
+      "output": "[stderr] C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928\r\n    ipcMain.handle(\"ping\", async () => \"pong\");\r\n            ^\r\n\r\nTypeError: Cannot read properties of undefined (reading 'handle')\r\n    at main.cjs (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928:13)\r\n    at __require (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:3:50)\r\n    at Object.<anonymous> (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:8533:18)\r\n    at Module._compile (node:internal/modules/cjs/loader:1769:14)\r\n    at Module._extensions..js (node:internal/modules/cjs/loader:1902:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1488:32)\r\n    at Module._load (node:internal/modules/cjs/loader:1307:12)\r\n    at c._load (node:electron/js2c/node_init:2:17999)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:252:24)\r\n\r\nNode.js v24.11.1\r\n\n[watchdog] Electron exited with code 1",
+      "errors": [],
+      "duration": 2058,
+      "phase": "render",
+      "timestamp": "2026-03-24T09:42:38.719Z",
+      "attempts": 2
+    },
+    {
+      "success": false,
+      "output": "[stderr] C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928\r\n    ipcMain.handle(\"ping\", async () => \"pong\");\r\n            ^\r\n\r\nTypeError: Cannot read properties of undefined (reading 'handle')\r\n    at main.cjs (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928:13)\r\n    at __require (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:3:50)\r\n    at Object.<anonymous> (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:8533:18)\r\n    at Module._compile (node:internal/modules/cjs/loader:1769:14)\r\n    at Module._extensions..js (node:internal/modules/cjs/loader:1902:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1488:32)\r\n    at Module._load (node:internal/modules/cjs/loader:1307:12)\r\n    at c._load (node:electron/js2c/node_init:2:17999)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:252:24)\r\n\r\nNode.js v24.11.1\r\n\n[watchdog] Electron exited with code 1",
+      "errors": [],
+      "duration": 1653,
+      "phase": "render",
+      "timestamp": "2026-03-24T09:42:42.376Z",
+      "attempts": 3
+    },
+    {
+      "success": false,
+      "output": "[stderr] C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928\r\n    ipcMain.handle(\"ping\", async () => \"pong\");\r\n            ^\r\n\r\nTypeError: Cannot read properties of undefined (reading 'handle')\r\n    at main.cjs (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928:13)\r\n    at __require (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:3:50)\r\n    at Object.<anonymous> (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:8533:18)\r\n    at Module._compile (node:internal/modules/cjs/loader:1769:14)\r\n    at Module._extensions..js (node:internal/modules/cjs/loader:1902:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1488:32)\r\n    at Module._load (node:internal/modules/cjs/loader:1307:12)\r\n    at c._load (node:electron/js2c/node_init:2:17999)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:252:24)\r\n\r\nNode.js v24.11.1\r\n\n[watchdog] Electron exited with code 1",
+      "errors": [],
+      "duration": 1664,
+      "phase": "render",
+      "timestamp": "2026-03-24T09:42:46.045Z",
+      "attempts": 4
+    },
+    {
+      "success": false,
+      "output": "[stderr] C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928\r\n    ipcMain.handle(\"ping\", async () => \"pong\");\r\n            ^\r\n\r\nTypeError: Cannot read properties of undefined (reading 'handle')\r\n    at main.cjs (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:5928:13)\r\n    at __require (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:3:50)\r\n    at Object.<anonymous> (C:\\Users\\sefa.ocakli\\VulnAssesTool\\dist\\electron\\main.cjs:8533:18)\r\n    at Module._compile (node:internal/modules/cjs/loader:1769:14)\r\n    at Module._extensions..js (node:internal/modules/cjs/loader:1902:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1488:32)\r\n    at Module._load (node:internal/modules/cjs/loader:1307:12)\r\n    at c._load (node:electron/js2c/node_init:2:17999)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:252:24)\r\n\r\nNode.js v24.11.1\r\n\n[watchdog] Electron exited with code 1",
+      "errors": [],
+      "duration": 1881,
+      "phase": "render",
+      "timestamp": "2026-03-24T09:42:49.929Z",
+      "attempts": 5
+    }
+  ]
+}
