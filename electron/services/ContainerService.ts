@@ -54,10 +54,11 @@ export class ContainerService {
         windowsHide: true,
       })
       return { stdout, stderr }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // execFile throws on non-zero exit codes
-      const stderr = error.stderr || ''
-      const message = error.message || 'Command failed'
+      const execError = error as { stderr?: string; message?: string }
+      const stderr = execError.stderr || ''
+      const message = execError.message || 'Command failed'
 
       // Check if the error is just "not found"
       if (message.includes('ENOENT') || message.includes('not found') || message.includes('not recognized')) {
@@ -170,11 +171,13 @@ export class ContainerService {
 
     // Normalize Docker manifest v2 schema
     const config = parsed.config || { digest: parsed.configDigest || '' }
-    const layers = (parsed.layers || parsed.manifests || []).map((layer: any) => ({
-      digest: layer.digest || '',
-      size: layer.size || 0,
-      mediaType: layer.mediaType || 'application/vnd.docker.image.rootfs.diff.tar.gzip',
-    }))
+    const layers = (parsed.layers || parsed.manifests || []).map(
+      (layer: { digest?: string; size?: number; mediaType?: string }) => ({
+        digest: layer.digest || '',
+        size: layer.size || 0,
+        mediaType: layer.mediaType || 'application/vnd.docker.image.rootfs.diff.tar.gzip',
+      }),
+    )
 
     return {
       digest: parsed.digest || '',
@@ -196,13 +199,13 @@ export class ContainerService {
   }> {
     const inspectData = await this.getImageInspect(imageRef, runtime)
 
-    const id = inspectData.Id || ''
-    const rootFs = inspectData.RootFS?.Layers || []
+    const id = (inspectData.Id as string) || ''
+    const rootFsLayers = (inspectData.RootFS as { Layers?: string[] })?.Layers || []
 
     return {
       digest: id,
       config: { digest: id },
-      layers: rootFs.map((layer: string) => ({
+      layers: rootFsLayers.map((layer: string) => ({
         digest: layer,
         size: 0,
         mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip',
@@ -219,7 +222,7 @@ export class ContainerService {
   ): Promise<ImageConfig & { Id?: string; RootFS?: { Layers: string[] } }> {
     const { stdout } = await this.runCommand(runtime, ['image', 'inspect', imageRef, '--format', 'json'])
 
-    let parsed: any
+    let parsed: unknown
     try {
       parsed = JSON.parse(stdout)
     } catch {
@@ -227,36 +230,36 @@ export class ContainerService {
     }
 
     // Docker/Podman return an array of inspect results
-    const data = Array.isArray(parsed) ? parsed[0] : parsed
+    const rawData = Array.isArray(parsed) ? parsed[0] : parsed
 
-    if (!data) {
+    if (!rawData || typeof rawData !== 'object') {
       throw new Error('No inspect data returned')
     }
 
-    const config = data.Config || {}
-    const osInfo = data.Os || 'linux'
-    const arch = data.Architecture || data.architecture || 'amd64'
+    // Docker/Podman image inspect output shape (partial)
+    const data = rawData as Record<string, unknown>
+    const config = (data.Config as Record<string, unknown>) || {}
 
     return {
-      Id: data.Id || '',
-      os: osInfo,
-      architecture: arch,
-      variant: data.Variant,
-      created: data.Created,
-      dockerVersion: data.DockerVersion,
-      labels: config.Labels || {},
-      history: data.History || [],
-      RootFS: data.RootFS || { Layers: [] },
+      Id: (data.Id as string) || '',
+      os: (data.Os as string) || 'linux',
+      architecture: (data.Architecture as string) || (data.architecture as string) || 'amd64',
+      variant: data.Variant as string | undefined,
+      created: data.Created as string | undefined,
+      dockerVersion: data.DockerVersion as string | undefined,
+      labels: (config.Labels as Record<string, string>) || {},
+      history: (data.History as Array<Record<string, unknown>>) || [],
+      RootFS: (data.RootFS as { Layers: string[] }) || { Layers: [] },
     }
   }
 
   /**
    * Get raw image inspect data
    */
-  private async getImageInspect(imageRef: string, runtime: ContainerRuntime): Promise<any> {
+  private async getImageInspect(imageRef: string, runtime: ContainerRuntime): Promise<Record<string, unknown>> {
     const { stdout } = await this.runCommand(runtime, ['image', 'inspect', imageRef, '--format', 'json'])
-    const parsed = JSON.parse(stdout)
-    return Array.isArray(parsed) ? parsed[0] : parsed
+    const parsed: unknown = JSON.parse(stdout)
+    return Array.isArray(parsed) ? (parsed[0] as Record<string, unknown>) : (parsed as Record<string, unknown>)
   }
 
   /**
@@ -357,7 +360,7 @@ export class ContainerService {
   private async extractTar(tarPath: string, destDir: string): Promise<void> {
     // Use the `tar` command if available, otherwise skip
     // On Windows, tar is available by default since Windows 10 1803
-    const tarArgs =
+    const tarArgs: [string, string[]] =
       process.platform === 'win32' ? ['tar', ['-xf', tarPath, '-C', destDir]] : ['tar', ['-xf', tarPath, '-C', destDir]]
 
     try {
@@ -365,8 +368,9 @@ export class ContainerService {
         timeout: 60_000,
         windowsHide: true,
       })
-    } catch (error: any) {
-      throw new Error(`Failed to extract tar: ${error.message}`)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`Failed to extract tar: ${message}`)
     }
   }
 

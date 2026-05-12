@@ -70,7 +70,7 @@ export function getKeyTypeSettingName(keyType: ApiKeyType): ApiKeyKeyType {
  * Create secure key service using Electron API
  */
 export function createSecureKeyService(): SecureKeyService {
-  const electronAPI = (window as any).electronAPI
+  const electronAPI = window.electronAPI
 
   if (!electronAPI || !electronAPI.secureStorage) {
     console.warn('Electron secureStorage API not available, using fallback')

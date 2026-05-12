@@ -367,27 +367,32 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
     loadData()
 
     // Set up sync event listeners
-    const unsubscribeProgress = getPlatform().database.onSyncProgress((progress: any) => {
+    const unsubscribeProgress = getPlatform().database.onSyncProgress((rawProgress) => {
       setSyncing(true)
+
+      // Coerce to Record for safe dynamic field access (callback may carry
+      // DeltaSyncProgress or BulkDownloadProgress fields depending on sync type)
+      const progress = rawProgress as unknown as Record<string, unknown>
 
       // Map the progress data to our interface
       setSyncProgress({
-        phase: progress.phase || 'downloading',
-        currentYear: progress.currentYear ?? progress.year ?? null,
-        totalYears: progress.totalYears || 1,
-        yearsCompleted: progress.yearsCompleted || 0,
-        cvesImported: progress.cvesImported ?? progress.cvesProcessed ?? 0,
-        cvesSkipped: progress.cvesSkipped || 0,
-        cvesFailed: progress.cvesFailed || 0,
-        percentComplete: progress.percentComplete ?? progress.percentage ?? 0,
+        phase: (progress.phase as string) || 'downloading',
+        currentYear: (progress.currentYear as number | null) ?? (progress.year as number | null) ?? null,
+        totalYears: (progress.totalYears as number) || 1,
+        yearsCompleted: (progress.yearsCompleted as number) || 0,
+        cvesImported: (progress.cvesImported as number) ?? (progress.cvesProcessed as number) ?? 0,
+        cvesSkipped: (progress.cvesSkipped as number) || 0,
+        cvesFailed: (progress.cvesFailed as number) || 0,
+        percentComplete: (progress.percentComplete as number) ?? (progress.percentage as number) ?? 0,
         estimatedTimeRemainingSec:
-          progress.estimatedTimeRemainingSec ?? Math.ceil((progress.estimatedTimeRemainingMs || 0) / 1000),
-        currentBatch: progress.currentBatch || 0,
-        totalBatches: progress.totalBatches || 0,
-        startedAt: progress.startedAt || new Date().toISOString(),
+          (progress.estimatedTimeRemainingSec as number) ??
+          Math.ceil(((progress.estimatedTimeRemainingMs as number) || 0) / 1000),
+        currentBatch: (progress.currentBatch as number) || 0,
+        totalBatches: (progress.totalBatches as number) || 0,
+        startedAt: (progress.startedAt as string) || new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString(),
-        errors: progress.errors || [],
-        downloadSpeed: progress.downloadSpeed || 0,
+        errors: (progress.errors as string[]) || [],
+        downloadSpeed: (progress.downloadSpeed as number) || 0,
       })
 
       if (!showSyncModal) {
@@ -407,9 +412,9 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
       }, 2000)
     })
 
-    const unsubscribeError = getPlatform().database.onSyncError((err: any) => {
+    const unsubscribeError = getPlatform().database.onSyncError((err: string) => {
       setSyncing(false)
-      setError(err.error || err.message || 'Sync failed')
+      setError(err || 'Sync failed')
 
       setSyncProgress((prev) =>
         prev

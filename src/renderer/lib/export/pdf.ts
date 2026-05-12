@@ -139,7 +139,7 @@ export function prepareVulnerabilitiesPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = (doc as any).lastAutoTable.finalY + 15
+  yPosition = doc.lastAutoTable?.finalY + 15
 
   // Vulnerabilities section
   doc.setFontSize(12)
@@ -182,8 +182,8 @@ export function prepareVulnerabilitiesPdf(project: Project): jsPDF {
       if (data.column.index === 1 && data.section === 'body') {
         const severity = data.cell.raw as string
         const color = getSeverityColor(severity)
-        ;(data.cell.styles as any).textColor = color
-        ;(data.cell.styles as any).fontStyle = 'bold'
+        data.cell.styles.textColor = color
+        data.cell.styles.fontStyle = 'bold'
       }
     },
     pageBreak: 'auto',
@@ -240,7 +240,7 @@ export function prepareComponentsPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = (doc as any).lastAutoTable.finalY + 15
+  yPosition = doc.lastAutoTable?.finalY + 15
 
   // Components section
   doc.setFontSize(12)
@@ -284,8 +284,8 @@ export function prepareComponentsPdf(project: Project): jsPDF {
       if (data.column.index === 4 && data.section === 'body') {
         const vulnCount = parseInt(data.cell.raw as string)
         if (vulnCount > 0) {
-          ;(data.cell.styles as any).textColor = [220, 38, 38] // Red-600
-          ;(data.cell.styles as any).fontStyle = 'bold'
+          data.cell.styles.textColor = [220, 38, 38] // Red-600
+          data.cell.styles.fontStyle = 'bold'
         }
       }
     },
@@ -346,7 +346,7 @@ export function prepareProjectPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = (doc as any).lastAutoTable.finalY + 12
+  yPosition = doc.lastAutoTable?.finalY + 12
 
   // Statistics section
   doc.setFontSize(12)
@@ -380,7 +380,7 @@ export function prepareProjectPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = (doc as any).lastAutoTable.finalY + 12
+  yPosition = doc.lastAutoTable?.finalY + 12
 
   // All vulnerabilities section
   doc.setFontSize(12)
@@ -429,13 +429,13 @@ export function prepareProjectPdf(project: Project): jsPDF {
       if (data.column.index === 1 && data.section === 'body') {
         const severity = data.cell.raw as string
         const color = getSeverityColor(severity)
-        ;(data.cell.styles as any).textColor = color
-        ;(data.cell.styles as any).fontStyle = 'bold'
+        data.cell.styles.textColor = color
+        data.cell.styles.fontStyle = 'bold'
       }
     },
   })
 
-  yPosition = (doc as any).lastAutoTable.finalY + 12
+  yPosition = doc.lastAutoTable?.finalY + 12
 
   // Components summary section
   doc.addPage()
@@ -534,7 +534,7 @@ export function prepareAllProjectsPdf(projects: Project[]): jsPDF {
     },
   })
 
-  yPosition = (doc as any).lastAutoTable.finalY + 12
+  yPosition = doc.lastAutoTable?.finalY + 12
 
   // Projects list
   doc.setFontSize(12)

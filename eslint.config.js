@@ -40,26 +40,24 @@ export default defineConfig([
       // NOTE: Google TS forbids `_` prefix; the underscore allowance here is a
       // legacy escape hatch that PR 4 will remove (see remediation plan).
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      // Google TS Style: any is forbidden. Currently `warn` so existing ~600
-      // instances surface in CI output. PR 5 flips this to `error` once cleared.
-      '@typescript-eslint/no-explicit-any': 'warn',
-      // Google TS Style: non-null assertions require justifying comments.
-      // Surfaces ~220 existing assertions; PR 4 audits/converts each one.
-      '@typescript-eslint/no-non-null-assertion': 'warn',
+      // Google TS Style: any is forbidden. PR 5 cleared all instances.
+      '@typescript-eslint/no-explicit-any': 'error',
+      // Google TS Style: non-null assertions require explicit guards.
+      // PR 4 audited/converted all instances.
+      '@typescript-eslint/no-non-null-assertion': 'error',
       // Google TS/JS Style: default exports are banned. Override below for
       // framework-required configs (vite, vitest, playwright, eslint, etc.).
       // Surfaces 58 renderer + 1 orchestrator default exports; PR 3 codemods
       // them to named exports via ts-morph.
       'no-restricted-syntax': [
-        'warn',
+        'error',
         {
           selector: 'ExportDefaultDeclaration',
           message: 'Default exports are banned by Google TS Style. Use named exports.',
         },
       ],
-      // Google TS Style: no `_` prefix/suffix on identifiers. Small footprint
-      // (~15 places); PR 4 renames them.
-      'no-underscore-dangle': ['warn', { allow: [] }],
+      // Google TS Style: no `_` prefix/suffix. PR 4 renamed all instances.
+      'no-underscore-dangle': ['error', { allow: [] }],
       // Warn instead of error for react-refresh issues
       'react-refresh/only-export-components': 'warn',
       // Warn for empty blocks
@@ -70,8 +68,8 @@ export default defineConfig([
       '@typescript-eslint/no-empty-object-type': 'error',
       // Error for ban-ts-comment
       '@typescript-eslint/ban-ts-comment': 'error',
-      // Warn for require imports
-      '@typescript-eslint/no-require-imports': 'warn',
+      // Error for require imports — PR 5 converted all to dynamic imports
+      '@typescript-eslint/no-require-imports': 'error',
       // Allow unused expressions (needed for expect statements in tests)
       '@typescript-eslint/no-unused-expressions': 'off',
       // Disable React Compiler errors - these are not standard ESLint rules

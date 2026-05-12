@@ -8,6 +8,7 @@ import type {
   VersionRange,
   RemediationAdvice,
   RemediationStep,
+  CvssBreakdown,
 } from '@@/types'
 import { OSV_API_BASE_URL, HIGH_SCORE_THRESHOLD, MEDIUM_SCORE_THRESHOLD } from '@@/constants'
 import {
@@ -270,7 +271,7 @@ export class OsvProvider extends BaseVulnerabilityProvider {
     let severity: Vulnerability['severity'] = 'none'
     let cvssScore: number | undefined
     let cvssVector: string | undefined
-    let cvssBreakdown: any = undefined
+    let cvssBreakdown: CvssBreakdown | undefined = undefined
 
     if (osvVuln.severity && osvVuln.severity.length > 0) {
       const severityData = osvVuln.severity[0]

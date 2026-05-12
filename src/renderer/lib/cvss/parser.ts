@@ -75,7 +75,7 @@ function parseMetricValue(parts: string[], prefix: string): string {
   const mappingKey = prefix === 'S' ? 'scope' : prefix
 
   // Map to full name
-  const mapping = (CVSS_METRIC_VALUES as any)[mappingKey]
+  const mapping = (CVSS_METRIC_VALUES as Record<string, Record<string, string>>)[mappingKey]
   return mapping[value] || value
 }
 

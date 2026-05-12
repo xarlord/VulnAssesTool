@@ -83,23 +83,28 @@ Run after every change:
 
 See `coding-guide-fixed.md` for full details. Current status:
 
-| PR   | Status  | Description                                                           |
-| ---- | ------- | --------------------------------------------------------------------- |
-| PR 1 | DONE    | Tooling & guardrails (ESLint rules, tsconfig strict, ts-morph devDep) |
-| PR 2 | DONE    | Type the IPC boundary — shared IPC types, platform/types.ts rewrite   |
-| PR 3 | DONE    | Default exports → named (ts-morph codemod)                            |
-| PR 4 | NEXT    | Targeted any/!/as cleanup, Recharts types, catch comments             |
-| PR 5 | Pending | Long-tail any sweep, main.ts split, rules → error                     |
+| PR   | Status | Description                                                           |
+| ---- | ------ | --------------------------------------------------------------------- |
+| PR 1 | DONE   | Tooling & guardrails (ESLint rules, tsconfig strict, ts-morph devDep) |
+| PR 2 | DONE   | Type the IPC boundary — shared IPC types, platform/types.ts rewrite   |
+| PR 3 | DONE   | Default exports → named (ts-morph codemod)                            |
+| PR 4 | DONE   | Targeted any/!/as cleanup, underscore rename, catch comments          |
+| PR 5 | DONE   | Long-tail any sweep, require→import, no-empty fixes, rules → error    |
 
-### Warning Counts (post-PR 3: 242 total, down from 384)
+### Warning Counts (post-PR 5: 20 total, down from 384)
 
-| Rule                  | Count | Targeted by |
-| --------------------- | ----- | ----------- |
-| no-explicit-any       | 140   | PR 4-5      |
-| default exports       | 0     | PR 3 (done) |
-| no-non-null-assertion | 53    | PR 4        |
-| no-underscore-dangle  | 28    | PR 4        |
-| no-empty              | 19    | PR 4        |
+| Rule                                 | Count | Status                            |
+| ------------------------------------ | ----- | --------------------------------- |
+| no-explicit-any                      | 0     | DONE (PR 5)                       |
+| default exports                      | 0     | DONE (PR 3)                       |
+| no-non-null-assertion                | 0     | DONE (PR 4)                       |
+| no-underscore-dangle                 | 0     | DONE (PR 4)                       |
+| no-require-imports                   | 0     | DONE (PR 5)                       |
+| no-empty                             | 0     | DONE (PR 5)                       |
+| react-refresh/only-export-components | 10    | out of scope (dev-only)           |
+| react-hooks/exhaustive-deps          | 5     | out of scope (intentional deps)   |
+| no-case-declarations                 | 4     | out of scope (existing patterns)  |
+| no-empty-pattern                     | 1     | out of scope (Playwright fixture) |
 
 ## Pre-existing Issues
 

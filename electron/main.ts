@@ -517,7 +517,16 @@ ipcMain.handle(
           }
         }
 
-        let results: any[] = []
+        let results: Array<{
+          id: string
+          description: string
+          severity?: string
+          cvss_score?: number
+          cvss_vector?: string
+          published_at: string
+          modified_at: string
+          source: string
+        }> = []
         let total = 0
 
         // Sanitize query input based on search type
@@ -582,11 +591,11 @@ ipcMain.handle(
         }
 
         // Convert 'NONE' severity to 'LOW' for display
-        const mappedResults = results.map((cve: any) => ({
+        const mappedResults = results.map((cve) => ({
           id: cve.id,
           cveId: cve.id,
           description: cve.description,
-          severity: normalizeDisplaySeverity(cve.severity),
+          severity: normalizeDisplaySeverity(cve.severity ?? 'LOW') as import('./types/database.js').Severity,
           cvssScore: cve.cvss_score || 0,
           cvssVector: cve.cvss_vector,
           publishedAt: cve.published_at,
@@ -649,7 +658,7 @@ ipcMain.handle(
           id: cve.id,
           cveId: cve.id,
           description: cve.description,
-          severity: normalizeDisplaySeverity(cve.severity),
+          severity: normalizeDisplaySeverity(cve.severity) as import('./types/database.js').Severity,
           cvssScore: cve.cvss_score || 0,
           cvssVector: cve.cvss_vector,
           publishedAt: cve.published_at,
@@ -1359,7 +1368,7 @@ ipcMain.handle(
     _: IpcMainInvokeEvent,
     query: string,
     limit?: number,
-  ): Promise<{ success: boolean; results?: any[]; error?: string }> => {
+  ): Promise<{ success: boolean; results?: Array<{ id: string; rank: number }>; error?: string }> => {
     try {
       if (!database) {
         return { success: false, error: 'Database not initialized' }
@@ -1384,34 +1393,51 @@ ipcMain.handle(
   },
 )
 
-ipcMain.handle('db:fts-stats', async (): Promise<{ success: boolean; stats?: any; error?: string }> => {
-  try {
-    if (!database) {
-      return { success: false, error: 'Database not initialized' }
-    }
-    const db = database.getRawDb()
-    if (!db) {
-      return { success: false, error: 'Raw database not available' }
-    }
+ipcMain.handle(
+  'db:fts-stats',
+  async (): Promise<{ success: boolean; stats?: { indexedCount: number; totalCount: number }; error?: string }> => {
+    try {
+      if (!database) {
+        return { success: false, error: 'Database not initialized' }
+      }
+      const db = database.getRawDb()
+      if (!db) {
+        return { success: false, error: 'Raw database not available' }
+      }
 
-    const { getFTSStats } = await import('./database/ftsMigration.js')
-    const stats = getFTSStats(db)
-    return { success: true, stats }
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to get FTS stats' }
-  }
-})
+      const { getFTSStats } = await import('./database/ftsMigration.js')
+      const stats = getFTSStats(db)
+      return { success: true, stats }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to get FTS stats' }
+    }
+  },
+)
 
-ipcMain.handle('db:cache-stats', async (): Promise<{ success: boolean; stats?: any; error?: string }> => {
-  try {
-    const { CacheManager } = await import('./services/CacheManager.js')
-    const cache = CacheManager.getInstance()
-    const stats = cache.getStats()
-    return { success: true, stats }
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to get cache stats' }
-  }
-})
+ipcMain.handle(
+  'db:cache-stats',
+  async (): Promise<{
+    success: boolean
+    stats?: {
+      hits: number
+      misses: number
+      entryCount: number
+      sizeBytes: number
+      maxSizeBytes: number
+      hitRate: number
+    }
+    error?: string
+  }> => {
+    try {
+      const { CacheManager } = await import('./services/CacheManager.js')
+      const cache = CacheManager.getInstance()
+      const stats = cache.getStats()
+      return { success: true, stats }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to get cache stats' }
+    }
+  },
+)
 
 ipcMain.handle('db:cache-clear', async (): Promise<{ success: boolean; error?: string }> => {
   try {

@@ -10,6 +10,7 @@
  */
 
 import initSqlJs from 'sql.js'
+import type { Database as SqlJsDatabase } from 'sql.js'
 import * as fs from 'fs'
 import * as path from 'path'
 import { runMigrations, getSchemaVersion } from '../electron/database/migrations/v2SchemaMigration.js'
@@ -43,7 +44,7 @@ async function main() {
   const dbPath = await getDatabasePath()
   console.log(`Database path: ${dbPath}`)
 
-  let db: any
+  let db: SqlJsDatabase
   if (fs.existsSync(dbPath)) {
     console.log('Loading existing database...')
     const fileBuffer = fs.readFileSync(dbPath)

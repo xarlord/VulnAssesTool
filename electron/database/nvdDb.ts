@@ -5,13 +5,39 @@
  */
 
 import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import type { Database, SqlJsStatic } from 'sql.js'
 import { promises as fs } from 'node:fs'
 import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
 import type { CVE, CPEMatch, Reference, CVEWithDetails, DatabaseMetadata } from './types.js'
+import type { CveFullDetails, CpeMatchFull, CweReference, ReferenceFull, CvssMetric } from '../types/database.js'
 import { rowsToObjects } from './queryUtils.js'
+
+/** Row shape from the `cves` table returned by getAsObject() */
+interface CveRow {
+  id: string
+  description: string
+  cvss_score: number | null
+  cvss_vector: string | null
+  severity: string | null
+  published_at: string
+  modified_at: string
+  source: string
+  vuln_status: string | null
+  assigner: string | null
+  cvss_v31_score: number | null
+  cvss_v31_vector: string | null
+  cvss_v31_severity: string | null
+  cvss_v30_score: number | null
+  cvss_v30_vector: string | null
+  cvss_v30_severity: string | null
+  cvss_v2_score: number | null
+  cvss_v2_vector: string | null
+  cvss_v2_severity: string | null
+  cvss_score_legacy: number | null
+  cvss_vector_legacy: string | null
+}
 
 /**
  * Async mutex to prevent concurrent database operations
@@ -48,7 +74,7 @@ class AsyncMutex {
 export class NvdDatabase {
   private db: Database | null = null
   private dbPath: string
-  private sqlJs: any = null
+  private sqlJs: SqlJsStatic | null = null
   private autoSaveInterval: NodeJS.Timeout | null = null
   private saveMutex = new AsyncMutex()
   // Store bound handlers for proper cleanup
@@ -196,6 +222,7 @@ export class NvdDatabase {
 
     for (const backupPath of backupPaths) {
       try {
+        if (!this.sqlJs) throw new Error('sql.js not initialized')
         const buffer = readFileSync(backupPath)
         const testDb = new this.sqlJs.Database(buffer)
 
@@ -618,10 +645,10 @@ export class NvdDatabase {
     if (!this.db) throw new Error('Database not initialized')
 
     const stmt = this.db.prepare('SELECT * FROM cves WHERE id = ?')
-    const result = stmt.getAsObject([id]) as any
+    const result = stmt.getAsObject([id]) as unknown as CveRow
     stmt.free()
 
-    if (!result) return null
+    if (!result || !result.id) return null
 
     // Get CPE matches
     const cpeStmt = this.db.prepare('SELECT * FROM cpe_matches WHERE cve_id = ?')
@@ -632,9 +659,9 @@ export class NvdDatabase {
       const rows = rowsToObjects(cpeResults[0].columns, cpeResults[0].values)
       for (const match of rows) {
         cpeMatches.push({
-          id: match.id,
-          cve_id: match.cve_id,
-          cpe_text: match.cpe_text,
+          id: match.id as number,
+          cve_id: match.cve_id as string,
+          cpe_text: match.cpe_text as string,
           vulnerable: match.vulnerable === 1,
         })
       }
@@ -650,11 +677,11 @@ export class NvdDatabase {
       const rows = rowsToObjects(refResults[0].columns, refResults[0].values)
       for (const ref of rows) {
         references.push({
-          id: ref.id,
-          cve_id: ref.cve_id,
-          url: ref.url,
-          source: ref.source || undefined,
-          tags: ref.tags || undefined,
+          id: ref.id as number,
+          cve_id: ref.cve_id as string,
+          url: ref.url as string,
+          source: (ref.source as string) || undefined,
+          tags: (ref.tags as string) || undefined,
         })
       }
     }
@@ -662,12 +689,12 @@ export class NvdDatabase {
     return {
       id: result.id,
       description: result.description,
-      cvss_score: result.cvss_score,
-      cvss_vector: result.cvss_vector,
-      severity: result.severity,
+      cvss_score: result.cvss_score ?? undefined,
+      cvss_vector: result.cvss_vector ?? undefined,
+      severity: (result.severity ?? undefined) as CVE['severity'],
       published_at: result.published_at,
       modified_at: result.modified_at,
-      source: result.source,
+      source: result.source as CVE['source'],
       cpe_matches: cpeMatches,
       references,
     }
@@ -676,12 +703,12 @@ export class NvdDatabase {
   /**
    * Get full CVE details with CPE matches, CWE references, and external references
    */
-  getCVEFullDetails(id: string): any | null {
+  getCVEFullDetails(id: string): CveFullDetails | null {
     if (!this.db) throw new Error('Database not initialized')
 
     // Get main CVE record
     const stmt = this.db.prepare('SELECT * FROM cves WHERE id = ?')
-    const result = stmt.getAsObject([id]) as any
+    const result = stmt.getAsObject([id]) as unknown as CveRow
     stmt.free()
 
     if (!result) return null
@@ -696,20 +723,20 @@ export class NvdDatabase {
     `,
       [id],
     )
-    const cpeMatches: any[] = []
+    const cpeMatches: CpeMatchFull[] = []
 
     if (cpeResults.length > 0) {
       const rows = rowsToObjects(cpeResults[0].columns, cpeResults[0].values)
       for (const match of rows) {
         cpeMatches.push({
-          id: match.id,
-          cveId: match.cve_id,
-          cpe23Uri: match.cpe23_uri,
+          id: match.id as number,
+          cveId: match.cve_id as string,
+          cpe23Uri: match.cpe23_uri as string,
           vulnerable: match.vulnerable === 1,
-          versionStartIncluding: match.version_start_including || undefined,
-          versionStartExcluding: match.version_start_excluding || undefined,
-          versionEndIncluding: match.version_end_including || undefined,
-          versionEndExcluding: match.version_end_excluding || undefined,
+          versionStartIncluding: (match.version_start_including as string) || undefined,
+          versionStartExcluding: (match.version_start_excluding as string) || undefined,
+          versionEndIncluding: (match.version_end_including as string) || undefined,
+          versionEndExcluding: (match.version_end_excluding as string) || undefined,
         })
       }
     }
@@ -722,16 +749,16 @@ export class NvdDatabase {
     `,
       [id],
     )
-    const cweReferences: any[] = []
+    const cweReferences: CweReference[] = []
 
     if (cweResults.length > 0) {
       const rows = rowsToObjects(cweResults[0].columns, cweResults[0].values)
       for (const cwe of rows) {
         cweReferences.push({
-          id: cwe.id,
-          cveId: cwe.cve_id,
-          cweId: cwe.cwe_id,
-          description: cwe.description || undefined,
+          id: cwe.id as number,
+          cveId: cwe.cve_id as string,
+          cweId: cwe.cwe_id as string,
+          description: (cwe.description as string) || undefined,
         })
       }
     }
@@ -744,7 +771,7 @@ export class NvdDatabase {
     `,
       [id],
     )
-    const references: any[] = []
+    const references: ReferenceFull[] = []
     const referenceTags: Set<string> = new Set()
 
     if (refResults.length > 0) {
@@ -766,18 +793,18 @@ export class NvdDatabase {
         }
 
         references.push({
-          id: ref.id,
-          cveId: ref.cve_id,
-          url: ref.url,
-          source: ref.source || undefined,
+          id: ref.id as number,
+          cveId: ref.cve_id as string,
+          url: ref.url as string,
+          source: (ref.source as string) || undefined,
           tags: tagsArray.length > 0 ? tagsArray : undefined,
-          referenceType: ref.reference_type || undefined,
+          referenceType: (ref.reference_type as string) || undefined,
         })
       }
     }
 
     // Determine severity from CVSS scores (prefer v3.1, then v3.0, then v2.0, then legacy)
-    let severity = result.severity || 'LOW'
+    let severity: string = result.severity || 'LOW'
     if (result.cvss_v31_severity) {
       severity = result.cvss_v31_severity
     } else if (result.cvss_v30_severity) {
@@ -803,18 +830,18 @@ export class NvdDatabase {
       [id],
     )
 
-    const cvssMetrics: any[] = []
+    const cvssMetrics: CvssMetric[] = []
     if (cvssMetricsResults.length > 0 && cvssMetricsResults[0].values.length > 0) {
       for (const row of cvssMetricsResults[0].values) {
         cvssMetrics.push({
-          source: row[0],
-          type: row[1],
-          version: row[2],
-          score: row[3],
-          severity: row[4],
-          vector: row[5],
-          exploitabilityScore: row[6] || undefined,
-          impactScore: row[7] || undefined,
+          source: row[0] as string,
+          type: row[1] as string,
+          version: row[2] as '3.1' | '3.0' | '2.0',
+          score: row[3] as number,
+          severity: row[4] as string,
+          vector: row[5] as string,
+          exploitabilityScore: (row[6] as number) || undefined,
+          impactScore: (row[7] as number) || undefined,
         })
       }
     }
@@ -823,28 +850,29 @@ export class NvdDatabase {
       id: result.id,
       description: result.description,
       // CVSS v3.1
-      cvssV31Score: result.cvss_v31_score || undefined,
-      cvssV31Vector: result.cvss_v31_vector || undefined,
-      cvssV31Severity: result.cvss_v31_severity || undefined,
+      cvssV31Score: result.cvss_v31_score ?? undefined,
+      cvssV31Vector: result.cvss_v31_vector ?? undefined,
+      cvssV31Severity: (result.cvss_v31_severity ?? undefined) as import('../types/database.js').Severity | undefined,
       // CVSS v3.0
-      cvssV30Score: result.cvss_v30_score || undefined,
-      cvssV30Vector: result.cvss_v30_vector || undefined,
-      cvssV30Severity: result.cvss_v30_severity || undefined,
+      cvssV30Score: result.cvss_v30_score ?? undefined,
+      cvssV30Vector: result.cvss_v30_vector ?? undefined,
+      cvssV30Severity: (result.cvss_v30_severity ?? undefined) as import('../types/database.js').Severity | undefined,
       // CVSS v2.0
-      cvssV2Score: result.cvss_v2_score || undefined,
-      cvssV2Vector: result.cvss_v2_vector || undefined,
-      cvssV2Severity: result.cvss_v2_severity || undefined,
+      cvssV2Score: result.cvss_v2_score ?? undefined,
+      cvssV2Vector: result.cvss_v2_vector ?? undefined,
+      cvssV2Severity: (result.cvss_v2_severity ?? undefined) as string | undefined,
       // Legacy fields
-      cvssScore: result.cvss_score || result.cvss_v31_score || result.cvss_v30_score || result.cvss_v2_score || 0,
-      cvssVector: result.cvss_vector || result.cvss_v31_vector || result.cvss_v30_vector || result.cvss_v2_vector,
-      severity: severity,
+      cvssScore: result.cvss_score ?? result.cvss_v31_score ?? result.cvss_v30_score ?? result.cvss_v2_score ?? 0,
+      cvssVector:
+        result.cvss_vector ?? result.cvss_v31_vector ?? result.cvss_v30_vector ?? result.cvss_v2_vector ?? undefined,
+      severity: severity as import('../types/database.js').Severity,
       // Dates
       publishedAt: result.published_at,
       modifiedAt: result.modified_at,
       // Source tracking
       source: result.source || 'NVD',
-      vulnStatus: result.vuln_status || undefined,
-      assigner: result.assigner || undefined,
+      vulnStatus: result.vuln_status ?? undefined,
+      assigner: result.assigner ?? undefined,
       // Related data
       cpeMatches,
       cweReferences,
@@ -878,7 +906,7 @@ export class NvdDatabase {
     if (results.length > 0) {
       const rows = rowsToObjects(results[0].columns, results[0].values)
       for (const cve of rows) {
-        cves.push(cve as CVE)
+        cves.push(cve as unknown as CVE)
       }
     }
 
@@ -908,7 +936,7 @@ export class NvdDatabase {
     if (results.length > 0) {
       const rows = rowsToObjects(results[0].columns, results[0].values)
       for (const cve of rows) {
-        cves.push(cve as CVE)
+        cves.push(cve as unknown as CVE)
       }
     }
 
@@ -955,7 +983,6 @@ export class NvdDatabase {
    */
   getDbSize(): number {
     try {
-      const { statSync } = require('node:fs')
       const stats = statSync(this.dbPath)
       return stats.size
     } catch {

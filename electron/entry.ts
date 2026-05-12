@@ -7,9 +7,9 @@
 
 // Set up global polyfills for any libraries that might need them
 // eslint-disable-next-line no-underscore-dangle
-;(globalThis as any).__dirname = __dirname
+;(globalThis as Record<string, unknown>).__dirname = __dirname
 // eslint-disable-next-line no-underscore-dangle
-;(globalThis as any).__filename = __filename
+;(globalThis as Record<string, unknown>).__filename = __filename
 
 // Load the main application
-require('./main.js')
+import './main.js'

@@ -110,7 +110,7 @@ export class PhaseRunner extends EventEmitter {
         success: false,
         output: capture.getOutput(),
         errors: interceptor.getErrors(),
-        duration: Date.now() - (capture as any).startTime || 0,
+        duration: 0,
         phase: 'build',
         timestamp: new Date(),
         attempts: 1,

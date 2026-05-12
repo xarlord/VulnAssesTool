@@ -60,7 +60,8 @@ export function createAuditMiddleware<T extends object>(_storeName: string): Sta
     }
 
     // Create store with wrapped set
-    return (set as any)(wrappedSet, get, api)
+    // Zustand middleware re-invokes set as the store initializer.
+    return (set as (...args: unknown[]) => unknown)(wrappedSet, get, api) as T
   }
 }
 

@@ -31,11 +31,14 @@ import type {
   UpdateErrorEvent,
 } from './types/updater'
 import { type BackupAPI } from './types/backup'
+import type { BackupInfo, BackupConfig } from './services/BackupService'
+import type { CacheStats } from './services/CacheManager'
 import {
   INTELLIGENCE_IPC_CHANNELS,
   type IntelligenceAPI,
   type EpssScore,
   type KevSyncResult,
+  type KevEntry,
 } from './types/intelligence'
 import { CONTAINER_IPC_CHANNELS, type ContainerAPI, type ContainerRuntime } from './types/container'
 
@@ -390,16 +393,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // FTS Search
-    searchFts: (query: string, limit?: number): Promise<{ success: boolean; results?: any[]; error?: string }> => {
+    searchFts: (
+      query: string,
+      limit?: number,
+    ): Promise<{ success: boolean; results?: Array<{ id: string; rank: number }>; error?: string }> => {
       return ipcRenderer.invoke('db:search-fts', query, limit)
     },
 
-    getFtsStats: (): Promise<{ success: boolean; stats?: any; error?: string }> => {
+    getFtsStats: (): Promise<{
+      success: boolean
+      stats?: { indexedCount: number; totalCount: number }
+      error?: string
+    }> => {
       return ipcRenderer.invoke('db:fts-stats')
     },
 
     // Cache management
-    getCacheStats: (): Promise<{ success: boolean; stats?: any; error?: string }> => {
+    getCacheStats: (): Promise<{ success: boolean; stats?: CacheStats; error?: string }> => {
       return ipcRenderer.invoke('db:cache-stats')
     },
 
@@ -433,28 +443,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
     /**
      * Create a new backup
      */
-    createBackup: (): Promise<{ success: boolean; backup?: any; error?: string }> => {
+    createBackup: (): Promise<{ success: boolean; backup?: BackupInfo; error?: string }> => {
       return ipcRenderer.invoke(BACKUP_IPC_CHANNELS_PRELOAD.CREATE_BACKUP)
     },
 
     /**
      * List all available backups
      */
-    listBackups: (): Promise<{ success: boolean; backups?: any[]; error?: string }> => {
+    listBackups: (): Promise<{ success: boolean; backups?: BackupInfo[]; error?: string }> => {
       return ipcRenderer.invoke(BACKUP_IPC_CHANNELS_PRELOAD.LIST_BACKUPS)
     },
 
     /**
      * Restore from a specific backup
      */
-    restoreBackup: (backupId: string): Promise<{ success: boolean; backup?: any; error?: string }> => {
+    restoreBackup: (backupId: string): Promise<{ success: boolean; backup?: BackupInfo; error?: string }> => {
       return ipcRenderer.invoke(BACKUP_IPC_CHANNELS_PRELOAD.RESTORE_BACKUP, backupId)
     },
 
     /**
      * Delete a specific backup
      */
-    deleteBackup: (backupId: string): Promise<{ success: boolean; backup?: any; error?: string }> => {
+    deleteBackup: (backupId: string): Promise<{ success: boolean; backup?: BackupInfo; error?: string }> => {
       return ipcRenderer.invoke(BACKUP_IPC_CHANNELS_PRELOAD.DELETE_BACKUP, backupId)
     },
 
@@ -470,21 +480,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     /**
      * Get current backup configuration
      */
-    getConfig: (): Promise<{ success: boolean; config?: any; error?: string }> => {
+    getConfig: (): Promise<{ success: boolean; config?: BackupConfig; error?: string }> => {
       return ipcRenderer.invoke(BACKUP_IPC_CHANNELS_PRELOAD.GET_CONFIG)
     },
 
     /**
      * Update backup configuration
      */
-    updateConfig: (config: any): Promise<{ success: boolean; error?: string }> => {
+    updateConfig: (config: Partial<BackupConfig>): Promise<{ success: boolean; error?: string }> => {
       return ipcRenderer.invoke(BACKUP_IPC_CHANNELS_PRELOAD.UPDATE_CONFIG, config)
     },
 
     /**
      * Get backup statistics
      */
-    getStats: (): Promise<{ success: boolean; stats?: any; error?: string }> => {
+    getStats: (): Promise<{
+      success: boolean
+      stats?: {
+        totalBackups: number
+        totalSize: number
+        oldestBackup?: Date
+        newestBackup?: Date
+        nextScheduledBackup?: Date
+      }
+      error?: string
+    }> => {
       return ipcRenderer.invoke(BACKUP_IPC_CHANNELS_PRELOAD.GET_STATS)
     },
   } as BackupAPI,
@@ -502,7 +522,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return ipcRenderer.invoke(INTELLIGENCE_IPC_CHANNELS.CHECK_KEV, cveId)
     },
 
-    getKevDetails: (cveId: string): Promise<{ success: boolean; entry: any | null; error?: string }> => {
+    getKevDetails: (cveId: string): Promise<{ success: boolean; entry: KevEntry | null; error?: string }> => {
       return ipcRenderer.invoke(INTELLIGENCE_IPC_CHANNELS.GET_KEV_DETAILS, cveId)
     },
 

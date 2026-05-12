@@ -6,17 +6,18 @@
  */
 
 import { app, BrowserWindow, dialog } from 'electron'
+import type { AppUpdater, UpdateInfo, ProgressInfo } from 'electron-updater'
 
 // Lazy-loaded autoUpdater to avoid initialization before app is ready
-let autoUpdater: any = null
+let autoUpdater: AppUpdater | null = null
 let updateCheckInterval: ReturnType<typeof setInterval> | null = null
 
 /**
  * Get or initialize the autoUpdater (lazy loading)
  */
-function getAutoUpdater(): any {
+async function getAutoUpdater(): Promise<AppUpdater> {
   if (!autoUpdater) {
-    const { autoUpdater: updater } = require('electron-updater')
+    const { autoUpdater: updater } = await import('electron-updater')
     autoUpdater = updater
 
     // Configure update source (GitHub Releases)
@@ -28,10 +29,12 @@ function getAutoUpdater(): any {
 
     // Configure logger (if available in production)
     try {
-      const electronLog = require('electron-log')
-      autoUpdater.logger = electronLog
+      const electronLog = await import('electron-log')
+      autoUpdater.logger = electronLog.default as unknown as import('electron-updater').Logger
       if (autoUpdater.logger) {
-        autoUpdater.logger.transports.file.level = 'info'
+        // electron-log uses transports.file.level for configuration
+        const logger = autoUpdater.logger as unknown as { transports: { file: { level: string } } }
+        logger.transports.file.level = 'info'
       }
     } catch {
       // electron-log not available, continue without logging
@@ -65,29 +68,28 @@ export function initializeUpdater(window: BrowserWindow): void {
   setTimeout(() => {
     if (app.isPackaged) {
       log.info('Checking for updates...')
-      try {
-        const autoUpdater = getAutoUpdater()
-        autoUpdater.checkForUpdates()
-      } catch (error) {
-        log.error('Failed to check for updates:', error)
-      }
+      void getAutoUpdater()
+        .then((up) => up.checkForUpdates())
+        .catch((error: unknown) => {
+          log.error('Failed to check for updates:', error)
+        })
     } else {
       log.info('Update check skipped - running in development mode')
     }
-  }, 5000) // Check 5 seconds after startup
+  }, 5000)
 
   // Set up event handlers
-  setupUpdaterEvents()
+  void setupUpdaterEvents()
 }
 
 /**
  * Set up auto-updater event handlers
  */
-function setupUpdaterEvents(): void {
-  const autoUpdater = getAutoUpdater()
+async function setupUpdaterEvents(): Promise<void> {
+  const autoUpdater = await getAutoUpdater()
 
   // Update available
-  autoUpdater.on('update-available', (info: any) => {
+  autoUpdater.on('update-available', (info: UpdateInfo) => {
     log.info('Update available:', info.version)
     updateAvailable = true
 
@@ -101,7 +103,7 @@ function setupUpdaterEvents(): void {
   })
 
   // Update not available
-  autoUpdater.on('update-not-available', (info: any) => {
+  autoUpdater.on('update-not-available', (info: UpdateInfo) => {
     log.info('Update not available. Current version:', info.version)
     updateAvailable = false
 
@@ -113,7 +115,7 @@ function setupUpdaterEvents(): void {
   })
 
   // Download progress
-  autoUpdater.on('download-progress', (progress: any) => {
+  autoUpdater.on('download-progress', (progress: ProgressInfo) => {
     log.info(`Download progress: ${Math.round(progress.percent || 0)}%`)
 
     if (mainWindow) {
@@ -127,7 +129,7 @@ function setupUpdaterEvents(): void {
   })
 
   // Update downloaded
-  autoUpdater.on('update-downloaded', (info: any) => {
+  autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
     log.info('Update downloaded:', info.version)
     updateDownloaded = true
 
@@ -149,12 +151,12 @@ function setupUpdaterEvents(): void {
           defaultId: 0,
           cancelId: 1,
         })
-        .then((result) => {
+        .then((result: { response: number }) => {
           if (result.response === 0) {
             autoUpdater.quitAndInstall()
           }
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           log.error('Error showing update dialog:', error)
         })
     }
@@ -188,42 +190,43 @@ function setupUpdaterEvents(): void {
  * @returns Promise that resolves when update check is complete
  */
 export function checkForUpdates(): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return (async () => {
     if (!app.isPackaged) {
-      reject(new Error('Cannot check for updates in development mode'))
-      return
+      throw new Error('Cannot check for updates in development mode')
     }
 
-    const autoUpdater = getAutoUpdater()
+    const autoUpdater = await getAutoUpdater()
     const timeout = setTimeout(() => {
-      reject(new Error('Update check timed out'))
-    }, 30000) // 30 second timeout
+      throw new Error('Update check timed out')
+    }, 30000)
 
-    autoUpdater.once('update-available', () => {
-      clearTimeout(timeout)
-      resolve()
+    return new Promise<void>((resolve, reject) => {
+      autoUpdater.once('update-available', () => {
+        clearTimeout(timeout)
+        resolve()
+      })
+
+      autoUpdater.once('update-not-available', () => {
+        clearTimeout(timeout)
+        resolve()
+      })
+
+      autoUpdater.once('error', (error: Error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+
+      autoUpdater.checkForUpdates()
     })
-
-    autoUpdater.once('update-not-available', () => {
-      clearTimeout(timeout)
-      resolve()
-    })
-
-    autoUpdater.once('error', (error: Error) => {
-      clearTimeout(timeout)
-      reject(error)
-    })
-
-    autoUpdater.checkForUpdates()
-  })
+  })()
 }
 
 /**
  * Download and install the available update
  */
-export function downloadUpdate(): void {
+export async function downloadUpdate(): Promise<void> {
   if (updateAvailable && !updateDownloaded) {
-    const autoUpdater = getAutoUpdater()
+    const autoUpdater = await getAutoUpdater()
     autoUpdater.downloadUpdate()
   }
 }
@@ -231,9 +234,9 @@ export function downloadUpdate(): void {
 /**
  * Install the downloaded update and restart the app
  */
-export function installUpdate(): void {
+export async function installUpdate(): Promise<void> {
   if (updateDownloaded) {
-    const autoUpdater = getAutoUpdater()
+    const autoUpdater = await getAutoUpdater()
     autoUpdater.quitAndInstall()
   }
 }
@@ -269,8 +272,8 @@ export function getUpdateState(): {
  *
  * @param enabled Whether to auto-download updates
  */
-export function setAutoDownload(enabled: boolean): void {
-  const autoUpdater = getAutoUpdater()
+export async function setAutoDownload(enabled: boolean): Promise<void> {
+  const autoUpdater = await getAutoUpdater()
   autoUpdater.autoDownload = enabled
 }
 
@@ -279,8 +282,8 @@ export function setAutoDownload(enabled: boolean): void {
  *
  * @param enabled Whether to auto-install on quit
  */
-export function setAutoInstallOnQuit(enabled: boolean): void {
-  const autoUpdater = getAutoUpdater()
+export async function setAutoInstallOnQuit(enabled: boolean): Promise<void> {
+  const autoUpdater = await getAutoUpdater()
   autoUpdater.autoInstallOnAppQuit = enabled
 }
 
@@ -310,12 +313,11 @@ export function setUpdateCheckInterval(hours: number): void {
   updateCheckInterval = setInterval(() => {
     if (app.isPackaged && !updateDownloaded) {
       log.info('Periodic update check triggered')
-      try {
-        const autoUpdater = getAutoUpdater()
-        autoUpdater.checkForUpdates()
-      } catch (error) {
-        log.error('Periodic update check failed:', error)
-      }
+      void getAutoUpdater()
+        .then((up) => up.checkForUpdates())
+        .catch((error: unknown) => {
+          log.error('Periodic update check failed:', error)
+        })
     }
   }, intervalMs)
 }

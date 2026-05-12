@@ -25,10 +25,10 @@ function loadProfilesFromStorage(): SettingsProfile[] {
 
     const data = JSON.parse(stored)
     // Convert date strings back to Date objects
-    return data.map((profile: any) => ({
+    return data.map((profile: Record<string, unknown>) => ({
       ...profile,
-      createdAt: new Date(profile.createdAt),
-      lastUsed: new Date(profile.lastUsed),
+      createdAt: new Date(profile.createdAt as string),
+      lastUsed: new Date(profile.lastUsed as string),
     }))
   } catch (error) {
     console.error('Failed to load profiles from storage:', error)

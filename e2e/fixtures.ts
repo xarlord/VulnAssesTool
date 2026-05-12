@@ -50,7 +50,8 @@ async function launchElectron() {
  * Extended test fixture with Electron support
  */
 export const test = base.extend({
-  electron: async ({}, use) => {
+  electron: async (fixtures, use) => {
+    void fixtures
     // For Electron apps, we need a different approach
     // This is a placeholder - you'll need to configure this based on your Electron setup
 

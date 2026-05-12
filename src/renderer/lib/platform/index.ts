@@ -36,7 +36,7 @@ let platform: PlatformAPI | null = null
 export function initPlatform(): PlatformAPI {
   if (platform) return platform
 
-  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI
   platform = isElectron ? createElectronAdapter() : createBrowserAdapter()
 
   return platform
@@ -55,5 +55,5 @@ export function getPlatform(): PlatformAPI {
  * Check if running inside Electron
  */
 export function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).electronAPI
+  return typeof window !== 'undefined' && !!window.electronAPI
 }

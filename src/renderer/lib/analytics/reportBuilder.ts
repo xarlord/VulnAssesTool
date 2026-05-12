@@ -157,7 +157,7 @@ function addExecutiveSummary(doc: jsPDF, summary: ExecutiveSummary, startY: numb
     },
   })
 
-  y = (doc as any).lastAutoTable.finalY + 15
+  y = doc.lastAutoTable?.finalY + 15
 
   return y
 }
@@ -212,23 +212,23 @@ function addOverallMetrics(doc: jsPDF, metrics: ExecutiveMetrics['overall'], sta
       if (data.column.index === 1 && data.section === 'body') {
         const value = data.cell.raw as string
         if (value.includes('Critical')) {
-          ;(data.cell.styles as any).textColor = [220, 38, 38]
-          ;(data.cell.styles as any).fontStyle = 'bold'
+          data.cell.styles.textColor = [220, 38, 38]
+          data.cell.styles.fontStyle = 'bold'
         } else if (value.includes('High')) {
-          ;(data.cell.styles as any).textColor = [234, 88, 12]
+          data.cell.styles.textColor = [234, 88, 12]
         } else if (value.includes('/100')) {
           const score = parseInt(value)
           if (score >= 90) {
-            ;(data.cell.styles as any).textColor = [34, 197, 94]
+            data.cell.styles.textColor = [34, 197, 94]
           } else if (score < 60) {
-            ;(data.cell.styles as any).textColor = [220, 38, 38]
+            data.cell.styles.textColor = [220, 38, 38]
           }
         }
       }
     },
   })
 
-  return (doc as any).lastAutoTable.finalY + 15
+  return doc.lastAutoTable?.finalY + 15
 }
 
 /**
@@ -272,13 +272,13 @@ function addRiskAnalysis(doc: jsPDF, risks: RiskItem[], startY: number): number 
       if (data.column.index === 2 && data.section === 'body') {
         const severity = data.cell.raw as string
         const color = getSeverityColor(severity.toLowerCase())
-        ;(data.cell.styles as any).textColor = color
-        ;(data.cell.styles as any).fontStyle = 'bold'
+        data.cell.styles.textColor = color
+        data.cell.styles.fontStyle = 'bold'
       }
     },
   })
 
-  return (doc as any).lastAutoTable.finalY + 15
+  return doc.lastAutoTable?.finalY + 15
 }
 
 /**
@@ -337,7 +337,7 @@ function addComplianceStatus(doc: jsPDF, compliance: ExecutiveMetrics['complianc
     },
   })
 
-  return (doc as any).lastAutoTable.finalY + 15
+  return doc.lastAutoTable?.finalY + 15
 }
 
 /**
@@ -381,7 +381,7 @@ function addTrendsSection(doc: jsPDF, trends: ExecutiveMetrics['trends'], startY
     },
   })
 
-  y = (doc as any).lastAutoTable.finalY + 12
+  y = doc.lastAutoTable?.finalY + 12
 
   // Weekly trend data
   if (trends.periods.length > 0) {
@@ -423,7 +423,7 @@ function addTrendsSection(doc: jsPDF, trends: ExecutiveMetrics['trends'], startY
       },
     })
 
-    return (doc as any).lastAutoTable.finalY + 15
+    return doc.lastAutoTable?.finalY + 15
   }
 
   return y
@@ -469,13 +469,13 @@ function addActionItems(doc: jsPDF, recommendations: Recommendation[], startY: n
       if (data.column.index === 0 && data.section === 'body') {
         const priority = data.cell.raw as string
         const color = getPriorityColor(priority.toLowerCase())
-        ;(data.cell.styles as any).textColor = color
-        ;(data.cell.styles as any).fontStyle = 'bold'
+        data.cell.styles.textColor = color
+        data.cell.styles.fontStyle = 'bold'
       }
     },
   })
 
-  y = (doc as any).lastAutoTable.finalY + 12
+  y = doc.lastAutoTable?.finalY + 12
 
   // Detailed recommendations
   for (const rec of recommendations) {

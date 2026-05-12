@@ -8,6 +8,7 @@ import type {
   PatchLink,
   RemediationAdvice,
   RemediationStep,
+  CvssBreakdown,
 } from '@@/types'
 import { NVD_API_BASE_URL } from '@@/constants'
 import {
@@ -295,7 +296,7 @@ export class NvdProvider extends BaseVulnerabilityProvider {
     let cvssScore: number | undefined
     let cvssVector: string | undefined
     let severity: Vulnerability['severity'] = 'none'
-    let cvssBreakdown: any = undefined
+    let cvssBreakdown: CvssBreakdown | undefined = undefined
 
     const cvssMetrics = cve.metrics?.cvssMetricV31?.[0]
     if (cvssMetrics) {

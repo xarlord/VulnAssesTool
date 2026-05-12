@@ -18,7 +18,7 @@ export type ExportDataType = 'vulnerabilities' | 'components' | 'project' | 'all
 export interface CsvColumn {
   key: string
   header: string
-  formatter: (data: any) => string
+  formatter: (data: Record<string, unknown>) => string
 }
 
 /**

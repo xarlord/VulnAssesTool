@@ -90,7 +90,7 @@ export class BulkDownloadManager {
   private db: Database
   private abortController: AbortController | null = null
   private progress: BulkDownloadProgress
-  private options: Required<BulkDownloadOptions>
+  private options: Omit<Required<BulkDownloadOptions>, 'signal'> & { signal: AbortSignal | undefined }
   private startTime: number = 0
 
   constructor(db: Database, apiKey?: string) {
@@ -103,7 +103,7 @@ export class BulkDownloadManager {
       onProgress: () => {},
       onYearComplete: () => {},
       onYearError: () => {},
-      signal: undefined as any,
+      signal: undefined as AbortSignal | undefined,
       resumeFromQueue: false,
       maxRetries: 3,
     }
@@ -158,7 +158,7 @@ export class BulkDownloadManager {
       onProgress: options.onProgress ?? (() => {}),
       onYearComplete: options.onYearComplete ?? (() => {}),
       onYearError: options.onYearError ?? (() => {}),
-      signal: options.signal ?? (undefined as any),
+      signal: options.signal ?? undefined,
       resumeFromQueue: options.resumeFromQueue ?? false,
       maxRetries: options.maxRetries ?? 3,
     }

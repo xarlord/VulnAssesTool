@@ -352,7 +352,7 @@ export class CPESearch {
    * @param results - Raw database results
    * @returns Array of CPESearchResult
    */
-  private parseSearchResults(results: any[]): CPESearchResult[] {
+  private parseSearchResults(results: Array<{ values: Array<Array<unknown>> }>): CPESearchResult[] {
     const searchResults: CPESearchResult[] = []
 
     if (results.length === 0 || !results[0].values) {

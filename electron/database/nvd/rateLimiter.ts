@@ -12,8 +12,8 @@ export interface RateLimiterOptions {
 }
 
 interface QueuedRequest {
-  execute: () => Promise<any>
-  resolve: (value: any) => void
+  execute: () => Promise<unknown>
+  resolve: (value: unknown) => void
   reject: (error: Error) => void
   timestamp: number
   priority?: number // Higher priority = executed first
@@ -40,8 +40,8 @@ export class RateLimiter {
   async execute<T>(requestFn: () => Promise<T>, priority?: number): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push({
-        execute: requestFn,
-        resolve,
+        execute: requestFn as () => Promise<unknown>,
+        resolve: resolve as (value: unknown) => void,
         reject,
         timestamp: Date.now(),
         priority,

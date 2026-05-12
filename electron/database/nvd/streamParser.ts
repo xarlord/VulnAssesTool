@@ -90,7 +90,10 @@ export class NvdStreamParser {
           }
         } catch (error) {
           failedCVEs++
-          options.onError?.(error as Error, cves[i]?.cve?.CVE_data_meta?.ID)
+          const rawCve = cves[i] as
+            | Record<string, Record<string, Record<string, string> | undefined> | undefined>
+            | undefined
+          options.onError?.(error as Error, rawCve?.cve?.CVE_data_meta?.ID)
         }
       }
 
@@ -123,7 +126,7 @@ export class NvdStreamParser {
       const content: Buffer[] = []
       const stream = createReadStream(filePath)
 
-      stream.on('data', (chunk: any) => {
+      stream.on('data', (chunk: Buffer | string) => {
         content.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
       })
       stream.on('end', () => resolve(Buffer.concat(content).toString('utf-8')))
@@ -134,20 +137,21 @@ export class NvdStreamParser {
   /**
    * Extract CVE array from NVD JSON format
    */
-  private extractCVEs(json: any): any[] {
+  private extractCVEs(json: Record<string, unknown>): Array<Record<string, unknown>> {
     // NVD CVE 2.0 format
     if (json.vulnerabilities) {
-      return json.vulnerabilities
+      return json.vulnerabilities as Array<Record<string, unknown>>
     }
 
     // NVD CVE 1.1 format
-    if (json.CVE_data?.CVE_Items) {
-      return json.CVE_data.CVE_Items
+    const cveData = json.CVE_data as Record<string, unknown> | undefined
+    if (cveData?.CVE_Items) {
+      return cveData.CVE_Items as Array<Record<string, unknown>>
     }
 
     // CVE_Items at root (some 1.1 formats)
     if (json.CVE_Items) {
-      return json.CVE_Items
+      return json.CVE_Items as Array<Record<string, unknown>>
     }
 
     return []
@@ -156,7 +160,50 @@ export class NvdStreamParser {
   /**
    * Parse a single CVE from NVD format
    */
-  private parseCVE(item: any): ParsedCVE | null {
+  private parseCVE(rawItem: unknown): ParsedCVE | null {
+    // NVD API responses are deeply nested dynamic JSON; cast once at the boundary
+    type CvssMetric = {
+      cvssData: {
+        baseScore?: number
+        vectorString?: string
+        baseSeverity?: string
+      }
+    }
+    type CpeMatch = {
+      cpe23Uri?: string
+      cpe_name?: string
+      vulnerable?: string | boolean
+    }
+    type ConfigNode = {
+      cpe_match?: CpeMatch[]
+      operator?: string
+      children?: Array<{ cpe_match?: CpeMatch[] }>
+    }
+    type RefItem = { url?: string; source?: string; tags?: string | string[]; href?: string }
+    type NvdMetrics = {
+      cvssMetricV31?: CvssMetric[]
+      cvssMetricV30?: CvssMetric[]
+      cvssMetricV2?: CvssMetric[]
+    }
+
+    const item = rawItem as {
+      cve?: {
+        id?: string
+        descriptions?: Array<{ value?: string }>
+        published?: string
+        lastModified?: string
+        CVE_data_meta?: { ID?: string }
+        description?: { description_data?: Array<{ value?: string }> }
+        references?: RefItem[] | { reference_data?: RefItem[] }
+        metrics?: NvdMetrics
+        configurations?: { nodes?: ConfigNode[] }
+      }
+      publishedDate?: string
+      lastModifiedDate?: string
+      metrics?: NvdMetrics
+      configurations?: { nodes?: ConfigNode[] }
+    }
+
     let cveId: string
     let description: string
     let publishedDate: string
@@ -223,9 +270,9 @@ export class NvdStreamParser {
 
     // Parse CPE matches
     const cpe_matches: CPEMatch[] = []
-    const configurations = item.cve?.configurations || item.configurations?.nodes || []
+    const configNodes = item.cve?.configurations?.nodes || item.configurations?.nodes || []
 
-    for (const config of configurations) {
+    for (const config of configNodes) {
       const cpeList = config.cpe_match || []
       for (const cpe of cpeList) {
         cpe_matches.push({
@@ -252,11 +299,13 @@ export class NvdStreamParser {
 
     // Parse references
     const references: Reference[] = []
-    const refs = item.cve?.references || item.cve?.references?.reference_data || []
+    const refsRaw = item.cve?.references
+    const refs: Array<RefItem> = Array.isArray(refsRaw) ? refsRaw : (refsRaw?.reference_data ?? [])
 
     for (const ref of refs) {
       if (typeof ref === 'object') {
-        const tags = ref.tags?.join(',') || ''
+        const rawTags = ref.tags
+        const tags = Array.isArray(rawTags) ? rawTags.join(',') : rawTags || ''
         references.push({
           url: ref.url || ref.href || '',
           source: ref.source || '',

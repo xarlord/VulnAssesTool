@@ -14,6 +14,7 @@ interface CycloneDXBom {
     component?: CycloneDXComponent
   }
   components?: CycloneDXComponent[]
+  vulnerabilities?: CycloneDXVulnerability[] | { vulnerability: CycloneDXVulnerability | CycloneDXVulnerability[] }
 }
 
 interface CycloneDXComponent {
@@ -457,8 +458,8 @@ function extractVulnerabilitiesFromXml(bom: CycloneDXBom): Vulnerability[] {
   let vulnList: CycloneDXVulnerability[] = []
 
   // Handle different possible structures
-  if ('vulnerabilities' in bom) {
-    const vulns = (bom as any).vulnerabilities
+  if ('vulnerabilities' in bom && bom.vulnerabilities) {
+    const vulns = bom.vulnerabilities
     if (Array.isArray(vulns)) {
       vulnList = vulns
     } else if (vulns && typeof vulns === 'object' && 'vulnerability' in vulns) {

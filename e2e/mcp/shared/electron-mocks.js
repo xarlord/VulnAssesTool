@@ -66,7 +66,9 @@
       try {
         const saved = localStorage.getItem(STORE_KEY)
         if (saved) return { ...defaultStore, ...JSON.parse(saved) }
-      } catch {}
+      } catch {
+        // localStorage unavailable — use defaults
+      }
       return { ...defaultStore }
     })()
 
@@ -114,14 +116,18 @@
           mockStore[key] = value
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
         },
         delete: async (key) => {
           console.log(`[Mock] store.delete('${key}')`)
           delete mockStore[key]
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
         },
       },
 
@@ -173,21 +179,27 @@
           mockStore['database.syncConfig'] = { ...existing, ...config }
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
           return { success: true }
         },
         updateStorageConfig: async (config) => {
           mockStore['database.storageConfig'] = config
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
           return { success: true }
         },
         updatePerformanceConfig: async (config) => {
           mockStore['database.performanceConfig'] = config
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
           return { success: true }
         },
         cpeSearch: async (params) => ({
@@ -198,7 +210,20 @@
         reset: async () => ({ success: true }),
         rebuildIndexes: async () => ({ success: true }),
         sync: async () => ({ success: true }),
-        onSyncProgress: async (_callback) => {},
+        onSyncProgress: (_callback) => () => {},
+        onSyncComplete: (_callback) => () => {},
+        onSyncError: (_callback) => () => {},
+        getDetailedStats: async () => ({
+          success: true,
+          stats: {
+            dbSize: 987000000,
+            totalCves: 331567,
+            totalCpes: 2500000,
+            lastUpdate: '2025-01-15T00:00:00Z',
+          },
+        }),
+        startDeltaSync: async (_force) => ({ success: true }),
+        cancelSync: async () => ({ success: true }),
         search: async (params) => {
           const query = (params?.query || params?.keyword || '').toString().toLowerCase()
           const mockCves =

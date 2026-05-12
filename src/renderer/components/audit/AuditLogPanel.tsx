@@ -148,7 +148,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
               <div className="absolute right-0 z-10 mt-1 w-48 bg-white dark:bg-gray-800 border rounded-md shadow-lg">
                 <button
                   onClick={() => {
-                    exportAuditLogs({ format: 'csv', filter: buildCurrentFilter() })
+                    void exportAuditLogs({ format: 'csv', filter: buildCurrentFilter() })
                     setShowExportMenu(false)
                   }}
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -158,7 +158,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                 </button>
                 <button
                   onClick={() => {
-                    exportAuditLogs({ format: 'json', filter: buildCurrentFilter() })
+                    void exportAuditLogs({ format: 'json', filter: buildCurrentFilter() })
                     setShowExportMenu(false)
                   }}
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -168,7 +168,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                 </button>
                 <button
                   onClick={() => {
-                    exportAuditLogs({ format: 'pdf', filter: buildCurrentFilter() })
+                    void exportAuditLogs({ format: 'pdf', filter: buildCurrentFilter() })
                     setShowExportMenu(false)
                   }}
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"

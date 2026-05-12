@@ -130,14 +130,15 @@ export function initMainErrorInterceptor(): void {
   // Register IPC handler for renderer errors
   // This is called from the preload script's error interceptor
   try {
-    const { ipcMain } = require('electron')
-    ipcMain.handle(
-      'error-interceptor:report',
-      (_event: IpcMainInvokeEvent, errorData: Omit<CapturedError, 'id' | 'resolved'>) => {
-        writeError(errorData)
-        return { captured: true }
-      },
-    )
+    void import('electron').then(({ ipcMain }) => {
+      ipcMain.handle(
+        'error-interceptor:report',
+        (_event: IpcMainInvokeEvent, errorData: Omit<CapturedError, 'id' | 'resolved'>) => {
+          writeError(errorData)
+          return { captured: true }
+        },
+      )
+    })
   } catch {
     // electron not available (e.g., running outside Electron)
   }

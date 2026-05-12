@@ -1,4 +1,5 @@
 import { Project, SyntaxKind } from 'ts-morph'
+import type { ClassDeclaration } from 'ts-morph'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -74,7 +75,7 @@ for (const sf of sourceFiles) {
           return (
             parentNode.getKind() === SyntaxKind.ExportKeyword ||
             (parentNode.getKind() === SyntaxKind.ClassDeclaration &&
-              (parentNode as any).getName?.() === exportedName) ||
+              (parentNode as ClassDeclaration).getName?.() === exportedName) ||
             parentNode.getKind() === SyntaxKind.FunctionDeclaration
           )
         })

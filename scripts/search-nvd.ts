@@ -46,7 +46,15 @@ async function main() {
   const cvePattern = /^CVE-\d{4}-\d{4,7}$/i
   const isCveId = cvePattern.test(query)
 
-  let results: any[] = []
+  interface SearchResult {
+    id: unknown
+    description: unknown
+    score: unknown
+    severity: unknown
+    published: unknown
+  }
+
+  let results: SearchResult[] = []
 
   if (isCveId) {
     // Exact CVE ID search
@@ -54,12 +62,12 @@ async function main() {
                  FROM cves WHERE id = ?`
     const result = db.exec(sql, [query.toUpperCase()])
     if (result.length > 0 && result[0].values.length > 0) {
-      results = result[0].values.map((row: any) => ({
-        id: row[0],
-        description: row[1],
-        score: row[2],
-        severity: row[3],
-        published: row[4],
+      results = result[0].values.map((row) => ({
+        id: row[0] as string,
+        description: row[1] as string,
+        score: row[2] as number | null,
+        severity: row[3] as string | null,
+        published: row[4] as string | null,
       }))
     }
   } else {
@@ -72,12 +80,12 @@ async function main() {
                  LIMIT 50`
     const result = db.exec(sql, [searchPattern, searchPattern])
     if (result.length > 0) {
-      results = result[0].values.map((row: any) => ({
-        id: row[0],
-        description: row[1],
-        score: row[2],
-        severity: row[3],
-        published: row[4],
+      results = result[0].values.map((row) => ({
+        id: row[0] as string,
+        description: row[1] as string,
+        score: row[2] as number | null,
+        severity: row[3] as string | null,
+        published: row[4] as string | null,
       }))
     }
   }

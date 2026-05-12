@@ -142,7 +142,7 @@ export function VirtualList<T = unknown>(props: VirtualListProps<T>): React.Reac
     if (typeof itemKey === 'function') {
       return itemKey(item, index)
     }
-    return String((item as any)[itemKey] ?? index)
+    return String((item as Record<string, unknown>)[itemKey as keyof T] ?? index)
   }
 
   // Compute item content
@@ -239,7 +239,7 @@ export interface VirtualGridProps<T> {
   isScrolling?: (isScrolling: boolean) => void
 }
 
-export const VirtualGrid = forwardRef<VirtuosoGridHandle, VirtualGridProps<any>>((props, ref) => {
+export const VirtualGrid = forwardRef<VirtuosoGridHandle, VirtualGridProps<unknown>>((props, ref) => {
   const {
     items,
     itemKey,
@@ -270,15 +270,15 @@ export const VirtualGrid = forwardRef<VirtuosoGridHandle, VirtualGridProps<any>>
   }
 
   // Handle item key
-  const getItemKey = (index: number, item: any): string => {
+  const getItemKey = (index: number, item: T): string => {
     if (typeof itemKey === 'function') {
       return itemKey(item, index)
     }
-    return String(item[itemKey] ?? index)
+    return String((item as Record<string, unknown>)[itemKey] ?? index)
   }
 
   // Compute item content
-  const itemContent = (index: number, item: any) => {
+  const itemContent = (index: number, item: T) => {
     return <div data-index={index}>{renderItem(item, index)}</div>
   }
 
@@ -312,7 +312,7 @@ VirtualGrid.displayName = 'VirtualGrid'
 /**
  * Utility hook to create a stable key selector
  */
-export function useItemKey<T extends Record<string, any>>(key: keyof T): (item: T) => string {
+export function useItemKey<T extends Record<string, unknown>>(key: keyof T): (item: T) => string {
   return (item) => {
     const keyValue = item[key]
     if (keyValue === undefined || keyValue === null) {

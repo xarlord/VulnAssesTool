@@ -81,7 +81,9 @@ async function mockElectronAPIs(page: Page) {
       try {
         const saved = localStorage.getItem(STORE_KEY)
         if (saved) return { ...defaultStore, ...JSON.parse(saved) }
-      } catch {}
+      } catch {
+        // localStorage unavailable — use defaults
+      }
       return { ...defaultStore }
     })()
 
@@ -129,14 +131,18 @@ async function mockElectronAPIs(page: Page) {
           mockStore[key] = value
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
         },
         delete: async (key: string) => {
           console.log(`[Mock] store.delete('${key}')`)
           delete mockStore[key]
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
         },
       },
 
@@ -188,21 +194,27 @@ async function mockElectronAPIs(page: Page) {
           mockStore['database.syncConfig'] = { ...existing, ...config }
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
           return { success: true }
         },
         updateStorageConfig: async (config: unknown) => {
           mockStore['database.storageConfig'] = config
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
           return { success: true }
         },
         updatePerformanceConfig: async (config: unknown) => {
           mockStore['database.performanceConfig'] = config
           try {
             localStorage.setItem(STORE_KEY, JSON.stringify(mockStore))
-          } catch {}
+          } catch {
+            // localStorage quota exceeded — acceptable in tests
+          }
           return { success: true }
         },
         cpeSearch: async (params: { query: string; limit: number }) => ({

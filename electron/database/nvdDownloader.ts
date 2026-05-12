@@ -153,7 +153,7 @@ async function downloadYearFeed(
 /**
  * Parse NVD CVE JSON format
  */
-function parseNVDCVE(json: any): Array<{
+function parseNVDCVE(json: Record<string, unknown>): Array<{
   id: string
   description: string
   cvss_score?: number
@@ -179,47 +179,62 @@ function parseNVDCVE(json: any): Array<{
   }> = []
 
   // NVD JSON format versions may vary
-  const vulnerabilities = json.CVE_data?.CVE_Items || json.vulnerabilities || []
+  const cveData = json.CVE_data as Record<string, unknown> | undefined
+  // NVD API responses are deeply nested; cast once for safe property access
+  type NvdCveItem = {
+    cve?: Record<string, unknown>
+    publishedDate?: string
+    lastModifiedDate?: string
+    configurations?: { nodes?: unknown[] }
+  }
+  const vulnerabilities = (cveData?.CVE_Items as NvdCveItem[]) || (json.vulnerabilities as NvdCveItem[]) || []
 
   for (const item of vulnerabilities) {
-    const cveId = item.cve?.CVE_data_meta?.ID
+    const cve = item.cve as Record<string, unknown> | undefined
+    const cveMeta = cve?.CVE_data_meta as Record<string, unknown> | undefined
+    const cveId = cveMeta?.ID as string | undefined
     if (!cveId) continue
 
-    const description = item.cve?.description?.description_data?.[0]?.value || ''
+    const descData = cve?.description as Record<string, unknown> | undefined
+    const descArray = descData?.description_data as Array<Record<string, unknown>> | undefined
+    const description = (descArray?.[0]?.value as string) || ''
 
     // Get CVSS score
     let cvss_score: number | null = null
     let cvss_vector: string | null = null
     let severity: string | null = null
 
-    const metrics = item.cve?.metrics
+    const metrics = cve?.metrics as Record<string, unknown> | undefined
     if (metrics) {
       // Try CVSS v3.1 first
-      const cvssV31 = metrics.cvssMetricV31?.[0]
+      const cvssV31Array = metrics.cvssMetricV31 as Array<Record<string, Record<string, unknown>>> | undefined
+      const cvssV31 = cvssV31Array?.[0]
       if (cvssV31?.cvssData) {
-        cvss_score = cvssV31.cvssData.baseScore
-        cvss_vector = cvssV31.cvssData.vectorString
-        severity = cvssV31.cvssData.baseSeverity
+        cvss_score = cvssV31.cvssData.baseScore as number
+        cvss_vector = cvssV31.cvssData.vectorString as string
+        severity = cvssV31.cvssData.baseSeverity as string
       }
 
       // Fall back to CVSS v3.0
       if (cvss_score === undefined) {
-        const cvssV30 = metrics.cvssMetricV30?.[0]
+        const cvssV30Array = metrics.cvssMetricV30 as Array<Record<string, Record<string, unknown>>> | undefined
+        const cvssV30 = cvssV30Array?.[0]
         if (cvssV30?.cvssData) {
-          cvss_score = cvssV30.cvssData.baseScore
-          cvss_vector = cvssV30.cvssData.vectorString
-          severity = cvssV30.cvssData.baseSeverity
+          cvss_score = cvssV30.cvssData.baseScore as number
+          cvss_vector = cvssV30.cvssData.vectorString as string
+          severity = cvssV30.cvssData.baseSeverity as string
         }
       }
 
       // Fall back to CVSS v2.0
       if (cvss_score === undefined) {
-        const cvssV2 = metrics.cvssMetricV2?.[0]
+        const cvssV2Array = metrics.cvssMetricV2 as Array<Record<string, Record<string, unknown>>> | undefined
+        const cvssV2 = cvssV2Array?.[0]
         if (cvssV2?.cvssData) {
-          cvss_score = cvssV2.cvssData.baseScore
-          cvss_vector = cvssV2.cvssData.vectorString
+          cvss_score = cvssV2.cvssData.baseScore as number
+          cvss_vector = cvssV2.cvssData.vectorString as string
           // Map v2 severity to v3 levels
-          const baseSeverity = cvssV2.cvssData.baseSeverity
+          const baseSeverity = cvssV2.cvssData.baseSeverity as string
           if (baseSeverity === 'HIGH') severity = 'HIGH'
           else if (baseSeverity === 'MEDIUM') severity = 'MEDIUM'
           else if (baseSeverity === 'LOW') severity = 'LOW'
@@ -229,18 +244,21 @@ function parseNVDCVE(json: any): Array<{
 
     // Parse published and modified dates
     const publishedDate =
-      item.publishedDate || item.cve?.CVE_data_meta?.ASSIGNER || item.cve?.CVE_data_meta?.PUBLIC_DATE || ''
-    const modifiedDate = item.lastModifiedDate || new Date().toISOString()
+      (item.publishedDate as string) || (cveMeta?.ASSIGNER as string) || (cveMeta?.PUBLIC_DATE as string) || ''
+    const modifiedDate = (item.lastModifiedDate as string) || new Date().toISOString()
 
     // Parse CPE matches
     const cpe_matches: CPEMatch[] = []
-    const configurations = item.configurations?.nodes || []
+    const configNodes = (item.configurations as Record<string, unknown>)?.nodes as
+      | Array<Record<string, unknown>>
+      | undefined
+    const configurations = configNodes || []
 
     for (const config of configurations) {
-      const cpeList = config.cpe_match || []
+      const cpeList = (config.cpe_match as Array<Record<string, unknown>>) || []
       for (const cpe of cpeList) {
         cpe_matches.push({
-          cpe_text: cpe.cpe23Uri || cpe.cpe_name || '',
+          cpe_text: (cpe.cpe23Uri as string) || (cpe.cpe_name as string) || '',
           vulnerable: cpe.vulnerable ? cpe.vulnerable === 'true' || cpe.vulnerable === true : true,
           cve_id: cveId,
         })
@@ -249,13 +267,15 @@ function parseNVDCVE(json: any): Array<{
 
     // Parse references
     const references: Reference[] = []
-    const refs = item.cve?.references?.reference_data || []
+    const refsObj = cve?.references as Record<string, unknown> | undefined
+    const refs = (refsObj?.reference_data as Array<Record<string, unknown>>) || []
 
     for (const ref of refs) {
-      const tags = ref.tags?.join(',') || ''
+      const rawTags = ref.tags as string[] | undefined
+      const tags = rawTags?.join(',') || ''
       references.push({
-        url: ref.url || ref.href || '',
-        source: ref.source || '',
+        url: (ref.url as string) || (ref.href as string) || '',
+        source: (ref.source as string) || '',
         tags: tags || undefined,
         cve_id: cveId,
       })

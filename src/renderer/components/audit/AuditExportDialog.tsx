@@ -52,7 +52,7 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
         options.filter = { dateRange: { start, end } }
       }
 
-      exportAuditLogs(options)
+      void exportAuditLogs(options)
       onOpenChange(false)
     } catch (error) {
       console.error('Export failed:', error)

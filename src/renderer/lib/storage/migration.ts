@@ -88,7 +88,7 @@ export async function migrateApiKeysToSecureStorage(settings: AppSettings): Prom
     for (const key of apiKeyKeys) {
       if (plaintextKeys[key]) {
         // Set to undefined to remove from settings
-        ;(updatedSettings as any)[key] = undefined
+        ;(updatedSettings as Record<string, unknown>)[key] = undefined
       }
     }
 

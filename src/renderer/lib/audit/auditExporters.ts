@@ -12,7 +12,7 @@ import { useAuditStore } from './auditStore'
 /**
  * Export audit logs with specified options
  */
-export function exportAuditLogs(options: AuditExportOptions): void {
+export async function exportAuditLogs(options: AuditExportOptions): Promise<void> {
   const { format, filter, includeFullState = false, anonymize = false } = options
 
   // Query events with filter
@@ -47,7 +47,7 @@ export function exportAuditLogs(options: AuditExportOptions): void {
     const json = exportAuditToJson(events)
     downloadJson(json, `${filename}.json`)
   } else if (format === 'pdf') {
-    const pdfDoc = exportAuditToPdf(events, result.totalCount)
+    const pdfDoc = await exportAuditToPdf(events, result.totalCount)
     downloadPdf(pdfDoc, `${filename}.pdf`)
   }
 }
@@ -114,9 +114,9 @@ function exportAuditToJson(events: AuditEvent[]): string {
 /**
  * Export audit events to PDF
  */
-function exportAuditToPdf(events: AuditEvent[], totalCount: number) {
-  const { jsPDF } = require('jspdf')
-  const autoTable = require('jspdf-autotable')
+async function exportAuditToPdf(events: AuditEvent[], totalCount: number) {
+  const { jsPDF } = await import('jspdf')
+  const autoTable = (await import('jspdf-autotable')).default
 
   const doc = new jsPDF()
 
@@ -195,22 +195,22 @@ export function getAuditExportFilename(format: AuditExportFormat): string {
  * Quick export helpers
  */
 export function exportAllAuditLogsAsJson(): void {
-  exportAuditLogs({ format: 'json' })
+  void exportAuditLogs({ format: 'json' })
 }
 
 export function exportAllAuditLogsAsCsv(): void {
-  exportAuditLogs({ format: 'csv' })
+  void exportAuditLogs({ format: 'csv' })
 }
 
 export function exportAllAuditLogsAsPdf(): void {
-  exportAuditLogs({ format: 'pdf' })
+  void exportAuditLogs({ format: 'pdf' })
 }
 
 export function exportAuditLogsLastDays(days: number, format: AuditExportFormat): void {
   const end = new Date()
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000)
 
-  exportAuditLogs({
+  void exportAuditLogs({
     format,
     filter: { dateRange: { start, end } },
   })

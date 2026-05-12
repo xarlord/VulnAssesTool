@@ -25,7 +25,7 @@ export interface ScanResult {
   vulnerabilities: Vulnerability[]
   componentsScanned: number
   scanDuration: number
-  format: 'cyclonedx' | 'spdx' | 'sarif' | 'json' | 'junit' | 'console'
+  format: 'cyclonedx' | 'spdx' | 'sarif' | 'json' | 'junit' | 'console' | 'unknown'
   error?: string
   warnings?: string[]
   summary: ScanSummary
@@ -252,7 +252,7 @@ export async function scanCommand(sbomPath: string, options: ScanCommandOptions)
         vulnerabilities: [],
         componentsScanned: 1,
         scanDuration: Date.now() - startTime,
-        format: format as any,
+        format: format as ScanResult['format'],
         error: `Unsupported format: ${format}`,
         warnings: [],
         summary: generateSummary([]),

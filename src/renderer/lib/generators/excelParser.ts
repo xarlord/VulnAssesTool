@@ -27,7 +27,7 @@ export interface ExcelRow {
   description?: string
   supplier?: string
   group?: string
-  [key: string]: any // Allow for dynamic column names
+  [key: string]: string | undefined // Allow for dynamic column names
 }
 
 /**
@@ -127,7 +127,7 @@ export async function parseExcel(buffer: ArrayBuffer, sheetName?: string): Promi
     const worksheet = workbook.Sheets[targetSheet]
 
     // Convert sheet to JSON with options to handle empty cells
-    const rawRows = XLSX.utils.sheet_to_json<any>(worksheet, {
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet, {
       defval: '', // Default value for empty cells
       raw: false, // Return formatted values instead of raw
     })
@@ -145,7 +145,7 @@ export async function parseExcel(buffer: ArrayBuffer, sheetName?: string): Promi
 /**
  * Process raw rows from Excel and normalize data
  */
-function processRows(rawRows: any[]): ExcelRow[] {
+function processRows(rawRows: Record<string, string>[]): ExcelRow[] {
   const processedRows: ExcelRow[] = []
 
   for (const row of rawRows) {
@@ -175,7 +175,7 @@ function processRows(rawRows: any[]): ExcelRow[] {
 /**
  * Normalize a row using detected column mapping
  */
-function normalizeRow(row: any, mapping: ColumnMapping): ExcelRow {
+function normalizeRow(row: Record<string, string>, mapping: ColumnMapping): ExcelRow {
   const normalized: ExcelRow = {}
 
   // Map each field using detected column names
@@ -202,7 +202,7 @@ function normalizeRow(row: any, mapping: ColumnMapping): ExcelRow {
 /**
  * Normalize a value (trim strings, convert numbers to strings)
  */
-function normalizeValue(value: any): any {
+function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) {
     return ''
   }
@@ -221,7 +221,7 @@ function normalizeValue(value: any): any {
 /**
  * Normalize a string value (trim and convert)
  */
-function normalizeString(value: any): string {
+function normalizeString(value: unknown): string {
   if (value === null || value === undefined) {
     return ''
   }

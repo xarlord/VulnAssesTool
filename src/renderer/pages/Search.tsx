@@ -25,7 +25,7 @@ import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
 import { EmptyState } from '@/components/EmptyState'
 import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
-import type { NvdSearchRequest, NvdSearchResponse } from '@@/types'
+import type { CveResult, NvdSearchRequest, NvdSearchResponse } from '@@/types'
 
 // Type definitions for Electron API
 type NvdSearchType = 'cve-id' | 'cpe' | 'text'
@@ -37,7 +37,7 @@ interface DatabaseAPI {
   getDetailedStats(): Promise<GetDetailedStatsResponse>
   onSyncProgress(callback: (progress: DeltaSyncProgress) => void): () => void
   onSyncComplete(callback: (result: DeltaSyncResult) => void): () => void
-  onSyncError(callback: (error: any) => void): () => void
+  onSyncError(callback: (error: string) => void): () => void
 }
 
 interface DeltaSyncProgress {
@@ -103,7 +103,7 @@ export function Search() {
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [searchMode, setSearchMode] = useState<SearchMode>('projects')
-  const [nvdResults, setNvdResults] = useState<any[]>([])
+  const [nvdResults, setNvdResults] = useState<CveResult[]>([])
   const [nvdLoading, setNvdLoading] = useState(false)
   const [nvdError, setNvdError] = useState('')
   const [, setNvdSearchMode] = useState<NvdSearchMode>('fts')
