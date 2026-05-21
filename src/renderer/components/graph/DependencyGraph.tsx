@@ -73,9 +73,7 @@ export function DependencyGraph({
     elements.nodes.forEach((node) => {
       const nodeData = node.data as GraphNodeData
       const style = getNodeStyle(nodeData)
-      cy.style()
-        .fromJson([...cy.style().toJson(), style])
-        .update()
+      cy.style().append(style).update()
     })
 
     // Store reference
@@ -108,9 +106,7 @@ export function DependencyGraph({
     elements.nodes.forEach((node) => {
       const nodeData = node.data as GraphNodeData
       const style = getNodeStyle(nodeData)
-      cy.style()
-        .fromJson([...cy.style().toJson(), style])
-        .update()
+      cy.style().append(style).update()
     })
 
     // Re-run layout

@@ -2,7 +2,6 @@ import type {
   OsvVulnerability,
   Vulnerability,
   VulnerabilitySource,
-  ProviderCapabilities,
   PatchInfo,
   PatchLink,
   VersionRange,
@@ -18,6 +17,7 @@ import {
   type BatchQueryOptions,
   type VulnerabilityQueryResult,
   type ProviderHealthStatus,
+  type ProviderCapabilities,
 } from './base'
 import { parseCvssVector } from '../../cvss/parser'
 
@@ -39,6 +39,11 @@ export class OsvProvider extends BaseVulnerabilityProvider {
     aliases: true,
   }
   readonly defaultRateLimit = 1000 // OSV has generous limits
+
+  constructor() {
+    super()
+    this.initRateLimit()
+  }
 
   /**
    * Determine severity from score
@@ -283,7 +288,7 @@ export class OsvProvider extends BaseVulnerabilityProvider {
         // Try to extract CVSS vector from severity
         if (severityData.type === 'CVSS_V3' && severityData.score.includes('/')) {
           cvssVector = severityData.score
-          cvssBreakdown = parseCvssVector(cvssVector)
+          cvssBreakdown = parseCvssVector(cvssVector) ?? undefined
         }
       }
     }

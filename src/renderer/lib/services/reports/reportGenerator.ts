@@ -162,7 +162,8 @@ export async function generatePDF(data: ReportData, options: ReportOptions): Pro
   // This is a placeholder that returns the HTML for now
   // The actual PDF generation should be done via IPC to main process
   if (getPlatform()?.generatePDF) {
-    const pdfBlob = await getPlatform().generatePDF(htmlReport.content as string)
+    const pdfBuffer = await getPlatform().generatePDF(htmlReport.content as string)
+    const pdfBlob = new Blob([pdfBuffer.buffer as ArrayBuffer], { type: 'application/pdf' })
     return {
       content: pdfBlob,
       contentType: 'application/pdf',
@@ -228,5 +229,3 @@ export const ReportGenerator = {
   downloadReport,
   calculateMetrics,
 }
-
-export { ReportGenerator }

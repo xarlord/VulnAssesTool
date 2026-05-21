@@ -1,4 +1,3 @@
-import React from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 import { getHealthChartColor } from '@/lib/health'
 import type { ComponentHealth } from '@@/types'

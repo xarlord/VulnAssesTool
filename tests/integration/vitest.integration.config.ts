@@ -20,8 +20,8 @@ export default defineConfig({
     // Setup files - use integration-specific setup
     setupFiles: ['./tests/integration/setup.ts'],
 
-    // Include ONLY integration tests
-    include: ['tests/integration/**/*.{test,spec}.{js,ts,jsx,tsx}'],
+    // Include integration tests AND electron database tests
+    include: ['tests/integration/**/*.{test,spec}.{js,ts,jsx,tsx}', 'electron/**/*.test.{js,ts}'],
 
     // Exclude everything else
     exclude: [

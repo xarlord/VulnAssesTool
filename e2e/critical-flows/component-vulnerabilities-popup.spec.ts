@@ -8,7 +8,7 @@
  * They will be skipped if no vulnerable components are available.
  */
 
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 
 test.describe('Component Vulnerabilities Popup E2E Tests', () => {
   test.beforeEach(async ({ page }) => {

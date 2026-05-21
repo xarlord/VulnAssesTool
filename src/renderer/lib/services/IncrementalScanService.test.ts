@@ -207,6 +207,69 @@ describe('IncrementalScanService', () => {
       expect(service.getScanHistory('project-1')).toHaveLength(0)
     })
   })
+
+  describe('getScanStatistics with empty history', () => {
+    it('should return zero statistics for project with no history', () => {
+      const stats = service.getScanStatistics('nonexistent-project')
+
+      expect(stats).toEqual({
+        totalScans: 0,
+        incrementalScans: 0,
+        fullScans: 0,
+        totalTimeSavedMs: 0,
+        averageChangePercent: 0,
+      })
+    })
+
+    it('should include time saved and change percent in statistics', () => {
+      const oldComps = [createComponent('a', '1.0.0'), createComponent('b', '1.0.0'), createComponent('c', '1.0.0')]
+      const newComps = [createComponent('a', '2.0.0'), createComponent('b', '1.0.0'), createComponent('c', '1.0.0')]
+
+      service.prepareIncrementalScan('project-1', oldComps, newComps)
+
+      const stats = service.getScanStatistics('project-1')
+      // 2 components skipped, 2 * 100 = 200ms saved
+      expect(stats.totalTimeSavedMs).toBe(200)
+      expect(stats.averageChangePercent).toBeGreaterThanOrEqual(0)
+    })
+  })
+
+  describe('formatDuration via incremental summary', () => {
+    it('should format time saved as seconds when >= 1000ms', () => {
+      // 11 old components, 1 modified → 10 skipped → 10 * 100 = 1000ms → '1s'
+      const oldComps = Array.from({ length: 11 }, (_, i) => createComponent(`pkg-${i}`, '1.0.0'))
+      const newComps = oldComps.map((c, i) => (i === 0 ? createComponent('pkg-0', '2.0.0') : c))
+
+      const result = service.prepareIncrementalScan('project-1', oldComps, newComps)
+
+      expect(result.summary).toContain('1s')
+      expect(result.summary).not.toContain('ms')
+    })
+
+    it('should format time saved as minutes when >= 60000ms', () => {
+      // 601 old components, 1 modified → 600 skipped → 600 * 100 = 60000ms → '1m 0s'
+      const oldComps = Array.from({ length: 601 }, (_, i) => createComponent(`pkg-${i}`, '1.0.0'))
+      const newComps = oldComps.map((c, i) => (i === 0 ? createComponent('pkg-0', '2.0.0') : c))
+
+      const result = service.prepareIncrementalScan('project-1', oldComps, newComps)
+
+      expect(result.summary).toContain('1m 0s')
+    })
+  })
+
+  describe('scan history pruning', () => {
+    it('should prune history to last 100 entries', () => {
+      const oldComps = [createComponent('a', '1.0.0'), createComponent('b', '1.0.0'), createComponent('c', '1.0.0')]
+      const newComps = [createComponent('a', '2.0.0'), createComponent('b', '1.0.0'), createComponent('c', '1.0.0')]
+
+      for (let i = 0; i < 102; i++) {
+        service.prepareIncrementalScan('project-1', oldComps, newComps)
+      }
+
+      const history = service.getScanHistory('project-1')
+      expect(history).toHaveLength(100)
+    })
+  })
 })
 
 describe('createIncrementalScanService', () => {

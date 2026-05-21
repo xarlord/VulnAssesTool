@@ -94,6 +94,8 @@ export class FilterAuditLogger {
    * Initialize the audit schema if not exists
    */
   private initializeSchema(): void {
+    if (!this.db) return
+
     const createTableSQL = `
       CREATE TABLE IF NOT EXISTS fpf_audit_events (
         id TEXT PRIMARY KEY,

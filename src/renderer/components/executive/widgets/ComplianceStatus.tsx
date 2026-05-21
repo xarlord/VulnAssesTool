@@ -3,8 +3,7 @@
  * Shows regulatory compliance indicators and SLA metrics
  */
 
-import React from 'react'
-import { Shield, CheckCircle, AlertCircle, Clock, TrendingUp } from 'lucide-react'
+import { CheckCircle, AlertCircle } from 'lucide-react'
 import type { ComplianceMetrics } from '@/lib/analytics'
 
 interface ComplianceStatusProps {

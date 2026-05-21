@@ -47,7 +47,7 @@ export function exportProjectData(project: Project, format: ExportFormat, dataTy
       downloadCsv(csvContent, filename)
     }
   } else if (format === 'json') {
-    let jsonContent: string
+    let jsonContent = ''
 
     if (dataType === 'project') {
       jsonContent = prepareProjectJson(project)

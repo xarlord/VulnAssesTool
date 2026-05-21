@@ -1,4 +1,3 @@
-import React from 'react'
 import { ExternalLink, GitCommit, GitPullRequest, Package, AlertTriangle } from 'lucide-react'
 import type { PatchLink } from '@@/types'
 

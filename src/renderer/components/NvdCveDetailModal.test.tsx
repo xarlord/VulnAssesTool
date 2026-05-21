@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { getPlatform } from '@/lib/platform'
 import { NvdCveDetailModal } from './NvdCveDetailModal'
 
 // Mock Toaster
@@ -82,15 +83,12 @@ describe('NvdCveDetailModal', () => {
     mockOnClose.mockReset()
     mockWriteText.mockResolvedValue(undefined)
 
-    // Setup electronAPI mock for each test
-    ;(window as any).electronAPI = {
-      database: {
-        getCveFull: vi.fn().mockResolvedValue({
-          success: true,
-          cve: mockCveData,
-        }),
-      },
-    }
+    // Configure platform mock for getCveFull
+    const platform = getPlatform()
+    vi.mocked(platform.database.getCveFull).mockResolvedValue({
+      success: true,
+      cve: mockCveData,
+    })
   })
 
   const renderModal = (open: boolean = true, cveId: string = 'CVE-2024-1234') => {
@@ -120,7 +118,7 @@ describe('NvdCveDetailModal', () => {
 
     it('should show loading state initially', () => {
       // Use a promise that never resolves to keep loading state
-      ;(window as any).electronAPI.database.getCveFull.mockReturnValue(new Promise(() => {}))
+      vi.mocked(getPlatform().database.getCveFull).mockReturnValue(new Promise(() => {}))
 
       renderModal(true)
 
@@ -401,7 +399,7 @@ describe('NvdCveDetailModal', () => {
 
   describe('Error Handling', () => {
     it('should display error message when API call fails', async () => {
-      ;(window as any).electronAPI.database.getCveFull.mockResolvedValue({
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
         success: false,
         error: 'CVE not found',
       })
@@ -414,7 +412,7 @@ describe('NvdCveDetailModal', () => {
     })
 
     it('should display error message when API throws an exception', async () => {
-      ;(window as any).electronAPI.database.getCveFull.mockRejectedValue(new Error('Network error'))
+      vi.mocked(getPlatform().database.getCveFull).mockRejectedValue(new Error('Network error'))
 
       renderModal(true)
 
@@ -424,7 +422,7 @@ describe('NvdCveDetailModal', () => {
     })
 
     it('should show retry button on error', async () => {
-      ;(window as any).electronAPI.database.getCveFull.mockResolvedValue({
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
         success: false,
         error: 'Something went wrong',
       })
@@ -436,7 +434,7 @@ describe('NvdCveDetailModal', () => {
 
     it('should retry fetch when Try again button is clicked', async () => {
       // First call fails
-      ;(window as any).electronAPI.database.getCveFull.mockResolvedValue({
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
         success: false,
         error: 'Something went wrong',
       })
@@ -446,7 +444,7 @@ describe('NvdCveDetailModal', () => {
       await screen.findByText('Try again')
 
       // Second call succeeds
-      ;(window as any).electronAPI.database.getCveFull.mockResolvedValue({
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
         success: true,
         cve: mockCveData,
       })
@@ -459,7 +457,7 @@ describe('NvdCveDetailModal', () => {
 
   describe('No CVE Data', () => {
     it('should display "No CVE data" when API returns success but no CVE', async () => {
-      ;(window as any).electronAPI.database.getCveFull.mockResolvedValue({
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
         success: true,
         cve: null,
       })
@@ -467,6 +465,277 @@ describe('NvdCveDetailModal', () => {
       renderModal(true)
 
       expect(await screen.findByText('No CVE data')).toBeInTheDocument()
+    })
+  })
+
+  describe('Non-vulnerable CPE Matches', () => {
+    it('should display "Not Affected" section for non-vulnerable CPE matches', async () => {
+      const dataWithNonVuln = {
+        ...mockCveData,
+        cpeMatches: [
+          {
+            id: 1,
+            cveId: 'CVE-2024-1234',
+            cpe23Uri: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*',
+            vulnerable: true,
+            versionStartIncluding: '1.0',
+            versionEndExcluding: '2.0',
+          },
+          { id: 2, cveId: 'CVE-2024-1234', cpe23Uri: 'cpe:2.3:a:vendor:product:3.0:*:*:*:*:*:*:*', vulnerable: false },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: dataWithNonVuln })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      expect(screen.getByText('Not Affected (Fixed Versions)')).toBeInTheDocument()
+      expect(screen.getByText(/Version 3\.0 is not affected/)).toBeInTheDocument()
+    })
+  })
+
+  describe('CPE Version Range Details', () => {
+    it('should display versionStartExcluding in CPE match', async () => {
+      const data = {
+        ...mockCveData,
+        cpeMatches: [
+          {
+            id: 1,
+            cveId: 'CVE-2024-1234',
+            cpe23Uri: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*',
+            vulnerable: true,
+            versionStartExcluding: '1.0',
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      expect(screen.getByText(/From \(>\):/)).toBeInTheDocument()
+      expect(screen.getByText('1.0')).toBeInTheDocument()
+    })
+
+    it('should display versionEndIncluding in CPE match', async () => {
+      const data = {
+        ...mockCveData,
+        cpeMatches: [
+          {
+            id: 1,
+            cveId: 'CVE-2024-1234',
+            cpe23Uri: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*',
+            vulnerable: true,
+            versionEndIncluding: '2.5',
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      expect(screen.getByText(/Up to \(≤\):/)).toBeInTheDocument()
+      expect(screen.getByText('2.5')).toBeInTheDocument()
+    })
+
+    it('should display all version range fields together', async () => {
+      const data = {
+        ...mockCveData,
+        cpeMatches: [
+          {
+            id: 1,
+            cveId: 'CVE-2024-1234',
+            cpe23Uri: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*',
+            vulnerable: true,
+            versionStartIncluding: '1.0',
+            versionStartExcluding: '1.5',
+            versionEndIncluding: '3.0',
+            versionEndExcluding: '3.5',
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      expect(screen.getByText(/From \(≥\):/)).toBeInTheDocument()
+      expect(screen.getByText(/From \(>\):/)).toBeInTheDocument()
+      expect(screen.getByText(/Up to \(≤\):/)).toBeInTheDocument()
+      expect(screen.getByText(/Up to \(<\):/)).toBeInTheDocument()
+    })
+  })
+
+  describe('CWE Section Toggle', () => {
+    it('should collapse and expand CWE section on toggle click', async () => {
+      const user = userEvent.setup()
+      renderModal(true)
+
+      const cweButton = await screen.findByTestId('cwe-section')
+      const cweContent = cweButton.nextElementSibling!
+      expect(cweContent.className).toContain('max-h-[500px]')
+
+      await user.click(cweButton)
+      expect(cweContent.className).toContain('max-h-0')
+
+      await user.click(cweButton)
+      expect(cweContent.className).toContain('max-h-[500px]')
+    })
+  })
+
+  describe('References Section Toggle', () => {
+    it('should collapse and expand References section on toggle click', async () => {
+      const user = userEvent.setup()
+      renderModal(true)
+
+      const refsButton = await screen.findByTestId('references-section')
+      const refsContent = refsButton.nextElementSibling!
+      expect(refsContent.className).toContain('max-h-[2000px]')
+
+      await user.click(refsButton)
+      expect(refsContent.className).toContain('max-h-0')
+
+      await user.click(refsButton)
+      expect(refsContent.className).toContain('max-h-[2000px]')
+    })
+  })
+
+  describe('Copy Error Handling', () => {
+    it('should show error toast when clipboard write fails', async () => {
+      const user = userEvent.setup()
+      const { toast } = await import('./Toaster')
+
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+        writable: true,
+        configurable: true,
+      })
+
+      renderModal(true)
+      const copyButton = await screen.findByTestId('cve-copy-id')
+      await user.click(copyButton)
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Failed to copy to clipboard')
+      })
+    })
+  })
+
+  describe('Assigner and VulnStatus Display', () => {
+    it('should display assigner when present', async () => {
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+      expect(screen.getByText(/Assigner: mitre/)).toBeInTheDocument()
+    })
+
+    it('should display vuln status when present', async () => {
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+      expect(screen.getByText(/Status: Analyzed/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Multiple CVSS Sources', () => {
+    it('should display multi-source CVSS summary table when multiple metrics exist', async () => {
+      const dataWithMultipleMetrics = {
+        ...mockCveData,
+        cvssMetrics: [
+          {
+            source: 'nvd@nist.gov',
+            type: 'Primary',
+            version: '3.1' as const,
+            score: 9.8,
+            severity: 'CRITICAL',
+            vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+          },
+          {
+            source: 'msrc@microsoft.com',
+            type: 'Secondary',
+            version: '3.1' as const,
+            score: 8.5,
+            severity: 'HIGH',
+            vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H',
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
+        success: true,
+        cve: dataWithMultipleMetrics,
+      })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // Multi-source summary heading
+      expect(screen.getByText('All CVSS Scores (Multiple Sources)')).toBeInTheDocument()
+      // Source names
+      expect(screen.getByText('nvd@nist.gov')).toBeInTheDocument()
+      expect(screen.getByText('msrc@microsoft.com')).toBeInTheDocument()
+      // Type badges — Primary uses a distinct style, Secondary uses default
+      expect(screen.getByText('Primary')).toBeInTheDocument()
+      expect(screen.getByText('Secondary')).toBeInTheDocument()
+      // Version column (both metrics are v3.1)
+      expect(screen.getAllByText('v3.1').length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  describe('CVSS v3.0 Section', () => {
+    it('should display CVSS v3.0 score and vector table', async () => {
+      const dataWithV30 = {
+        ...mockCveData,
+        cvssV31Score: undefined,
+        cvssV31Vector: undefined,
+        cvssV31Severity: undefined,
+        cvssV30Score: 7.5,
+        cvssV30Vector: 'CVSS:3.0/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H',
+        cvssV30Severity: 'HIGH',
+        referenceTags: [] as string[],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
+        success: true,
+        cve: dataWithV30,
+      })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      expect(screen.getByText('CVSS v3.0')).toBeInTheDocument()
+      // v3-specific metric names (v2 uses different names like "Access Vector")
+      expect(screen.getByText('Attack Vector')).toBeInTheDocument()
+      expect(screen.getByText('Attack Complexity')).toBeInTheDocument()
+      expect(screen.getByText('Privileges Required')).toBeInTheDocument()
+    })
+  })
+
+  describe('CVSS v2.0 Section', () => {
+    it('should display CVSS v2.0 score and vector table', async () => {
+      const dataWithV2 = {
+        ...mockCveData,
+        cvssV31Score: undefined,
+        cvssV31Vector: undefined,
+        cvssV31Severity: undefined,
+        cvssV30Score: undefined,
+        cvssV30Vector: undefined,
+        cvssV30Severity: undefined,
+        cvssV2Score: 6.8,
+        cvssV2Vector: 'CVSS:2.0/AV:N/AC:L/Au:N/C:C/I:C/A:C',
+        cvssV2Severity: 'HIGH',
+        referenceTags: [] as string[],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
+        success: true,
+        cve: dataWithV2,
+      })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      expect(screen.getByText('CVSS v2.0')).toBeInTheDocument()
+      // v2-specific metric names (v3 uses different names like "Attack Vector")
+      expect(screen.getByText('Access Vector')).toBeInTheDocument()
+      expect(screen.getByText('Authentication')).toBeInTheDocument()
+      expect(screen.getByText('Access Complexity')).toBeInTheDocument()
     })
   })
 })

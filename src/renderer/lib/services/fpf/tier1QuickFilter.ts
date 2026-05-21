@@ -408,9 +408,11 @@ export class Tier1QuickFilter {
           }
 
           // Check if specific vulnerable feature is disabled
+          const disabledFeatures = featureConfig.disabled
           if (
-            Array.isArray(featureConfig.disabled) &&
-            mapping.patterns.some((p) => featureConfig.disabled.includes(p))
+            Array.isArray(disabledFeatures) &&
+            disabledFeatures.length > 0 &&
+            mapping.patterns.some((p) => disabledFeatures.includes(p))
           ) {
             return {
               vulnerabilityId: vuln.id,

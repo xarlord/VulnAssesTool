@@ -43,14 +43,12 @@ export function configureAuditMiddleware(newConfig: Partial<AuditMiddlewareConfi
  */
 export function createAuditMiddleware<T extends object>(_storeName: string): StateCreator<T> {
   return (set, get, api) => {
-    const originalSet = set
-
     // Wrap setState to intercept changes
     const wrappedSet: typeof set = (partial, replace) => {
       const previousState = get()
 
-      // Apply the state change
-      originalSet(partial, replace)
+      // Apply the state change - cast to work around Zustand overload resolution
+      ;(set as (partial: T | Partial<T> | ((state: T) => T | Partial<T>), replace?: boolean) => void)(partial, replace)
 
       // Log the change if audit is enabled
       if (config.enabled) {

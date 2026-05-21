@@ -532,4 +532,164 @@ describe('ReportPreview', () => {
       )
     })
   })
+
+  describe('Logo Upload', () => {
+    const switchToOptions = async () => {
+      const user = userEvent.setup()
+      renderPreview(true)
+      await user.click(screen.getByTestId('tab-options'))
+      return user
+    }
+
+    it('should show upload area when no logo is set', async () => {
+      await switchToOptions()
+
+      expect(screen.getByText('Upload Logo')).toBeInTheDocument()
+    })
+
+    it('should accept valid image file for logo upload', async () => {
+      await switchToOptions()
+
+      const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement
+      if (fileInput) {
+        const file = new File(['logo-content'], 'logo.png', { type: 'image/png' })
+        Object.defineProperty(file, 'size', { value: 1024 })
+
+        fireEvent.change(fileInput, { target: { files: [file] } })
+
+        await waitFor(() => {
+          expect(screen.getByAltText('Company logo')).toBeInTheDocument()
+        })
+      }
+    })
+
+    it('should reject non-image files for logo', async () => {
+      await switchToOptions()
+
+      const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement
+      if (fileInput) {
+        const file = new File(['text'], 'file.txt', { type: 'text/plain' })
+        fireEvent.change(fileInput, { target: { files: [file] } })
+
+        expect(screen.queryByAltText('Company logo')).not.toBeInTheDocument()
+      }
+    })
+
+    it('should reject files larger than 2MB for logo', async () => {
+      await switchToOptions()
+
+      const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement
+      if (fileInput) {
+        const file = new File(['large'], 'huge.png', { type: 'image/png' })
+        Object.defineProperty(file, 'size', { value: 3 * 1024 * 1024 })
+        fireEvent.change(fileInput, { target: { files: [file] } })
+
+        expect(screen.queryByAltText('Company logo')).not.toBeInTheDocument()
+      }
+    })
+
+    it('should remove logo when remove button is clicked', async () => {
+      const user = await switchToOptions()
+
+      const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement
+      if (fileInput) {
+        const file = new File(['logo'], 'logo.png', { type: 'image/png' })
+        Object.defineProperty(file, 'size', { value: 1024 })
+        fireEvent.change(fileInput, { target: { files: [file] } })
+
+        await waitFor(() => {
+          expect(screen.getByAltText('Company logo')).toBeInTheDocument()
+        })
+
+        const removeButton = screen.getByLabelText('Remove logo')
+        await user.click(removeButton)
+
+        expect(screen.queryByAltText('Company logo')).not.toBeInTheDocument()
+      }
+    })
+  })
+
+  describe('HTML Generation Error Handling', () => {
+    it('should handle HTML generation error gracefully', async () => {
+      const consoleError = vi.fn()
+      const originalError = console.error
+      console.error = consoleError
+      ;(ReportGenerator.generateHTML as any).mockRejectedValue(new Error('HTML generation failed'))
+
+      const user = userEvent.setup()
+      renderPreview(true)
+
+      await user.click(screen.getByText('HTML'))
+
+      await vi.waitFor(() => {
+        expect(consoleError).toHaveBeenCalled()
+      })
+
+      console.error = originalError
+    })
+  })
+
+  describe('Options Changes', () => {
+    const switchToOptions = async () => {
+      const user = userEvent.setup()
+      renderPreview(true)
+      await user.click(screen.getByTestId('tab-options'))
+      return user
+    }
+
+    it('should allow changing the company name', async () => {
+      const user = await switchToOptions()
+
+      const companyInput = document.querySelector('#companyName') as HTMLInputElement
+      if (companyInput) {
+        await user.clear(companyInput)
+        await user.type(companyInput, 'Test Corp')
+
+        expect(companyInput.value).toBe('Test Corp')
+      }
+    })
+
+    it('should toggle executive summary switch', async () => {
+      const user = await switchToOptions()
+
+      const switches = screen.getAllByTestId('mock-switch')
+      await user.click(switches[0])
+
+      expect(switches[0]).not.toBeChecked()
+    })
+
+    it('should toggle charts switch', async () => {
+      const user = await switchToOptions()
+
+      const switches = screen.getAllByTestId('mock-switch')
+      await user.click(switches[1])
+
+      expect(switches[1]).not.toBeChecked()
+    })
+
+    it('should toggle recommendations switch', async () => {
+      const user = await switchToOptions()
+
+      const switches = screen.getAllByTestId('mock-switch')
+      await user.click(switches[2])
+
+      expect(switches[2]).not.toBeChecked()
+    })
+
+    it('should regenerate preview when options change', async () => {
+      renderPreview(true)
+
+      const initialCallCount = (previewHTML as any).mock.calls.length
+
+      const user = userEvent.setup()
+      await user.click(screen.getByTestId('tab-options'))
+
+      const switches = screen.getAllByTestId('mock-switch')
+      await user.click(switches[0])
+
+      await user.click(screen.getByTestId('tab-preview'))
+
+      expect((previewHTML as any).mock.calls.length).toBeGreaterThan(initialCallCount)
+    })
+  })
 })

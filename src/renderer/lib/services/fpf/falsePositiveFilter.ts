@@ -126,7 +126,9 @@ export class FalsePositiveFilter {
 
     // Check if we should never auto-filter this severity
     const severity = vulnerability.severity
-    const neverAutoFilter = settings.neverAutoFilter || DEFAULT_FILTER_SETTINGS.neverAutoFilter
+    const isSeverityNeverAutoFilter =
+      severity !== 'none' && (settings.neverAutoFilter || DEFAULT_FILTER_SETTINGS.neverAutoFilter).includes(severity)
+    void isSeverityNeverAutoFilter
 
     // Tier 1: Quick Filters
     if (!options.skipTier1) {
@@ -136,7 +138,7 @@ export class FalsePositiveFilter {
       if (
         tier1Result.action === 'filtered' &&
         tier1Result.confidence >= settings.autoFilterConfidenceThreshold &&
-        !neverAutoFilter.includes(severity)
+        !isSeverityNeverAutoFilter
       ) {
         await this.logDecision(tier1Result, vulnerability, component, context, user)
         return tier1Result
@@ -163,7 +165,7 @@ export class FalsePositiveFilter {
       if (
         tier2Result.action === 'filtered' &&
         tier2Result.confidence >= settings.autoFilterConfidenceThreshold &&
-        !neverAutoFilter.includes(severity)
+        !isSeverityNeverAutoFilter
       ) {
         await this.logDecision(tier2Result, vulnerability, component, context, user)
         return tier2Result
@@ -189,7 +191,7 @@ export class FalsePositiveFilter {
     }
 
     // Always escalate Critical/High for review if not filtered
-    if (settings.alwaysEscalateToReview?.includes(severity)) {
+    if (severity !== 'none' && settings.alwaysEscalateToReview?.includes(severity)) {
       const result: FilterResult = {
         vulnerabilityId: vulnerability.id,
         componentId: component.id,
@@ -245,7 +247,7 @@ export class FalsePositiveFilter {
 
       // Update counters
       const severity = item.vulnerability.severity
-      if (severity && bySeverity[severity]) {
+      if (severity !== 'none' && severity in bySeverity) {
         bySeverity[severity][result.action]++
       }
     }
@@ -288,7 +290,7 @@ export class FalsePositiveFilter {
       eventType: 'filter_decision',
       vulnerability: {
         cveId: vulnerability.id,
-        severity: vulnerability.severity,
+        severity: vulnerability.severity === 'none' ? 'low' : vulnerability.severity,
         cvssScore: vulnerability.cvssScore || 0,
         component: {
           name: component.name,

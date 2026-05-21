@@ -11,7 +11,20 @@ import {
 } from './osv'
 import type { OsvVulnerability } from '@@/types'
 
-// Mock fetch globally
+vi.mock('@@/constants', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@@/constants')>()
+  return {
+    ...actual,
+    OSV_API_BASE_URL: 'https://api.osv.dev/v1',
+  }
+})
+
+vi.mock('./nvd', () => ({
+  getCveById: vi.fn(),
+}))
+
+import { getCveById } from './nvd'
+
 global.fetch = vi.fn()
 
 describe('parsePurl', () => {
@@ -629,5 +642,500 @@ describe('checkOsvApiStatus', () => {
     const result = await checkOsvApiStatus()
 
     expect(result).toBe(false)
+  })
+})
+
+describe('extractCvssScore via queryByPurl', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should parse CVSS vector string with scope changed', async () => {
+    const vectorVuln: OsvVulnerability = {
+      id: 'OSV-2024-CVSS1',
+      details: 'Vector test',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [
+        {
+          type: 'CVSS_V3',
+          score: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H',
+        },
+      ],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [vectorVuln] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].cvssScore).toBeGreaterThan(0)
+    expect(result[0].cvssVector).toBe('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H')
+  })
+
+  it('should parse CVSS vector string with scope unchanged', async () => {
+    const vectorVuln: OsvVulnerability = {
+      id: 'OSV-2024-CVSS2',
+      details: 'Scope unchanged',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [
+        {
+          type: 'CVSS_V3',
+          score: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+        },
+      ],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [vectorVuln] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].cvssScore).toBeGreaterThan(0)
+  })
+
+  it('should handle CVSS vector with zero impact', async () => {
+    const zeroImpactVuln: OsvVulnerability = {
+      id: 'OSV-2024-CVSS3',
+      details: 'Zero impact',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [
+        {
+          type: 'CVSS_V3',
+          score: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N',
+        },
+      ],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [zeroImpactVuln] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].cvssScore).toBe(0)
+    expect(result[0].severity).toBe('none')
+  })
+
+  it('should handle score > 10 as null (not a valid numeric score)', async () => {
+    const outOfRange: OsvVulnerability = {
+      id: 'OSV-2024-RANGE',
+      details: 'Out of range',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [{ type: 'CVSS_V3', score: '15.0' }],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [outOfRange] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].severity).toBe('none')
+    expect(result[0].cvssScore).toBeUndefined()
+  })
+
+  it('should handle score of exactly 0', async () => {
+    const zeroScore: OsvVulnerability = {
+      id: 'OSV-2024-ZERO',
+      details: 'Zero score',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [{ type: 'CVSS_V3', score: '0' }],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [zeroScore] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].cvssScore).toBe(0)
+    expect(result[0].severity).toBe('none')
+  })
+
+  it('should prefer CVSS_V3 over other severity types', async () => {
+    const multiSeverity: OsvVulnerability = {
+      id: 'OSV-2024-MULTI',
+      details: 'Multi severity',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [
+        { type: 'OTHER', score: '1.0' },
+        { type: 'CVSS_V3', score: '8.5' },
+      ],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [multiSeverity] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].cvssScore).toBe(8.5)
+    expect(result[0].severity).toBe('high')
+  })
+
+  it('should handle no severity data', async () => {
+    const noSeverity: OsvVulnerability = {
+      id: 'OSV-2024-NOSEV',
+      details: 'No severity',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [noSeverity] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].severity).toBe('none')
+    expect(result[0].cvssScore).toBeUndefined()
+  })
+
+  it('should handle empty severity array', async () => {
+    const emptySeverity: OsvVulnerability = {
+      id: 'OSV-2024-EMPTYSEV',
+      details: 'Empty severity',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [emptySeverity] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].severity).toBe('none')
+  })
+})
+
+describe('CVE alias enrichment via NVD', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should enrich OSV vulnerability with NVD data when CVE alias exists', async () => {
+    const osvWithCve: OsvVulnerability = {
+      id: 'OSV-2024-ALIAS',
+      summary: 'OSV summary',
+      details: 'OSV details',
+      published: '2024-01-01T00:00:00.000Z',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [{ type: 'CVSS_V3', score: '7.5' }],
+      aliases: ['CVE-2024-9999'],
+      references: [{ type: 'ADVISORY', url: 'https://osv.dev/advisory' }],
+    }
+
+    const nvdVuln = {
+      id: 'CVE-2024-9999',
+      source: 'nvd',
+      severity: 'critical',
+      cvssScore: 9.8,
+      cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+      cwes: ['CWE-79'],
+      description: 'NVD description',
+      references: [{ source: 'NVD', url: 'https://nvd.nist.gov/vuln/detail/CVE-2024-9999', tags: [] }],
+      affectedComponents: [],
+      publishedAt: new Date('2024-01-01'),
+      modifiedAt: new Date('2024-01-02'),
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [osvWithCve] }),
+    } as unknown as Response)
+
+    vi.mocked(getCveById).mockResolvedValueOnce(nvdVuln)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0', 'nvd-api-key')
+
+    expect(result[0].id).toBe('CVE-2024-9999')
+    expect(result[0].source).toBe('nvd')
+    expect(result[0].sources).toEqual(['nvd', 'osv'])
+    expect(result[0].severity).toBe('critical')
+    expect(result[0].cvssScore).toBe(9.8)
+    expect(result[0].cwes).toEqual(['CWE-79'])
+    expect(result[0].description).toBe('NVD description')
+    expect(result[0].aliases).toEqual(['OSV-2024-ALIAS'])
+    expect(getCveById).toHaveBeenCalledWith('CVE-2024-9999', 'nvd-api-key')
+  })
+
+  it('should use OSV data when NVD lookup returns null', async () => {
+    const osvWithCve: OsvVulnerability = {
+      id: 'OSV-2024-NULL',
+      summary: 'OSV summary',
+      details: 'OSV details',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      aliases: ['CVE-2024-NONEXISTENT'],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [osvWithCve] }),
+    } as unknown as Response)
+
+    vi.mocked(getCveById).mockResolvedValueOnce(null)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0', 'nvd-api-key')
+
+    expect(result[0].id).toBe('OSV-2024-NULL')
+    expect(result[0].source).toBe('osv')
+    expect(result[0].description).toBe('OSV summary')
+  })
+
+  it('should use OSV data when NVD lookup throws error', async () => {
+    const osvWithCve: OsvVulnerability = {
+      id: 'OSV-2024-ERR',
+      summary: 'OSV summary for error',
+      details: 'OSV details',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      severity: [{ type: 'CVSS_V3', score: '6.5' }],
+      aliases: ['CVE-2024-ERROR'],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [osvWithCve] }),
+    } as unknown as Response)
+
+    vi.mocked(getCveById).mockRejectedValueOnce(new Error('NVD API error'))
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0', 'nvd-api-key')
+
+    expect(result[0].id).toBe('OSV-2024-ERR')
+    expect(result[0].source).toBe('osv')
+    expect(result[0].description).toBe('OSV summary for error')
+  })
+
+  it('should not attempt NVD lookup when no API key provided', async () => {
+    const osvWithCve: OsvVulnerability = {
+      id: 'OSV-2024-NOKEY',
+      summary: 'OSV only',
+      details: 'Details',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      aliases: ['CVE-2024-1234'],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [osvWithCve] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(getCveById).not.toHaveBeenCalled()
+    expect(result[0].id).toBe('OSV-2024-NOKEY')
+    expect(result[0].source).toBe('osv')
+  })
+
+  it('should not attempt NVD lookup when no CVE aliases', async () => {
+    const osvNoAlias: OsvVulnerability = {
+      id: 'OSV-2024-NOALIAS',
+      details: 'No alias',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [osvNoAlias] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0', 'nvd-api-key')
+
+    expect(getCveById).not.toHaveBeenCalled()
+    expect(result[0].source).toBe('osv')
+  })
+
+  it('should merge references from NVD and OSV, deduplicating by URL', async () => {
+    const osvWithCve: OsvVulnerability = {
+      id: 'OSV-2024-MERGE',
+      summary: 'Merge test',
+      details: 'Details',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      aliases: ['CVE-2024-MERGE'],
+      references: [
+        { type: 'ADVISORY', url: 'https://nvd.nist.gov/vuln/detail/CVE-2024-MERGE' },
+        { type: 'FIX', url: 'https://osv.dev/fix' },
+      ],
+    }
+
+    const nvdVuln = {
+      id: 'CVE-2024-MERGE',
+      source: 'nvd',
+      severity: 'high',
+      cvssScore: 7.5,
+      description: 'NVD desc',
+      references: [
+        { source: 'NVD', url: 'https://nvd.nist.gov/vuln/detail/CVE-2024-MERGE', tags: [] },
+        { source: 'NVD', url: 'https://nvd.nist.gov/other', tags: [] },
+      ],
+      affectedComponents: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [osvWithCve] }),
+    } as unknown as Response)
+
+    vi.mocked(getCveById).mockResolvedValueOnce(nvdVuln)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0', 'nvd-api-key')
+
+    const urls = result[0].references.map((r) => r.url)
+    expect(urls).toContain('https://nvd.nist.gov/vuln/detail/CVE-2024-MERGE')
+    expect(urls).toContain('https://nvd.nist.gov/other')
+    expect(urls).toContain('https://osv.dev/fix')
+    expect(urls).toHaveLength(3)
+  })
+
+  it('should handle published date', async () => {
+    const vulnWithPublished: OsvVulnerability = {
+      id: 'OSV-2024-PUB',
+      details: 'Published',
+      published: '2024-06-15T10:30:00.000Z',
+      modified: '2024-06-16T10:30:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [vulnWithPublished] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0')
+
+    expect(result[0].publishedAt).toEqual(new Date('2024-06-15T10:30:00.000Z'))
+    expect(result[0].modifiedAt).toEqual(new Date('2024-06-16T10:30:00.000Z'))
+  })
+})
+
+describe('queryByPurl error handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should wrap Error exceptions with descriptive message', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('Network timeout'))
+
+    await expect(queryByPurl('pkg:npm/test@1.0.0')).rejects.toThrow('Failed to query OSV by PURL: Network timeout')
+  })
+
+  it('should handle getVulnerabilityById with non-Error throws', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce('string error')
+
+    await expect(getVulnerabilityById('OSV-2024-TEST')).rejects.toEqual('string error')
+  })
+
+  it('should handle getVulnerabilityById with Error throws', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('Connection refused'))
+
+    await expect(getVulnerabilityById('OSV-2024-TEST')).rejects.toThrow(
+      'Failed to get OSV vulnerability by ID: Connection refused',
+    )
+  })
+
+  it('should handle vulns with no CVE aliases (only non-CVE aliases)', async () => {
+    const osvWithNonCveAlias: OsvVulnerability = {
+      id: 'OSV-2024-NONCVE',
+      summary: 'Non-CVE alias',
+      details: 'Details',
+      modified: '2024-01-02T00:00:00.000Z',
+      affected: [{ package: { name: 'test', ecosystem: 'npm', purl: 'pkg:npm/test@1.0.0' } }],
+      aliases: ['GHSA-1234-5678-9012'],
+      references: [],
+    }
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ vulns: [osvWithNonCveAlias] }),
+    } as unknown as Response)
+
+    const result = await queryByPurl('pkg:npm/test@1.0.0', 'nvd-api-key')
+
+    expect(getCveById).not.toHaveBeenCalled()
+    expect(result[0].id).toBe('OSV-2024-NONCVE')
+  })
+})
+
+describe('parsePurl edge cases', () => {
+  it('should parse golang package with long path', () => {
+    const result = parsePurl('pkg:golang/github.com/gorilla/mux@1.8.0')
+    expect(result).toEqual({
+      ecosystem: 'golang',
+      name: 'github.com/gorilla/mux',
+      version: '1.8.0',
+    })
+  })
+
+  it('should parse maven package', () => {
+    const result = parsePurl('pkg:maven/org.apache.commons/lang3@3.12.0')
+    expect(result).toEqual({
+      ecosystem: 'maven',
+      name: 'org.apache.commons/lang3',
+      version: '3.12.0',
+    })
+  })
+
+  it('should return null for partial match', () => {
+    expect(parsePurl('pkg:')).toBeNull()
+    expect(parsePurl('pkg:npm')).toBeNull()
+  })
+})
+
+describe('batchQuery error handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should return empty array for empty input', async () => {
+    const result = await batchQuery([])
+    expect(result).toEqual([])
+  })
+})
+
+describe('queryByPurls edge cases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should return empty map for empty input', async () => {
+    const result = await queryByPurls([])
+    expect(result.size).toBe(0)
   })
 })

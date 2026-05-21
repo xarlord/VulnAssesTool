@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { X, Download, FileSpreadsheet, FileJson, FileText } from 'lucide-react'
 import { exportProjectData, exportAllProjects } from '@/lib/export'
 import type { ExportFormat, ExportDataType } from '@/lib/export/types'

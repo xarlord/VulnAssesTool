@@ -12,6 +12,7 @@ import {
   sortByRiskScore,
   formatEpssPercentile,
   getEpssColorClass,
+  getRiskBadgeText,
   type Severity,
   type RiskLevel,
 } from './riskScore'
@@ -192,6 +193,26 @@ describe('riskScore', () => {
 
       expect(compareByRiskScore(highEpss, lowEpss)).toBeLessThan(0)
     })
+
+    it('should use severity as final tie-breaker when score, KEV, and EPSS are equal', () => {
+      const crit = { id: 'a', isKev: false, epssPercentile: null, severity: 'CRITICAL' as Severity }
+      const high = { id: 'b', isKev: false, epssPercentile: null, severity: 'HIGH' as Severity }
+      const med = { id: 'c', isKev: false, epssPercentile: null, severity: 'MEDIUM' as Severity }
+      const low = { id: 'd', isKev: false, epssPercentile: null, severity: 'LOW' as Severity }
+      const none = { id: 'e', isKev: false, epssPercentile: null, severity: 'NONE' as Severity }
+
+      expect(compareByRiskScore(crit, high)).toBeLessThan(0)
+      expect(compareByRiskScore(high, med)).toBeLessThan(0)
+      expect(compareByRiskScore(med, low)).toBeLessThan(0)
+      expect(compareByRiskScore(low, none)).toBeLessThan(0)
+      expect(compareByRiskScore(crit, none)).toBeLessThan(0)
+    })
+
+    it('should return 0 for identical inputs', () => {
+      const a = { id: 'a', isKev: false, epssPercentile: 0.5, severity: 'HIGH' as Severity }
+      const b = { id: 'b', isKev: false, epssPercentile: 0.5, severity: 'HIGH' as Severity }
+      expect(compareByRiskScore(a, b)).toBe(0)
+    })
   })
 
   describe('sortByRiskScore', () => {
@@ -240,6 +261,23 @@ describe('riskScore', () => {
 
     it('should return muted for null', () => {
       expect(getEpssColorClass(null)).toContain('muted')
+    })
+  })
+
+  describe('getRiskBadgeText', () => {
+    it('should append KEV for KEV vulnerabilities', () => {
+      const result = calculateRiskScore({ isKev: true, epssPercentile: null, severity: 'LOW' })
+      expect(getRiskBadgeText(result)).toBe(`${result.score} KEV`)
+    })
+
+    it('should return plain score for non-KEV vulnerabilities', () => {
+      const result = calculateRiskScore({ isKev: false, epssPercentile: null, severity: 'MEDIUM' })
+      expect(getRiskBadgeText(result)).toBe(String(result.score))
+    })
+
+    it('should append KEV for high EPSS non-KEV vulnerability', () => {
+      const result = calculateRiskScore({ isKev: true, epssPercentile: 0.9, severity: 'CRITICAL' })
+      expect(getRiskBadgeText(result)).toBe(`${result.score} KEV`)
     })
   })
 })

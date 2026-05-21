@@ -1,4 +1,4 @@
-import { test, expect } from '../electron-helper'
+import { test, expect } from '../test-helper'
 
 /**
  * Simple E2E test to verify the Electron app launches and displays the dashboard

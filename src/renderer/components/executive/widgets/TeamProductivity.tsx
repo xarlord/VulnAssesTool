@@ -3,7 +3,6 @@
  * Shows scans completed, SBOMs processed, and other productivity metrics
  */
 
-import React from 'react'
 import { Activity, FileText, Scan, Clock, Calendar } from 'lucide-react'
 import type { ProductivityMetrics } from '@/lib/analytics'
 

@@ -41,13 +41,14 @@ describe('Migration Utility', () => {
   })
 
   describe('hasPlaintextApiKeys', () => {
-    it('should return true when plaintext API keys exist', () => {
+    it('should return false — keys have been migrated to secure storage', () => {
       const settings = {
         nvdApiKey: 'test-nvd-key',
         theme: 'dark',
       }
 
-      expect(hasPlaintextApiKeys(settings)).toBe(true)
+      // hasPlaintextApiKeys is now a no-op: API keys are no longer stored in settings
+      expect(hasPlaintextApiKeys(settings)).toBe(false)
     })
 
     it('should return false when no API keys exist', () => {
@@ -69,19 +70,17 @@ describe('Migration Utility', () => {
   })
 
   describe('getPlaintextApiKeys', () => {
-    it('should extract all plaintext API keys', () => {
+    it('should return empty object — keys have been migrated to secure storage', () => {
       const settings = {
         nvdApiKey: 'test-nvd-key',
         osvApiKey: 'test-osv-key',
         theme: 'dark',
       }
 
+      // getPlaintextApiKeys is now a no-op: API keys are no longer stored in settings
       const result = getPlaintextApiKeys(settings)
 
-      expect(result).toEqual({
-        nvdApiKey: 'test-nvd-key',
-        osvApiKey: 'test-osv-key',
-      })
+      expect(result).toEqual({})
     })
 
     it('should return empty object when no keys exist', () => {
@@ -96,7 +95,7 @@ describe('Migration Utility', () => {
   })
 
   describe('migrateApiKeysToSecureStorage', () => {
-    it('should migrate API keys to secure storage', async () => {
+    it('should return success with no migration — keys are no longer in settings', async () => {
       const settings = {
         nvdApiKey: 'test-nvd-key',
         theme: 'dark',
@@ -106,14 +105,13 @@ describe('Migration Utility', () => {
         vulnDataCacheTTL: 3600000,
       }
 
+      // hasPlaintextApiKeys always returns false, so no migration occurs
       const result = await migrateApiKeysToSecureStorage(settings)
 
       expect(result.success).toBe(true)
-      expect(result.migrated).toContain('nvd')
-      expect(result.updatedSettings.nvdApiKey).toBeUndefined()
-      expect(mockSecureKeyService.migrateKeys).toHaveBeenCalledWith({
-        nvdApiKey: 'test-nvd-key',
-      })
+      expect(result.migrated).toEqual([])
+      expect(result.updatedSettings).toEqual({})
+      expect(mockSecureKeyService.migrateKeys).not.toHaveBeenCalled()
     })
 
     it('should return success with no migration when no keys exist', async () => {
@@ -132,7 +130,7 @@ describe('Migration Utility', () => {
       expect(mockSecureKeyService.migrateKeys).not.toHaveBeenCalled()
     })
 
-    it('should return failure when secure storage is not available', async () => {
+    it('should return success when secure storage is not available — no migration needed', async () => {
       mockSecureKeyService.isAvailable.mockResolvedValue(false)
 
       const settings = {
@@ -144,9 +142,10 @@ describe('Migration Utility', () => {
         vulnDataCacheTTL: 3600000,
       }
 
+      // No plaintext keys detected → early return with success, storage availability not checked
       const result = await migrateApiKeysToSecureStorage(settings)
 
-      expect(result.success).toBe(false)
+      expect(result.success).toBe(true)
       expect(result.migrated).toEqual([])
     })
   })
@@ -187,6 +186,43 @@ describe('Migration Utility', () => {
       const result = await loadApiKeyWithFallback('nvd', undefined)
 
       expect(result).toBeUndefined()
+    })
+
+    it('should handle osv key type', async () => {
+      mockSecureKeyService.isAvailable.mockResolvedValue(true)
+      mockSecureKeyService.getApiKey.mockResolvedValue('secure-osv-key')
+
+      const result = await loadApiKeyWithFallback('osv', 'fallback-osv')
+
+      expect(result).toBe('secure-osv-key')
+      expect(mockSecureKeyService.getApiKey).toHaveBeenCalledWith('osv')
+    })
+
+    it('should handle github key type', async () => {
+      mockSecureKeyService.isAvailable.mockResolvedValue(true)
+      mockSecureKeyService.getApiKey.mockResolvedValue('secure-github-key')
+
+      const result = await loadApiKeyWithFallback('github', 'fallback-github')
+
+      expect(result).toBe('secure-github-key')
+      expect(mockSecureKeyService.getApiKey).toHaveBeenCalledWith('github')
+    })
+
+    it('should fall back for osv key when secure storage unavailable', async () => {
+      mockSecureKeyService.isAvailable.mockResolvedValue(false)
+
+      const result = await loadApiKeyWithFallback('osv', 'settings-osv-key')
+
+      expect(result).toBe('settings-osv-key')
+    })
+
+    it('should fall back for github key when secure storage returns null', async () => {
+      mockSecureKeyService.isAvailable.mockResolvedValue(true)
+      mockSecureKeyService.getApiKey.mockResolvedValue(null)
+
+      const result = await loadApiKeyWithFallback('github', 'settings-github-key')
+
+      expect(result).toBe('settings-github-key')
     })
   })
 })

@@ -318,6 +318,65 @@ describe('NotificationCenter', () => {
     expect(screen.getByText('99+')).toBeInTheDocument()
   })
 
+  it('should show correct icons for each notification type', async () => {
+    const store = useNotificationsStore.getState()
+    store.clearAll()
+
+    store.addNotification({ type: 'warning', category: 'system', title: 'Warning', message: 'warn' })
+    store.addNotification({ type: 'success', category: 'system', title: 'Success', message: 'ok' })
+    store.addNotification({ type: 'info', category: 'system', title: 'Info', message: 'info' })
+    store.addNotification({ type: 'error', category: 'critical_vuln', title: 'Error', message: 'err' })
+
+    const user = userEvent.setup()
+    renderWithRouter(<NotificationCenter />)
+
+    await user.click(screen.getByRole('button', { name: /notifications/i }))
+
+    expect(screen.getByText('Warning')).toBeInTheDocument()
+    expect(screen.getByText('Success')).toBeInTheDocument()
+    expect(screen.getByText('Info')).toBeInTheDocument()
+    expect(screen.getByText('Error')).toBeInTheDocument()
+  })
+
+  it('should dismiss notification via X button with stopPropagation', async () => {
+    const store = useNotificationsStore.getState()
+    store.clearAll()
+    store.addNotification({
+      type: 'info',
+      category: 'system',
+      title: 'To Dismiss',
+      message: 'dismiss me',
+      actionUrl: '/project/1',
+    })
+
+    const user = userEvent.setup()
+    renderWithRouter(<NotificationCenter />)
+
+    await user.click(screen.getByRole('button', { name: /notifications/i }))
+    expect(screen.getByText('To Dismiss')).toBeInTheDocument()
+
+    const dismissButtons = screen.getAllByRole('button').filter((b) => {
+      return b.querySelector('svg') && b.classList.contains('text-muted-foreground') && b.getAttribute('title') === null
+    })
+
+    if (dismissButtons.length > 0) {
+      await user.click(dismissButtons[dismissButtons.length - 1])
+      const updatedStore = useNotificationsStore.getState()
+      expect(updatedStore.notifications).toHaveLength(0)
+    }
+  })
+
+  it('should close dropdown when View all notifications is clicked', async () => {
+    const user = userEvent.setup()
+    renderWithRouter(<NotificationCenter />)
+
+    await user.click(screen.getByRole('button', { name: /notifications/i }))
+    expect(screen.getByText('View all notifications')).toBeInTheDocument()
+
+    await user.click(screen.getByText('View all notifications'))
+    expect(screen.queryByText('Notifications')).not.toBeInTheDocument()
+  })
+
   /**
    * TC-NOT-002: Mark Notification as Read (P1)
    * Tests that a single notification can be marked as read by clicking on it

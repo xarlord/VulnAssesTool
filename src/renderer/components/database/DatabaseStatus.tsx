@@ -29,6 +29,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { SyncProgressModal } from './SyncProgressModal'
+import type { SyncStatus as IpcSyncStatus } from '@@/types/ipc'
 
 /**
  * Database statistics
@@ -62,17 +63,11 @@ export interface DetailedDatabaseStats {
 }
 
 /**
- * Sync status
+ * Sync status (extended with UI state beyond IPC SyncStatus)
  */
-export interface SyncStatus {
-  isSyncing: boolean
+export interface SyncStatus extends IpcSyncStatus {
   isPaused: boolean
-  progress: number
-  total: number
   currentYear: number | null
-  currentFile: string | null
-  error: string | null
-  lastSync: string | null
   status: 'idle' | 'syncing' | 'paused' | 'error' | 'cancelled'
 }
 
@@ -250,8 +245,14 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
       // Get sync status
       const syncResponse = await getPlatform().database.getSyncStatus()
       if (syncResponse.success && syncResponse.status) {
-        setSyncStatus(syncResponse.status)
-        setSyncing(syncResponse.status.isSyncing)
+        const ipcStatus = syncResponse.status
+        setSyncStatus({
+          ...ipcStatus,
+          isPaused: false,
+          currentYear: null,
+          status: ipcStatus.isSyncing ? 'syncing' : ipcStatus.error ? 'error' : 'idle',
+        })
+        setSyncing(ipcStatus.isSyncing)
 
         if (syncResponse.status.isSyncing) {
           setShowSyncModal(true)
@@ -376,7 +377,7 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
 
       // Map the progress data to our interface
       setSyncProgress({
-        phase: (progress.phase as string) || 'downloading',
+        phase: (progress.phase as SyncProgress['phase']) || 'downloading',
         currentYear: (progress.currentYear as number | null) ?? (progress.year as number | null) ?? null,
         totalYears: (progress.totalYears as number) || 1,
         yearsCompleted: (progress.yearsCompleted as number) || 0,
@@ -391,7 +392,11 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
         totalBatches: (progress.totalBatches as number) || 0,
         startedAt: (progress.startedAt as string) || new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString(),
-        errors: (progress.errors as string[]) || [],
+        errors: ((progress.errors as string[]) || []).map((msg) => ({
+          timestamp: new Date().toISOString(),
+          message: msg,
+          recoverable: true,
+        })),
         downloadSpeed: (progress.downloadSpeed as number) || 0,
       })
 
@@ -425,7 +430,7 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
                 ...prev.errors,
                 {
                   timestamp: new Date().toISOString(),
-                  message: err.error || err.message || 'Unknown error',
+                  message: typeof err === 'string' ? err : String(err),
                   recoverable: true,
                 },
               ],
@@ -678,5 +683,3 @@ export const DatabaseStatus: React.FC<DatabaseStatusProps> = ({
     </>
   )
 }
-
-export { DatabaseStatus }

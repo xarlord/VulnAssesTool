@@ -8,7 +8,7 @@
  * in the Settings page. Tests will pass gracefully if not available.
  */
 
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 import { navigateToSettings } from '../shared-helpers'
 
 /**

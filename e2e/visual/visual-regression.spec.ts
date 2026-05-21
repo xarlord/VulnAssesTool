@@ -2,10 +2,7 @@
  * Visual Regression Tests for VulnAssesTool
  *
  * These tests capture screenshots of UI components for visual regression testing.
- * Run with: npx playwright test --grep visual
- *
- * Uses browser-based testing with mocked Electron APIs instead of actual Electron
- * to avoid Playwright/Electron compatibility issues.
+ * Run with: npx playwright test --project=visual
  *
  * IMPORTANT: These tests require the database to be seeded with sample CVE data.
  * Run: npm run seed-db before running these tests.
@@ -13,67 +10,21 @@
 
 import { test as base, expect } from '@playwright/test'
 
-// Server port (must match global-setup.ts)
-const serverPort = 4173
-
-// Visual test configuration
 const VIEWPORTS = {
   mobile: { width: 375, height: 667 },
   tablet: { width: 768, height: 1024 },
   desktop: { width: 1280, height: 720 },
 }
 
-// ============================================================
-// E2E TIMEOUT CONSTANTS
-// ============================================================
 const E2E_DEFAULT_TIMEOUT = 30000
 const E2E_SELECTOR_TIMEOUT = 15000
 const E2E_LOAD_TIMEOUT = 30000
 const E2E_UI_DELAY = 500
 const E2E_SEARCH_DELAY = 1000
 
-/**
- * Mock Electron APIs in the browser
- */
-async function mockElectronAPIs(page: import('@playwright/test').Page) {
-  await page.addInitScript(() => {
-    ;(window as unknown as Record<string, unknown>).electronAPI = {
-      invoke: async (channel: string) => {
-        console.log(`[Mock] invoke('${channel}')`)
-        return undefined
-      },
-      store: {
-        get: async () => undefined,
-        set: async () => {},
-        delete: async () => {},
-      },
-      secureStorage: {
-        get: async () => null,
-        set: async () => true,
-        delete: async () => true,
-        has: async () => false,
-      },
-      getDatabaseStatus: async () => ({
-        exists: true,
-        path: 'C:\\test\\nvd-data.db',
-        size: 32768,
-        lastUpdated: new Date().toISOString(),
-      }),
-      platform: 'win32',
-      appVersion: '2.0.0',
-      onUpdateAvailable: () => {},
-      onProgress: () => {},
-      removeAllListeners: () => {},
-    }
-  })
-}
-
-// Create test fixture with browser-based testing
 const test = base.extend({
   page: async ({ page }, use) => {
-    await mockElectronAPIs(page)
-
-    await page.goto(`http://127.0.0.1:${serverPort}/`, {
+    await page.goto('/', {
       timeout: E2E_LOAD_TIMEOUT,
       waitUntil: 'domcontentloaded',
     })

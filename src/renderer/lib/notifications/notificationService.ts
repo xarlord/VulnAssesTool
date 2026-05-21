@@ -1,5 +1,5 @@
 import { useNotificationsStore } from './notificationsStore'
-import type { AppNotification } from '@@/types'
+import type { AppNotification, NotificationPreferences } from '@@/types'
 import { isElectron } from '@/lib/platform'
 
 /**
@@ -183,10 +183,10 @@ export const clearAllNotifications = (): void => {
 /**
  * Notification preferences management
  */
-export const updateNotificationPreferences = (preferences: Partial<AppNotification>): void => {
+export const updateNotificationPreferences = (preferences: Partial<NotificationPreferences>): void => {
   useNotificationsStore.getState().updatePreferences(preferences)
 }
 
-export const setCategoryEnabled = (category: keyof AppNotification['category'], enabled: boolean): void => {
+export const setCategoryEnabled = (category: keyof NotificationPreferences['categories'], enabled: boolean): void => {
   useNotificationsStore.getState().setCategoryEnabled(category, enabled)
 }

@@ -8,7 +8,7 @@
  * - Database reset/rebuild functionality
  */
 
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 import { navigateToSettings } from '../shared-helpers'
 
 /**
@@ -89,13 +89,11 @@ test.describe('Database Settings Flow', () => {
       await expect(syncScheduleLabel).toBeVisible({ timeout: 5000 })
 
       // Look for the select dropdown
-      const syncSelect = page
-        .locator('select')
-        .filter({
-          has: page.locator(
-            'option[value="daily"], option[value="weekly"], option[value="monthly"], option[value="manual"]',
-          ),
-        })
+      const syncSelect = page.locator('select').filter({
+        has: page.locator(
+          'option[value="daily"], option[value="weekly"], option[value="monthly"], option[value="manual"]',
+        ),
+      })
       await expect(syncSelect.first()).toBeVisible({ timeout: 5000 })
     })
 

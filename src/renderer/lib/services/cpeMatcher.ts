@@ -498,7 +498,7 @@ export class CPEMatcher {
   /**
    * Find fuzzy matches using Levenshtein distance
    */
-  private findFuzzyMatches(name: string, version: string, normalizedProduct: string): CPEMatchResult[] {
+  private findFuzzyMatches(_name: string, version: string, normalizedProduct: string): CPEMatchResult[] {
     const results: CPEMatchResult[] = []
 
     for (const [_key, cpe] of this.cpeDatabase) {

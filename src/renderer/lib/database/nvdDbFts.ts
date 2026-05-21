@@ -88,20 +88,6 @@ export interface FtsStatsResponse {
   error?: string
 }
 
-// Type guard for Electron API
-declare global {
-  interface Window {
-    electronAPI: {
-      database: {
-        /** FTS5 search */
-        searchFts: (request: FtsSearchRequest) => Promise<FtsSearchResponse>
-        /** Get FTS5 statistics */
-        getFtsStats: () => Promise<FtsStatsResponse>
-      }
-    }
-  }
-}
-
 /**
  * Performs a full-text search on the NVD database using FTS5.
  *
@@ -143,7 +129,23 @@ export async function searchFts(request: FtsSearchRequest): Promise<FtsSearchRes
   }
 
   try {
-    return await getPlatform().database.searchFts(request)
+    const response = await getPlatform().database.searchFts(request.query, request.limit)
+    const ipcResults = response.results ?? []
+    return {
+      success: response.success,
+      results: ipcResults.map((r) => ({
+        id: r.cveId,
+        description: r.description,
+        severity: r.severity as FtsSearchResult['severity'],
+        cvssScore: r.score > 10 ? undefined : undefined,
+        publishedAt: '',
+        source: 'nvd',
+        rank: r.score,
+      })),
+      total: ipcResults.length,
+      error: response.error,
+      ftsAvailable: response.success,
+    }
   } catch (error) {
     return {
       success: false,
@@ -178,7 +180,20 @@ export async function getFtsStats(): Promise<FtsStatsResponse> {
   }
 
   try {
-    return await getPlatform().database.getFtsStats()
+    const response = await getPlatform().database.getFtsStats()
+    if (response.success && response.stats) {
+      const ipcStats = response.stats
+      return {
+        success: true,
+        stats: {
+          indexedCount: ipcStats.indexedTerms,
+          totalCount: ipcStats.totalDocuments,
+          coveragePercent:
+            ipcStats.totalDocuments > 0 ? Math.round((ipcStats.indexedTerms / ipcStats.totalDocuments) * 100) : 0,
+        },
+      }
+    }
+    return { success: false }
   } catch (error) {
     return {
       success: false,

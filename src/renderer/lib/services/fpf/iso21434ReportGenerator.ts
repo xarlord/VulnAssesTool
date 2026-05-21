@@ -306,7 +306,7 @@ export class ISO21434ReportGenerator {
     })
 
     // Methodology
-    const methodologyY = doc.lastAutoTable?.finalY + 10
+    const methodologyY = (doc.lastAutoTable?.finalY ?? 20) + 10
     doc.setFontSize(13)
     doc.text('Methodology', 14, methodologyY)
     doc.setFontSize(9)
@@ -342,7 +342,7 @@ export class ISO21434ReportGenerator {
         headStyles: { fillColor: [220, 38, 38], textColor: 255 },
         columnStyles: { 0: { cellWidth: 30 }, 2: { cellWidth: 40 }, 4: { cellWidth: 55 } },
       })
-      currentY = doc.lastAutoTable?.finalY + 10
+      currentY = (doc.lastAutoTable?.finalY ?? currentY) + 10
     }
 
     // Filtered Vulnerabilities
@@ -371,7 +371,7 @@ export class ISO21434ReportGenerator {
         headStyles: { fillColor: [34, 197, 94], textColor: 255 },
         columnStyles: { 0: { cellWidth: 30 }, 2: { cellWidth: 60 } },
       })
-      currentY = doc.lastAutoTable?.finalY + 10
+      currentY = (doc.lastAutoTable?.finalY ?? currentY) + 10
     }
 
     // Audit Summary

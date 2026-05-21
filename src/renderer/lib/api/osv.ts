@@ -154,7 +154,7 @@ async function convertOsvVulnerabilityToVulnerability(
   let finalCvssScore = cvssScore
   let finalCvssVector = cvssVector
   let finalDescription: string
-  let finalReferences = osvReferences
+  let finalReferences: Vulnerability['references'] = osvReferences
   let finalCwes: string[] | undefined
   let finalPublishedAt = osvVuln.published ? new Date(osvVuln.published) : undefined
   let finalModifiedAt = new Date(osvVuln.modified)

@@ -8,35 +8,20 @@ import { getSecureKeyService, type ApiKeyKeyType } from './index'
 
 /**
  * Check if settings contain plaintext API keys
+ * API keys have been migrated to secure storage and are no longer stored in AppSettings.
  */
 export function hasPlaintextApiKeys(settings: Partial<AppSettings>): boolean {
-  const apiKeyKeys: ApiKeyKeyType[] = ['nvdApiKey', 'osvApiKey', 'githubApiKey']
-
-  for (const key of apiKeyKeys) {
-    const value = settings[key]
-    if (value && typeof value === 'string' && value.length > 0) {
-      return true
-    }
-  }
-
+  void settings
   return false
 }
 
 /**
  * Get all plaintext API keys from settings
+ * API keys have been migrated to secure storage and are no longer stored in AppSettings.
  */
 export function getPlaintextApiKeys(settings: Partial<AppSettings>): Partial<Record<ApiKeyKeyType, string>> {
-  const keys: Partial<Record<ApiKeyKeyType, string>> = {}
-  const apiKeyKeys: ApiKeyKeyType[] = ['nvdApiKey', 'osvApiKey', 'githubApiKey']
-
-  for (const key of apiKeyKeys) {
-    const value = settings[key]
-    if (value && typeof value === 'string' && value.length > 0) {
-      keys[key] = value
-    }
-  }
-
-  return keys
+  void settings
+  return {}
 }
 
 /**

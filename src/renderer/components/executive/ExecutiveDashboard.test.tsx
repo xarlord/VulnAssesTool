@@ -106,7 +106,12 @@ vi.mock('./widgets/ActionItems', () => ({
 }))
 
 vi.mock('./widgets/DashboardConfig', () => ({
-  DashboardConfig: (props: any) => <div data-testid="dashboard-config">Config</div>,
+  DashboardConfig: (props: any) => (
+    <div data-testid="dashboard-config">
+      Config
+      <button onClick={props.onRefresh as () => void}>Trigger Refresh</button>
+    </div>
+  ),
 }))
 
 // ---------------------------------------------------------------------------
@@ -263,94 +268,94 @@ describe('ExecutiveDashboard', () => {
 
   // -----------------------------------------------------------------------
   describe('Widget Sections', () => {
-    it('should show the risk gauge widget', () => {
+    it('should show the risk gauge widget', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByTestId('risk-gauge')).toBeInTheDocument()
+      expect(await screen.findByTestId('risk-gauge', undefined, { timeout: 3000 })).toBeInTheDocument()
     })
 
-    it('should show the vulnerability trend chart section', () => {
+    it('should show the vulnerability trend chart section', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByTestId('vulnerability-trend-chart')).toBeInTheDocument()
+      expect(await screen.findByTestId('vulnerability-trend-chart')).toBeInTheDocument()
     })
 
-    it('should show the project health comparison section', () => {
+    it('should show the project health comparison section', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByTestId('project-health-comparison')).toBeInTheDocument()
+      expect(await screen.findByTestId('project-health-comparison')).toBeInTheDocument()
     })
 
-    it('should show the compliance status widget', () => {
+    it('should show the compliance status widget', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByTestId('compliance-status')).toBeInTheDocument()
+      expect(await screen.findByTestId('compliance-status')).toBeInTheDocument()
     })
 
-    it('should show the team productivity widget', () => {
+    it('should show the team productivity widget', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByTestId('team-productivity')).toBeInTheDocument()
+      expect(await screen.findByTestId('team-productivity')).toBeInTheDocument()
     })
 
-    it('should show the action items widget', () => {
+    it('should show the action items widget', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByTestId('action-items')).toBeInTheDocument()
+      expect(await screen.findByTestId('action-items')).toBeInTheDocument()
     })
 
-    it('should show the dashboard config widget', () => {
+    it('should show the dashboard config widget', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByTestId('dashboard-config')).toBeInTheDocument()
+      expect(await screen.findByTestId('dashboard-config')).toBeInTheDocument()
     })
   })
 
   // -----------------------------------------------------------------------
   describe('Executive Summary Banner', () => {
-    it('should render the executive summary section', () => {
+    it('should render the executive summary section', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByText('Executive Summary')).toBeInTheDocument()
+      expect(await screen.findByText('Executive Summary')).toBeInTheDocument()
     })
 
-    it('should display the headline from the summary', () => {
+    it('should display the headline from the summary', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByText('Overall security posture is acceptable.')).toBeInTheDocument()
+      expect(await screen.findByText('Overall security posture is acceptable.')).toBeInTheDocument()
     })
 
-    it('should display the overall status badge', () => {
+    it('should display the overall status badge', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByText(/Status: GOOD/)).toBeInTheDocument()
+      expect(await screen.findByText(/Status: GOOD/)).toBeInTheDocument()
     })
 
-    it('should display key points from the summary', () => {
+    it('should display key points from the summary', async () => {
       renderDashboard([createMockProject()])
 
-      expect(screen.getByText(/1 critical vulnerability detected/)).toBeInTheDocument()
+      expect(await screen.findByText(/1 critical vulnerability detected/)).toBeInTheDocument()
     })
 
-    it('should display critical status badge when status is critical', () => {
+    it('should display critical status badge when status is critical', async () => {
       mockGenerateSummary.mockReturnValue(createMockSummary({ overallStatus: 'critical' }))
       renderDashboard([createMockProject()])
 
-      expect(screen.getByText(/Status: CRITICAL/)).toBeInTheDocument()
+      expect(await screen.findByText(/Status: CRITICAL/)).toBeInTheDocument()
     })
 
-    it('should display warning status badge when status is warning', () => {
+    it('should display warning status badge when status is warning', async () => {
       mockGenerateSummary.mockReturnValue(createMockSummary({ overallStatus: 'warning' }))
       renderDashboard([createMockProject()])
 
-      expect(screen.getByText(/Status: WARNING/)).toBeInTheDocument()
+      expect(await screen.findByText(/Status: WARNING/)).toBeInTheDocument()
     })
 
-    it('should display excellent status badge when status is excellent', () => {
+    it('should display excellent status badge when status is excellent', async () => {
       mockGenerateSummary.mockReturnValue(createMockSummary({ overallStatus: 'excellent' }))
       renderDashboard([createMockProject()])
 
-      expect(screen.getByText(/Status: EXCELLENT/)).toBeInTheDocument()
+      expect(await screen.findByText(/Status: EXCELLENT/)).toBeInTheDocument()
     })
   })
 
@@ -411,10 +416,11 @@ describe('ExecutiveDashboard', () => {
 
   // -----------------------------------------------------------------------
   describe('Navigation', () => {
-    it('should navigate to project detail when ActionItems calls onProjectClick', () => {
+    it('should navigate to project detail when ActionItems calls onProjectClick', async () => {
       renderDashboard([createMockProject()])
 
-      fireEvent.click(screen.getByText('Click Project'))
+      const clickButton = await screen.findByText('Click Project')
+      fireEvent.click(clickButton)
 
       expect(mockNavigate).toHaveBeenCalledWith('/project/proj-1')
     })
@@ -434,6 +440,51 @@ describe('ExecutiveDashboard', () => {
 
       const exportButton = screen.getByText('Export Report').closest('button')!
       expect(exportButton).not.toBeDisabled()
+    })
+
+    it('should call buildExecutiveReport and downloadExecutiveReport when Export Report is clicked', async () => {
+      const { buildExecutiveReport, downloadExecutiveReport } = await import('@/lib/analytics')
+
+      renderDashboard([createMockProject()])
+
+      const exportButton = screen.getByText('Export Report').closest('button')!
+      fireEvent.click(exportButton)
+
+      expect(buildExecutiveReport).toHaveBeenCalledTimes(1)
+      expect(downloadExecutiveReport).toHaveBeenCalledTimes(1)
+    })
+
+    it('should handle export errors gracefully', async () => {
+      const { buildExecutiveReport } = await import('@/lib/analytics')
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      vi.mocked(buildExecutiveReport).mockImplementationOnce(() => {
+        throw new Error('Report generation failed')
+      })
+
+      renderDashboard([createMockProject()])
+
+      const exportButton = screen.getByText('Export Report').closest('button')!
+      fireEvent.click(exportButton)
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to generate report:', expect.any(Error))
+
+      consoleSpy.mockRestore()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  describe('Refresh', () => {
+    it('should trigger store re-hydration when refresh is triggered via DashboardConfig', async () => {
+      renderDashboard([createMockProject()])
+
+      const refreshButton = await screen.findByText('Trigger Refresh')
+      fireEvent.click(refreshButton)
+
+      const { useStore } = await import('@/store/useStore')
+      expect(useStore.setState).toHaveBeenCalledWith({
+        projects: expect.any(Array),
+      })
     })
   })
 })

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   matchVulnerabilitiesForComponent,
   matchVulnerabilitiesForComponents,
@@ -10,6 +10,7 @@ import {
 } from './vulnMatcher'
 import type { Component, Vulnerability, CveResult } from '@@/types'
 import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT } from '@@/constants'
+import { getPlatform } from '@/lib/platform'
 
 // Mock the OSV module
 vi.mock('./osv', () => ({
@@ -32,46 +33,17 @@ function createMockCveResult(vuln: Vulnerability): CveResult {
   }
 }
 
-// Store original window reference for proper cleanup
-const originalWindow = (globalThis as any).window
-
-// Mock window.electronAPI for local database access
-const mockDatabaseSearch = vi.fn()
-
-/**
- * Helper to set up the Electron API mock
- * This ensures consistent mock state across tests
- */
-function setupElectronMock() {
-  ;(globalThis as any).window = {
-    electronAPI: {
-      database: {
-        search: mockDatabaseSearch,
-      },
-    },
-  }
-}
-
-/**
- * Helper to clean up the Electron API mock
- * Restores global state to prevent test leakage
- */
-function cleanupElectronMock() {
-  if (originalWindow !== undefined) {
-    ;(globalThis as any).window = originalWindow
-  } else {
-    delete (globalThis as any).window
-  }
+// Helper to get the platform's database.search mock
+function mockDatabaseSearch() {
+  return getPlatform().database.search
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  setupElectronMock()
 })
 
 afterEach(() => {
   vi.clearAllMocks()
-  cleanupElectronMock()
 })
 
 describe('matchVulnerabilitiesForComponent', () => {
@@ -120,11 +92,11 @@ describe('matchVulnerabilitiesForComponent', () => {
   ]
 
   it('should return vulnerabilities from both NVD (local DB) and OSV', async () => {
-    // Mock local database search for NVD
-    mockDatabaseSearch.mockResolvedValue({
+    // Mock local database search for NVD via platform
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
       success: true,
       results: mockNvdVulns.map(createMockCveResult),
-      total: mockNvdVulns.length,
+      totalResults: mockNvdVulns.length,
     })
     vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', mockOsvVulns]]))
 
@@ -134,7 +106,7 @@ describe('matchVulnerabilitiesForComponent', () => {
     expect(result[0].id).toBe('CVE-2024-1001')
     expect(result[0].affectedComponents).toEqual(['comp-1'])
     // Verify local database was called with correct CPE and limit from constants
-    expect(mockDatabaseSearch).toHaveBeenCalledWith({
+    expect(mockDatabaseSearch()).toHaveBeenCalledWith({
       type: 'cpe',
       query: mockComponent.cpe,
       limit: VULN_SEARCH_CPE_LIMIT,
@@ -148,7 +120,7 @@ describe('matchVulnerabilitiesForComponent', () => {
       cpe: undefined,
     }
 
-    mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
     vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', mockOsvVulns]]))
 
     const result = await matchVulnerabilitiesForComponent(componentWithoutCpe)
@@ -163,10 +135,10 @@ describe('matchVulnerabilitiesForComponent', () => {
       purl: undefined,
     }
 
-    mockDatabaseSearch.mockResolvedValue({
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
       success: true,
       results: mockNvdVulns.map(createMockCveResult),
-      total: mockNvdVulns.length,
+      totalResults: mockNvdVulns.length,
     })
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
@@ -187,10 +159,10 @@ describe('matchVulnerabilitiesForComponent', () => {
       affectedComponents: [],
     }
 
-    mockDatabaseSearch.mockResolvedValue({
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
       success: true,
       results: [createMockCveResult(duplicateVuln)],
-      total: 1,
+      totalResults: 1,
     })
     vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', [duplicateVuln]]]))
 
@@ -201,7 +173,7 @@ describe('matchVulnerabilitiesForComponent', () => {
   })
 
   it('should return empty array when no vulnerabilities found', async () => {
-    mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
     const result = await matchVulnerabilitiesForComponent(mockComponent)
@@ -210,7 +182,12 @@ describe('matchVulnerabilitiesForComponent', () => {
   })
 
   it('should handle local database errors gracefully', async () => {
-    mockDatabaseSearch.mockResolvedValue({ success: false, error: 'Database error', results: [], total: 0 })
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: false,
+      error: 'Database error',
+      results: [],
+      totalResults: 0,
+    })
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
     const result = await matchVulnerabilitiesForComponent(mockComponent)
@@ -219,7 +196,7 @@ describe('matchVulnerabilitiesForComponent', () => {
   })
 
   it('should handle OSV API errors gracefully', async () => {
-    mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
     vi.mocked(queryByPurls).mockRejectedValue(new Error('OSV API error'))
 
     const result = await matchVulnerabilitiesForComponent(mockComponent)
@@ -228,7 +205,7 @@ describe('matchVulnerabilitiesForComponent', () => {
   })
 
   it('should handle errors from both local database and OSV', async () => {
-    mockDatabaseSearch.mockRejectedValue(new Error('Database error'))
+    vi.mocked(mockDatabaseSearch()).mockRejectedValue(new Error('Database error'))
     vi.mocked(queryByPurls).mockRejectedValue(new Error('OSV API error'))
 
     const result = await matchVulnerabilitiesForComponent(mockComponent)
@@ -283,16 +260,16 @@ describe('matchVulnerabilitiesForComponents', () => {
     }
 
     // Mock local database search - return different results for each CPE
-    mockDatabaseSearch
+    vi.mocked(mockDatabaseSearch())
       .mockResolvedValueOnce({
         success: true,
         results: [createMockCveResult(lodashVuln)],
-        total: 1,
+        totalResults: 1,
       })
       .mockResolvedValueOnce({
         success: true,
         results: [createMockCveResult(expressVuln)],
-        total: 1,
+        totalResults: 1,
       })
 
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
@@ -305,7 +282,7 @@ describe('matchVulnerabilitiesForComponents', () => {
   })
 
   it('should handle errors gracefully', async () => {
-    mockDatabaseSearch.mockRejectedValue(new Error('Database error'))
+    vi.mocked(mockDatabaseSearch()).mockRejectedValue(new Error('Database error'))
     vi.mocked(queryByPurls).mockRejectedValue(new Error('API error'))
 
     const result = await matchVulnerabilitiesForComponents(mockComponents)
@@ -327,16 +304,16 @@ describe('matchVulnerabilitiesForComponents', () => {
     }
 
     // Return different results for each CPE
-    mockDatabaseSearch
+    vi.mocked(mockDatabaseSearch())
       .mockResolvedValueOnce({
         success: true,
         results: [createMockCveResult(vuln1)],
-        total: 1,
+        totalResults: 1,
       })
       .mockResolvedValueOnce({
         success: true,
         results: [],
-        total: 0,
+        totalResults: 0,
       })
 
     vi.mocked(queryByPurls).mockRejectedValue(new Error('OSV error'))
@@ -363,16 +340,16 @@ describe('matchVulnerabilitiesForComponents', () => {
       affectedComponents: [],
     }
 
-    mockDatabaseSearch
+    vi.mocked(mockDatabaseSearch())
       .mockResolvedValueOnce({
         success: true,
         results: [createMockCveResult(sharedVuln)],
-        total: 1,
+        totalResults: 1,
       })
       .mockResolvedValueOnce({
         success: true,
         results: [createMockCveResult(sharedVuln)],
-        total: 1,
+        totalResults: 1,
       })
 
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
@@ -386,13 +363,12 @@ describe('matchVulnerabilitiesForComponents', () => {
     expect(result.get('comp-2')![0].id).toBe('CVE-2024-1001')
   })
 
-  it('should handle same vulnerability from OSV for multiple components (non-Electron environment)', async () => {
-    // Note: OSV is only queried when Electron API is NOT available (to avoid CORS)
-    // This test simulates a non-Electron environment by removing the Electron mock
-
-    // Clean up Electron mock to simulate non-Electron environment
-    // Set window to undefined to simulate non-browser/non-Electron context
-    ;(globalThis as any).window = undefined
+  it('should handle same vulnerability from OSV for multiple components (non-platform environment)', async () => {
+    // Simulate non-platform environment by making database unavailable.
+    // This triggers the OSV query path in matchVulnerabilitiesForComponents.
+    const platform = getPlatform()
+    const originalDatabase = platform.database
+    platform.database = undefined as any
 
     const sharedOsvVuln: Vulnerability = {
       id: 'OSV-2024-1001',
@@ -422,7 +398,8 @@ describe('matchVulnerabilitiesForComponents', () => {
     // The vulnerability should have both components in affectedComponents
     expect(result.get('comp-1')![0].affectedComponents).toEqual(['comp-1', 'comp-2'])
 
-    // Note: afterEach will restore the Electron mock for subsequent tests
+    // Restore platform database for subsequent tests
+    platform.database = originalDatabase
   })
 
   it('should populate affectedComponents correctly', async () => {
@@ -436,16 +413,16 @@ describe('matchVulnerabilitiesForComponents', () => {
       affectedComponents: [],
     }
 
-    mockDatabaseSearch
+    vi.mocked(mockDatabaseSearch())
       .mockResolvedValueOnce({
         success: true,
         results: [createMockCveResult(vuln1)],
-        total: 1,
+        totalResults: 1,
       })
       .mockResolvedValueOnce({
         success: true,
         results: [],
-        total: 0,
+        totalResults: 0,
       })
 
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
@@ -636,7 +613,7 @@ describe('CPE Validation', () => {
       }
 
       // Mock database to return success (but it won't be called due to validation)
-      mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+      vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
       vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
       const result = await matchVulnerabilitiesForComponent(componentWithInvalidCpe)
@@ -656,7 +633,7 @@ describe('CPE Validation', () => {
         vulnerabilities: [],
       }
 
-      mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+      vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
       vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
       const result = await matchVulnerabilitiesForComponent(componentWithShortCpe)
@@ -676,7 +653,7 @@ describe('CPE Validation', () => {
         vulnerabilities: [],
       }
 
-      mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+      vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
       vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
       const result = await matchVulnerabilitiesForComponent(componentWithBadPart)
@@ -709,10 +686,10 @@ describe('CPE Validation', () => {
         affectedComponents: [],
       }
 
-      mockDatabaseSearch.mockResolvedValue({
+      vi.mocked(mockDatabaseSearch()).mockResolvedValue({
         success: true,
         results: [createMockCveResult(mockVuln)],
-        total: 1,
+        totalResults: 1,
       })
       vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
@@ -736,12 +713,12 @@ describe('Search Limit Constants', () => {
       vulnerabilities: [],
     }
 
-    mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
     await matchVulnerabilitiesForComponent(component)
 
-    expect(mockDatabaseSearch).toHaveBeenCalledWith(
+    expect(mockDatabaseSearch()).toHaveBeenCalledWith(
       expect.objectContaining({
         limit: VULN_SEARCH_CPE_LIMIT,
       }),
@@ -758,15 +735,676 @@ describe('Search Limit Constants', () => {
       vulnerabilities: [],
     }
 
-    mockDatabaseSearch.mockResolvedValue({ success: true, results: [], total: 0 })
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
 
     await matchVulnerabilitiesForComponent(componentNoCpe)
 
-    expect(mockDatabaseSearch).toHaveBeenCalledWith(
+    expect(mockDatabaseSearch()).toHaveBeenCalledWith(
       expect.objectContaining({
         limit: VULN_SEARCH_NAME_LIMIT,
       }),
     )
+  })
+})
+
+describe('matchVulnerabilitiesForComponent — Priority 2: suggestedCpes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should use high-confidence suggested CPEs when no CPE on component', async () => {
+    const component: Component = {
+      id: 'comp-sug1',
+      name: 'lodash',
+      version: '4.17.21',
+      type: 'library',
+      suggestedCpes: [
+        {
+          cpe: 'cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*',
+          vendor: 'lodash',
+          product: 'lodash',
+          confidence: 'high',
+          source: 'known_mapping',
+        },
+        {
+          cpe: 'cpe:2.3:a:other:product:*:*:*:*:*:*:*:*',
+          vendor: 'other',
+          product: 'product',
+          confidence: 'medium',
+          source: 'inferred',
+        },
+      ],
+      licenses: ['MIT'],
+      vulnerabilities: [],
+    }
+
+    const mockVuln: Vulnerability = {
+      id: 'CVE-2024-SUG1',
+      source: 'nvd',
+      severity: 'high',
+      cvssScore: 7.5,
+      description: 'Found via suggested CPE',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(mockVuln)],
+      totalResults: 1,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('CVE-2024-SUG1')
+    expect(result[0].affectedComponents).toEqual(['comp-sug1'])
+  })
+
+  it('should stop at first high-confidence CPE that returns results', async () => {
+    const component: Component = {
+      id: 'comp-sug2',
+      name: 'test',
+      version: '1.0.0',
+      type: 'library',
+      suggestedCpes: [
+        {
+          cpe: 'cpe:2.3:a:vendor1:product1:1.0:*:*:*:*:*:*:*',
+          vendor: 'vendor1',
+          product: 'product1',
+          confidence: 'high',
+          source: 'known_mapping',
+        },
+        {
+          cpe: 'cpe:2.3:a:vendor2:product2:1.0:*:*:*:*:*:*:*',
+          vendor: 'vendor2',
+          product: 'product2',
+          confidence: 'high',
+          source: 'inferred',
+        },
+      ],
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    const vuln1: Vulnerability = {
+      id: 'CVE-2024-FIRST',
+      source: 'nvd',
+      severity: 'critical',
+      cvssScore: 9.8,
+      description: 'First CPE match',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValueOnce({
+      success: true,
+      results: [createMockCveResult(vuln1)],
+      totalResults: 1,
+    })
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('CVE-2024-FIRST')
+    expect(mockDatabaseSearch()).toHaveBeenCalledTimes(1)
+  })
+
+  it('should fall back to name search when no high-confidence CPEs', async () => {
+    const component: Component = {
+      id: 'comp-sug3',
+      name: 'mylib',
+      version: '1.0.0',
+      type: 'library',
+      suggestedCpes: [
+        {
+          cpe: 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*',
+          vendor: 'vendor',
+          product: 'product',
+          confidence: 'low',
+          source: 'fallback',
+        },
+      ],
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    const nameVuln: Vulnerability = {
+      id: 'CVE-2024-NAME',
+      source: 'nvd',
+      severity: 'medium',
+      cvssScore: 5.3,
+      description: 'Found by name',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(nameVuln)],
+      totalResults: 1,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('CVE-2024-NAME')
+  })
+
+  it('should fall back to name search when high-confidence CPE search returns empty', async () => {
+    const component: Component = {
+      id: 'comp-sug4',
+      name: 'mylib',
+      version: '1.0.0',
+      type: 'library',
+      suggestedCpes: [
+        {
+          cpe: 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*',
+          vendor: 'vendor',
+          product: 'product',
+          confidence: 'high',
+          source: 'known_mapping',
+        },
+      ],
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    const nameVuln: Vulnerability = {
+      id: 'CVE-2024-NAMEFB',
+      source: 'nvd',
+      severity: 'low',
+      cvssScore: 2.5,
+      description: 'Name fallback',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch())
+      .mockResolvedValueOnce({ success: true, results: [], totalResults: 0 })
+      .mockResolvedValueOnce({
+        success: true,
+        results: [createMockCveResult(nameVuln)],
+        totalResults: 1,
+      })
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('CVE-2024-NAMEFB')
+  })
+
+  it('should handle suggested CPE search errors gracefully', async () => {
+    const component: Component = {
+      id: 'comp-sug5',
+      name: 'mylib',
+      version: '1.0.0',
+      type: 'library',
+      suggestedCpes: [
+        {
+          cpe: 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*',
+          vendor: 'vendor',
+          product: 'product',
+          confidence: 'high',
+          source: 'known_mapping',
+        },
+      ],
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    vi.mocked(mockDatabaseSearch())
+      .mockRejectedValueOnce(new Error('DB error'))
+      .mockResolvedValueOnce({ success: true, results: [], totalResults: 0 })
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toEqual([])
+  })
+})
+
+describe('matchVulnerabilitiesForComponent — Priority 3: name-only', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should search by name when no CPE and no suggestedCpes', async () => {
+    const component: Component = {
+      id: 'comp-name1',
+      name: 'express',
+      version: '4.18.0',
+      type: 'library',
+      licenses: ['MIT'],
+      vulnerabilities: [],
+    }
+
+    const nameVuln: Vulnerability = {
+      id: 'CVE-2024-EXPR',
+      source: 'nvd',
+      severity: 'high',
+      cvssScore: 7.8,
+      description: 'Express vuln',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(nameVuln)],
+      totalResults: 1,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('CVE-2024-EXPR')
+    expect(mockDatabaseSearch()).toHaveBeenCalledWith(expect.objectContaining({ type: 'text', query: 'express' }))
+  })
+
+  it('should return empty when component has no name, CPE, or suggestedCpes', async () => {
+    const component: Component = {
+      id: 'comp-empty',
+      name: '',
+      version: '1.0.0',
+      type: 'library',
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toEqual([])
+  })
+
+  it('should handle name search database error gracefully', async () => {
+    const component: Component = {
+      id: 'comp-nameerr',
+      name: 'testlib',
+      version: '1.0.0',
+      type: 'library',
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockRejectedValue(new Error('DB down'))
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toEqual([])
+  })
+
+  it('should handle name search returning failed response', async () => {
+    const component: Component = {
+      id: 'comp-namefail',
+      name: 'testlib',
+      version: '1.0.0',
+      type: 'library',
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: false,
+      error: 'Query failed',
+      results: [],
+      totalResults: 0,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toEqual([])
+  })
+})
+
+describe('matchVulnerabilitiesForComponent — CPE with no results fallback', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should fall back to name search when CPE search returns empty', async () => {
+    const component: Component = {
+      id: 'comp-cpefb',
+      name: 'lodash',
+      version: '4.17.21',
+      type: 'library',
+      cpe: 'cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*',
+      licenses: ['MIT'],
+      vulnerabilities: [],
+    }
+
+    const nameVuln: Vulnerability = {
+      id: 'CVE-2024-NAMEFB2',
+      source: 'nvd',
+      severity: 'medium',
+      cvssScore: 5.5,
+      description: 'Found by name after CPE empty',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch())
+      .mockResolvedValueOnce({ success: true, results: [], totalResults: 0 })
+      .mockResolvedValueOnce({
+        success: true,
+        results: [createMockCveResult(nameVuln)],
+        totalResults: 1,
+      })
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('CVE-2024-NAMEFB2')
+    expect(mockDatabaseSearch()).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('matchVulnerabilitiesForComponent — OSV PURL matching', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should query OSV when component has PURL and platform database available', async () => {
+    const component: Component = {
+      id: 'comp-osv1',
+      name: 'test',
+      version: '1.0.0',
+      type: 'library',
+      purl: 'pkg:npm/test@1.0.0',
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    const osvVuln: Vulnerability = {
+      id: 'OSV-2024-PURL',
+      source: 'osv',
+      severity: 'medium',
+      cvssScore: 5.0,
+      description: 'OSV found',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/test@1.0.0', [osvVuln]]]))
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('OSV-2024-PURL')
+  })
+
+  it('should handle OSV query errors gracefully', async () => {
+    const component: Component = {
+      id: 'comp-osverr',
+      name: 'test',
+      version: '1.0.0',
+      type: 'library',
+      purl: 'pkg:npm/test@1.0.0',
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
+    vi.mocked(queryByPurls).mockRejectedValue(new Error('OSV down'))
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toEqual([])
+  })
+})
+
+describe('matchVulnerabilitiesForComponents — Priority 2: suggestedCpes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should handle batch component with suggested CPEs', async () => {
+    const components: Component[] = [
+      {
+        id: 'comp-bsug',
+        name: 'mylib',
+        version: '1.0.0',
+        type: 'library',
+        suggestedCpes: [
+          {
+            cpe: 'cpe:2.3:a:mylib:mylib:1.0:*:*:*:*:*:*:*',
+            vendor: 'mylib',
+            product: 'mylib',
+            confidence: 'high',
+            source: 'known_mapping',
+          },
+        ],
+        licenses: [],
+        vulnerabilities: [],
+      },
+    ]
+
+    const vuln: Vulnerability = {
+      id: 'CVE-2024-BSUG',
+      source: 'nvd',
+      severity: 'high',
+      cvssScore: 7.5,
+      description: 'Batch suggested',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(vuln)],
+      totalResults: 1,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponents(components)
+
+    expect(result.get('comp-bsug')).toHaveLength(1)
+    expect(result.get('comp-bsug')![0].id).toBe('CVE-2024-BSUG')
+  })
+
+  it('should handle batch component with no high-confidence CPEs falling to name', async () => {
+    const components: Component[] = [
+      {
+        id: 'comp-bnohi',
+        name: 'somelib',
+        version: '2.0.0',
+        type: 'library',
+        suggestedCpes: [
+          { cpe: 'cpe:2.3:a:x:y:*:*:*:*:*:*:*:*', vendor: 'x', product: 'y', confidence: 'medium', source: 'inferred' },
+        ],
+        licenses: [],
+        vulnerabilities: [],
+      },
+    ]
+
+    const vuln: Vulnerability = {
+      id: 'CVE-2024-BNAME',
+      source: 'nvd',
+      severity: 'low',
+      cvssScore: 3.0,
+      description: 'Batch name',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(vuln)],
+      totalResults: 1,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponents(components)
+
+    expect(result.get('comp-bnohi')).toHaveLength(1)
+  })
+
+  it('should handle batch component with only name (priority 3)', async () => {
+    const components: Component[] = [
+      {
+        id: 'comp-bname3',
+        name: 'onlyname',
+        version: '1.0.0',
+        type: 'library',
+        licenses: [],
+        vulnerabilities: [],
+      },
+    ]
+
+    const vuln: Vulnerability = {
+      id: 'CVE-2024-BNAME3',
+      source: 'nvd',
+      severity: 'medium',
+      cvssScore: 4.5,
+      description: 'Batch name only',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(vuln)],
+      totalResults: 1,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponents(components)
+
+    expect(result.get('comp-bname3')).toHaveLength(1)
+    expect(result.get('comp-bname3')![0].id).toBe('CVE-2024-BNAME3')
+  })
+
+  it('should handle batch component with suggestedCpes search error', async () => {
+    const components: Component[] = [
+      {
+        id: 'comp-bsugerr',
+        name: 'errlib',
+        version: '1.0.0',
+        type: 'library',
+        suggestedCpes: [
+          {
+            cpe: 'cpe:2.3:a:err:err:*:*:*:*:*:*:*:*',
+            vendor: 'err',
+            product: 'err',
+            confidence: 'high',
+            source: 'known_mapping',
+          },
+        ],
+        licenses: [],
+        vulnerabilities: [],
+      },
+    ]
+
+    vi.mocked(mockDatabaseSearch())
+      .mockRejectedValueOnce(new Error('DB error'))
+      .mockResolvedValueOnce({ success: true, results: [], totalResults: 0 })
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponents(components)
+
+    expect(result.get('comp-bsugerr')).toEqual([])
+  })
+
+  it('should handle batch component name search error', async () => {
+    const components: Component[] = [
+      {
+        id: 'comp-bnameerr',
+        name: 'namelib',
+        version: '1.0.0',
+        type: 'library',
+        licenses: [],
+        vulnerabilities: [],
+      },
+    ]
+
+    vi.mocked(mockDatabaseSearch()).mockRejectedValue(new Error('Name search error'))
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponents(components)
+
+    expect(result.get('comp-bnameerr')).toEqual([])
+  })
+
+  it('should handle batch component with CPE that returns no results', async () => {
+    const components: Component[] = [
+      {
+        id: 'comp-bcpeno',
+        name: 'mylib',
+        version: '1.0.0',
+        type: 'library',
+        cpe: 'cpe:2.3:a:mylib:mylib:1.0:*:*:*:*:*:*:*',
+        licenses: [],
+        vulnerabilities: [],
+      },
+    ]
+
+    const nameVuln: Vulnerability = {
+      id: 'CVE-2024-BCPEFB',
+      source: 'nvd',
+      severity: 'medium',
+      cvssScore: 4.5,
+      description: 'Fallback name',
+      references: [],
+      affectedComponents: [],
+    }
+
+    vi.mocked(mockDatabaseSearch())
+      .mockResolvedValueOnce({ success: true, results: [], totalResults: 0 })
+      .mockResolvedValueOnce({
+        success: true,
+        results: [createMockCveResult(nameVuln)],
+        totalResults: 1,
+      })
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponents(components)
+
+    expect(result.get('comp-bcpeno')).toHaveLength(1)
+    expect(result.get('comp-bcpeno')![0].id).toBe('CVE-2024-BCPEFB')
+  })
+})
+
+describe('filterBySeverity edge cases', () => {
+  it('should return empty array when no vulnerabilities meet threshold', () => {
+    const vulns: Vulnerability[] = [{ id: '1', source: 'nvd', severity: 'low', references: [], affectedComponents: [] }]
+    expect(filterBySeverity(vulns, 'critical')).toHaveLength(0)
+  })
+
+  it('should return all vulnerabilities for none threshold', () => {
+    const vulns: Vulnerability[] = [
+      { id: '1', source: 'nvd', severity: 'none', references: [], affectedComponents: [] },
+      { id: '2', source: 'nvd', severity: 'low', references: [], affectedComponents: [] },
+    ]
+    expect(filterBySeverity(vulns, 'none')).toHaveLength(2)
+  })
+})
+
+describe('sortBySeverity edge cases', () => {
+  it('should sort undefined cvssScore as 0', () => {
+    const vulns: Vulnerability[] = [
+      { id: '1', source: 'nvd', severity: 'high', references: [], affectedComponents: [] },
+      { id: '2', source: 'nvd', severity: 'high', cvssScore: 7.0, references: [], affectedComponents: [] },
+    ]
+    const result = sortBySeverity(vulns)
+    expect(result[0].cvssScore).toBe(7.0)
+    expect(result[1].cvssScore).toBeUndefined()
   })
 })

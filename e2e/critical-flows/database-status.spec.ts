@@ -9,7 +9,7 @@
  * loads correctly and check for database-related UI if present.
  */
 
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 import { navigateToSettings } from '../shared-helpers'
 
 test.describe('Database Status E2E Tests', () => {

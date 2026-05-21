@@ -220,7 +220,7 @@ function Step1ProjectInfo({
   config: Partial<SystemConfig>
   onChange: (updates: Partial<SystemConfig>) => void
 }) {
-  const project = config.project || {}
+  const project = config.project ?? ({} as Partial<ProjectConfig>)
 
   const handleChange = (field: keyof ProjectConfig, value: string) => {
     onChange({

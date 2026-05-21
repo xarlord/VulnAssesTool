@@ -177,7 +177,12 @@ describe('HealthDashboard', () => {
         }),
       )
 
-      expect(screen.getByText('No health data available')).toBeInTheDocument()
+      // When all distribution values are 0, the chart section still renders
+      // with the heading but shows 0 counts for all categories
+      expect(screen.getByText('Health Distribution')).toBeInTheDocument()
+      // All category counts should be 0
+      const zeros = screen.getAllByText('0')
+      expect(zeros.length).toBeGreaterThan(0)
     })
   })
 

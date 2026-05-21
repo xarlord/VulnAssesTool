@@ -46,7 +46,6 @@ export class AttackGraph {
   private edges: AttackGraphEdge[] = []
   private adjacencyList: Map<string, string[]> = new Map()
   private edgeTypes: Map<string, Map<string, AttackEdgeType>> = new Map()
-  private config: SystemConfig
 
   /**
    * Create a new AttackGraph
@@ -54,8 +53,6 @@ export class AttackGraph {
    * @param template - Optional pre-built template to start with
    */
   constructor(config: SystemConfig, template?: GraphTemplate) {
-    this.config = config
-
     if (template) {
       // Load template nodes and edges
       for (const node of template.nodes) {

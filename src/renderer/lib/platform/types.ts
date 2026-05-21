@@ -1,9 +1,8 @@
 /**
  * Platform API Interface
  *
- * Abstracts Electron IPC so the renderer can run with different backends.
- * The Electron adapter delegates to window.electronAPI.
- * The browser adapter provides stubs or web-based alternatives.
+ * Abstracts backend communication so the renderer can run with different backends.
+ * The server adapter delegates to Express via HTTP + WebSocket.
  */
 
 import type {

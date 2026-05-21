@@ -254,10 +254,10 @@ export function Settings() {
 
         // Load CPE count
         try {
-          const cpeResponse = await getPlatform().database.cpeSearch({ query: '', limit: 1 })
-          if (cpeResponse.success && cpeResponse.totalCount !== undefined) {
-            setCpeCount(cpeResponse.totalCount)
-            console.log('[Settings] CPE count:', cpeResponse.totalCount)
+          const cpeResponse = await getPlatform().database.cpeSearch({ productName: '' })
+          if (cpeResponse.success) {
+            setCpeCount(cpeResponse.results.length)
+            console.log('[Settings] CPE count:', cpeResponse.results.length)
           }
         } catch (err) {
           console.log('[Settings] CPE count not available:', err)
@@ -267,7 +267,7 @@ export function Settings() {
         const configResponse = await getPlatform().database.getSyncConfig()
         if (configResponse.success && configResponse.config) {
           if (configResponse.config.syncInterval) {
-            setSyncSchedule(configResponse.config.syncInterval)
+            setSyncSchedule(configResponse.config.syncInterval as SyncSchedule)
           }
         }
       } catch (error) {
@@ -291,9 +291,9 @@ export function Settings() {
           setBackups(
             listResponse.backups.map((b) => ({
               id: b.id,
-              timestamp: b.timestamp,
+              timestamp: b.createdAt,
               size: b.size,
-              integrity: b.integrity || 'unknown',
+              integrity: b.verified ? 'valid' : 'unknown',
             })),
           )
         }
@@ -304,7 +304,7 @@ export function Settings() {
           setBackupConfig({
             enabled: configResponse.config.enabled ?? false,
             schedule: configResponse.config.schedule ?? 'manual',
-            retentionCount: configResponse.config.retentionCount ?? 3,
+            retentionCount: configResponse.config.maxBackups ?? 3,
           })
         }
       } catch (error) {
@@ -366,13 +366,14 @@ export function Settings() {
     try {
       const response = await getPlatform().backup.createBackup()
       if (response.success && response.backup) {
+        const newBackup = response.backup
         setBackupSuccess('Backup created successfully')
         setBackups((prev) => [
           {
-            id: response.backup.id,
-            timestamp: response.backup.timestamp,
-            size: response.backup.size,
-            integrity: response.backup.integrity || 'valid',
+            id: newBackup.id,
+            timestamp: newBackup.createdAt,
+            size: newBackup.size,
+            integrity: newBackup.verified ? 'valid' : 'unknown',
           },
           ...prev,
         ])
@@ -554,8 +555,15 @@ export function Settings() {
     try {
       // Get cache stats from the cache manager via IPC
       const stats = await getPlatform().database.getCacheStats?.()
-      if (stats && stats.success) {
-        setCacheStats(stats.stats)
+      if (stats && stats.success && stats.stats) {
+        const cacheInfo = stats.stats
+        setCacheStats({
+          hits: 0,
+          misses: 0,
+          entryCount: cacheInfo.entries,
+          sizeBytes: cacheInfo.totalSizeKB * 1024,
+          hitRate: cacheInfo.hitRate,
+        })
       }
     } catch (error) {
       console.error('Failed to load cache stats:', error)
@@ -663,7 +671,11 @@ export function Settings() {
     console.log('[Settings] Starting bulk download...')
     try {
       // Download last 3 years of CVE data (requires API key)
-      const result = await getPlatform().database.startBulkDownload({})
+      const currentYear = new Date().getFullYear()
+      const result = await getPlatform().database.startBulkDownload({
+        startYear: currentYear - 2,
+        endYear: currentYear,
+      })
       console.log('[Settings] Bulk download result:', result)
       if (result.success) {
         setSyncStatus({
@@ -679,8 +691,8 @@ export function Settings() {
           setCveCount(statsResponse.stats.totalCves || 0)
         }
       } else {
-        console.error('[Settings] Bulk download failed:', result.error)
-        setApiKeyError(result.error || 'Bulk download failed')
+        console.error('[Settings] Bulk download failed:', result.errors)
+        setApiKeyError(result.errors.join(', ') || 'Bulk download failed')
       }
     } catch (error) {
       console.error('[Settings] Failed to start bulk download:', error)
@@ -1307,7 +1319,7 @@ export function Settings() {
                     onChange={async (e) => {
                       const newCount = Number(e.target.value)
                       setBackupConfig((prev) => ({ ...prev, retentionCount: newCount }))
-                      await getPlatform().backup.updateConfig({ retentionCount: newCount })
+                      await getPlatform().backup.updateConfig({ maxBackups: newCount })
                     }}
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   >

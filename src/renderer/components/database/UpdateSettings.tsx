@@ -300,5 +300,3 @@ function getNextUpdateText(schedule: UpdateSchedule): string {
 
   return next.toLocaleString()
 }
-
-export { UpdateSettings }

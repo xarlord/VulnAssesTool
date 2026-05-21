@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { cloneElement, isValidElement } from 'react'
 import { SeverityDistributionChart, calculateSeverityDistribution } from './SeverityDistributionChart'
 import type { Vulnerability } from '@@/types'
 
@@ -11,10 +12,53 @@ vi.mock('recharts', () => ({
     </div>
   ),
   PieChart: ({ children }: { children: any }) => <div data-testid="pie-chart">{children}</div>,
-  Pie: ({ children }: { children: any }) => <div data-testid="pie">{children}</div>,
+  Pie: ({ children, label, data }: { children: any; label?: any; data?: any[] }) => (
+    <div data-testid="pie">
+      {data &&
+        typeof label === 'function' &&
+        data.map((entry: any, i: number) => {
+          const total = data.reduce((sum: number, d: any) => sum + d.value, 0)
+          const percent = total > 0 ? entry.value / total : 0
+          return (
+            <div key={i} data-testid={`pie-label-${i}`}>
+              {label({ cx: 150, cy: 150, midAngle: i * 72, innerRadius: 50, outerRadius: 80, percent })}
+            </div>
+          )
+        })}
+      {children}
+    </div>
+  ),
   Cell: ({ fill }: { fill: string }) => <div data-testid="cell" data-fill={fill} />,
-  Tooltip: ({ content }: { content: any }) => <div data-testid="tooltip">{content}</div>,
-  Legend: ({ children }: { children: any }) => <div data-testid="legend">{children}</div>,
+  Tooltip: ({ content }: { content: any }) => {
+    if (isValidElement(content)) {
+      return (
+        <div data-testid="tooltip">
+          <div data-testid="tooltip-active">
+            {cloneElement(content, { active: true, payload: [{ payload: { name: 'Critical', value: 1 } }] })}
+          </div>
+          <div data-testid="tooltip-inactive">{cloneElement(content, { active: false, payload: [] })}</div>
+        </div>
+      )
+    }
+    return <div data-testid="tooltip" />
+  },
+  Legend: ({ formatter }: { formatter?: (value: string, entry: any) => any }) => {
+    const mockPayload = [
+      { value: 'Critical', payload: { value: 1 } },
+      { value: 'High', payload: { value: 1 } },
+    ]
+    return (
+      <div data-testid="legend">
+        {formatter
+          ? mockPayload.map((entry, i) => (
+              <div key={i} data-testid={`legend-entry-${i}`}>
+                {formatter(entry.value, entry)}
+              </div>
+            ))
+          : null}
+      </div>
+    )
+  },
 }))
 
 // Mock constants
@@ -312,6 +356,114 @@ describe('SeverityDistributionChart', () => {
         expect(distribution.find((d) => d.name === 'Medium')?.color).toBe('#ca8a04')
         expect(distribution.find((d) => d.name === 'Low')?.color).toBe('#16a34a')
       })
+    })
+  })
+
+  describe('Component Props', () => {
+    it('should pass showLabels=false to CustomLabel', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} showLabels={false} />)
+
+      expect(screen.getByTestId('pie')).toBeInTheDocument()
+    })
+
+    it('should pass showLabels=true to CustomLabel', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} showLabels={true} />)
+
+      expect(screen.getByTestId('pie')).toBeInTheDocument()
+    })
+
+    it('should use default height of 300', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} />)
+
+      const container = screen.getByTestId('responsive-container')
+      expect(container).toHaveAttribute('data-height', '300')
+    })
+
+    it('should use custom height', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} height={500} />)
+
+      const container = screen.getByTestId('responsive-container')
+      expect(container).toHaveAttribute('data-height', '500')
+    })
+  })
+
+  describe('Memoization', () => {
+    it('should re-render when vulnerabilities change', () => {
+      const vulnerabilities1 = createMockVulnerabilities()
+      const { rerender } = render(<SeverityDistributionChart vulnerabilities={vulnerabilities1} />)
+
+      expect(screen.getByTestId('pie-chart')).toBeInTheDocument()
+
+      const vulnerabilities2: Vulnerability[] = [
+        {
+          id: 'CVE-2024-0099',
+          source: 'nvd',
+          severity: 'critical',
+          cvssScore: 10.0,
+          description: 'New critical vuln',
+          references: [],
+          affectedComponents: [],
+        },
+      ]
+
+      rerender(<SeverityDistributionChart vulnerabilities={vulnerabilities2} />)
+
+      expect(screen.getByTestId('pie-chart')).toBeInTheDocument()
+    })
+  })
+
+  describe('CustomTooltip Callbacks', () => {
+    it('should render tooltip content with active payload', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} />)
+
+      const tooltipActive = screen.getByTestId('tooltip-active')
+      expect(tooltipActive).toHaveTextContent('Critical')
+      expect(tooltipActive).toHaveTextContent('1 vulnerabilities')
+      expect(tooltipActive).toHaveTextContent('%')
+    })
+
+    it('should render empty tooltip when inactive', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} />)
+
+      const tooltipInactive = screen.getByTestId('tooltip-inactive')
+      expect(tooltipInactive).toBeEmptyDOMElement()
+    })
+  })
+
+  describe('CustomLabel Callbacks', () => {
+    it('should render percentage labels when showLabels is true', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} showLabels={true} />)
+
+      const label0 = screen.getByTestId('pie-label-0')
+      expect(label0).toHaveTextContent('25%')
+    })
+
+    it('should return null labels when showLabels is false', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} showLabels={false} />)
+
+      const label0 = screen.getByTestId('pie-label-0')
+      expect(label0).toBeEmptyDOMElement()
+    })
+  })
+
+  describe('Legend Formatter', () => {
+    it('should render legend entries with value counts', () => {
+      const vulnerabilities = createMockVulnerabilities()
+      render(<SeverityDistributionChart vulnerabilities={vulnerabilities} showLegend={true} />)
+
+      const entry0 = screen.getByTestId('legend-entry-0')
+      expect(entry0).toHaveTextContent('Critical: 1')
+
+      const entry1 = screen.getByTestId('legend-entry-1')
+      expect(entry1).toHaveTextContent('High: 1')
     })
   })
 })

@@ -73,7 +73,7 @@ export function EpssCell({
   return (
     <span
       className={cn('inline-flex items-center gap-1', 'font-medium', colorClass, className)}
-      title={score !== undefined ? `EPSS Score: ${(score * 100).toFixed(3)}%` : undefined}
+      title={score != null ? `EPSS Score: ${(score * 100).toFixed(3)}%` : undefined}
     >
       <TrendingUp className="w-3.5 h-3.5" />
       {percentileDisplay}%

@@ -286,6 +286,51 @@ describe('OfflineIndicator', () => {
       expect(element).toHaveClass('custom-class')
     })
   })
+
+  describe('Sync Error Handling', () => {
+    it('should stop syncing on sync-error event', async () => {
+      render(<OfflineIndicator />)
+
+      await act(async () => {
+        mockQueue._emit({
+          type: 'sync-started',
+          isOnline: true,
+          queueLength: 10,
+          total: 10,
+          processed: 0,
+          progress: 0,
+        })
+      })
+
+      expect(screen.getByText(/Syncing/)).toBeInTheDocument()
+
+      await act(async () => {
+        mockQueue._emit({ type: 'sync-error', isOnline: true, queueLength: 0, error: 'test error' })
+      })
+
+      expect(screen.getByText('Online')).toBeInTheDocument()
+    })
+  })
+
+  describe('Compact Syncing Mode', () => {
+    it('should show syncing indicator in compact mode', async () => {
+      render(<OfflineIndicator compact />)
+
+      await act(async () => {
+        mockQueue._emit({
+          type: 'sync-started',
+          isOnline: true,
+          queueLength: 10,
+          total: 10,
+          processed: 0,
+          progress: 0,
+        })
+      })
+
+      expect(screen.queryByText('Online')).not.toBeInTheDocument()
+      expect(screen.queryByText('Offline')).not.toBeInTheDocument()
+    })
+  })
 })
 
 describe('OfflineBanner', () => {
@@ -382,5 +427,66 @@ describe('OfflineBanner', () => {
 
     // Banner should be hidden
     expect(screen.queryByText(/Syncing/)).not.toBeInTheDocument()
+  })
+
+  it('should hide banner when receiving online event after offline', async () => {
+    mockQueue._setOnline(false)
+    render(<OfflineBanner />)
+
+    await act(async () => {
+      mockQueue._emit({ type: 'offline', isOnline: false, queueLength: 0 })
+    })
+
+    expect(screen.getByText('You are offline')).toBeInTheDocument()
+
+    await act(async () => {
+      mockQueue._setOnline(true)
+      mockQueue._emit({ type: 'online', isOnline: true, queueLength: 0 })
+    })
+
+    expect(screen.queryByText('You are offline')).not.toBeInTheDocument()
+  })
+
+  it('should update progress display during sync', async () => {
+    render(<OfflineBanner />)
+
+    await act(async () => {
+      mockQueue._emit({
+        type: 'sync-started',
+        isOnline: true,
+        queueLength: 10,
+        total: 10,
+        processed: 0,
+        progress: 0,
+      })
+    })
+
+    await act(async () => {
+      mockQueue._emit({
+        type: 'sync-progress',
+        isOnline: true,
+        queueLength: 5,
+        total: 10,
+        processed: 7,
+        progress: 70,
+      })
+    })
+
+    expect(screen.getByText(/Syncing 7\/10/)).toBeInTheDocument()
+  })
+
+  it('should show singular request for single queued item', async () => {
+    mockQueue._setOnline(false)
+    render(<OfflineBanner />)
+
+    await act(async () => {
+      mockQueue._emit({ type: 'offline', isOnline: false, queueLength: 0 })
+    })
+
+    await act(async () => {
+      mockQueue._emit({ type: 'queue-changed', isOnline: false, queueLength: 1 })
+    })
+
+    expect(screen.getByText(/1 request will sync/)).toBeInTheDocument()
   })
 })

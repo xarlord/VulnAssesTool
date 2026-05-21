@@ -7,6 +7,7 @@ import {
   normalizeCPE,
   convertCPE22To23,
   getKnownComponentNames,
+  formatCPEForDisplay,
 } from './cpeUtils'
 
 describe('cpeUtils', () => {
@@ -133,6 +134,32 @@ describe('cpeUtils', () => {
       expect(names).toContain('react')
       expect(names).toContain('log4j')
       expect(names).toContain('spring')
+    })
+  })
+
+  describe('formatCPEForDisplay', () => {
+    it('should format application CPE for display', () => {
+      const result = formatCPEForDisplay('cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*')
+      expect(result).toBe('Application: apache / log4j 2.14.1')
+    })
+
+    it('should format OS CPE for display', () => {
+      const result = formatCPEForDisplay('cpe:2.3:o:linux:linux_kernel:5.10:*:*:*:*:*:*:*')
+      expect(result).toBe('Operating System: linux / linux_kernel 5.10')
+    })
+
+    it('should format hardware CPE for display', () => {
+      const result = formatCPEForDisplay('cpe:2.3:h:intel:core_i7:12th:*:*:*:*:*:*:*')
+      expect(result).toBe('Hardware: intel / core_i7 12th')
+    })
+
+    it('should return original string for invalid CPE', () => {
+      const invalidCpe = 'not-a-valid-cpe'
+      expect(formatCPEForDisplay(invalidCpe)).toBe('not-a-valid-cpe')
+    })
+
+    it('should return empty string for empty input', () => {
+      expect(formatCPEForDisplay('')).toBe('')
     })
   })
 })

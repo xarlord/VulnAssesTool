@@ -1,4 +1,3 @@
-import React from 'react'
 import { CheckCircle, XCircle, AlertCircle, Clock, HelpCircle } from 'lucide-react'
 import type { PatchAvailabilityStatus } from '@@/types'
 import { PATCH_STATUS_COLORS, PATCH_STATUS_LABELS } from '@@/constants'

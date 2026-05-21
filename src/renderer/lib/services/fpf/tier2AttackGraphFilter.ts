@@ -7,15 +7,8 @@
  * @module fpf/tier2AttackGraphFilter
  */
 
-import type {
-  FilterResult,
-  FilterAction,
-  FilterTier,
-  FilterType,
-  ReachabilityResult,
-  Vulnerability,
-  Component,
-} from '@@/types/fpf'
+import type { FilterResult, FilterAction, FilterTier, FilterType, ReachabilityResult } from '@@/types/fpf'
+import type { Vulnerability, Component } from '@@/types'
 import { AttackGraph } from './attackGraph'
 
 /**

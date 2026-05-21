@@ -56,7 +56,7 @@ export function ProjectDetail() {
   const [severityFilter, setSeverityFilter] = React.useState<'all' | Vulnerability['severity']>('all')
   const [activeTab, setActiveTab] = React.useState<TabValue>('overview')
   const [copiedVulnId, setCopiedVulnId] = React.useState<string | null>(null)
-  const isRefreshing = refreshingProjectIds.has(projectId) || isRefreshingVuln
+  const isRefreshing = (projectId != null && refreshingProjectIds.has(projectId)) || isRefreshingVuln
 
   // Component vulnerabilities popup state
   const [selectedComponent, setSelectedComponent] = React.useState<Component | null>(null)
@@ -340,7 +340,7 @@ export function ProjectDetail() {
 
     try {
       // Match vulnerabilities for all components, passing NVD API key
-      const results = await matchVulnerabilitiesForComponents(project.components, nvdApiKey)
+      const results = await matchVulnerabilitiesForComponents(project.components, nvdApiKey ?? undefined)
 
       // Flatten results into a single array of vulnerabilities
       const allVulnerabilities: Vulnerability[] = []
@@ -410,7 +410,6 @@ export function ProjectDetail() {
           highCount: stats.high,
           mediumCount: stats.medium,
           lowCount: stats.low,
-          none: stats.none,
           vulnerableComponents,
         },
       })
@@ -508,7 +507,6 @@ export function ProjectDetail() {
       highCount: updatedVulnerabilities.filter((v) => v.severity === 'high').length,
       mediumCount: updatedVulnerabilities.filter((v) => v.severity === 'medium').length,
       lowCount: updatedVulnerabilities.filter((v) => v.severity === 'low').length,
-      none: updatedVulnerabilities.filter((v) => v.severity === 'none').length,
     }
 
     // Calculate vulnerable components from remaining vulnerabilities

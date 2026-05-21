@@ -81,8 +81,8 @@ const SettingsProfileSchema: z.ZodType<SettingsProfile> = z.object({
   description: z.string().optional(),
   settings: AppSettingsSchema,
   isDefault: z.boolean(),
-  createdAt: z.string().or(z.date()),
-  lastUsed: z.string().or(z.date()),
+  createdAt: z.union([z.string(), z.date()]).transform((d) => (d instanceof Date ? d : new Date(d))),
+  lastUsed: z.union([z.string(), z.date()]).transform((d) => (d instanceof Date ? d : new Date(d))),
 })
 
 // Zod schema for SettingsExport
@@ -110,7 +110,7 @@ export function validateSettingsExport(data: unknown): data is SettingsExport {
     return true
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error('Validation error:', error.errors)
+      console.error('Validation error:', error.issues)
     }
     return false
   }
@@ -127,11 +127,7 @@ export function exportSettings(profiles: SettingsProfile[]): SettingsExport {
   return {
     version: '1.0.0',
     exportedAt: new Date().toISOString(),
-    profiles: profiles.map((profile) => ({
-      ...profile,
-      createdAt: profile.createdAt instanceof Date ? profile.createdAt.toISOString() : profile.createdAt,
-      lastUsed: profile.lastUsed instanceof Date ? profile.lastUsed.toISOString() : profile.lastUsed,
-    })),
+    profiles,
   }
 }
 
@@ -175,8 +171,9 @@ export function importSettings(json: string): ValidationResult {
     const validationResult = SettingsExportSchema.safeParse(data)
 
     if (!validationResult.success) {
-      const errors = validationResult.error?.errors || []
-      const errorMessage = errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ') || 'Invalid data structure'
+      const errors = validationResult.error?.issues || []
+      const errorMessage =
+        errors.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ') || 'Invalid data structure'
       return {
         success: false,
         error: `Invalid settings format: ${errorMessage}`,

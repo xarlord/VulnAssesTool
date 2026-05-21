@@ -215,6 +215,22 @@ describe('AttackGraph', () => {
       graph.addEdge({ from: 'node:a', to: 'node:b', type: 'blocking' })
       expect(graph.findPath('node:a', 'node:b')).toBeNull()
     })
+
+    it('should not add duplicate edges to adjacency list', () => {
+      const config = createMockConfig()
+      const graph = new AttackGraph(config)
+      graph.addNode({ id: 'node:a', type: 'interface', name: 'Node A', enabled: true, exposure: 'external' })
+      graph.addNode({ id: 'node:b', type: 'service', name: 'Node B', enabled: true, exposure: 'internal' })
+
+      graph.addEdge({ from: 'node:a', to: 'node:b', type: 'data_flow' })
+      graph.addEdge({ from: 'node:a', to: 'node:b', type: 'data_flow' })
+
+      const edges = graph.getEdges()
+      expect(edges.filter((e) => e.from === 'node:a' && e.to === 'node:b')).toHaveLength(2)
+
+      const path = graph.findPath('node:a', 'node:b')
+      expect(path).toEqual(['node:a', 'node:b'])
+    })
   })
 
   describe('findEntryPoints', () => {
@@ -276,6 +292,37 @@ describe('AttackGraph', () => {
       const template = createMockTemplate()
       const graph = new AttackGraph(config, template)
       expect(graph.findPath('entry:wifi', 'entry:wifi')).toEqual(['entry:wifi'])
+    })
+
+    it('should find path through branching graph via BFS', () => {
+      const config = createMockConfig()
+      const graph = new AttackGraph(config)
+      graph.addNode({ id: 'a', type: 'entry_point', name: 'A', enabled: true, exposure: 'external' })
+      graph.addNode({ id: 'b', type: 'interface', name: 'B', enabled: true, exposure: 'internal' })
+      graph.addNode({ id: 'c', type: 'interface', name: 'C', enabled: true, exposure: 'internal' })
+      graph.addNode({ id: 'd', type: 'component', name: 'D', enabled: true, exposure: 'internal' })
+
+      graph.addEdge({ from: 'a', to: 'b', type: 'data_flow' })
+      graph.addEdge({ from: 'a', to: 'c', type: 'data_flow' })
+      graph.addEdge({ from: 'b', to: 'd', type: 'data_flow' })
+      graph.addEdge({ from: 'c', to: 'd', type: 'data_flow' })
+
+      const path = graph.findPath('a', 'd')
+      expect(path).not.toBeNull()
+      expect(path![0]).toBe('a')
+      expect(path![path!.length - 1]).toBe('d')
+      expect(path!.length).toBe(3)
+    })
+
+    it('should return null when no path exists between connected components', () => {
+      const config = createMockConfig()
+      const graph = new AttackGraph(config)
+      graph.addNode({ id: 'a', type: 'entry_point', name: 'A', enabled: true, exposure: 'external' })
+      graph.addNode({ id: 'b', type: 'component', name: 'B', enabled: true, exposure: 'internal' })
+
+      graph.addEdge({ from: 'a', to: 'b', type: 'blocking' })
+
+      expect(graph.findPath('a', 'b')).toBeNull()
     })
   })
 

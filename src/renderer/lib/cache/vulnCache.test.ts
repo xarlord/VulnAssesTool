@@ -697,9 +697,10 @@ describe('vulnCache', () => {
     })
 
     it('should handle zero TTL', () => {
-      const lastRefresh = new Date()
-      // Zero TTL means staleness is only true if time has passed since lastRefresh
-      expect(isVulnDataStale(lastRefresh, 0)).toBe(false)
+      const pastRefresh = new Date(Date.now() - 1)
+      expect(isVulnDataStale(pastRefresh, 0)).toBe(true)
+      expect(isVulnDataStale(new Date(), 0)).toBe(false)
+      expect(isVulnDataStale(undefined, 0)).toBe(true)
     })
   })
 

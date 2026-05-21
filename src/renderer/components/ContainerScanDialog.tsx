@@ -5,7 +5,7 @@
  * extracted packages as components into the current project.
  */
 
-import React, { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { getPlatform } from '@/lib/platform'
 import {
   X,
@@ -191,6 +191,7 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
       cpe: pkg.cpe,
       description: `${pkg.manager} package: ${pkg.name}`,
       licenses: [],
+      vulnerabilities: [],
       dependencies: [],
       sbomFileId: undefined,
     }))

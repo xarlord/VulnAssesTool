@@ -1,8 +1,8 @@
 /**
  * Platform Abstraction Layer
  *
- * Provides a singleton PlatformAPI that abstracts Electron IPC.
- * Components import getPlatform() instead of reaching for window.electronAPI.
+ * Provides a singleton PlatformAPI backed by the Express server via HTTP+WebSocket.
+ * Components import getPlatform() instead of making direct API calls.
  *
  * Usage:
  *   import { getPlatform } from '@/lib/platform'
@@ -10,12 +10,11 @@
  *
  * Initialization (called once in main.tsx):
  *   import { initPlatform } from '@/lib/platform'
- *   initPlatform()
+ *   await initPlatform()
  */
 
 import type { PlatformAPI } from './types'
-import { createElectronAdapter } from './electronAdapter'
-import { createBrowserAdapter } from './browserAdapter'
+import { createServerAdapter } from './serverAdapter'
 
 export type {
   PlatformAPI,
@@ -28,32 +27,25 @@ export type {
 } from './types'
 
 let platform: PlatformAPI | null = null
+let platformInit: Promise<PlatformAPI> | null = null
 
-/**
- * Initialize the platform adapter.
- * Called once at app startup before any component renders.
- */
-export function initPlatform(): PlatformAPI {
-  if (platform) return platform
+export function initPlatform(): Promise<PlatformAPI> {
+  if (platform) return Promise.resolve(platform)
+  if (platformInit) return platformInit
 
-  const isElectron = typeof window !== 'undefined' && !!window.electronAPI
-  platform = isElectron ? createElectronAdapter() : createBrowserAdapter()
+  platformInit = createServerAdapter().then((p) => {
+    platform = p
+    return p
+  })
 
-  return platform
+  return platformInit
 }
 
-/**
- * Get the current platform adapter.
- * Automatically initializes if not yet called.
- */
 export function getPlatform(): PlatformAPI {
-  if (!platform) return initPlatform()
+  if (!platform) throw new Error('Platform not initialized. Call await initPlatform() first.')
   return platform
 }
 
-/**
- * Check if running inside Electron
- */
 export function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!window.electronAPI
+  return false
 }

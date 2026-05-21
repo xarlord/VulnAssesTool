@@ -681,6 +681,100 @@ describe('useStore', () => {
         })
       }).toThrow('No profiles to export')
     })
+
+    it('should update only the matching profile when multiple profiles exist', () => {
+      const profile1 = { ...mockProfile, id: 'profile-1', name: 'Profile 1' }
+      const profile2 = { ...mockProfile, id: 'profile-2', name: 'Profile 2' }
+      vi.mocked(updateProfile).mockImplementation(() => {})
+
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        useStore.setState({ settingsProfiles: [profile1, profile2] })
+        result.current.updateSettingsProfile('profile-2', { name: 'Updated Profile 2' })
+      })
+
+      // profile-1 unchanged, profile-2 updated
+      expect(result.current.settingsProfiles[0].name).toBe('Profile 1')
+      expect(result.current.settingsProfiles[1].name).toBe('Updated Profile 2')
+    })
+
+    it('should keep active profile unchanged when deleting a non-active profile', () => {
+      const profile1 = { ...mockProfile, id: 'profile-1', name: 'Profile 1', isDefault: true }
+      const profile2 = { ...mockProfile, id: 'profile-2', name: 'Profile 2', isDefault: false }
+      vi.mocked(deleteProfile).mockImplementation(() => {})
+
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        useStore.setState({
+          settingsProfiles: [profile1, profile2],
+          activeProfileId: 'profile-1',
+        })
+        result.current.deleteSettingsProfile('profile-2')
+      })
+
+      // Active profile should remain unchanged since we deleted a different one
+      expect(result.current.activeProfileId).toBe('profile-1')
+      expect(result.current.settings).toBe(DEFAULT_SETTINGS)
+    })
+
+    it('should fall back to first profile when deleting active and no default remains', () => {
+      const profile1 = { ...mockProfile, id: 'profile-1', name: 'Profile 1', isDefault: false }
+      const profile2 = { ...mockProfile, id: 'profile-2', name: 'Profile 2', isDefault: false }
+      vi.mocked(deleteProfile).mockImplementation(() => {})
+
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        useStore.setState({
+          settingsProfiles: [profile1, profile2],
+          activeProfileId: 'profile-1',
+        })
+        result.current.deleteSettingsProfile('profile-1')
+      })
+
+      // No default → should fall back to first remaining profile
+      expect(result.current.activeProfileId).toBe('profile-2')
+      expect(result.current.settings).toBe(profile2.settings)
+    })
+
+    it('should clear active profile when deleting the last profile', () => {
+      vi.mocked(deleteProfile).mockImplementation(() => {})
+
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        useStore.setState({
+          settingsProfiles: [mockProfile],
+          activeProfileId: mockProfile.id,
+        })
+        result.current.deleteSettingsProfile(mockProfile.id)
+      })
+
+      // No profiles remain → empty activeProfileId, keep existing settings
+      expect(result.current.settingsProfiles).toEqual([])
+      expect(result.current.activeProfileId).toBe('')
+    })
+
+    it('should handle import with non-Error thrown value', async () => {
+      const mockFile = new File(['{}'], 'settings.json', { type: 'application/json' })
+
+      // Throw a non-Error value (string) to cover the else branch on line 196
+      vi.mocked(importSettingsFromFile).mockRejectedValue('string error')
+
+      const { result } = renderHook(() => useStore())
+
+      let importResult: { success: boolean; error?: string } | undefined
+      await act(async () => {
+        importResult = await result.current.importSettingsProfiles(mockFile)
+      })
+
+      expect(importResult).toEqual({
+        success: false,
+        error: 'Unknown error occurred',
+      })
+    })
   })
 
   // ==================== Projects Tests ====================
@@ -1237,6 +1331,48 @@ describe('useStore', () => {
       })
 
       expect(result.current.projects[0].statistics.vulnerableComponents).toBe(2)
+    })
+
+    it('should not update currentProject when refreshing a different project', async () => {
+      const mockComponent = createMockComponent('component-1', 'pkg:npm/test@1.0.0')
+      const mockVulnerability = createMockVulnerability('CVE-2024-1', 'critical')
+
+      const project1 = createMockProject({ id: 'project-1', name: 'Project 1' })
+      const project2 = createMockProject({
+        id: 'project-2',
+        name: 'Project 2',
+        components: [mockComponent],
+      })
+
+      vi.mocked(mockRefreshData).mockResolvedValue({
+        success: true,
+        vulnerabilities: [mockVulnerability],
+        vulnerabilitiesFound: 1,
+        componentsScanned: 1,
+        cached: 0,
+        fetched: 1,
+        duration: 100,
+      })
+
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        result.current.addProject(project1)
+        result.current.addProject(project2)
+        result.current.setCurrentProject(project1)
+      })
+
+      await act(async () => {
+        await result.current.refreshVulnerabilityData('project-2')
+      })
+
+      // project-2 in projects array should be updated
+      const refreshedProject = result.current.projects.find((p) => p.id === 'project-2')
+      expect(refreshedProject?.vulnerabilities).toHaveLength(1)
+
+      // currentProject (project-1) should NOT be updated
+      expect(result.current.currentProject?.id).toBe('project-1')
+      expect(result.current.currentProject?.vulnerabilities).toHaveLength(0)
     })
   })
 

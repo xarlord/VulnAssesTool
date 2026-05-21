@@ -34,6 +34,3 @@ export {
 
 // Command registration
 export { registerAppCommands, unregisterAppCommands } from './registerCommands'
-
-// Default export
-export { default } from './commandRegistry'
