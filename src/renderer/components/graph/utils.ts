@@ -90,7 +90,7 @@ export function buildGraphElements(
 /**
  * Get node style based on severity
  */
-export function getNodeStyle(nodeData: GraphNodeData): cytoscape.Stylesheet {
+export function getNodeStyle(nodeData: GraphNodeData) {
   const bgColor = SEVERITY_NODE_COLORS[nodeData.maxSeverity] || SEVERITY_NODE_COLORS.none
 
   return {
@@ -230,7 +230,7 @@ export function getPathEdges(nodePath: string[]): { source: string; target: stri
 /**
  * Get base Cytoscape stylesheet
  */
-export function getBaseStyles(): cytoscape.Stylesheet[] {
+export function getBaseStyles() {
   return [
     {
       selector: 'node',

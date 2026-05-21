@@ -5,7 +5,7 @@
  * Accessible via /project/:projectId/graph
  */
 
-import React, { useMemo, useCallback, useState } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Filter } from 'lucide-react'
 import { DependencyGraph } from '@/components/graph/DependencyGraph'

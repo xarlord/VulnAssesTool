@@ -7,7 +7,7 @@
  * 3. Multi-project: create 2 projects → upload different SBOMs → verify isolation
  */
 
-import { test, expect } from '../electron-helper'
+import { test, expect } from '../test-helper'
 import {
   createTestProject,
   uploadSbomFile,

@@ -237,7 +237,7 @@ export interface StartBulkDownloadRequest {
 export interface BulkDownloadResult {
   success: boolean
   completedYears: number[]
-  failedYears: Map<number, string>
+  failedYears: Record<number, string>
   totalCves: number
   durationMs: number
   cancelled: boolean

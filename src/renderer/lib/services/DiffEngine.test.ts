@@ -8,6 +8,7 @@ import {
   DiffEngine,
   createDiffEngine,
   computeComponentDiff,
+  computeHash,
   getChangedComponents,
   type DiffOptions,
   type DiffResult,
@@ -541,6 +542,29 @@ describe('getChangedComponents', () => {
   })
 })
 
+describe('computeHash', () => {
+  it('should compute hash for a single component', () => {
+    const component = createMockComponent({ name: 'react', version: '18.0.0' })
+    const hash = computeHash(component)
+    expect(hash).toBeDefined()
+    expect(typeof hash).toBe('string')
+    expect(hash.length).toBeGreaterThan(0)
+  })
+
+  it('should compute consistent hash for same component', () => {
+    const component = createMockComponent({ name: 'react', version: '18.0.0' })
+    const hash1 = computeHash(component)
+    const hash2 = computeHash(component)
+    expect(hash1).toBe(hash2)
+  })
+
+  it('should compute different hash for different components', () => {
+    const component1 = createMockComponent({ name: 'react', version: '18.0.0' })
+    const component2 = createMockComponent({ name: 'react', version: '18.2.0' })
+    expect(computeHash(component1)).not.toBe(computeHash(component2))
+  })
+})
+
 describe('Edge Cases', () => {
   let engine: DiffEngine
 
@@ -607,5 +631,36 @@ describe('Edge Cases', () => {
     const result = engine.computeDiff([component1], [component2])
 
     expect(result.unchanged).toHaveLength(1)
+  })
+
+  it('should detect changes in object-valued fields via deepEqual', () => {
+    const engine = new DiffEngine({ hashFunction: simpleHash })
+
+    const oldComponent = createMockComponent({ name: 'react', version: '18.0.0' })
+    // @ts-expect-error - testing deepEqual with plain object values
+    oldComponent.hash = { alg: 'SHA-256', content: 'abc' }
+
+    const newComponent = createMockComponent({ name: 'react', version: '18.0.0' })
+    // @ts-expect-error - testing deepEqual with plain object values
+    newComponent.hash = { alg: 'SHA-256', content: 'def' }
+
+    const result = engine.computeDiff([oldComponent], [newComponent])
+    expect(result.modified).toHaveLength(1)
+    expect(result.modified[0].changes).toContain('hash')
+  })
+
+  it('should detect objects with different key counts in deepEqual', () => {
+    const engine = new DiffEngine({ hashFunction: simpleHash })
+
+    const oldComponent = createMockComponent({ name: 'react', version: '18.0.0' })
+    // @ts-expect-error - testing deepEqual with plain object values
+    oldComponent.hash = { alg: 'SHA-256' }
+
+    const newComponent = createMockComponent({ name: 'react', version: '18.0.0' })
+    // @ts-expect-error - testing deepEqual with plain object values
+    newComponent.hash = { alg: 'SHA-256', content: 'abc' }
+
+    const result = engine.computeDiff([oldComponent], [newComponent])
+    expect(result.modified).toHaveLength(1)
   })
 })

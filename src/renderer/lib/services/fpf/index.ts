@@ -5,7 +5,7 @@
  */
 
 // Re-export types for convenience
-export * from '@@/shared/types/fpf'
+export * from '@@/types/fpf'
 
 // Configuration Service
 export { ConfigService, configService } from './configService'

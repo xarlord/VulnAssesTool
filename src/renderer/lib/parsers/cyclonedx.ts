@@ -1,5 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
-import type { Component, Vulnerability } from '@@/types'
+import type { Component, Vulnerability, VulnerabilitySource } from '@@/types'
 
 /**
  * CycloneDX SBOM types based on specification v1.5
@@ -214,7 +214,7 @@ function parseCycloneDXXml(fileContent: string): {
     throw new Error('Invalid CycloneDX XML format: missing bom element')
   }
 
-  const bom = parsed[rootKey] as CycloneDXBom
+  const bom = (parsed as unknown as Record<string, CycloneDXBom>)[rootKey]
   const components = extractComponentsFromXml(bom)
   const vulnerabilities = extractVulnerabilitiesFromXml(bom)
   const formatVersion = bom.$?.version || '1.5'
@@ -478,7 +478,11 @@ function mapCycloneDXVulnerability(vuln: CycloneDXVulnerability): Vulnerability 
   // Get the severity from the first rating
   const severity = vuln.ratings?.[0]?.severity?.toUpperCase() || 'UNKNOWN'
   const normalizedSeverity = normalizeSeverity(severity)
-  const sourceName = (vuln.source?.name || 'NVD').toLowerCase()
+  const sourceNameRaw = (vuln.source?.name || 'NVD').toLowerCase()
+  const validSources: readonly VulnerabilitySource[] = ['nvd', 'osv', 'oss-index', 'github-advisory', 'snyk', 'both']
+  const sourceName: VulnerabilitySource = validSources.includes(sourceNameRaw as VulnerabilitySource)
+    ? (sourceNameRaw as VulnerabilitySource)
+    : 'nvd'
   const sourceId = vuln.id
 
   // Build references array with both advisories and the primary source URL

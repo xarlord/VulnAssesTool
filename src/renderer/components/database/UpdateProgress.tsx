@@ -3,9 +3,14 @@
  * Shows download progress for database updates with detailed stats
  */
 
-import React from 'react'
 import { Download, Pause, Play, X, CheckCircle2, AlertCircle, Clock } from 'lucide-react'
-import type { DownloadProgress } from '@/lib/database'
+/**
+ * Local download progress type used by UpdateProgress components.
+ * Represents the minimum shape needed to render progress UI.
+ */
+export interface DownloadProgress {
+  percentage: number
+}
 
 export interface UpdateProgressProps {
   jobId: string

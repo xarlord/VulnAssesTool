@@ -267,7 +267,7 @@ export class ContainerScanner {
 
       return {
         type: targetRuntime,
-        version: result.version || 'unknown',
+        version: (typeof result.version === 'string' && result.version) || 'unknown',
         available: true,
         socket: this.getRuntimeSocket(targetRuntime),
       }

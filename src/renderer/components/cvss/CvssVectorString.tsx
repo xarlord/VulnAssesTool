@@ -1,4 +1,3 @@
-import React from 'react'
 import type { CvssBreakdown } from '@@/types'
 import { formatCvssVector, getSeverityColorHex } from '@/lib/cvss'
 

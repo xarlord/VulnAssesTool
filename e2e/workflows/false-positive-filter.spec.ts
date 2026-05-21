@@ -5,7 +5,7 @@
  * Uses the actual FalsePositiveFilter service (Tier 1 + Tier 2 filters) with optional Database.
  */
 
-import { test, expect } from '../electron-helper'
+import { test, expect } from '../test-helper'
 import {
   createTestProject,
   uploadSbomFile,

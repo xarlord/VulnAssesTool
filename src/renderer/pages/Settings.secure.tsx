@@ -7,8 +7,8 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store/useStore'
 import { isValidNvdApiKey } from '@/lib/api/nvd'
-import { getSecureKeyService, loadApiKeyWithFallback } from '@/lib/storage'
-import { migrateApiKeysToSecureStorage } from '@/lib/storage/migration'
+import { getSecureKeyService } from '@/lib/storage'
+import { loadApiKeyWithFallback, migrateApiKeysToSecureStorage } from '@/lib/storage/migration'
 import {
   Palette,
   Database,
@@ -68,11 +68,11 @@ export function SettingsPage() {
   // Initialize API key input from secure storage
   useEffect(() => {
     const loadApiKey = async () => {
-      const key = await loadApiKeyWithFallback('nvd', settings.nvdApiKey)
+      const key = await loadApiKeyWithFallback('nvd', undefined)
       setNvdApiKeyInput(key || '')
     }
     loadApiKey()
-  }, [settings.nvdApiKey])
+  }, [])
 
   const checkSecureStorageAvailability = async () => {
     const available = await secureKeyService.isAvailable()
@@ -98,7 +98,7 @@ export function SettingsPage() {
   const handleApiKeyBlur = async () => {
     if (apiKeyError) {
       // Reset to current valid value
-      const key = await loadApiKeyWithFallback('nvd', settings.nvdApiKey)
+      const key = await loadApiKeyWithFallback('nvd', undefined)
       setNvdApiKeyInput(key || '')
       setApiKeyError('')
       return
@@ -108,21 +108,14 @@ export function SettingsPage() {
     if (secureStorageAvailable) {
       const success = await secureKeyService.setApiKey('nvd', nvdApiKeyInput || '')
       if (success) {
-        // Update settings to undefined (key is now in secure storage)
-        updateSettings({ nvdApiKey: undefined })
-        if (nvdApiKeyInput !== (await loadApiKeyWithFallback('nvd', settings.nvdApiKey))) {
+        // Key is now stored in secure storage, no need to update settings
+        const currentKey = await secureKeyService.getApiKey('nvd')
+        if (nvdApiKeyInput !== currentKey) {
           setSaveSuccess(true)
           setTimeout(() => setSaveSuccess(false), 2000)
         }
       } else {
         setApiKeyError('Failed to save API key securely')
-      }
-    } else {
-      // Fall back to storing in settings (not recommended)
-      updateSettings({ nvdApiKey: nvdApiKeyInput || undefined })
-      if (nvdApiKeyInput !== settings.nvdApiKey) {
-        setSaveSuccess(true)
-        setTimeout(() => setSaveSuccess(false), 2000)
       }
     }
   }
@@ -132,7 +125,6 @@ export function SettingsPage() {
       updateSettings({
         theme: 'system',
         fontSize: 'default',
-        nvdApiKey: undefined,
         dataRetentionDays: 30,
         autoRefresh: false,
       })
@@ -198,12 +190,7 @@ export function SettingsPage() {
   const handleSwitchProfile = (profileId: string) => {
     try {
       switchSettingsProfile(profileId)
-      // Update local state
-      const profile = settingsProfiles.find((p) => p.id === profileId)
-      if (profile) {
-        const key = loadApiKeyWithFallback('nvd', profile.settings.nvdApiKey)
-        key.then((k) => setNvdApiKeyInput(k || ''))
-      }
+      // API key remains in secure storage regardless of profile
     } catch (error) {
       console.error('Failed to switch profile:', error)
       alert(error instanceof Error ? error.message : 'Failed to switch profile')

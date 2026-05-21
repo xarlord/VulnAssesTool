@@ -1,4 +1,3 @@
-import React from 'react'
 import { Clock, Trash2, CheckCircle } from 'lucide-react'
 import type { SettingsProfile } from '@@/types'
 

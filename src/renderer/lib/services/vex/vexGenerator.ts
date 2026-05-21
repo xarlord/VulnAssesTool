@@ -8,7 +8,7 @@
  * @see https://cyclonedx.org/capabilities/vex/
  */
 
-import type { FilterAuditEvent, FilterAction, FilterContext } from '@@/shared/types/fpf'
+import type { FilterAuditEvent, FilterAction, FilterContext } from '@@/types/fpf'
 
 // ============================================================================
 // VEX TYPES (CycloneDX VEX 1.0)
@@ -411,9 +411,9 @@ export class VexGenerator {
   private getComponentRefs(event: FilterAuditEvent, componentRefs?: Map<string, string>): string[] {
     if (componentRefs) {
       const ref = componentRefs.get(event.vulnerability.component.cpe)
-      return ref ? [ref] : [`urn:cdx:${event.componentId}`]
+      return ref ? [ref] : [`urn:cdx:${event.vulnerability.component.cpe}`]
     }
-    return [`urn:cdx:${event.componentId}`]
+    return [`urn:cdx:${event.vulnerability.component.cpe}`]
   }
 
   private generateUUID(): string {

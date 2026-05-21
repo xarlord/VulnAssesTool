@@ -25,6 +25,12 @@ const {
   mockHasLaunchedBefore: vi.fn(() => false),
 }))
 
+const { mockCapturedDriverConfig, mockOnShow, mockOnNext } = vi.hoisted(() => ({
+  mockCapturedDriverConfig: { value: null as unknown },
+  mockOnShow: vi.fn(),
+  mockOnNext: vi.fn(),
+}))
+
 // Build mock store state for the tour store
 const mockTourState = {
   startTour: mockStartTour,
@@ -52,14 +58,47 @@ const mockDrive = vi.fn()
 const mockDestroy = vi.fn()
 
 vi.mock('driver.js', () => ({
-  driver: vi.fn(() => ({
-    drive: mockDrive,
-    destroy: mockDestroy,
-  })),
+  driver: vi.fn((driverConfig: unknown) => {
+    mockCapturedDriverConfig.value = driverConfig
+    return {
+      drive: mockDrive,
+      destroy: mockDestroy,
+    }
+  }),
 }))
 
 // Mock the CSS import (driver.js/dist/driver.css)
 vi.mock('driver.js/dist/driver.css', () => ({}))
+
+// Mock tour steps to include onShow/onNext callbacks for callback coverage
+vi.mock('@/lib/tour/tourSteps', () => ({
+  mainTourConfig: {
+    id: 'main-onboarding',
+    name: 'Test Tour',
+    description: 'Test',
+    steps: [
+      {
+        id: 'step-1',
+        element: '[data-tour="test"]',
+        title: 'Step 1',
+        description: 'Test step',
+        onShow: mockOnShow,
+        onNext: mockOnNext,
+      },
+      { id: 'step-2', element: '[data-tour="test2"]', title: 'Step 2', description: 'Test step 2' },
+    ],
+    showOnFirstLaunch: true,
+    allowReplay: true,
+  },
+  projectTourConfig: {
+    id: 'project-detail',
+    name: 'Project Tour',
+    description: 'Test',
+    steps: [{ id: 'pstep-1', element: '[data-tour="ptest"]', title: 'PStep 1', description: 'Test' }],
+    showOnFirstLaunch: false,
+    allowReplay: true,
+  },
+}))
 
 describe('OnboardingTour', () => {
   beforeEach(() => {
@@ -67,6 +106,7 @@ describe('OnboardingTour', () => {
     mockTourState.activeTourId = null
     mockTourState.toursProgress = {}
     mockTourState.hasLaunchedBefore = false
+    mockCapturedDriverConfig.value = null
   })
 
   describe('Rendering', () => {
@@ -268,6 +308,102 @@ describe('OnboardingTour', () => {
       unmount()
 
       expect(mockDestroy).toHaveBeenCalled()
+    })
+  })
+
+  describe('Driver Callbacks', () => {
+    type DriverConfigWithCallbacks = {
+      onHighlightStarted: (el: unknown, step: unknown, opts?: { state?: { activeIndex?: number } }) => void
+      onHighlighted: (el: unknown, step: unknown, opts?: { state?: { activeIndex?: number } }) => void
+    }
+
+    const getCapturedConfig = (): DriverConfigWithCallbacks =>
+      mockCapturedDriverConfig.value as DriverConfigWithCallbacks
+
+    it('should invoke onShow when onHighlightStarted is called for step with onShow', async () => {
+      render(<OnboardingTour startImmediately={true} tourId="main-onboarding" />)
+
+      await vi.waitFor(() => {
+        expect(mockDrive).toHaveBeenCalled()
+      })
+
+      const config = getCapturedConfig()
+      // Step 0 has onShow callback
+      config.onHighlightStarted(null, null, { state: { activeIndex: 0 } })
+
+      expect(mockOnShow).toHaveBeenCalled()
+    })
+
+    it('should not invoke onShow when onHighlightStarted is called for step without onShow', async () => {
+      render(<OnboardingTour startImmediately={true} tourId="main-onboarding" />)
+
+      await vi.waitFor(() => {
+        expect(mockDrive).toHaveBeenCalled()
+      })
+
+      const config = getCapturedConfig()
+      // Step 1 has no onShow callback — covers the negative branch
+      config.onHighlightStarted(null, null, { state: { activeIndex: 1 } })
+
+      expect(mockOnShow).not.toHaveBeenCalled()
+    })
+
+    it('should default to step index 0 when opts is undefined in onHighlightStarted', async () => {
+      render(<OnboardingTour startImmediately={true} tourId="main-onboarding" />)
+
+      await vi.waitFor(() => {
+        expect(mockDrive).toHaveBeenCalled()
+      })
+
+      const config = getCapturedConfig()
+      // opts undefined triggers the ?? 0 fallback
+      config.onHighlightStarted(null, null, undefined)
+
+      // Step 0 has onShow, so it should be invoked via the fallback index
+      expect(mockOnShow).toHaveBeenCalled()
+    })
+
+    it('should enter onNext branch in onHighlighted for step with onNext', async () => {
+      render(<OnboardingTour startImmediately={true} tourId="main-onboarding" />)
+
+      await vi.waitFor(() => {
+        expect(mockDrive).toHaveBeenCalled()
+      })
+
+      const config = getCapturedConfig()
+      // Step 0 has onNext — covers the if (tourStep?.onNext) branch
+      config.onHighlighted(null, null, { state: { activeIndex: 0 } })
+
+      // The branch contains only a comment, no side-effect to assert.
+      // This test ensures the branch executes without errors.
+    })
+
+    it('should skip onNext branch in onHighlighted for step without onNext', async () => {
+      render(<OnboardingTour startImmediately={true} tourId="main-onboarding" />)
+
+      await vi.waitFor(() => {
+        expect(mockDrive).toHaveBeenCalled()
+      })
+
+      const config = getCapturedConfig()
+      // Step 1 has no onNext — covers the negative branch
+      config.onHighlighted(null, null, { state: { activeIndex: 1 } })
+
+      // No errors thrown is sufficient for this branch
+    })
+
+    it('should default to step index 0 when opts is undefined in onHighlighted', async () => {
+      render(<OnboardingTour startImmediately={true} tourId="main-onboarding" />)
+
+      await vi.waitFor(() => {
+        expect(mockDrive).toHaveBeenCalled()
+      })
+
+      const config = getCapturedConfig()
+      // opts undefined triggers the ?? 0 fallback, step 0 has onNext
+      config.onHighlighted(null, null, undefined)
+
+      // Covers the fallback path + onNext branch
     })
   })
 })

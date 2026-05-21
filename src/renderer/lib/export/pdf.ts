@@ -80,7 +80,7 @@ function addFooter(doc: jsPDF, pageNumber: number, totalPages: number): void {
 /**
  * Get severity color for PDF
  */
-function getSeverityColor(severity: string): number[] {
+function getSeverityColor(severity: string): [number, number, number] {
   switch (severity.toLowerCase()) {
     case 'critical':
       return [220, 38, 38] // Red-600
@@ -139,7 +139,7 @@ export function prepareVulnerabilitiesPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = doc.lastAutoTable?.finalY + 15
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 15
 
   // Vulnerabilities section
   doc.setFontSize(12)
@@ -240,7 +240,7 @@ export function prepareComponentsPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = doc.lastAutoTable?.finalY + 15
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 15
 
   // Components section
   doc.setFontSize(12)
@@ -346,7 +346,7 @@ export function prepareProjectPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = doc.lastAutoTable?.finalY + 12
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
 
   // Statistics section
   doc.setFontSize(12)
@@ -380,7 +380,7 @@ export function prepareProjectPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = doc.lastAutoTable?.finalY + 12
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
 
   // All vulnerabilities section
   doc.setFontSize(12)
@@ -435,7 +435,7 @@ export function prepareProjectPdf(project: Project): jsPDF {
     },
   })
 
-  yPosition = doc.lastAutoTable?.finalY + 12
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
 
   // Components summary section
   doc.addPage()
@@ -534,7 +534,7 @@ export function prepareAllProjectsPdf(projects: Project[]): jsPDF {
     },
   })
 
-  yPosition = doc.lastAutoTable?.finalY + 12
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
 
   // Projects list
   doc.setFontSize(12)

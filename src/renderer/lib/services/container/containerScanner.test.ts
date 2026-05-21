@@ -18,6 +18,17 @@ import {
   type RegistryAuth,
 } from './containerScanner'
 
+// Override the global platform mock so container is null,
+// forcing ContainerScanner to use the local executeCommand fallback path.
+// Use a mutable mock so individual tests can override container.
+const mockPlatformObj: { container: unknown } = { container: null }
+
+vi.mock('@/lib/platform', () => ({
+  initPlatform: vi.fn(() => Promise.resolve({})),
+  getPlatform: vi.fn(() => mockPlatformObj),
+  isElectron: vi.fn(() => false),
+}))
+
 // ============================================================================
 // TEST FIXTURES
 // ============================================================================
@@ -372,30 +383,284 @@ describe('Convenience Functions', () => {
   })
 })
 
-describe('Type Exports', () => {
-  it('should export ContainerRuntime type', () => {
-    const runtime: ContainerRuntime = 'docker'
-    expect(['docker', 'podman']).toContain(runtime)
+describe('ContainerScanner - IPC paths', () => {
+  const mockContainer = {
+    checkRuntime: vi.fn(),
+    scanImage: vi.fn(),
+    extractPackages: vi.fn(),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPlatformObj.container = mockContainer
+    mockExecuteCommand.mockResolvedValue({ version: '24.0.0' })
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
   })
 
-  it('should export ImageReference type', () => {
-    const ref: ImageReference = {
-      name: 'docker.io/library/nginx:latest',
-      registry: 'docker.io',
-      repository: 'library/nginx',
-      tag: 'latest',
-      original: 'nginx:latest',
-    }
-    expect(ref.name).toBeDefined()
+  afterEach(() => {
+    mockPlatformObj.container = null
   })
 
-  it('should export RegistryAuth type', () => {
-    const auth: RegistryAuth = {
-      server: 'ghcr.io',
-      username: 'user',
-      password: 'token',
-      type: 'bearer',
+  it('should use IPC checkRuntime when platform container available', async () => {
+    mockContainer.checkRuntime.mockResolvedValue({
+      success: true,
+      runtime: { type: 'docker', version: '24.0.0', available: true, socket: '/var/run/docker.sock' },
+    })
+
+    const scanner = new ContainerScanner()
+    const result = await scanner.checkRuntime('docker')
+
+    expect(result.type).toBe('docker')
+    expect(result.available).toBe(true)
+    expect(result.version).toBe('24.0.0')
+  })
+
+  it('should handle IPC checkRuntime failure', async () => {
+    mockContainer.checkRuntime.mockResolvedValue({
+      success: false,
+      error: 'Runtime not found',
+    })
+
+    const scanner = new ContainerScanner()
+    const result = await scanner.checkRuntime('podman')
+
+    expect(result.type).toBe('podman')
+    expect(result.available).toBe(false)
+  })
+
+  it('should use IPC scanImage when platform container available', async () => {
+    mockContainer.scanImage.mockResolvedValue({
+      success: true,
+      result: {
+        image: {
+          name: 'docker.io/library/nginx:latest',
+          registry: 'docker.io',
+          repository: 'library/nginx',
+          tag: 'latest',
+          original: 'nginx:latest',
+        },
+        imageDigest: 'sha256:abc123',
+        manifestDigest: 'sha256:def456',
+        platform: { os: 'linux', architecture: 'amd64' },
+        layers: [],
+        packages: [],
+        stats: { totalLayers: 0, processedLayers: 0, totalPackages: 0, uniquePackages: 0, scanTimeMs: 100 },
+        warnings: [],
+        errors: [],
+      },
+    })
+
+    const scanner = new ContainerScanner()
+    const result = await scanner.scanImage('nginx:latest')
+
+    expect(result.image.original).toBe('nginx:latest')
+    expect(result.imageDigest).toBe('sha256:abc123')
+    expect(result.manifestDigest).toBe('sha256:def456')
+    expect(result.platform.os).toBe('linux')
+  })
+
+  it('should throw when IPC scanImage returns failure', async () => {
+    mockContainer.scanImage.mockResolvedValue({
+      success: false,
+      error: 'Image not found',
+    })
+
+    const scanner = new ContainerScanner()
+
+    await expect(scanner.scanImage('nonexistent:latest')).rejects.toThrow('Image not found')
+  })
+
+  it('should throw when IPC scanImage result is missing', async () => {
+    mockContainer.scanImage.mockResolvedValue({
+      success: true,
+      result: undefined,
+    })
+
+    const scanner = new ContainerScanner()
+
+    await expect(scanner.scanImage('nginx')).rejects.toThrow('Container scan result missing')
+  })
+
+  it('should include SBOM in IPC scan when sbomOnly is set', async () => {
+    mockContainer.scanImage.mockResolvedValue({
+      success: true,
+      result: {
+        image: {
+          name: 'docker.io/library/nginx:latest',
+          registry: 'docker.io',
+          repository: 'library/nginx',
+          tag: 'latest',
+          original: 'nginx',
+        },
+        imageDigest: 'sha256:abc',
+        manifestDigest: 'sha256:def',
+        platform: { os: 'linux', architecture: 'amd64' },
+        layers: [],
+        packages: [
+          { name: 'nginx', version: '1.21', manager: 'apk', layerDigest: 'sha256:layer1', purl: 'pkg:apk/nginx@1.21' },
+        ],
+        stats: { totalLayers: 0, processedLayers: 0, totalPackages: 1, uniquePackages: 1, scanTimeMs: 50 },
+        warnings: [],
+        errors: [],
+      },
+    })
+
+    const scanner = new ContainerScanner({ sbomOnly: true })
+    const result = await scanner.scanImage('nginx')
+
+    expect(result.sbom).toBeDefined()
+    expect(result.sbom?.bomFormat).toBe('CycloneDX')
+    expect(result.sbom?.components).toHaveLength(1)
+    expect(result.sbom?.components[0].name).toBe('nginx')
+  })
+})
+
+describe('ContainerScanner - Layer analysis with packages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPlatformObj.container = null
+    mockExecuteCommand.mockReset()
+    mockExecuteCommand.mockResolvedValue({ version: '24.0.0' })
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
+  })
+
+  it('should process layers with packages and consolidate them', async () => {
+    mockExecuteCommand
+      .mockResolvedValueOnce({ version: '24.0.0' })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        digest: 'sha256:manifest1',
+        config: { digest: 'sha256:config1' },
+        layers: [
+          { digest: 'sha256:layer1', size: 1024, mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip' },
+          { digest: 'sha256:layer2', size: 2048, mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip' },
+        ],
+      })
+      .mockResolvedValueOnce({ os: 'linux', architecture: 'amd64' })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    const scanner = new ContainerScanner({ sbomOnly: true })
+    const result = await scanner.scanImage('multi-layer:latest')
+
+    expect(result.layers).toHaveLength(2)
+    expect(result.stats.totalLayers).toBe(2)
+  })
+
+  it('should respect maxLayers option', async () => {
+    const manyLayers = Array.from({ length: 5 }, (_, i) => ({
+      digest: `sha256:layer${i}`,
+      size: 1024,
+      mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip',
+    }))
+
+    mockExecuteCommand
+      .mockResolvedValueOnce({ version: '24.0.0' })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        digest: 'sha256:manifest1',
+        config: { digest: 'sha256:config1' },
+        layers: manyLayers,
+      })
+      .mockResolvedValueOnce({ os: 'linux', architecture: 'amd64' })
+
+    for (let i = 0; i < 3; i++) {
+      mockExecuteCommand.mockResolvedValueOnce([])
     }
-    expect(auth.server).toBe('ghcr.io')
+
+    const scanner = new ContainerScanner({ maxLayers: 3 })
+    const result = await scanner.scanImage('many-layers:latest')
+
+    expect(result.layers).toHaveLength(3)
+  })
+})
+
+describe('ContainerScanner - Runtime socket paths', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPlatformObj.container = null
+    mockExecuteCommand.mockReset()
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
+  })
+
+  it('should handle podman runtime check', async () => {
+    mockExecuteCommand.mockResolvedValue({ version: '4.5.0' })
+
+    const scanner = new ContainerScanner({ runtime: 'podman' })
+    const info = await scanner.checkRuntime()
+
+    expect(info.type).toBe('podman')
+    expect(info.available).toBe(true)
+  })
+
+  it('should handle runtime check command failure', async () => {
+    mockExecuteCommand.mockRejectedValue(new Error('Command not found'))
+
+    const scanner = new ContainerScanner({ runtime: 'docker' })
+    const info = await scanner.checkRuntime()
+
+    expect(info.available).toBe(false)
+    expect(info.version).toBe('')
+  })
+
+  it('should handle non-string version in runtime check', async () => {
+    mockExecuteCommand.mockResolvedValue({ version: { major: 24, minor: 0 } })
+
+    const scanner = new ContainerScanner()
+    const info = await scanner.checkRuntime()
+
+    expect(info.version).toBe('unknown')
+  })
+})
+
+describe('ContainerScanner - parseImageReference edge cases', () => {
+  it('should handle image with port in registry', () => {
+    const ref = parseImageReference('localhost:5000/myapp:1.0')
+
+    expect(ref.registry).toBe('localhost:5000')
+    expect(ref.repository).toBe('myapp')
+    expect(ref.tag).toBe('1.0')
+  })
+
+  it('should handle image without tag or digest', () => {
+    const ref = parseImageReference('nginx')
+
+    expect(ref.repository).toBe('nginx')
+    expect(ref.tag).toBe('latest')
+    expect(ref.digest).toBeUndefined()
+  })
+
+  it('should construct name with digest', () => {
+    const ref = parseImageReference('nginx@sha256:abc123')
+
+    expect(ref.name).toContain('sha256:abc123')
+    expect(ref.tag).toBeUndefined()
+  })
+
+  it('should construct name with tag', () => {
+    const ref = parseImageReference('nginx:alpine')
+
+    expect(ref.name).toContain(':alpine')
+    expect(ref.tag).toBe('alpine')
+  })
+})
+
+describe('ContainerScanner - getRegistryAuth edge cases', () => {
+  it('should return undefined when no auth configured and no docker.io fallback', () => {
+    const scanner = new ContainerScanner()
+    expect(scanner.getRegistryAuth('ghcr.io')).toBeUndefined()
+  })
+})
+
+describe('Convenience Functions - extended', () => {
+  beforeEach(() => {
+    mockExecuteCommand.mockResolvedValue({ version: '24.0.0' })
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
+  })
+
+  it('checkContainerRuntime should check specified runtime', async () => {
+    const info = await checkContainerRuntime('podman')
+
+    expect(info.type).toBe('podman')
   })
 })

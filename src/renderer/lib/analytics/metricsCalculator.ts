@@ -110,6 +110,7 @@ export function calculateOverallMetrics(projects: Project[]): OverallMetrics {
   const riskLevel = calculateRiskLevel({
     criticalCount,
     highCount,
+    mediumCount,
     averageHealthScore,
     vulnerableComponentPercentage,
   })
@@ -427,6 +428,7 @@ function calculateProjectRiskScore(project: Project): number {
 function calculateRiskLevel(metrics: {
   criticalCount: number
   highCount: number
+  mediumCount: number
   averageHealthScore: number
   vulnerableComponentPercentage: number
 }): 'critical' | 'high' | 'medium' | 'low' | 'excellent' {

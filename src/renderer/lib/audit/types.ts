@@ -3,8 +3,9 @@
  * Phase 3: Audit & Compliance Logging
  */
 
-// Re-export core types from shared types
-export type { AuditEvent, AuditActionType, AuditEntityType, AuditEventMetadata } from '@@/types'
+// Import core types for local use and re-export
+import type { AuditEvent, AuditActionType, AuditEntityType, AuditEventMetadata } from '@@/types'
+export type { AuditEvent, AuditActionType, AuditEntityType, AuditEventMetadata }
 
 /**
  * Filter options for querying audit logs

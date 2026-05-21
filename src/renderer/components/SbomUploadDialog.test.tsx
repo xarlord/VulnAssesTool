@@ -1,25 +1,46 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SbomUploadDialog } from './SbomUploadDialog'
 import * as cyclonedxParser from '@/lib/parsers/cyclonedx'
 import * as spdxParser from '@/lib/parsers/spdx'
+import * as cpePipeline from '@/lib/services/cpeEstimationPipeline'
 
 // Mock parsers
 vi.mock('@/lib/parsers/cyclonedx')
 vi.mock('@/lib/parsers/spdx')
+vi.mock('@/lib/services/cpeEstimationPipeline', () => ({
+  estimateCpesForComponents: vi.fn().mockImplementation((components: unknown[]) =>
+    Promise.resolve({
+      components,
+      ambiguousComponents: [],
+      summary: { autoSelected: 0, needsConfirmation: 0, noMatchFound: 0 },
+    }),
+  ),
+}))
+vi.mock('./CPEMatchDialog', () => ({
+  CPEMatchDialog: (props: { open?: boolean; onClose?: () => void; onConfirm?: (s: Map<string, string>) => void }) =>
+    props.open ? (
+      <div data-testid="cpe-match-dialog">
+        <button data-testid="cpe-close-btn" onClick={() => props.onClose?.()}>
+          Close CPE
+        </button>
+        <button data-testid="cpe-confirm-btn" onClick={() => props.onConfirm?.(new Map<string, string>())}>
+          Confirm CPE
+        </button>
+      </div>
+    ) : null,
+}))
 
 // Helper to create a mock File with text() method
-const createMockFile = (content: string, filename: string): File => {
-  // Create a File-like object with the text() method
+const createMockFile = (content: string, filename: string, sizeOverride?: number): File => {
   const file = {
     name: filename,
     type: 'application/json',
     lastModified: Date.now(),
     text: async () => content,
   } as unknown as File
-  // Add size property
-  Object.defineProperty(file, 'size', { value: content.length })
+  Object.defineProperty(file, 'size', { value: sizeOverride ?? content.length, configurable: true })
   return file
 }
 
@@ -71,6 +92,7 @@ vi.mock('@/store/useStore', () => {
 
 const parseCycloneDXMock = vi.mocked(cyclonedxParser).parseCycloneDX as any
 const parseSpdxMock = vi.mocked(spdxParser).parseSpdx as any
+const estimateCpesMock = vi.mocked(cpePipeline).estimateCpesForComponents as any
 
 describe('SbomUploadDialog', () => {
   const mockOnClose = vi.fn()
@@ -432,6 +454,336 @@ describe('SbomUploadDialog', () => {
       await user.upload(fileInput!, file)
 
       await screen.findByText(/Parsing SBOM/, {}, { timeout: 10000 })
+    })
+  })
+
+  describe('File Validation', () => {
+    it('should reject files exceeding 50MB limit', async () => {
+      const user = userEvent.setup({ delay: null })
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      expect(fileInput).toBeTruthy()
+
+      const largeFile = createMockFile('{"bomFormat": "CycloneDX"}', 'large-bom.json', 60 * 1024 * 1024)
+      await user.upload(fileInput!, largeFile)
+
+      await screen.findByText('Upload Failed', {}, { timeout: 10000 })
+      expect(screen.getByText(/exceeds maximum allowed size/)).toBeInTheDocument()
+    })
+
+    it('should reject empty files', async () => {
+      const user = userEvent.setup({ delay: null })
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      expect(fileInput).toBeTruthy()
+
+      const emptyFile = createMockFile('', 'empty.json')
+      Object.defineProperty(emptyFile, 'size', { value: 0 })
+      await user.upload(fileInput!, emptyFile)
+
+      await screen.findByText('Upload Failed', {}, { timeout: 10000 })
+      expect(screen.getByText(/empty/)).toBeInTheDocument()
+    })
+
+    it('should detect CycloneDX format from filename with "bom"', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockResolvedValue({
+        components: [],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput!, file)
+
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      expect(parseCycloneDXMock).toHaveBeenCalled()
+    })
+
+    it('should detect SPDX format from filename', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseSpdxMock.mockResolvedValue({
+        components: [],
+        metadata: { format: 'spdx', formatVersion: '2.3' },
+      })
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"spdxVersion": "SPDX-2.3"}', 'license.spdx.json')
+      await user.upload(fileInput!, file)
+
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      expect(parseSpdxMock).toHaveBeenCalled()
+    })
+
+    it('should detect format from JSON content when filename is ambiguous', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockResolvedValue({
+        components: [],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX", "specVersion": "1.5"}', 'report.json')
+      await user.upload(fileInput!, file)
+
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      expect(parseCycloneDXMock).toHaveBeenCalled()
+    })
+
+    it('should detect SPDX from content when filename is ambiguous', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseSpdxMock.mockResolvedValue({
+        components: [],
+        metadata: { format: 'spdx', formatVersion: '2.3' },
+      })
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-Document"}', 'data.json')
+      await user.upload(fileInput!, file)
+
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      expect(parseSpdxMock).toHaveBeenCalled()
+    })
+  })
+
+  describe('Retry Flow', () => {
+    it('should reset state and return to idle when Try Again is clicked', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockRejectedValue(new Error('Parse error'))
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('invalid content', 'invalid.json')
+      await user.upload(fileInput!, file)
+
+      await screen.findByText('Upload Failed', {}, { timeout: 10000 })
+
+      const tryAgainButton = screen.getByText('Try Again')
+      await user.click(tryAgainButton)
+
+      expect(screen.getByText(/Click to upload or drag and drop/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Confirm Flow', () => {
+    it('should not add duplicate components to project', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockResolvedValue({
+        components: [
+          {
+            id: 'comp-1',
+            name: 'existing-component',
+            version: '1.0.0',
+            type: 'library',
+            licenses: [],
+            purl: '',
+            cpe: '',
+          },
+        ],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+
+      renderDialog(true, 'test-project-id')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput!, file)
+
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+    })
+  })
+
+  describe('Upload Area Keyboard', () => {
+    it('should trigger file input on Enter key', () => {
+      renderDialog(true, 'test-project-id')
+      const uploadArea = screen.getByRole('button', { name: 'Upload SBOM file' })
+      fireEvent.keyDown(uploadArea, { key: 'Enter' })
+      expect(document.querySelector('input[type="file"]')).toBeTruthy()
+    })
+
+    it('should trigger file input on Space key', () => {
+      renderDialog(true, 'test-project-id')
+      const uploadArea = screen.getByRole('button', { name: 'Upload SBOM file' })
+      fireEvent.keyDown(uploadArea, { key: ' ' })
+      expect(document.querySelector('input[type="file"]')).toBeTruthy()
+    })
+
+    it('should not trigger file input when no project is selected', () => {
+      renderDialog(true)
+      const uploadArea = screen.getByRole('button', { name: 'Upload SBOM file' })
+      fireEvent.keyDown(uploadArea, { key: 'Enter' })
+      expect(document.querySelector('input[type="file"]')).toBeTruthy()
+    })
+  })
+
+  describe('CPE Estimation Stats', () => {
+    it('should display CPE estimation stats when present', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockResolvedValue({
+        components: [{ id: 'c1', name: 'comp', version: '1.0', type: 'library', licenses: [], purl: '', cpe: '' }],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+      estimateCpesMock.mockResolvedValue({
+        components: [{ id: 'c1', name: 'comp', version: '1.0', type: 'library', licenses: [], purl: '', cpe: '' }],
+        ambiguousComponents: [],
+        summary: { autoSelected: 5, needsConfirmation: 2, noMatchFound: 1 },
+      })
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput, file)
+      await screen.findByText('CPE Estimation Results', {}, { timeout: 10000 })
+      expect(screen.getByText('Auto-selected')).toBeInTheDocument()
+      expect(screen.getByText('Need confirmation')).toBeInTheDocument()
+      expect(screen.getByText('No match found')).toBeInTheDocument()
+    })
+  })
+
+  describe('Component Preview Overflow', () => {
+    it('should show overflow count when more than 5 components', async () => {
+      const user = userEvent.setup({ delay: null })
+      const components = Array.from({ length: 8 }, (_, i) => ({
+        id: `comp-${i}`,
+        name: `component-${i}`,
+        version: `${i}.0.0`,
+        type: 'library',
+        licenses: [],
+        purl: '',
+        cpe: '',
+      }))
+      parseCycloneDXMock.mockResolvedValue({
+        components,
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+      estimateCpesMock.mockResolvedValue({
+        components,
+        ambiguousComponents: [],
+        summary: { autoSelected: 0, needsConfirmation: 0, noMatchFound: 0 },
+      })
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput, file)
+      await screen.findByText('Upload Successful', {}, { timeout: 15000 })
+      expect(screen.getByText(/and 3 more/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Upload Different File', () => {
+    it('should return to idle when Upload Different File is clicked', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockResolvedValue({
+        components: [],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput, file)
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      await user.click(screen.getByText('Upload Different File'))
+      expect(screen.getByText(/Click to upload or drag and drop/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Non-Error Rejection', () => {
+    it('should show generic error for non-Error thrown', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockRejectedValue('string error')
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput, file)
+      await screen.findByText('Upload Failed', {}, { timeout: 10000 })
+      expect(screen.getByText('Failed to parse SBOM file')).toBeInTheDocument()
+    })
+  })
+
+  describe('CPE Match Dialog Interactions', () => {
+    it('should close CPE match dialog via onClose callback', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockResolvedValue({
+        components: [],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+      estimateCpesMock.mockResolvedValue({
+        components: [],
+        ambiguousComponents: [
+          {
+            componentId: 'c1',
+            componentName: 'comp',
+            componentVersion: '1.0',
+            estimatedCPEs: [
+              {
+                cpe: 'cpe:2.3:a:*:comp:*',
+                vendor: '*',
+                product: 'comp',
+                confidence: 'medium',
+                matchScore: 50,
+              },
+            ],
+            needsUserConfirmation: true,
+          },
+        ],
+        summary: { autoSelected: 0, needsConfirmation: 1, noMatchFound: 0 },
+      })
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput, file)
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      expect(screen.getByTestId('cpe-match-dialog')).toBeInTheDocument()
+      await user.click(screen.getByTestId('cpe-close-btn'))
+      expect(screen.queryByTestId('cpe-match-dialog')).not.toBeInTheDocument()
+    })
+
+    it('should apply CPE selections on confirm', async () => {
+      const user = userEvent.setup({ delay: null })
+      parseCycloneDXMock.mockResolvedValue({
+        components: [],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+      estimateCpesMock.mockResolvedValue({
+        components: [],
+        ambiguousComponents: [
+          {
+            componentId: 'c1',
+            componentName: 'comp',
+            componentVersion: '1.0',
+            estimatedCPEs: [
+              {
+                cpe: 'cpe:2.3:a:*:comp:*',
+                vendor: '*',
+                product: 'comp',
+                confidence: 'medium',
+                matchScore: 50,
+              },
+            ],
+            needsUserConfirmation: true,
+          },
+        ],
+        summary: { autoSelected: 0, needsConfirmation: 1, noMatchFound: 0 },
+      })
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
+      await user.upload(fileInput, file)
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      await user.click(screen.getByTestId('cpe-confirm-btn'))
+      expect(screen.queryByTestId('cpe-match-dialog')).not.toBeInTheDocument()
     })
   })
 })

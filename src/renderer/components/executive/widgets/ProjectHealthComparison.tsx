@@ -3,7 +3,6 @@
  * Bar chart comparing health scores across projects
  */
 
-import React from 'react'
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import type { ProjectMetrics } from '@/lib/analytics'
 

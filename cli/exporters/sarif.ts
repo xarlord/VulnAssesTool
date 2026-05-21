@@ -181,7 +181,7 @@ export function exportToSarif(vulnerabilities: Vulnerability[], options: SarifEx
   // Generate results
   const results: SarifResult[] = filteredVulns.map((vuln) => {
     // Build message text
-    const messageText = `${vuln.id}: ${vuln.description} in ${componentInfo}. Severity: ${vuln.severity.toUpperCase()}. CVSS: ${vuln.cvssScore ?? 'N/A'}`
+    const messageText = `${vuln.id}: ${vuln.description} in ${vuln.affectedComponents?.join(', ') ?? 'unknown component'}. Severity: ${vuln.severity.toUpperCase()}. CVSS: ${vuln.cvssScore ?? 'N/A'}`
 
     // Build locations
     const locations = vuln.affectedComponents?.map((component) => ({

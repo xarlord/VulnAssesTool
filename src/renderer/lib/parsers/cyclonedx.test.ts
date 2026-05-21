@@ -616,3 +616,238 @@ describe('parseCycloneDX nested components', () => {
     expect(result.components.length).toBeGreaterThan(0)
   })
 })
+
+describe('Vulnerability Parsing - Severity Coverage', () => {
+  it('should parse JSON vulnerability with MEDIUM severity', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-MEDIUM',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'medium', score: 5.5, vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N' }],
+          description: 'Medium vuln',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].severity).toBe('medium')
+    expect(result.vulnerabilities[0].cvssScore).toBe(5.5)
+  })
+
+  it('should parse JSON vulnerability with LOW severity', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-LOW',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'low', score: 2.1 }],
+          description: 'Low vuln',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].severity).toBe('low')
+  })
+
+  it('should parse JSON vulnerability with NONE severity', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-NONE',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'none' }],
+          description: 'None vuln',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].severity).toBe('none')
+  })
+
+  it('should default to low severity for unknown severity string', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-UNKNOWN',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'informational' }],
+          description: 'Unknown severity vuln',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].severity).toBe('low')
+  })
+
+  it('should parse JSON vulnerability with OSV source', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'OSV-2024-001',
+          source: { name: 'OSV' },
+          ratings: [{ severity: 'high', score: 7.5 }],
+          description: 'OSV vuln',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].source).toBe('osv')
+    expect(result.vulnerabilities[0].references[0].url).toContain('osv.dev')
+    expect(result.vulnerabilities[0].references[0].source).toBe('OSV')
+  })
+
+  it('should parse JSON vulnerability with affected components', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-AFFECTS',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'high' }],
+          description: 'Vuln with affects',
+          affects: [{ ref: 'pkg:npm/lodash@4.17.21' }, { ref: 'pkg:npm/express@4.18.0' }],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].affectedComponents).toEqual(['pkg:npm/lodash@4.17.21', 'pkg:npm/express@4.18.0'])
+  })
+
+  it('should add source URL when no advisories present', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-NO-ADVISORY',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'high' }],
+          description: 'Vuln without advisories',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].references).toHaveLength(1)
+    expect(result.vulnerabilities[0].references[0].url).toBe('https://nvd.nist.gov/vuln/detail/CVE-2024-NO-ADVISORY')
+    expect(result.vulnerabilities[0].references[0].tags).toContain('official')
+  })
+
+  it('should not duplicate source URL when advisory already contains it', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-DUP',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'high' }],
+          description: 'Vuln with duplicate advisory',
+          advisories: [{ url: 'https://nvd.nist.gov/vuln/detail/CVE-2024-DUP' }],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    const urls = result.vulnerabilities[0].references.map((r) => r.url)
+    const nvdUrlCount = urls.filter((u) => u === 'https://nvd.nist.gov/vuln/detail/CVE-2024-DUP').length
+    expect(nvdUrlCount).toBe(1)
+  })
+
+  it('should filter out empty affected component refs', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-EMPTY-REF',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'high' }],
+          description: 'Vuln with empty refs',
+          affects: [{ ref: 'pkg:npm/valid@1.0' }, { ref: '' }, { ref: undefined }],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].affectedComponents).toEqual(['pkg:npm/valid@1.0'])
+  })
+
+  it('should parse vulnerability with published and modified dates', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-DATES',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'high' }],
+          description: 'Vuln with dates',
+          published: '2024-01-15T10:00:00Z',
+          modified: '2024-02-20T12:30:00Z',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].publishedAt).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result.vulnerabilities[0].modifiedAt).toEqual(new Date('2024-02-20T12:30:00Z'))
+  })
+
+  it('should parse vulnerability with no description', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-NODESC',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'low' }],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].description).toBe('')
+  })
+
+  it('should handle unknown vulnerability source gracefully', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'VULN-UNKNOWN-SRC',
+          source: { name: 'unknown-source' },
+          ratings: [{ severity: 'medium' }],
+          description: 'Vuln from unknown source',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].source).toBe('nvd')
+  })
+
+  it('should default to NVD when no source provided', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-NOSRC',
+          ratings: [{ severity: 'high' }],
+          description: 'No source',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].source).toBe('nvd')
+    expect(result.vulnerabilities[0].references[0].source).toBe('NVD')
+  })
+})

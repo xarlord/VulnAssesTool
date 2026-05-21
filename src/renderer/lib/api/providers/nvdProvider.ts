@@ -3,7 +3,6 @@ import type {
   NvdApiResponse,
   Vulnerability,
   VulnerabilitySource,
-  ProviderCapabilities,
   PatchInfo,
   PatchLink,
   RemediationAdvice,
@@ -18,6 +17,7 @@ import {
   type BatchQueryOptions,
   type VulnerabilityQueryResult,
   type ProviderHealthStatus,
+  type ProviderCapabilities,
 } from './base'
 import { parseCvssVector } from '../../cvss/parser'
 
@@ -49,6 +49,11 @@ export class NvdProvider extends BaseVulnerabilityProvider {
     aliases: false,
   }
   readonly defaultRateLimit = 600 // requests per hour without API key
+
+  constructor() {
+    super()
+    this.initRateLimit()
+  }
 
   /**
    * Determine severity from CVSS score
@@ -217,7 +222,7 @@ export class NvdProvider extends BaseVulnerabilityProvider {
     hasPatchTag: boolean,
     hasVendorAdvisory: boolean,
     patchLinks: PatchLink[],
-    cve: NvdApiCve,
+    _cve: NvdApiCve,
     cvssScore?: number,
   ): RemediationAdvice {
     const steps: RemediationStep[] = []
@@ -306,7 +311,7 @@ export class NvdProvider extends BaseVulnerabilityProvider {
 
       // Parse CVSS vector for detailed breakdown
       if (cvssVector) {
-        cvssBreakdown = parseCvssVector(cvssVector)
+        cvssBreakdown = parseCvssVector(cvssVector) ?? undefined
       }
     }
 
@@ -511,7 +516,7 @@ export class NvdProvider extends BaseVulnerabilityProvider {
 
     const data = await this.executeApiCall(query, 3, 10000)
 
-    if (data.vulnerabilities && data.vulnerabilities.length > 0) {
+    if (data && data.vulnerabilities && data.vulnerabilities.length > 0) {
       return this.convertNvdCveToVulnerability(data.vulnerabilities[0])
     }
 
@@ -522,7 +527,14 @@ export class NvdProvider extends BaseVulnerabilityProvider {
    * Validate NVD API key format
    */
   validateApiKey(apiKey: string): boolean {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const uuidRegex = /^[0-9a-f]{8}-[09a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     return uuidRegex.test(apiKey)
+  }
+
+  /**
+   * Get a specific vulnerability by ID (implements abstract method)
+   */
+  async getVulnerabilityById(id: string, apiKey?: string): Promise<Vulnerability | null> {
+    return this.getCveById(id, apiKey)
   }
 }

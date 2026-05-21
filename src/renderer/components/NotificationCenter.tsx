@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Bell, CheckCheck, Trash2, AlertCircle, AlertTriangle, Info, CheckCircle2, X } from 'lucide-react'
 import {
   useNotifications,

@@ -3,7 +3,6 @@
  * Displays overall risk level with a visual gauge
  */
 
-import React from 'react'
 import { Shield, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
 import type { OverallMetrics } from '@/lib/analytics'
 

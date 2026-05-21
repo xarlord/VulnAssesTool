@@ -1,4 +1,4 @@
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 import type { Page } from '@playwright/test'
 import { createProjectOnly, E2E_UI_DELAY } from '../shared-helpers'
 

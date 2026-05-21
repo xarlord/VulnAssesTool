@@ -191,7 +191,7 @@ export function componentToCsvLine(comp: Component): string {
     escapeCSV(row.purl),
     escapeCSV(row.vulnerabilityCount.toString()),
     escapeCSV(row.patchAvailable),
-    escapeCSV(row.recommendedVersion),
+    escapeCSV(row.recommendedVersion ?? ''),
     escapeCSV(row.dependenciesCount.toString()),
   )
 }

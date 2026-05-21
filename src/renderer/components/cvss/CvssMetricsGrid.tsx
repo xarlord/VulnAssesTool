@@ -65,7 +65,7 @@ interface MetricCardProps {
 }
 
 function MetricCard({ explanation }: MetricCardProps) {
-  const getValueColor = (metric: string, value: string): string => {
+  const getValueColor = (_metric: string, value: string): string => {
     // Higher risk values in red/orange
     const highRiskValues = ['Network', 'Low', 'None', 'Changed', 'High']
     if (highRiskValues.includes(value)) {

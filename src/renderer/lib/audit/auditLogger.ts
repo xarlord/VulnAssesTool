@@ -221,9 +221,10 @@ export function logExport(
   projectId?: string,
   metadata?: AuditEventMetadata,
 ): void {
+  const auditEntityType: AuditEntityType = entityType === 'all' ? 'project' : entityType
   useAuditStore.getState().addEvent({
     actionType: 'EXPORT',
-    entityType,
+    entityType: auditEntityType,
     entityId: projectId || 'all',
     newState: { format, itemCount },
     metadata: {

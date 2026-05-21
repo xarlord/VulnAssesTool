@@ -565,4 +565,70 @@ describe('SyncProgressModal', () => {
       expect(screen.getByText(/Batch 3 of 10/)).toBeInTheDocument()
     })
   })
+
+  describe('Phase Indicators - Additional', () => {
+    it('should show initializing phase', () => {
+      render(
+        <SyncProgressModal
+          isOpen={true}
+          progress={{ ...defaultProgress, phase: 'initializing' }}
+          isPaused={false}
+          onClose={mockOnClose}
+          onCancel={mockOnCancel}
+          onPause={mockOnPause}
+          onResume={mockOnResume}
+        />,
+      )
+      expect(screen.getByText('Initializing')).toBeInTheDocument()
+    })
+
+    it('should show indexing phase', () => {
+      render(
+        <SyncProgressModal
+          isOpen={true}
+          progress={{ ...defaultProgress, phase: 'indexing' }}
+          isPaused={false}
+          onClose={mockOnClose}
+          onCancel={mockOnCancel}
+          onPause={mockOnPause}
+          onResume={mockOnResume}
+        />,
+      )
+      expect(screen.getByText('Indexing')).toBeInTheDocument()
+    })
+
+    it('should show Unknown label for unrecognized phase', () => {
+      const unknownPhase = 'unknown'
+      render(
+        <SyncProgressModal
+          isOpen={true}
+          progress={{ ...defaultProgress, phase: unknownPhase } as SyncProgress}
+          isPaused={false}
+          onClose={mockOnClose}
+          onCancel={mockOnCancel}
+          onPause={mockOnPause}
+          onResume={mockOnResume}
+        />,
+      )
+      expect(screen.getByText('Unknown')).toBeInTheDocument()
+    })
+  })
+
+  describe('Time Formatting - Hours', () => {
+    it('should display hours and minutes for long ETA', () => {
+      render(
+        <SyncProgressModal
+          isOpen={true}
+          progress={{ ...defaultProgress, estimatedTimeRemainingSec: 5400 }}
+          isPaused={false}
+          onClose={mockOnClose}
+          onCancel={mockOnCancel}
+          onPause={mockOnPause}
+          onResume={mockOnResume}
+        />,
+      )
+      expect(screen.getByText(/ETA:/)).toBeInTheDocument()
+      expect(screen.getByText(/1h 30m/)).toBeInTheDocument()
+    })
+  })
 })

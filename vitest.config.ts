@@ -23,11 +23,10 @@ export default defineConfig({
       'src/renderer/store/**/*.test.ts',
       'src/renderer/components/**/*.test.tsx',
       'src/renderer/tests/**/*.test.ts',
-      'electron/**/*.test.ts',
+      'src/renderer/pages/**/*.test.tsx',
+      'src/renderer/lib/platform/**/*.test.ts',
+      'server/**/*.test.ts',
     ],
-
-    // Exclude patterns - exclude electron tests from coverage
-    coverageExclude: ['electron/**/*.test.ts'],
 
     // Exclude patterns
     exclude: [
@@ -59,12 +58,29 @@ export default defineConfig({
         '**/*.config.{js,ts}',
         '**/*.d.ts',
         'coverage/**',
+        'src/renderer/lib/api/index.ts',
+        'src/renderer/lib/notifications/index.ts',
+        'src/renderer/lib/refresh/index.ts',
+        'src/renderer/lib/search/index.ts',
+        'src/renderer/lib/settings/index.ts',
+        'src/renderer/lib/tour/index.ts',
+        'src/renderer/lib/export/index.ts',
+        'src/renderer/lib/health/index.ts',
+        'src/renderer/lib/generators/index.ts',
+        'src/renderer/lib/layout/index.ts',
+        'src/renderer/lib/database/performance/index.ts',
+        'src/renderer/components/executive/index.ts',
+        'src/shared/types/index.ts',
+        'src/renderer/lib/storage/migration.ts',
+        'src/renderer/lib/audit/index.ts',
+        'src/renderer/lib/audit/types.ts',
+        'src/renderer/lib/cache/index.ts',
       ],
       thresholds: {
-        statements: 70,
-        branches: 70,
-        functions: 70,
-        lines: 70,
+        statements: 90,
+        branches: 80,
+        functions: 90,
+        lines: 90,
       },
     },
 

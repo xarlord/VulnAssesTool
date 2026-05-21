@@ -354,7 +354,7 @@ export function MissFilterPanel({
   }
 
   const handleBatchAction = (action: 'flag' | 'restore' | 'dismiss') => {
-    onBatchAction(action, Array.from(selectedItems))
+    onBatchAction?.(action, Array.from(selectedItems))
     setSelectedItems(new Set())
   }
 
@@ -563,7 +563,7 @@ export function MissFilterPanel({
                     </button>
                   )}
                   <button
-                    onClick={() => (item.isFlagged ? onUnflag(item.id) : onFlag(item.id))}
+                    onClick={() => (item.isFlagged ? onUnflag?.(item.id) : onFlag?.(item.id))}
                     className={`rounded p-1.5 ${
                       item.isFlagged
                         ? 'text-blue-500 hover:bg-blue-500/10'
@@ -574,21 +574,21 @@ export function MissFilterPanel({
                     <Flag className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => onRestore(item.id)}
+                    onClick={() => onRestore?.(item.id)}
                     className="rounded p-1.5 text-green-500 hover:bg-green-500/10"
                     title="Restore item"
                   >
                     <CheckCircle className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => onDismiss(item.id)}
+                    onClick={() => onDismiss?.(item.id)}
                     className="rounded p-1.5 text-red-500 hover:bg-red-500/10"
                     title="Dismiss"
                   >
                     <XCircle className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => onLlmAnalysis(item.id)}
+                    onClick={() => onLlmAnalysis?.(item.id)}
                     disabled={llmLoadingIds.includes(item.id)}
                     className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     title="Run LLM analysis"

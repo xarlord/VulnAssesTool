@@ -137,22 +137,16 @@ function getTourConfig(tourId: string): TourConfig | undefined {
 export function OnboardingTour({
   tourId = 'main-onboarding',
   startImmediately = false,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onComplete: onCompleteCallback,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onSkip: onSkipCallback,
+  onComplete: _onCompleteCallback,
+  onSkip: _onSkipCallback,
 }: OnboardingTourProps) {
   const driverRef = useRef<ReturnType<typeof driver> | null>(null)
   const {
     startTour,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    nextStep: nextTourStep,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    prevStep: prevTourStep,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    skipTour: skipTourAction,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    completeTour: completeTourAction,
+    nextStep: _nextTourStep,
+    prevStep: _prevTourStep,
+    skipTour: _skipTourAction,
+    completeTour: _completeTourAction,
     activeTourId,
   } = useTourStore()
 
@@ -188,17 +182,17 @@ export function OnboardingTour({
         // Called when user clicks close or finishes
         handleDestroy()
       },
-      onHighlightStarted: (element, step, opts) => {
+      onHighlightStarted: (_element, _step, opts) => {
         // Update store with current step
-        const stepIndex = opts?.stepIndex ?? 0
+        const stepIndex = opts?.state?.activeIndex ?? 0
         const tourStep = tourConfig.steps[stepIndex]
         if (tourStep?.onShow) {
           tourStep.onShow()
         }
       },
-      onHighlighted: (element, step, opts) => {
+      onHighlighted: (_element, _step, opts) => {
         // Called after element is highlighted
-        const stepIndex = opts?.stepIndex ?? 0
+        const stepIndex = opts?.state?.activeIndex ?? 0
         const tourStep = tourConfig.steps[stepIndex]
         if (tourStep?.onNext) {
           // Store callback for when user moves to next step

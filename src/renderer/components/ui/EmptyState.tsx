@@ -9,7 +9,8 @@
 
 import React from 'react'
 import { cn } from '@/lib/utils'
-import { FolderOpen, Search, Shield, AlertTriangle, FileText, Database, Filter, Inbox, LucideIcon } from 'lucide-react'
+import { FolderOpen, Search, Shield, AlertTriangle, FileText, Database, Filter, Inbox } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
 // ============================================================================
 // TYPES

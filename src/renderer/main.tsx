@@ -5,16 +5,21 @@ import { initPlatform } from '@/lib/platform'
 import './styles/globals.css'
 import { App } from './App'
 
-// Initialize platform adapter before React renders
-initPlatform()
+async function bootstrap(): Promise<void> {
+  await initPlatform()
 
-const rootElement = document.getElementById('root')
-if (!rootElement) throw new Error('Root element not found')
+  const rootElement = document.getElementById('root')
+  if (!rootElement) throw new Error('Root element not found')
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </StrictMode>,
-)
+  createRoot(rootElement).render(
+    <StrictMode>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </StrictMode>,
+  )
+}
+
+bootstrap().catch((err) => {
+  console.error('Failed to bootstrap app:', err)
+})

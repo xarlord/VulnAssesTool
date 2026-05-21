@@ -522,7 +522,7 @@ describe('ISO21434ReportGenerator', () => {
 
   describe('Report Generation', () => {
     it('should generate ISO 21434 report', async () => {
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
 
       expect(report.reportId).toBeDefined()
       expect(report.reportId).toContain('iso21434-report')
@@ -531,7 +531,7 @@ describe('ISO21434ReportGenerator', () => {
     })
 
     it('should categorize events correctly', async () => {
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
 
       expect(report.summary.totalVulnerabilities).toBe(3)
       expect(report.summary.filteredCount).toBe(1) // filtered
@@ -541,7 +541,7 @@ describe('ISO21434ReportGenerator', () => {
 
     it('should calculate risk level correctly', async () => {
       // Test with critical kept
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
 
       expect(report.summary.criticalKept).toBe(1)
       expect(report.summary.riskLevel).toBe('unacceptable')
@@ -555,7 +555,7 @@ describe('ISO21434ReportGenerator', () => {
         },
       ]
 
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', lowRiskEvents, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', lowRiskEvents, { config: 'test' })
 
       expect(report.summary.criticalKept).toBe(0)
       expect(report.summary.highKept).toBe(0)
@@ -563,7 +563,7 @@ describe('ISO21434ReportGenerator', () => {
     })
 
     it('should include audit summary', async () => {
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
 
       expect(report.auditSummary.totalEvents).toBe(3)
       expect(report.auditSummary.eventsByTier[1]).toBe(1)
@@ -592,7 +592,7 @@ describe('ISO21434ReportGenerator', () => {
         },
       ]
 
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', eventsWithLLM, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', eventsWithLLM, { config: 'test' })
 
       expect(report.methodology.llmUsed).toBe(true)
     })
@@ -600,7 +600,7 @@ describe('ISO21434ReportGenerator', () => {
 
   describe('Export Methods', () => {
     it('should export report as JSON', async () => {
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
 
       const jsonExport = generator.exportJSON(report)
 
@@ -612,7 +612,7 @@ describe('ISO21434ReportGenerator', () => {
     })
 
     it('should export report as PDF (text buffer)', async () => {
-      const report = await generator.generate('proj-1', 'Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
+      const report = await generator.generate('Test Project', '1.0.0', mockAuditEvents, { config: 'test' })
 
       const pdfBuffer = await generator.exportPDF(report)
 

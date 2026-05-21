@@ -1,4 +1,4 @@
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 import {
   E2E_SELECTOR_TIMEOUT,
   E2E_UI_DELAY,

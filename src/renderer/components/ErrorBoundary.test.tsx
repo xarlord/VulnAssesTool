@@ -295,6 +295,158 @@ describe('ErrorBoundary', () => {
     // Component renders normally
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
   })
+
+  it('clears retry timeout on unmount', async () => {
+    const { unmount } = render(
+      <ErrorBoundary>
+        <ThrowError shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Try Again/i }))
+
+    unmount()
+
+    expect(() => vi.advanceTimersByTime(400)).not.toThrow()
+  })
+
+  it('handles hard reset by reloading the page', () => {
+    const reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { reload: reloadMock },
+    })
+
+    render(
+      <ErrorBoundary maxRetries={0}>
+        <ThrowError shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    const reloadButton = screen.getByRole('button', { name: /Reload App/i })
+    fireEvent.click(reloadButton)
+
+    expect(reloadMock).toHaveBeenCalled()
+  })
+
+  it('handles clear data and reload', () => {
+    const reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { reload: reloadMock },
+    })
+
+    localStorage.setItem('theme', 'dark')
+    localStorage.setItem('fontSize', '16')
+    localStorage.setItem('tempData', 'should-be-removed')
+
+    render(
+      <ErrorBoundary maxRetries={0}>
+        <ThrowError shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    const clearButton = screen.getByText('Clear Cache & Reload')
+    fireEvent.click(clearButton)
+
+    expect(localStorage.getItem('theme')).toBe('dark')
+    expect(localStorage.getItem('fontSize')).toBe('16')
+    expect(localStorage.getItem('tempData')).toBeNull()
+    expect(reloadMock).toHaveBeenCalled()
+
+    localStorage.clear()
+  })
+
+  it('handles go home navigation', () => {
+    render(
+      <ErrorBoundary>
+        <ThrowError shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    const homeButton = screen.getByRole('button', { name: /Go Home/i })
+    fireEvent.click(homeButton)
+
+    expect(window.location.href).toBe('/')
+  })
+
+  it('copies error details to clipboard', () => {
+    const writeTextMock = vi.fn(() => Promise.resolve())
+    Object.assign(navigator, {
+      clipboard: { writeText: writeTextMock },
+    })
+
+    render(
+      <ErrorBoundary>
+        <ThrowError shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    const copyButton = screen.getByRole('button', { name: /Copy Error Details/i })
+    fireEvent.click(copyButton)
+
+    expect(writeTextMock).toHaveBeenCalledTimes(1)
+    const copiedText = writeTextMock.mock.calls[0][0]
+    expect(copiedText).toContain('Error ID:')
+    expect(copiedText).toContain('Test error')
+    expect(copiedText).toContain('Retry Attempts:')
+  })
+
+  it('shows Retrying text while retry is in progress', () => {
+    render(
+      <ErrorBoundary>
+        <ThrowError shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    const retryButton = screen.getByRole('button', { name: /Try Again/i })
+    fireEvent.click(retryButton)
+
+    expect(screen.getByText('Retrying...')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
+  })
+
+  it('tracks error history across multiple errors', async () => {
+    const { rerender } = render(
+      <ErrorBoundary>
+        <ControlledErrorComponent shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Try Again/i }))
+
+    await act(async () => {
+      vi.advanceTimersByTime(400)
+    })
+
+    rerender(
+      <ErrorBoundary>
+        <ControlledErrorComponent shouldThrow={true} />
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByText(/Retry attempt 1/)).toBeInTheDocument()
+
+    const copyButton = screen.getByRole('button', { name: /Copy Error Details/i })
+    expect(copyButton.textContent).toContain('errors')
+  })
+
+  it('renders default error message when error has no message', () => {
+    const ThrowNoMessage = () => {
+      throw new Error()
+    }
+
+    render(
+      <ErrorBoundary>
+        <ThrowNoMessage />
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByText('Unknown error')).toBeInTheDocument()
+  })
 })
 
 describe('withErrorBoundary HOC', () => {
@@ -312,5 +464,34 @@ describe('withErrorBoundary HOC', () => {
     render(<WrappedComponent shouldThrow={true} />)
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+  })
+
+  it('passes errorBoundaryProps to the wrapped ErrorBoundary', () => {
+    const onError = vi.fn()
+    const WrappedComponent = withErrorBoundary(ThrowError, {
+      maxRetries: 0,
+      onError,
+    })
+
+    render(<WrappedComponent shouldThrow={true} />)
+
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Multiple errors detected')).toBeInTheDocument()
+  })
+
+  it('sets displayName on the wrapped component', () => {
+    const NamedComponent = (props: { shouldThrow: boolean }) => {
+      if (props.shouldThrow) throw new Error('Test error')
+      return <div>OK</div>
+    }
+    NamedComponent.displayName = 'NamedComponent'
+
+    const Wrapped = withErrorBoundary(NamedComponent)
+    expect(Wrapped.displayName).toBe('WithErrorBoundary(NamedComponent)')
+  })
+
+  it('uses component name when displayName is not set', () => {
+    const Wrapped = withErrorBoundary(ThrowError)
+    expect(Wrapped.displayName).toBe('WithErrorBoundary(ThrowError)')
   })
 })

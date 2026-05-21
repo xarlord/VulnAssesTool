@@ -215,7 +215,7 @@ function normalizeValue(value: unknown): string {
     return String(value)
   }
 
-  return value
+  return String(value)
 }
 
 /**

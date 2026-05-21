@@ -21,12 +21,7 @@ import {
   XCircle,
   Loader2,
 } from 'lucide-react'
-import type {
-  NvdDetailedStats,
-  DeltaSyncProgress,
-  DeltaSyncResult,
-  BulkDownloadProgress,
-} from '../../../electron/types/database'
+import type { NvdDetailedStats, DeltaSyncProgress, DeltaSyncResult, BulkDownloadProgress } from '@@/types/ipc'
 
 /**
  * NVD Database Manager Props
@@ -544,5 +539,3 @@ export const NvdDatabaseManager: React.FC<NvdDatabaseManagerProps> = ({ classNam
     </div>
   )
 }
-
-export { NvdDatabaseManager }

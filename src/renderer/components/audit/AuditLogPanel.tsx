@@ -6,7 +6,6 @@
 import { useState, useEffect } from 'react'
 import { useAuditStore } from '@/lib/audit'
 import type { AuditEvent, AuditEventFilter, AuditEventSort } from '@/lib/audit'
-import type { AuditExportFormat } from '@/lib/audit/types'
 import { exportAuditLogs } from '@/lib/audit/auditExporters'
 import { formatDistanceToNow } from 'date-fns'
 import {
@@ -16,7 +15,6 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  Info,
   FileJson,
   FileSpreadsheet,
   FileText,

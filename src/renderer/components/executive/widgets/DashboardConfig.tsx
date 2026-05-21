@@ -3,7 +3,7 @@
  * Provides layout customization and filtering options
  */
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Settings, Filter, Calendar, Download, RefreshCw, X, Check } from 'lucide-react'
 import type { Project } from '@@/types'
 

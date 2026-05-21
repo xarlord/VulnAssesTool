@@ -3,7 +3,6 @@
  * Shows critical items requiring attention
  */
 
-import React from 'react'
 import { AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight } from 'lucide-react'
 import type { Recommendation, RiskItem } from '@/lib/analytics'
 

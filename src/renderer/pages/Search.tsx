@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Check,
   AlertCircle,
+  ArrowLeft,
 } from 'lucide-react'
 import { getPlatform } from '@/lib/platform'
 import { useProjects } from '@/store/useStore'
@@ -25,20 +26,10 @@ import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
 import { EmptyState } from '@/components/EmptyState'
 import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
-import type { CveResult, NvdSearchRequest, NvdSearchResponse } from '@@/types'
+import type { CveResult, NvdSearchRequest } from '@@/types'
 
 // Type definitions for Electron API
 type NvdSearchType = 'cve-id' | 'cpe' | 'text'
-
-interface DatabaseAPI {
-  search(request: NvdSearchRequest): Promise<NvdSearchResponse>
-  startDeltaSync(force?: boolean): Promise<DeltaSyncResult>
-  cancelSync(): Promise<{ success: boolean }>
-  getDetailedStats(): Promise<GetDetailedStatsResponse>
-  onSyncProgress(callback: (progress: DeltaSyncProgress) => void): () => void
-  onSyncComplete(callback: (result: DeltaSyncResult) => void): () => void
-  onSyncError(callback: (error: string) => void): () => void
-}
 
 interface DeltaSyncProgress {
   phase: 'checking' | 'fetching' | 'importing' | 'complete' | 'error' | 'cancelled'
@@ -77,20 +68,6 @@ interface NvdDetailedStats {
   lastSuccessfulSync: string | null
   autoSyncEnabled: boolean
   autoSyncIntervalHours: number
-}
-
-interface GetDetailedStatsResponse {
-  success: boolean
-  stats: NvdDetailedStats | null
-  error?: string
-}
-
-declare global {
-  interface Window {
-    electronAPI: {
-      database: DatabaseAPI
-    }
-  }
 }
 
 type SearchMode = 'projects' | 'nvd'
@@ -186,7 +163,7 @@ export function Search() {
     })
 
     const cleanupError = getPlatform().database.onSyncError((error) => {
-      setSyncError(error?.error || String(error))
+      setSyncError(typeof error === 'string' ? error : String(error))
       setIsSyncing(false)
       setSyncProgress(null)
     })
@@ -422,9 +399,18 @@ export function Search() {
     <div className="flex min-h-screen flex-col">
       {/* Header */}
       <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-4xl">
-          <h1 className="text-2xl font-bold">Search</h1>
-          <p className="text-sm text-muted-foreground">Search across all projects, components, and vulnerabilities</p>
+        <div className="mx-auto max-w-4xl flex items-center gap-3">
+          <button
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold">Search</h1>
+            <p className="text-sm text-muted-foreground">Search across all projects, components, and vulnerabilities</p>
+          </div>
         </div>
       </header>
 
@@ -745,7 +731,7 @@ export function Search() {
                         renderItem={(vuln) => (
                           <div
                             data-testid="nvd-result"
-                            onClick={() => handleNvdResultClick(vuln.id)}
+                            onClick={() => handleNvdResultClick(vuln.cveId)}
                             className={`rounded-lg border border-border bg-card p-4 hover:bg-muted/50 transition-colors cursor-pointer`}
                           >
                             <div className="flex items-start gap-3">

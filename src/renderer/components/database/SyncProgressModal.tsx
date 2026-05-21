@@ -360,5 +360,3 @@ export const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
     </div>
   )
 }
-
-export { SyncProgressModal }

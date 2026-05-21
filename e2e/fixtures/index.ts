@@ -1,12 +1,10 @@
 import * as path from 'path'
+import { fileURLToPath } from 'url'
 
-/**
- * E2E Test Fixtures
- *
- * Provides sample SBOM files and test data for E2E testing
- */
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
-export const FIXTURES_DIR = path.join(__dirname)
+export const FIXTURES_DIR = __dirname
 
 export const SBOM_FIXTURES = {
   cycloneDx: {

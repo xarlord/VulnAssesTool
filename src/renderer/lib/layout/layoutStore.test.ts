@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useLayoutStore } from './layoutStore'
+import { renderHook } from '@testing-library/react'
+import { useLayoutStore, useVisibleWidgets, useCustomLayouts, useBuiltinPresets } from './layoutStore'
 import type { WidgetConfig, WidgetId } from './types'
 
 describe('Layout Store', () => {
@@ -442,6 +443,24 @@ describe('Layout Hooks', () => {
       expect(customLayouts).toHaveLength(2)
       expect(customLayouts.every((l) => l.isCustom)).toBe(true)
     })
+
+    it('should return custom layouts via renderHook', () => {
+      useLayoutStore.getState().saveCurrentLayout('Custom A')
+      useLayoutStore.getState().saveCurrentLayout('Custom B')
+
+      const { result } = renderHook(() => useCustomLayouts())
+
+      expect(result.current).toHaveLength(2)
+      expect(result.current.every((l) => l.isCustom)).toBe(true)
+      expect(result.current.map((l) => l.name)).toContain('Custom A')
+      expect(result.current.map((l) => l.name)).toContain('Custom B')
+    })
+
+    it('should return empty array when no custom layouts exist', () => {
+      const { result } = renderHook(() => useCustomLayouts())
+
+      expect(result.current).toHaveLength(0)
+    })
   })
 
   describe('useBuiltinPresets', () => {
@@ -457,6 +476,25 @@ describe('Layout Hooks', () => {
       expect(builtinPresets.map((l) => l.id)).toContain('default')
       expect(builtinPresets.map((l) => l.id)).toContain('compact')
       expect(builtinPresets.map((l) => l.id)).toContain('detailed')
+    })
+
+    it('should return built-in presets via renderHook', () => {
+      useLayoutStore.getState().saveCurrentLayout('Custom')
+
+      const { result } = renderHook(() => useBuiltinPresets())
+
+      expect(result.current).toHaveLength(3)
+      expect(result.current.every((l) => !l.isCustom)).toBe(true)
+      expect(result.current.map((l) => l.id)).toEqual(expect.arrayContaining(['default', 'compact', 'detailed']))
+    })
+
+    it('should always return exactly 3 presets regardless of custom layouts', () => {
+      useLayoutStore.getState().saveCurrentLayout('Extra 1')
+      useLayoutStore.getState().saveCurrentLayout('Extra 2')
+
+      const { result } = renderHook(() => useBuiltinPresets())
+
+      expect(result.current).toHaveLength(3)
     })
   })
 })

@@ -25,7 +25,7 @@ export const E2E_UI_DELAY = 500
 export const E2E_LONG_DELAY = 1000
 
 /** Base URL for the E2E test preview server */
-export const E2E_BASE_URL = 'http://127.0.0.1:4173'
+export const E2E_BASE_URL = 'http://127.0.0.1:3001'
 
 // =============================================================================
 // Project Helpers

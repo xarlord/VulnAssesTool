@@ -116,9 +116,9 @@ describe('JUnit XML Exporter', () => {
       const testcases = result.testsuites.testsuite[0].testcase
       const criticalTest = testcases.find((tc) => tc.name === 'CVE-2024-12345')
 
-      expect(criticalTest?.failure?.[0]?._text).toContain('CVE-2024-12345')
-      expect(criticalTest?.failure?.[0]?._text).toContain('lodash')
-      expect(criticalTest?.failure?.[0]?._text).toContain('CRITICAL')
+      expect(criticalTest?.failure?.[0]?.text).toContain('CVE-2024-12345')
+      expect(criticalTest?.failure?.[0]?.text).toContain('lodash')
+      expect(criticalTest?.failure?.[0]?.text).toContain('CRITICAL')
     })
 
     it('includes CVSS score in properties', () => {
@@ -192,7 +192,7 @@ describe('JUnit XML Exporter', () => {
       const testcases = result.testsuites.testsuite[0].testcase
       const criticalTest = testcases.find((tc) => tc.name === 'CVE-2024-12345')
 
-      expect(criticalTest?.failure?.[0]?._text).toContain('4.17.21')
+      expect(criticalTest?.failure?.[0]?.text).toContain('4.17.21')
     })
 
     it('calculates correct test counts', () => {

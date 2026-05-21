@@ -3,7 +3,7 @@
  * Main dashboard page for high-level visibility
  */
 
-import React, { useState, useMemo, useCallback, lazy, Suspense } from 'react'
+import { useState, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProjects, useStore } from '@/store/useStore'
 import {

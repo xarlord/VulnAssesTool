@@ -101,13 +101,14 @@ export interface PdfReportConfig {
  * Export error types
  */
 export class ExportError extends Error {
-  constructor(
-    message: string,
-    public code: string,
-    public details?: unknown,
-  ) {
+  code: string
+  details?: unknown
+
+  constructor(message: string, code: string, details?: unknown) {
     super(message)
     this.name = 'ExportError'
+    this.code = code
+    this.details = details
   }
 }
 

@@ -2,7 +2,7 @@
  * NVD Database FTS Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   searchFts,
   getFtsStats,
@@ -13,68 +13,56 @@ import {
   type FtsSearchRequest,
   type FtsSearchResult,
 } from './nvdDbFts'
-
-// Mock window.electronAPI
-const mockElectronAPI = {
-  database: {
-    searchFts: vi.fn(),
-    getFtsStats: vi.fn(),
-  },
-}
+import { getPlatform } from '@/lib/platform'
 
 describe('nvdDbFts', () => {
   beforeEach(() => {
-    // Setup mock
-    global.window = {
-      electronAPI: mockElectronAPI,
-    } as any
-  })
-
-  afterEach(() => {
     vi.clearAllMocks()
   })
 
   describe('searchFts', () => {
-    it('should return error when Electron API is unavailable', async () => {
-      // @ts-expect-error - remove electronAPI for test
-      delete (global.window as any).electronAPI
+    it('should return error when platform API is unavailable', async () => {
+      const platform = getPlatform()
+      const originalSearchFts = platform.database.searchFts
+      // Temporarily remove searchFts to simulate unavailable API
+      platform.database.searchFts = undefined as any
 
       const result = await searchFts({ query: 'test' })
 
       expect(result.success).toBe(false)
       expect(result.error).toContain('not available')
+
+      platform.database.searchFts = originalSearchFts
     })
 
     it('should search FTS successfully', async () => {
-      const mockResults: FtsSearchResult[] = [
-        {
-          id: 'CVE-2024-1234',
-          description: 'Test vulnerability',
-          severity: 'HIGH',
-          cvssScore: 7.5,
-          cvssVector: 'CVSS:3.1/AV:N/...',
-          publishedAt: '2024-01-01T00:00:00Z',
-          modifiedAt: '2024-01-02T00:00:00Z',
-          source: 'nvd',
-          rank: 0.5,
-        },
-      ]
-
-      mockElectronAPI.database.searchFts.mockResolvedValue({
+      // Mock platform to return IPC-format results that the source transforms
+      vi.mocked(getPlatform().database.searchFts).mockResolvedValue({
         success: true,
-        results: mockResults,
-        total: mockResults.length,
+        results: [
+          {
+            cveId: 'CVE-2024-1234',
+            description: 'Test vulnerability',
+            severity: 'HIGH',
+            score: 0.5,
+          },
+        ],
       })
 
       const result = await searchFts({ query: 'test', limit: 10 })
 
       expect(result.success).toBe(true)
-      expect(result.results).toEqual(mockResults)
-      expect(result.total).toBe(mockResults.length)
+      expect(result.results).toHaveLength(1)
+      expect(result.results[0].id).toBe('CVE-2024-1234')
+      expect(result.results[0].description).toBe('Test vulnerability')
+      expect(result.results[0].severity).toBe('HIGH')
+      expect(result.results[0].rank).toBe(0.5)
+      expect(result.results[0].source).toBe('nvd')
+      expect(result.total).toBe(1)
     })
 
     it('should handle search errors', async () => {
-      mockElectronAPI.database.searchFts.mockRejectedValue(new Error('Search failed'))
+      vi.mocked(getPlatform().database.searchFts).mockRejectedValue(new Error('Search failed'))
 
       const result = await searchFts({ query: 'test' })
 
@@ -85,25 +73,26 @@ describe('nvdDbFts', () => {
 
   describe('getFtsStats', () => {
     it('should return FTS statistics', async () => {
-      const mockStats = {
-        indexedCount: 1000,
-        totalCount: 1200,
-        coveragePercent: 83.33,
-      }
-
-      mockElectronAPI.database.getFtsStats.mockResolvedValue({
+      vi.mocked(getPlatform().database.getFtsStats).mockResolvedValue({
         success: true,
-        stats: mockStats,
+        stats: {
+          indexedTerms: 1000,
+          totalDocuments: 1200,
+        },
       })
 
       const result = await getFtsStats()
 
       expect(result.success).toBe(true)
-      expect(result.stats).toEqual(mockStats)
+      expect(result.stats).toEqual({
+        indexedCount: 1000,
+        totalCount: 1200,
+        coveragePercent: 83,
+      })
     })
 
     it('should handle stats errors', async () => {
-      mockElectronAPI.database.getFtsStats.mockRejectedValue(new Error('Stats failed'))
+      vi.mocked(getPlatform().database.getFtsStats).mockRejectedValue(new Error('Stats failed'))
 
       const result = await getFtsStats()
 
@@ -114,12 +103,11 @@ describe('nvdDbFts', () => {
 
   describe('isFtsAvailable', () => {
     it('should return true when stats are available', async () => {
-      mockElectronAPI.database.getFtsStats.mockResolvedValue({
+      vi.mocked(getPlatform().database.getFtsStats).mockResolvedValue({
         success: true,
         stats: {
-          indexedCount: 100,
-          totalCount: 100,
-          coveragePercent: 100,
+          indexedTerms: 100,
+          totalDocuments: 100,
         },
       })
 
@@ -129,7 +117,7 @@ describe('nvdDbFts', () => {
     })
 
     it('should return false when stats fail', async () => {
-      mockElectronAPI.database.getFtsStats.mockRejectedValue(new Error('Not available'))
+      vi.mocked(getPlatform().database.getFtsStats).mockRejectedValue(new Error('Not available'))
 
       const available = await isFtsAvailable()
 

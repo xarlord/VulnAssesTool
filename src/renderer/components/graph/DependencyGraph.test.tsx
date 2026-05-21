@@ -22,6 +22,10 @@ const mockStyleResult = {
   fromJson: vi.fn(function (this: typeof mockStyleResult) {
     return this
   }),
+  append: vi.fn(() => ({ update: vi.fn() })),
+  selector: vi.fn(() => ({
+    style: vi.fn(() => ({ selector: vi.fn(), update: vi.fn() })),
+  })),
   update: vi.fn(),
 }
 
@@ -252,6 +256,142 @@ describe('DependencyGraph', () => {
 
       // Verify cytoscape on was called with tap event
       expect(mockCy.on).toHaveBeenCalledWith('tap', 'node', expect.any(Function))
+    })
+
+    it('should invoke onNodeClick with component data when tap handler fires', () => {
+      const component = createMockComponent()
+      const onNodeClick = vi.fn()
+      const components = [component]
+
+      render(<DependencyGraph components={components} vulnerabilities={[]} onNodeClick={onNodeClick} />)
+
+      const tapHandler = mockCy.on.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call) && call[0] === 'tap' && call[1] === 'node',
+      )
+
+      if (tapHandler) {
+        const handler = tapHandler[2] as (event: { target: { data: () => Record<string, unknown> } }) => void
+        handler({
+          target: {
+            data: () => ({
+              id: 'comp-1',
+              component: component,
+              name: 'test-component',
+            }),
+          },
+        } as unknown as Parameters<typeof handler>[0])
+
+        expect(onNodeClick).toHaveBeenCalledWith(component)
+      }
+    })
+
+    it('should not invoke onNodeClick when node data has no component', () => {
+      const components = [createMockComponent()]
+      const onNodeClick = vi.fn()
+
+      render(<DependencyGraph components={components} vulnerabilities={[]} onNodeClick={onNodeClick} />)
+
+      const tapHandler = mockCy.on.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call) && call[0] === 'tap' && call[1] === 'node',
+      )
+
+      if (tapHandler) {
+        const handler = tapHandler[2] as (event: { target: { data: () => Record<string, unknown> } }) => void
+        handler({
+          target: {
+            data: () => ({
+              id: 'comp-1',
+              component: null,
+            }),
+          },
+        } as unknown as Parameters<typeof handler>[0])
+
+        expect(onNodeClick).not.toHaveBeenCalled()
+      }
+    })
+  })
+
+  describe('Path Highlighting', () => {
+    it('should highlight nodes in the given path', () => {
+      const components = [
+        createMockComponent({ id: 'comp-1', dependencies: ['comp-2'] }),
+        createMockComponent({ id: 'comp-2' }),
+      ]
+
+      render(<DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1', 'comp-2']} />)
+
+      expect(mockCy.getElementById).toHaveBeenCalledWith('comp-1')
+      expect(mockCy.getElementById).toHaveBeenCalledWith('comp-2')
+      expect(mockNodeCollection.addClass).toHaveBeenCalledWith('path-highlight')
+    })
+
+    it('should highlight edges in the given path', () => {
+      const components = [
+        createMockComponent({ id: 'comp-1', dependencies: ['comp-2'] }),
+        createMockComponent({ id: 'comp-2' }),
+      ]
+
+      render(<DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1', 'comp-2']} />)
+
+      expect(mockCy.getElementById).toHaveBeenCalledWith('edge-comp-1-comp-2')
+    })
+
+    it('should call getElementById for path nodes and edges', () => {
+      const components = [
+        createMockComponent({ id: 'comp-1', dependencies: ['comp-2'] }),
+        createMockComponent({ id: 'comp-2' }),
+      ]
+
+      const { rerender } = render(<DependencyGraph components={components} vulnerabilities={[]} />)
+
+      rerender(<DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1', 'comp-2']} />)
+
+      expect(mockCy.getElementById).toHaveBeenCalledWith('comp-1')
+      expect(mockCy.getElementById).toHaveBeenCalledWith('comp-2')
+      expect(mockNodeCollection.addClass).toHaveBeenCalledWith('path-highlight')
+      expect(mockNodeCollection.addClass).toHaveBeenCalledWith('path-source')
+    })
+
+    it('should clear highlights when highlightPath is not provided', () => {
+      const components = [createMockComponent()]
+
+      const { rerender } = render(
+        <DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1']} />,
+      )
+
+      rerender(<DependencyGraph components={components} vulnerabilities={[]} />)
+
+      expect(mockElements.removeClass).toHaveBeenCalledWith('path-highlight path-source path-target')
+    })
+  })
+
+  describe('Element Updates', () => {
+    it('should update graph elements when components prop changes', () => {
+      const initialComponents = [createMockComponent({ id: 'comp-1' })]
+
+      const { rerender } = render(<DependencyGraph components={initialComponents} vulnerabilities={[]} />)
+
+      const updatedComponents = [
+        createMockComponent({ id: 'comp-1' }),
+        createMockComponent({ id: 'comp-2', name: 'component-2' }),
+      ]
+
+      rerender(<DependencyGraph components={updatedComponents} vulnerabilities={[]} />)
+
+      expect(mockCy.elements).toHaveBeenCalled()
+      expect(mockCy.add).toHaveBeenCalled()
+    })
+  })
+
+  describe('Cleanup', () => {
+    it('should destroy cytoscape instance on unmount', () => {
+      const components = [createMockComponent()]
+
+      const { unmount } = render(<DependencyGraph components={components} vulnerabilities={[]} />)
+
+      unmount()
+
+      expect(mockCy.destroy).toHaveBeenCalled()
     })
   })
 })

@@ -1,4 +1,3 @@
-import React from 'react'
 import { Clock, RefreshCw } from 'lucide-react'
 import { isVulnDataStale, getStalenessText } from '@/lib/cache'
 import type { AppSettings } from '@@/types'

@@ -1,4 +1,5 @@
-// Import CVSS types
+// Import CVSS types (import for local use + re-export)
+import type { CvssBreakdown } from './types/cvss'
 export * from './types/cvss'
 
 // ============================================================
@@ -481,7 +482,18 @@ export interface OsvVulnerability {
 
 // Electron API Types
 export interface ElectronAPI {
-  ping: () => Promise<string>
+  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
+  store: {
+    get: (key: string) => Promise<unknown>
+    set: (key: string, value: unknown) => Promise<void>
+    delete: (key: string) => Promise<void>
+  }
+  secureStorage: {
+    get: (key: string) => Promise<string | null>
+    set: (key: string, value: string) => Promise<boolean>
+    delete: (key: string) => Promise<boolean>
+    has: (key: string) => Promise<boolean>
+  }
   onThemeChange: (callback: (theme: string) => void) => void
   getSystemTheme: () => Promise<string>
 }

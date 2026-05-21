@@ -1,4 +1,4 @@
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 import { createProjectOnly, navigateToSearch, E2E_UI_DELAY, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
 
 test.describe('Search Page', () => {

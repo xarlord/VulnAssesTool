@@ -18,11 +18,15 @@ import {
   generateSerialNumber,
   generateFilename,
   createSbom,
+  estimateAndAssignCPEs,
+  assignSelectedCPEs,
   type SbomOutput,
   type GeneratorOptions,
   type CycloneDXMetadata,
   type CycloneDXComponent,
+  type CPEEstimationServiceInterface,
 } from '../cyclonedxGenerator'
+import type { CPEMatchResult } from '../excelParser'
 
 describe('generateCycloneDX()', () => {
   const mockComponents: Component[] = [
@@ -848,5 +852,294 @@ describe('createSbom()', () => {
     // Both should have the same structure
     expect(result1.format).toBe(result2.format)
     expect(result1.metadata.componentCount).toBe(result2.metadata.componentCount)
+  })
+})
+
+describe('generateSerialNumber() fallback UUID', () => {
+  it('should use fallback UUID generation when crypto.randomUUID is unavailable', () => {
+    const originalRandomUUID = crypto.randomUUID
+    Object.defineProperty(globalThis, 'crypto', {
+      value: {},
+      writable: true,
+      configurable: true,
+    })
+
+    const serial = generateSerialNumber()
+    expect(serial).toMatch(/^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+
+    Object.defineProperty(globalThis, 'crypto', {
+      value: { randomUUID: originalRandomUUID },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('should produce unique fallback UUIDs', () => {
+    const originalRandomUUID = crypto.randomUUID
+    Object.defineProperty(globalThis, 'crypto', {
+      value: {},
+      writable: true,
+      configurable: true,
+    })
+
+    const a = generateSerialNumber()
+    const b = generateSerialNumber()
+    expect(a).not.toBe(b)
+
+    Object.defineProperty(globalThis, 'crypto', {
+      value: { randomUUID: originalRandomUUID },
+      writable: true,
+      configurable: true,
+    })
+  })
+})
+
+function createMockEstimationService(responses: Map<string, CPEMatchResult[]>): CPEEstimationServiceInterface {
+  return {
+    estimateCPEs(componentName: string, version: string) {
+      const key = `${componentName}@${version}`
+      return Promise.resolve(responses.get(key) ?? [])
+    },
+  }
+}
+
+describe('estimateAndAssignCPEs()', () => {
+  it('should skip components that already have a CPE', async () => {
+    const components: Component[] = [
+      {
+        id: 'c1',
+        name: 'react',
+        version: '18.0.0',
+        type: 'library',
+        cpe: 'cpe:2.3:a:*:react:18.0.0:*:*:*:*:*:*:*',
+        licenses: [],
+        vulnerabilities: [],
+      },
+    ]
+    const service = createMockEstimationService(new Map())
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.components[0].cpe).toBe('cpe:2.3:a:*:react:18.0.0:*:*:*:*:*:*:*')
+    expect(result.autoAssignedCount).toBe(0)
+    expect(result.ambiguous).toHaveLength(0)
+  })
+
+  it('should skip components without a version', async () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const service = createMockEstimationService(new Map())
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.components[0].cpe).toBeUndefined()
+    expect(result.autoAssignedCount).toBe(0)
+  })
+
+  it('should keep component as-is when no CPEs are estimated', async () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'unknown-pkg', version: '1.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const service = createMockEstimationService(new Map([['unknown-pkg@1.0.0', []]]))
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.components[0].cpe).toBeUndefined()
+    expect(result.autoAssignedCount).toBe(0)
+    expect(result.ambiguous).toHaveLength(0)
+  })
+
+  it('should auto-assign a single high-confidence match', async () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '18.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const cpes: CPEMatchResult[] = [
+      {
+        cpe: 'cpe:2.3:a:facebook:react:18.0.0:*:*:*:*:*:*:*',
+        vendor: 'facebook',
+        product: 'react',
+        confidence: 'high',
+        matchScore: 95,
+      },
+    ]
+    const service = createMockEstimationService(new Map([['react@18.0.0', cpes]]))
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.components[0].cpe).toBe('cpe:2.3:a:facebook:react:18.0.0:*:*:*:*:*:*:*')
+    expect(result.autoAssignedCount).toBe(1)
+    expect(result.ambiguous).toHaveLength(0)
+  })
+
+  it('should mark multiple high-confidence matches as ambiguous', async () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '18.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const cpes: CPEMatchResult[] = [
+      {
+        cpe: 'cpe:2.3:a:facebook:react:18.0.0:*:*:*:*:*:*:*',
+        vendor: 'facebook',
+        product: 'react',
+        confidence: 'high',
+        matchScore: 90,
+      },
+      {
+        cpe: 'cpe:2.3:a:reactjs:react:18.0.0:*:*:*:*:*:*:*',
+        vendor: 'reactjs',
+        product: 'react',
+        confidence: 'high',
+        matchScore: 85,
+      },
+    ]
+    const service = createMockEstimationService(new Map([['react@18.0.0', cpes]]))
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.components[0].cpe).toBeUndefined()
+    expect(result.autoAssignedCount).toBe(0)
+    expect(result.ambiguous).toHaveLength(1)
+    expect(result.ambiguous[0].componentId).toBe('c1')
+    expect(result.ambiguous[0].needsUserConfirmation).toBe(true)
+    expect(result.ambiguous[0].estimatedCPEs).toHaveLength(2)
+  })
+
+  it('should mark multiple low-confidence matches as ambiguous', async () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '18.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const cpes: CPEMatchResult[] = [
+      {
+        cpe: 'cpe:2.3:a:a:react:18.0.0:*:*:*:*:*:*:*',
+        vendor: 'a',
+        product: 'react',
+        confidence: 'low',
+        matchScore: 30,
+      },
+      {
+        cpe: 'cpe:2.3:a:b:react:18.0.0:*:*:*:*:*:*:*',
+        vendor: 'b',
+        product: 'react',
+        confidence: 'low',
+        matchScore: 25,
+      },
+    ]
+    const service = createMockEstimationService(new Map([['react@18.0.0', cpes]]))
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.ambiguous).toHaveLength(1)
+  })
+
+  it('should mark a single low-confidence match as ambiguous', async () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '18.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const cpes: CPEMatchResult[] = [
+      {
+        cpe: 'cpe:2.3:a:x:react:18.0.0:*:*:*:*:*:*:*',
+        vendor: 'x',
+        product: 'react',
+        confidence: 'low',
+        matchScore: 40,
+      },
+    ]
+    const service = createMockEstimationService(new Map([['react@18.0.0', cpes]]))
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.components[0].cpe).toBeUndefined()
+    expect(result.autoAssignedCount).toBe(0)
+    expect(result.ambiguous).toHaveLength(1)
+    expect(result.ambiguous[0].estimatedCPEs).toHaveLength(1)
+  })
+
+  it('should process multiple components with mixed outcomes', async () => {
+    const components: Component[] = [
+      {
+        id: 'c1',
+        name: 'react',
+        version: '18.0.0',
+        type: 'library',
+        cpe: 'existing',
+        licenses: [],
+        vulnerabilities: [],
+      },
+      { id: 'c2', name: 'lodash', version: '', type: 'library', licenses: [], vulnerabilities: [] },
+      { id: 'c3', name: 'express', version: '4.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const cpes: CPEMatchResult[] = [
+      {
+        cpe: 'cpe:2.3:a:expressjs:express:4.0.0:*:*:*:*:*:*:*',
+        vendor: 'expressjs',
+        product: 'express',
+        confidence: 'high',
+        matchScore: 95,
+      },
+    ]
+    const service = createMockEstimationService(new Map([['express@4.0.0', cpes]]))
+    const result = await estimateAndAssignCPEs(components, service)
+
+    expect(result.components).toHaveLength(3)
+    expect(result.components[0].cpe).toBe('existing')
+    expect(result.components[1].cpe).toBeUndefined()
+    expect(result.components[2].cpe).toBe('cpe:2.3:a:expressjs:express:4.0.0:*:*:*:*:*:*:*')
+    expect(result.autoAssignedCount).toBe(1)
+  })
+})
+
+describe('assignSelectedCPEs()', () => {
+  it('should assign selected CPE to matching component', () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '18.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+      { id: 'c2', name: 'lodash', version: '4.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const selections = new Map<string, string>()
+    selections.set('c1', 'cpe:2.3:a:facebook:react:18.0.0:*:*:*:*:*:*:*')
+
+    const result = assignSelectedCPEs(components, selections)
+
+    expect(result[0].cpe).toBe('cpe:2.3:a:facebook:react:18.0.0:*:*:*:*:*:*:*')
+    expect(result[1].cpe).toBeUndefined()
+  })
+
+  it('should return unchanged components when no selections match', () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '18.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const selections = new Map<string, string>()
+    selections.set('nonexistent', 'cpe:2.3:a:x:y:1.0:*:*:*:*:*:*:*')
+
+    const result = assignSelectedCPEs(components, selections)
+
+    expect(result[0].cpe).toBeUndefined()
+  })
+
+  it('should return all components unchanged with empty selections map', () => {
+    const components: Component[] = [
+      { id: 'c1', name: 'react', version: '18.0.0', type: 'library', licenses: [], vulnerabilities: [] },
+    ]
+    const selections = new Map<string, string>()
+
+    const result = assignSelectedCPEs(components, selections)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].cpe).toBeUndefined()
+  })
+
+  it('should preserve other component fields when assigning CPE', () => {
+    const components: Component[] = [
+      {
+        id: 'c1',
+        name: 'react',
+        version: '18.0.0',
+        type: 'library',
+        description: 'A library',
+        licenses: ['MIT'],
+        vulnerabilities: [],
+      },
+    ]
+    const selections = new Map<string, string>()
+    selections.set('c1', 'cpe:2.3:a:facebook:react:18.0.0:*:*:*:*:*:*:*')
+
+    const result = assignSelectedCPEs(components, selections)
+
+    expect(result[0].name).toBe('react')
+    expect(result[0].version).toBe('18.0.0')
+    expect(result[0].description).toBe('A library')
+    expect(result[0].licenses).toEqual(['MIT'])
   })
 })

@@ -314,13 +314,23 @@ export class ConfigService {
       },
       suppressionRules: [...(base.suppressionRules || []), ...(override.suppressionRules || [])],
       filterSettings: {
+        autoFilterConfidenceThreshold: DEFAULT_FILTER_SETTINGS.autoFilterConfidenceThreshold,
+        neverAutoFilter: DEFAULT_FILTER_SETTINGS.neverAutoFilter,
+        alwaysEscalateToReview: DEFAULT_FILTER_SETTINGS.alwaysEscalateToReview,
         ...base.filterSettings,
         ...override.filterSettings,
         missFilterDetection: {
+          enabled: true,
+          lowConfidenceThreshold: 70,
+          recentCveDays: 30,
+          flagKnownExploits: true,
           ...base.filterSettings?.missFilterDetection,
           ...override.filterSettings?.missFilterDetection,
         },
         audit: {
+          logAllDecisions: true,
+          logLlmResponses: true,
+          retentionDays: 365,
           ...base.filterSettings?.audit,
           ...override.filterSettings?.audit,
         },

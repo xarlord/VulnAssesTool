@@ -24,27 +24,27 @@ export function buildExecutiveReport(
   doc.addPage()
 
   // Executive Summary
-  yPosition = addExecutiveSummary(doc, summary, yPosition)
+  addExecutiveSummary(doc, summary, 20)
   doc.addPage()
 
   // Overall Metrics
-  yPosition = addOverallMetrics(doc, metrics.overall, yPosition)
+  addOverallMetrics(doc, metrics.overall, 20)
   doc.addPage()
 
   // Risk Analysis
-  yPosition = addRiskAnalysis(doc, summary.topRisks, yPosition)
+  addRiskAnalysis(doc, summary.topRisks, 20)
   doc.addPage()
 
   // Compliance Status
-  yPosition = addComplianceStatus(doc, metrics.compliance, yPosition)
+  addComplianceStatus(doc, metrics.compliance, 20)
   doc.addPage()
 
   // Trends
-  yPosition = addTrendsSection(doc, metrics.trends, yPosition)
+  addTrendsSection(doc, metrics.trends, 20)
   doc.addPage()
 
   // Action Items
-  yPosition = addActionItems(doc, summary.topRecommendations, yPosition)
+  addActionItems(doc, summary.topRecommendations, 20)
   doc.addPage()
 
   // Detailed Insights
@@ -157,7 +157,7 @@ function addExecutiveSummary(doc: jsPDF, summary: ExecutiveSummary, startY: numb
     },
   })
 
-  y = doc.lastAutoTable?.finalY + 15
+  y = (doc.lastAutoTable?.finalY ?? y) + 15
 
   return y
 }
@@ -228,7 +228,7 @@ function addOverallMetrics(doc: jsPDF, metrics: ExecutiveMetrics['overall'], sta
     },
   })
 
-  return doc.lastAutoTable?.finalY + 15
+  return (doc.lastAutoTable?.finalY ?? startY) + 15
 }
 
 /**
@@ -278,7 +278,7 @@ function addRiskAnalysis(doc: jsPDF, risks: RiskItem[], startY: number): number 
     },
   })
 
-  return doc.lastAutoTable?.finalY + 15
+  return (doc.lastAutoTable?.finalY ?? startY) + 15
 }
 
 /**
@@ -337,7 +337,7 @@ function addComplianceStatus(doc: jsPDF, compliance: ExecutiveMetrics['complianc
     },
   })
 
-  return doc.lastAutoTable?.finalY + 15
+  return (doc.lastAutoTable?.finalY ?? startY) + 15
 }
 
 /**
@@ -381,7 +381,7 @@ function addTrendsSection(doc: jsPDF, trends: ExecutiveMetrics['trends'], startY
     },
   })
 
-  y = doc.lastAutoTable?.finalY + 12
+  y = (doc.lastAutoTable?.finalY ?? y) + 12
 
   // Weekly trend data
   if (trends.periods.length > 0) {
@@ -423,7 +423,7 @@ function addTrendsSection(doc: jsPDF, trends: ExecutiveMetrics['trends'], startY
       },
     })
 
-    return doc.lastAutoTable?.finalY + 15
+    return (doc.lastAutoTable?.finalY ?? y) + 15
   }
 
   return y
@@ -475,7 +475,7 @@ function addActionItems(doc: jsPDF, recommendations: Recommendation[], startY: n
     },
   })
 
-  y = doc.lastAutoTable?.finalY + 12
+  y = (doc.lastAutoTable?.finalY ?? y) + 12
 
   // Detailed recommendations
   for (const rec of recommendations) {
@@ -613,7 +613,7 @@ function getStatusColor(status: string): { r: number; g: number; b: number } {
   }
 }
 
-function getSeverityColor(severity: string): number[] {
+function getSeverityColor(severity: string): [number, number, number] {
   switch (severity.toLowerCase()) {
     case 'critical':
       return [220, 38, 38]
@@ -628,7 +628,7 @@ function getSeverityColor(severity: string): number[] {
   }
 }
 
-function getPriorityColor(priority: string): number[] {
+function getPriorityColor(priority: string): [number, number, number] {
   switch (priority) {
     case 'immediate':
       return [220, 38, 38]

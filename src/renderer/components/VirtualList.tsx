@@ -3,10 +3,17 @@
  * Provides efficient rendering for large lists using react-virtuoso
  */
 
-import React, { forwardRef } from 'react'
-import { Virtuoso } from 'react-virtuoso'
+import { forwardRef } from 'react'
+import { Virtuoso, VirtuosoGrid } from 'react-virtuoso'
 import type { VirtuosoGridHandle } from 'react-virtuoso'
 import { cn } from '@/lib/utils'
+
+import React from 'react'
+
+/** Context shape passed to Virtuoso custom components */
+interface VirtuosoContextProp {
+  context: unknown
+}
 
 export interface VirtualListProps<T> {
   /**
@@ -27,17 +34,17 @@ export interface VirtualListProps<T> {
   /**
    * Optional render function for item at the beginning of list
    */
-  HeaderComponent?: React.ComponentType<{ context?: unknown }>
+  HeaderComponent?: React.ComponentType<VirtuosoContextProp>
 
   /**
    * Optional render function for item at the end of list
    */
-  FooterComponent?: React.ComponentType<{ context?: unknown }>
+  FooterComponent?: React.ComponentType<VirtuosoContextProp>
 
   /**
    * Optional render function when list is empty
    */
-  EmptyComponent?: React.ComponentType
+  EmptyComponent?: React.ComponentType<VirtuosoContextProp>
 
   /**
    * Optional className for the container
@@ -142,7 +149,8 @@ export function VirtualList<T = unknown>(props: VirtualListProps<T>): React.Reac
     if (typeof itemKey === 'function') {
       return itemKey(item, index)
     }
-    return String((item as Record<string, unknown>)[itemKey as keyof T] ?? index)
+    const keyValue = (item as Record<string, unknown>)[String(itemKey)]
+    return String(keyValue ?? index)
   }
 
   // Compute item content
@@ -156,7 +164,7 @@ export function VirtualList<T = unknown>(props: VirtualListProps<T>): React.Reac
       className={cn('virtual-list', className)}
       data={items}
       itemContent={itemContent}
-      key={getItemKey}
+      computeItemKey={getItemKey}
       components={{
         Header: HeaderComponent,
         Footer: FooterComponent,
@@ -164,7 +172,14 @@ export function VirtualList<T = unknown>(props: VirtualListProps<T>): React.Reac
       }}
       defaultItemHeight={fixedItemHeight ? itemHeight : defaultItemHeight}
       endReached={handleEndReached}
-      increaseViewportBy={typeof overscan === 'number' ? { top: overscan, bottom: overscan } : overscan}
+      increaseViewportBy={
+        typeof overscan === 'number'
+          ? { top: overscan, bottom: overscan }
+          : {
+              top: (overscan as { main: number; reverse: number }).main,
+              bottom: (overscan as { main: number; reverse: number }).reverse,
+            }
+      }
       isScrolling={handleIsScrolling}
       rangeChanged={handleRangeChanged}
       totalCount={items.length}
@@ -196,17 +211,17 @@ export interface VirtualGridProps<T> {
   /**
    * Optional render function for item at the beginning of grid
    */
-  HeaderComponent?: React.ComponentType
+  HeaderComponent?: React.ComponentType<VirtuosoContextProp>
 
   /**
    * Optional render function for item at the end of grid
    */
-  FooterComponent?: React.ComponentType
+  FooterComponent?: React.ComponentType<VirtuosoContextProp>
 
   /**
    * Optional render function when grid is empty
    */
-  EmptyComponent?: React.ComponentType
+  EmptyComponent?: React.ComponentType<VirtuosoContextProp>
 
   /**
    * Optional className for the container
@@ -246,14 +261,14 @@ export const VirtualGrid = forwardRef<VirtuosoGridHandle, VirtualGridProps<unkno
     renderItem,
     HeaderComponent,
     FooterComponent,
-    EmptyComponent,
     className,
     style,
     height = '100%',
-    columns = 3,
     endReached,
     isScrolling,
   } = props
+
+  type Item = (typeof items)[number]
 
   // Handle end reached callback
   const handleEndReached = () => {
@@ -270,15 +285,15 @@ export const VirtualGrid = forwardRef<VirtuosoGridHandle, VirtualGridProps<unkno
   }
 
   // Handle item key
-  const getItemKey = (index: number, item: T): string => {
+  const getItemKey = (index: number, item: Item): string => {
     if (typeof itemKey === 'function') {
       return itemKey(item, index)
     }
-    return String((item as Record<string, unknown>)[itemKey] ?? index)
+    return String((item as Record<string, unknown>)[String(itemKey)] ?? index)
   }
 
   // Compute item content
-  const itemContent = (index: number, item: T) => {
+  const itemContent = (index: number, item: Item) => {
     return <div data-index={index}>{renderItem(item, index)}</div>
   }
 
@@ -289,20 +304,16 @@ export const VirtualGrid = forwardRef<VirtuosoGridHandle, VirtualGridProps<unkno
       className={cn('virtual-grid', className)}
       data={items}
       itemContent={itemContent}
-      key={getItemKey}
       components={{
         Header: HeaderComponent,
         Footer: FooterComponent,
-        EmptyPlaceholder: EmptyComponent,
       }}
       endReached={handleEndReached}
       isScrolling={handleIsScrolling}
       totalCount={items.length}
       listClassName="grid-content"
-      gridItemsComputedClassName="grid-item"
-      gridItemsContainerClassName="grid-items-container"
+      itemClassName="grid-item"
       computeItemKey={getItemKey}
-      columns={columns}
     />
   )
 })

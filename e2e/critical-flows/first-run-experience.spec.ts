@@ -13,7 +13,7 @@
  * 3. App triggers background historical sync
  */
 
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 
 /**
  * Helper to simulate first-run state
@@ -26,7 +26,7 @@ async function simulateFirstRun(page: import('@playwright/test').Page) {
   })
 
   // Reload the page
-  await page.goto('http://127.0.0.1:4173/')
+  await page.goto('/')
   await page.waitForLoadState('domcontentloaded', { timeout: 10000 })
   await page.waitForTimeout(1000)
 }

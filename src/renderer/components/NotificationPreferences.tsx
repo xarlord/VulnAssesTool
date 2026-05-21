@@ -1,4 +1,3 @@
-import React from 'react'
 import { Bell, BellOff, Check } from 'lucide-react'
 import { useNotificationPreferences, updateNotificationPreferences, setCategoryEnabled } from '@/lib/notifications'
 

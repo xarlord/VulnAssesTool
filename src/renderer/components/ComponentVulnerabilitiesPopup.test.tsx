@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ComponentVulnerabilitiesPopup } from './ComponentVulnerabilitiesPopup'
 import type { Component, Vulnerability } from '@@/types'
@@ -473,6 +473,224 @@ describe('ComponentVulnerabilitiesPopup', () => {
       )
 
       expect(screen.getByText('Source: NVD + OSV')).toBeInTheDocument()
+    })
+  })
+
+  describe('Copy to Clipboard', () => {
+    it('should copy vulnerability ID and show copied state', async () => {
+      const { toast } = await import('./Toaster')
+      const mockWriteText = vi.fn(() => Promise.resolve())
+      Object.assign(navigator, {
+        clipboard: { writeText: mockWriteText },
+      })
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[mockVulnerabilities[0]]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      const copyButtons = screen.getAllByLabelText(/Copy .* to clipboard/)
+      fireEvent.click(copyButtons[0])
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      expect(mockWriteText).toHaveBeenCalledWith('CVE-2021-23337')
+      expect(toast.success).toHaveBeenCalledWith('Copied CVE-2021-23337 to clipboard')
+    })
+
+    it('should show error toast when clipboard copy fails', async () => {
+      const { toast } = await import('./Toaster')
+      const mockWriteText = vi.fn(() => Promise.reject(new Error('Clipboard denied')))
+      Object.assign(navigator, {
+        clipboard: { writeText: mockWriteText },
+      })
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[mockVulnerabilities[0]]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      const copyButtons = screen.getAllByLabelText(/Copy .* to clipboard/)
+      fireEvent.click(copyButtons[0])
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to copy to clipboard')
+    })
+  })
+
+  describe('Patch Info Extended', () => {
+    it('should display patch status as Partial', () => {
+      const vulnPartialPatch: Vulnerability = {
+        ...mockVulnerabilities[0],
+        patchInfo: { patchAvailability: 'partial' },
+      }
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[vulnPartialPatch]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(screen.getByText('Patch: Partial')).toBeInTheDocument()
+    })
+
+    it('should display patch status as Upstream', () => {
+      const vulnUpstreamPatch: Vulnerability = {
+        ...mockVulnerabilities[0],
+        patchInfo: { patchAvailability: 'upstream' },
+      }
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[vulnUpstreamPatch]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(screen.getByText('Patch: Upstream')).toBeInTheDocument()
+    })
+
+    it('should display patch status as Investigating', () => {
+      const vulnInvestigating: Vulnerability = {
+        ...mockVulnerabilities[0],
+        patchInfo: { patchAvailability: 'investigating' },
+      }
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[vulnInvestigating]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(screen.getByText('Patch: Investigating')).toBeInTheDocument()
+    })
+  })
+
+  describe('Vulnerability Aliases', () => {
+    it('should display aliases when vulnerability has them', () => {
+      const vulnWithAliases: Vulnerability = {
+        ...mockVulnerabilities[0],
+        aliases: ['GHSA-1234', 'OSV-5678'],
+      }
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[vulnWithAliases]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(screen.getByText(/aka: GHSA-1234, OSV-5678/)).toBeInTheDocument()
+    })
+
+    it('should truncate aliases beyond 2 with +N indicator', () => {
+      const vulnWithManyAliases: Vulnerability = {
+        ...mockVulnerabilities[0],
+        aliases: ['GHSA-1111', 'GHSA-2222', 'GHSA-3333', 'GHSA-4444'],
+      }
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[vulnWithManyAliases]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(screen.getByText(/\+2\)/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Low Severity Badge', () => {
+    it('should display low severity badge', () => {
+      const lowVuln: Vulnerability = {
+        id: 'CVE-2024-LOW',
+        source: 'nvd',
+        severity: 'low',
+        cvssScore: 2.1,
+        description: 'Low severity vuln',
+        affectedComponents: ['comp-1'],
+        publishedDate: '2024-01-01',
+        modifiedDate: '2024-01-02',
+      }
+
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={[lowVuln]}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(screen.getByText('1 Low')).toBeInTheDocument()
+      expect(screen.getByText('Low')).toBeInTheDocument()
+    })
+  })
+
+  describe('Escape Key Handler', () => {
+    it('should add and remove keydown listener on open/close', () => {
+      const addSpy = vi.spyOn(window, 'addEventListener')
+      const removeSpy = vi.spyOn(window, 'removeEventListener')
+
+      const { rerender } = render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={mockVulnerabilities}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(addSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
+
+      rerender(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={mockVulnerabilities}
+          open={false}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      expect(removeSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
+
+      addSpy.mockRestore()
+      removeSpy.mockRestore()
     })
   })
 })

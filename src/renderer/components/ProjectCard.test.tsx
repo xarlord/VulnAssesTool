@@ -3,6 +3,23 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { ProjectCard } from './ProjectCard'
 import type { Project } from '@@/types'
 
+vi.mock('@/store/useStore', () => ({
+  useSettings: () => ({
+    autoRefresh: false,
+    autoRefreshInterval: 60,
+  }),
+  useRefreshingProjectIds: () => new Set<string>(),
+}))
+
+vi.mock('@/components/StalenessIndicator', () => ({
+  StalenessBadge: () => <span data-testid="staleness-badge" />,
+}))
+
+vi.mock('@/lib/refresh', () => ({
+  formatTimeUntilRefresh: vi.fn(() => 'in 5 minutes'),
+  getNextRefreshTime: vi.fn(() => new Date()),
+}))
+
 const createMockProject = (overrides?: Partial<Project>): Project => ({
   id: 'test-project-id',
   name: 'Test Project',
@@ -332,6 +349,139 @@ describe('ProjectCard', () => {
       expect(screen.getByText(/100 Critical/)).toBeInTheDocument()
       expect(screen.getByText(/200 High/)).toBeInTheDocument()
       expect(screen.getByText(/300 Medium/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Keyboard Navigation', () => {
+    it('should call onView when Enter key is pressed', () => {
+      const project = createMockProject()
+      renderCard(project)
+
+      const card = screen.getByRole('button', { name: /View project Test Project/ })
+      fireEvent.keyDown(card, { key: 'Enter' })
+
+      expect(mockOnView).toHaveBeenCalledWith(project)
+    })
+
+    it('should call onView when Space key is pressed', () => {
+      const project = createMockProject()
+      renderCard(project)
+
+      const card = screen.getByRole('button', { name: /View project Test Project/ })
+      fireEvent.keyDown(card, { key: ' ' })
+
+      expect(mockOnView).toHaveBeenCalledWith(project)
+    })
+
+    it('should not call onView for other keys', () => {
+      renderCard()
+
+      const card = screen.getByRole('button', { name: /View project Test Project/ })
+      fireEvent.keyDown(card, { key: 'Tab' })
+
+      expect(mockOnView).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Optional Callbacks', () => {
+    it('should render refresh button when onRefresh is provided', () => {
+      const mockOnRefresh = vi.fn()
+      render(
+        <ProjectCard
+          project={createMockProject()}
+          onView={mockOnView}
+          onDelete={mockOnDelete}
+          onRefresh={mockOnRefresh}
+        />,
+      )
+
+      const refreshButton = screen.getByLabelText('Refresh vulnerability data')
+      expect(refreshButton).toBeInTheDocument()
+    })
+
+    it('should not render refresh button when onRefresh is not provided', () => {
+      renderCard()
+
+      expect(screen.queryByLabelText('Refresh vulnerability data')).not.toBeInTheDocument()
+    })
+
+    it('should call onRefresh when refresh button is clicked', () => {
+      const mockOnRefresh = vi.fn()
+      render(
+        <ProjectCard
+          project={createMockProject()}
+          onView={mockOnView}
+          onDelete={mockOnDelete}
+          onRefresh={mockOnRefresh}
+        />,
+      )
+
+      const refreshButton = screen.getByLabelText('Refresh vulnerability data')
+      fireEvent.click(refreshButton)
+
+      expect(mockOnRefresh).toHaveBeenCalledWith('test-project-id')
+    })
+
+    it('should stop propagation on refresh button click', () => {
+      const mockOnRefresh = vi.fn()
+      render(
+        <ProjectCard
+          project={createMockProject()}
+          onView={mockOnView}
+          onDelete={mockOnDelete}
+          onRefresh={mockOnRefresh}
+        />,
+      )
+
+      const refreshButton = screen.getByLabelText('Refresh vulnerability data')
+      fireEvent.click(refreshButton)
+
+      expect(mockOnView).not.toHaveBeenCalled()
+    })
+
+    it('should render FPF button when onFpf is provided', () => {
+      const mockOnFpf = vi.fn()
+      render(
+        <ProjectCard project={createMockProject()} onView={mockOnView} onDelete={mockOnDelete} onFpf={mockOnFpf} />,
+      )
+
+      expect(screen.getByText('FPF')).toBeInTheDocument()
+    })
+
+    it('should not render FPF button when onFpf is not provided', () => {
+      renderCard()
+
+      expect(screen.queryByText('FPF')).not.toBeInTheDocument()
+    })
+
+    it('should call onFpf when FPF button is clicked', () => {
+      const mockOnFpf = vi.fn()
+      render(
+        <ProjectCard project={createMockProject()} onView={mockOnView} onDelete={mockOnDelete} onFpf={mockOnFpf} />,
+      )
+
+      const fpfButton = screen.getByText('FPF')
+      fireEvent.click(fpfButton)
+
+      expect(mockOnFpf).toHaveBeenCalledWith('test-project-id')
+      expect(mockOnView).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Refreshing State', () => {
+    it('should render refresh button as not disabled when not refreshing', () => {
+      const mockOnRefresh = vi.fn()
+      render(
+        <ProjectCard
+          project={createMockProject()}
+          onView={mockOnView}
+          onDelete={mockOnDelete}
+          onRefresh={mockOnRefresh}
+        />,
+      )
+
+      const refreshButton = screen.getByLabelText('Refresh vulnerability data')
+      expect(refreshButton).not.toBeDisabled()
     })
   })
 })

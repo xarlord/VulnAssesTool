@@ -5,7 +5,7 @@
  * that cannot be properly tested in jsdom.
  */
 
-import { test, expect, resetAppState } from '../electron-helper'
+import { test, expect, resetAppState } from '../test-helper'
 
 test.describe('Notification Center E2E Tests', () => {
   test.beforeEach(async ({ page }) => {

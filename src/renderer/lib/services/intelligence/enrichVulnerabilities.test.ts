@@ -12,22 +12,7 @@ import {
   filterHighEpss,
 } from './enrichVulnerabilities'
 import type { Vulnerability } from '@@/types'
-
-// Mock electronAPI
-const mockIntelligence = {
-  checkKev: vi.fn(),
-  getKevDetails: vi.fn(),
-  getEpssScore: vi.fn(),
-  getEpssScores: vi.fn(),
-  getKevStats: vi.fn(),
-  syncKev: vi.fn(),
-}
-
-vi.stubGlobal('window', {
-  electronAPI: {
-    intelligence: mockIntelligence,
-  },
-})
+import { getPlatform } from '@/lib/platform'
 
 describe('enrichVulnerabilities', () => {
   beforeEach(() => {
@@ -45,8 +30,8 @@ describe('enrichVulnerabilities', () => {
         affectedComponents: [],
       }
 
-      mockIntelligence.checkKev.mockResolvedValue({ success: true, isKev: true })
-      mockIntelligence.getKevDetails.mockResolvedValue({
+      vi.mocked(getPlatform().intelligence.checkKev).mockResolvedValue({ success: true, isKev: true })
+      vi.mocked(getPlatform().intelligence.getKevDetails).mockResolvedValue({
         success: true,
         entry: {
           vendorProject: 'Test',
@@ -58,7 +43,7 @@ describe('enrichVulnerabilities', () => {
           knownRansomwareUse: false,
         },
       })
-      mockIntelligence.getEpssScore.mockResolvedValue({ success: false, score: null })
+      vi.mocked(getPlatform().intelligence.getEpssScore).mockResolvedValue({ success: false, score: null })
 
       const result = await enrichVulnerability(vuln)
 
@@ -77,8 +62,8 @@ describe('enrichVulnerabilities', () => {
         affectedComponents: [],
       }
 
-      mockIntelligence.checkKev.mockResolvedValue({ success: true, isKev: false })
-      mockIntelligence.getEpssScore.mockResolvedValue({
+      vi.mocked(getPlatform().intelligence.checkKev).mockResolvedValue({ success: true, isKev: false })
+      vi.mocked(getPlatform().intelligence.getEpssScore).mockResolvedValue({
         success: true,
         score: {
           cveId: 'CVE-2024-1234',
@@ -104,12 +89,12 @@ describe('enrichVulnerabilities', () => {
         affectedComponents: [],
       }
 
-      mockIntelligence.checkKev.mockResolvedValue({ success: true, isKev: true })
-      mockIntelligence.getKevDetails.mockResolvedValue({
+      vi.mocked(getPlatform().intelligence.checkKev).mockResolvedValue({ success: true, isKev: true })
+      vi.mocked(getPlatform().intelligence.getKevDetails).mockResolvedValue({
         success: true,
         entry: { knownRansomwareUse: true },
       })
-      mockIntelligence.getEpssScore.mockResolvedValue({
+      vi.mocked(getPlatform().intelligence.getEpssScore).mockResolvedValue({
         success: true,
         score: { score: 0.9, percentile: 1.0, fetchedAt: new Date() }, // 100th percentile
       })
@@ -135,7 +120,7 @@ describe('enrichVulnerabilities', () => {
       // Should not call checkKev since isKev is already set
       const result = await enrichVulnerability(vuln)
 
-      expect(mockIntelligence.checkKev).not.toHaveBeenCalled()
+      expect(getPlatform().intelligence.checkKev).not.toHaveBeenCalled()
       expect(result.isKev).toBe(true)
     })
 
@@ -149,8 +134,8 @@ describe('enrichVulnerabilities', () => {
         affectedComponents: [],
       }
 
-      mockIntelligence.checkKev.mockRejectedValue(new Error('API Error'))
-      mockIntelligence.getEpssScore.mockRejectedValue(new Error('API Error'))
+      vi.mocked(getPlatform().intelligence.checkKev).mockRejectedValue(new Error('API Error'))
+      vi.mocked(getPlatform().intelligence.getEpssScore).mockRejectedValue(new Error('API Error'))
 
       const result = await enrichVulnerability(vuln)
 
@@ -181,8 +166,8 @@ describe('enrichVulnerabilities', () => {
         },
       ]
 
-      mockIntelligence.checkKev.mockResolvedValue({ success: true, isKev: false })
-      mockIntelligence.getEpssScores.mockResolvedValue({
+      vi.mocked(getPlatform().intelligence.checkKev).mockResolvedValue({ success: true, isKev: false })
+      vi.mocked(getPlatform().intelligence.getEpssScores).mockResolvedValue({
         success: true,
         scores: {
           'CVE-2024-0001': { score: 0.1, percentile: 0.8, fetchedAt: new Date() },
@@ -196,7 +181,7 @@ describe('enrichVulnerabilities', () => {
       expect(results[0].epssPercentile).toBe(0.8)
       expect(results[1].epssPercentile).toBe(0.5)
       // Should use batch EPSS fetch
-      expect(mockIntelligence.getEpssScores).toHaveBeenCalledTimes(1)
+      expect(getPlatform().intelligence.getEpssScores).toHaveBeenCalledTimes(1)
     })
 
     it('should return empty array for empty input', async () => {
@@ -229,8 +214,8 @@ describe('enrichVulnerabilities', () => {
         },
       ])
 
-      mockIntelligence.checkKev.mockResolvedValue({ success: true, isKev: false })
-      mockIntelligence.getEpssScores.mockResolvedValue({
+      vi.mocked(getPlatform().intelligence.checkKev).mockResolvedValue({ success: true, isKev: false })
+      vi.mocked(getPlatform().intelligence.getEpssScores).mockResolvedValue({
         success: true,
         scores: {
           'CVE-2024-0001': { score: 0.1, percentile: 0.7, fetchedAt: new Date() },
@@ -244,7 +229,7 @@ describe('enrichVulnerabilities', () => {
       expect(result.get('comp-1')![0].epssPercentile).toBe(0.7)
       expect(result.get('comp-2')![0].epssPercentile).toBe(0.7)
       // Should only fetch EPSS once for the duplicate CVE
-      expect(mockIntelligence.getEpssScores).toHaveBeenCalledTimes(1)
+      expect(getPlatform().intelligence.getEpssScores).toHaveBeenCalledTimes(1)
     })
   })
 

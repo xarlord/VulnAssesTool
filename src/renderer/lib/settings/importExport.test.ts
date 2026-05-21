@@ -169,13 +169,15 @@ describe('Settings Import/Export', () => {
       expect(exported.profiles[0].id).toBe(mockProfile.id)
     })
 
-    it('should convert Date objects to ISO strings', () => {
+    it('should preserve Date objects in profiles', () => {
       const profiles = [mockProfile]
       const exported = exportSettings(profiles)
 
-      expect(typeof exported.profiles[0].createdAt).toBe('string')
-      expect(typeof exported.profiles[0].lastUsed).toBe('string')
-      expect(exported.profiles[0].createdAt).toBe('2024-01-01T00:00:00.000Z')
+      // exportSettings passes profiles through as-is (Date serialization
+      // happens during JSON.stringify in exportSettingsToFile, not here)
+      expect(exported.profiles[0].createdAt).toBeInstanceOf(Date)
+      expect(exported.profiles[0].lastUsed).toBeInstanceOf(Date)
+      expect(exported.profiles[0].createdAt.toISOString()).toBe('2024-01-01T00:00:00.000Z')
     })
 
     it('should set exportedAt to current time', () => {

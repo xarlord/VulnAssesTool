@@ -1,9 +1,11 @@
-import React, { lazy, Suspense } from 'react'
+import { lazy, Suspense } from 'react'
 import { Shield, TrendingUp, TrendingDown, Minus, Info } from 'lucide-react'
 import { getHealthChartColor, getTrendColor } from '@/lib/health'
 import type { ProjectHealthSummary, ComponentHealth, Component } from '@@/types'
 
-const HealthDistributionChart = lazy(() => import('./HealthDistributionChart'))
+const HealthDistributionChart = lazy(() =>
+  import('./HealthDistributionChart').then((m) => ({ default: m.HealthDistributionChart })),
+)
 
 interface HealthDashboardProps {
   projectHealth: ProjectHealthSummary

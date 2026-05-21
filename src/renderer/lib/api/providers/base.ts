@@ -139,11 +139,15 @@ export abstract class BaseVulnerabilityProvider implements VulnerabilityProvider
   /**
    * Rate limiter token bucket
    */
-  protected rateLimitTokens: number
-  protected lastRateLimitRefill: number
+  protected rateLimitTokens = 0
+  protected lastRateLimitRefill = 0
   protected readonly rateLimitInterval: number = 3600000 // 1 hour in ms
 
-  constructor() {
+  /**
+   * Initialize rate limiter tokens from the subclass's defaultRateLimit.
+   * Must be called by each concrete subclass in its constructor.
+   */
+  protected initRateLimit(): void {
     this.rateLimitTokens = this.defaultRateLimit
     this.lastRateLimitRefill = Date.now()
   }
