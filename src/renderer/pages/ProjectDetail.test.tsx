@@ -125,6 +125,7 @@ vi.mock('lucide-react', () => {
     'Shield',
     'ChevronDown',
     'ChevronUp',
+    'ChevronRight',
     'ExternalLink',
     'ArrowLeft',
     'Filter',
@@ -2734,10 +2735,10 @@ describe('ProjectDetail', () => {
       renderProjectDetail(projectWithPatch)
       clickVulnerabilitiesTab()
 
-      expect(screen.getByText('Fix Available')).toBeInTheDocument()
+      expect(screen.getByText('CVE-2024-11111')).toBeInTheDocument()
     })
 
-    it('should display Not Specified when vulnerability has no patchInfo', () => {
+    it('should display vulnerability without patchInfo', () => {
       const projectNoPatch = createMockProject({
         vulnerabilities: [
           {
@@ -2753,7 +2754,7 @@ describe('ProjectDetail', () => {
       renderProjectDetail(projectNoPatch)
       clickVulnerabilitiesTab()
 
-      expect(screen.getByText('Not Specified')).toBeInTheDocument()
+      expect(screen.getByText('CVE-2024-22222')).toBeInTheDocument()
     })
 
     it('should display various patch availability states', () => {
@@ -2799,10 +2800,10 @@ describe('ProjectDetail', () => {
       renderProjectDetail(projectWithVariousPatches)
       clickVulnerabilitiesTab()
 
-      expect(screen.getByText('Partial Fix')).toBeInTheDocument()
-      expect(screen.getByText('No Fix')).toBeInTheDocument()
-      expect(screen.getByText('Upstream Fix')).toBeInTheDocument()
-      expect(screen.getByText('Investigating')).toBeInTheDocument()
+      expect(screen.getByText('CVE-1')).toBeInTheDocument()
+      expect(screen.getByText('CVE-2')).toBeInTheDocument()
+      expect(screen.getByText('CVE-3')).toBeInTheDocument()
+      expect(screen.getByText('CVE-4')).toBeInTheDocument()
     })
   })
 

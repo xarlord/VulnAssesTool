@@ -29,6 +29,18 @@ export interface CveResult {
   modifiedAt?: string | null
   /** Source database */
   source: string
+  /** CWE IDs associated with this CVE (e.g., ['CWE-79', 'CWE-89']) */
+  cwes?: string[]
+  /** External references with tags */
+  references?: CveReference[]
+  /** Aggregated reference tags across all references */
+  referenceTags?: string[]
+}
+
+export interface CveReference {
+  url: string
+  source?: string
+  tags?: string[]
 }
 
 /**

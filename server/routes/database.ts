@@ -22,6 +22,7 @@ import type {
   DeltaSyncProgress,
   DeltaSyncResult,
   CPESearchRequest,
+  CveResult,
 } from '../types/database.js'
 
 const router = Router()
@@ -123,7 +124,7 @@ router.post('/search', async (req, res) => {
         return
     }
 
-    const mappedResults = results.map((cve) => ({
+    const mappedResults: CveResult[] = results.map((cve) => ({
       id: cve.id,
       cveId: cve.id,
       description: cve.description,
@@ -134,6 +135,19 @@ router.post('/search', async (req, res) => {
       modifiedAt: cve.modified_at,
       source: cve.source,
     }))
+
+    // Enrich with CWE + references + tags
+    if (mappedResults.length > 0) {
+      const detailsMap = database.getCveListDetails(mappedResults.map((r) => r.cveId))
+      for (const result of mappedResults) {
+        const details = detailsMap.get(result.cveId)
+        if (details) {
+          if (details.cwes.length > 0) result.cwes = details.cwes
+          if (details.references.length > 0) result.references = details.references
+          if (details.referenceTags.length > 0) result.referenceTags = details.referenceTags
+        }
+      }
+    }
 
     res.json({
       success: true,

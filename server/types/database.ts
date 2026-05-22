@@ -38,6 +38,9 @@ export interface CveResult {
   publishedAt: string
   modifiedAt?: string
   source: string
+  cwes?: string[]
+  references?: Array<{ url: string; source?: string; tags?: string[] }>
+  referenceTags?: string[]
 }
 
 /**

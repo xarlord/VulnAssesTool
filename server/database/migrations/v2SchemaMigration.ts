@@ -623,30 +623,54 @@ function migration_10_performance_250k(): Migration {
       console.log('[Migration 10] Added parsed CPE columns')
 
       // ========================================
-      // 2. Parse existing CPE URIs to populate new columns
+      // 2. Parse existing CPE URIs to populate new columns (JS-based)
       // ========================================
       // CPE 2.3 format: cpe:2.3:<part>:<vendor>:<product>:<version>:...
       // CPE 2.2 format: cpe:/<part>:<vendor>:<product>:<version>:...
-      db.run(`
-        UPDATE cpe_matches SET
-          cpe_part = CASE
-            WHEN cpe23_uri LIKE 'cpe:2.3:a:%' THEN 'a'
-            WHEN cpe23_uri LIKE 'cpe:2.3:o:%' THEN 'o'
-            WHEN cpe23_uri LIKE 'cpe:2.3:h:%' THEN 'h'
-            WHEN cpe23_uri LIKE 'cpe:/a:%' THEN 'a'
-            WHEN cpe23_uri LIKE 'cpe:/o:%' THEN 'o'
-            WHEN cpe23_uri LIKE 'cpe:/h:%' THEN 'h'
-            ELSE NULL
-          END,
-          cpe_vendor = CASE
-            WHEN cpe23_uri LIKE 'cpe:2.3:%' THEN
-              SUBSTR(cpe23_uri, 11, INSTR(SUBSTR(cpe23_uri, 11), ':') - 1)
-            ELSE NULL
-          END
-        WHERE cpe23_uri IS NOT NULL AND cpe_part IS NULL
-      `)
+      // SQL SUBSTR is unreliable for CPE parsing due to variable-length escaped chars;
+      // use JS split(':') then batch-update via prepared statements.
+      const unParsedRows = db.exec(
+        'SELECT rowid, cpe23_uri FROM cpe_matches WHERE cpe23_uri IS NOT NULL AND cpe_part IS NULL',
+      )
+      if (unParsedRows.length > 0 && unParsedRows[0].values.length > 0) {
+        const updateStmt = db.prepare(
+          'UPDATE cpe_matches SET cpe_part = ?, cpe_vendor = ?, cpe_product = ?, cpe_version = ? WHERE rowid = ?',
+        )
+        let parsedCount = 0
+        for (const row of unParsedRows[0].values) {
+          const rowid = row[0] as number
+          const uri = row[1] as string
+          let part: string | null = null
+          let vendor: string | null = null
+          let product: string | null = null
+          let version: string | null = null
 
-      console.log('[Migration 10] Parsed existing CPE URIs')
+          if (uri.startsWith('cpe:2.3:')) {
+            const parts = uri.split(':')
+            if (parts.length >= 6) {
+              part = parts[2] || null
+              vendor = parts[3] || null
+              product = parts[4] || null
+              version = parts[5] || null
+            }
+          } else if (uri.startsWith('cpe:/')) {
+            const segments = uri.substring(5).split(':')
+            if (segments.length >= 1) part = segments[0] || null
+            if (segments.length >= 2) vendor = segments[1] || null
+            if (segments.length >= 3) product = segments[2] || null
+            if (segments.length >= 4) version = segments[3] || null
+          }
+
+          if (part || vendor || product || version) {
+            updateStmt.run([part, vendor, product, version, rowid])
+            parsedCount++
+          }
+        }
+        updateStmt.free()
+        console.log(`[Migration 10] Parsed ${parsedCount} CPE URIs via JS`)
+      } else {
+        console.log('[Migration 10] No unparsed CPE URIs found')
+      }
 
       // ========================================
       // 3. Create composite indexes for CPE lookups

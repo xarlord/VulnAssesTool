@@ -399,7 +399,14 @@ export class NvdDatabase {
       this.db.run('CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves(cvss_score)')
       this.db.run('CREATE INDEX IF NOT EXISTS idx_cves_published_at ON cves(published_at)')
       this.db.run('CREATE INDEX IF NOT EXISTS idx_cpe_matches_cve_id ON cpe_matches(cve_id)')
-      this.db.run('CREATE INDEX IF NOT EXISTS idx_cpe_matches_cpe_text ON cpe_matches(cpe_text)')
+      // cpe_matches may have cpe_text (v1) or cpe23_uri (post-migration-4)
+      const cpeCols = this.db.exec('PRAGMA table_info(cpe_matches)')
+      const cpeColNames = cpeCols.length > 0 ? cpeCols[0].values.map((r) => r[1] as string) : []
+      if (cpeColNames.includes('cpe23_uri')) {
+        this.db.run('CREATE INDEX IF NOT EXISTS idx_cpe_matches_cpe23_uri ON cpe_matches(cpe23_uri)')
+      } else if (cpeColNames.includes('cpe_text')) {
+        this.db.run('CREATE INDEX IF NOT EXISTS idx_cpe_matches_cpe_text ON cpe_matches(cpe_text)')
+      }
       this.db.run('CREATE INDEX IF NOT EXISTS idx_references_cve_id ON "references"(cve_id)')
 
       // Record migration
@@ -619,7 +626,7 @@ export class NvdDatabase {
     deleteStmt.free()
 
     const stmt = this.db.prepare(`
-      INSERT INTO cpe_matches (cve_id, cpe_text, vulnerable)
+      INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable)
       VALUES (?, ?, ?)
     `)
 
@@ -680,7 +687,7 @@ export class NvdDatabase {
         cpeMatches.push({
           id: match.id as number,
           cve_id: match.cve_id as string,
-          cpe_text: match.cpe_text as string,
+          cpe_text: (match.cpe23_uri as string) || (match.cpe_text as string) || '',
           vulnerable: match.vulnerable === 1,
         })
       }
@@ -942,7 +949,7 @@ export class NvdDatabase {
       `
       SELECT DISTINCT c.* FROM cves c
       INNER JOIN cpe_matches cp ON c.id = cp.cve_id
-      WHERE cp.cpe_text LIKE ?
+      WHERE cp.cpe23_uri LIKE ?
       AND cp.vulnerable = 1
       ORDER BY c.cvss_score DESC
       LIMIT ? OFFSET ?
@@ -1068,6 +1075,60 @@ export class NvdDatabase {
       }
     } catch {
       // Return empty result on parse error
+    }
+
+    return result
+  }
+
+  /**
+   * Get CWE IDs and references for multiple CVE IDs in batch.
+   * Returns a map of CVE ID → { cwes, references, referenceTags }.
+   */
+  getCveListDetails(
+    cveIds: string[],
+  ): Map<
+    string,
+    { cwes: string[]; references: Array<{ url: string; source?: string; tags?: string[] }>; referenceTags: string[] }
+  > {
+    const result = new Map<
+      string,
+      { cwes: string[]; references: Array<{ url: string; source?: string; tags?: string[] }>; referenceTags: string[] }
+    >()
+    if (!this.db || cveIds.length === 0) return result
+
+    for (const cveId of cveIds) {
+      const cwes: string[] = []
+      const references: Array<{ url: string; source?: string; tags?: string[] }> = []
+      const referenceTagsSet = new Set<string>()
+
+      const cweResults = this.db.exec('SELECT cwe_id FROM cwe_references WHERE cve_id = ?', [cveId])
+      if (cweResults.length > 0 && cweResults[0].values.length > 0) {
+        for (const row of cweResults[0].values) {
+          if (row[0]) cwes.push(row[0] as string)
+        }
+      }
+
+      const refResults = this.db.exec('SELECT url, source, tags FROM "references" WHERE cve_id = ?', [cveId])
+      if (refResults.length > 0 && refResults[0].values.length > 0) {
+        for (const row of refResults[0].values) {
+          const tags = row[2]
+            ? (row[2] as string)
+                .split(',')
+                .map((t: string) => t.trim())
+                .filter(Boolean)
+            : undefined
+          if (tags) {
+            tags.forEach((t: string) => referenceTagsSet.add(t.toLowerCase()))
+          }
+          references.push({
+            url: row[0] as string,
+            source: (row[1] as string) || undefined,
+            tags: tags && tags.length > 0 ? tags : undefined,
+          })
+        }
+      }
+
+      result.set(cveId, { cwes, references, referenceTags: Array.from(referenceTagsSet) })
     }
 
     return result
