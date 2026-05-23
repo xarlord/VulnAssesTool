@@ -68,7 +68,6 @@ export function ProjectDetail() {
   // Advanced filter states
   const [cvssRange, setCvssRange] = React.useState<[number, number]>([0, 10])
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([])
-  const [patchAvailabilityFilter, setPatchAvailabilityFilter] = React.useState<string[]>([])
   const [referenceTagFilter, setReferenceTagFilter] = React.useState<string[]>([])
   const [expandedVulns, setExpandedVulns] = React.useState<Set<string>>(new Set()) // Filter presets with localStorage persistence
   const [filterPresets, setFilterPresets] = React.useState<FilterPreset[]>(() => {
@@ -104,15 +103,6 @@ export function ProjectDetail() {
       // Source filter
       if (sourceFilter.length > 0 && !sourceFilter.includes(vuln.source)) {
         return false
-      }
-
-      // Patch availability filter
-      if (patchAvailabilityFilter.length > 0) {
-        // If patchInfo is missing, treat as 'not-specified'
-        const patchStatus = vuln.patchInfo?.patchAvailability || 'not-specified'
-        if (!patchAvailabilityFilter.includes(patchStatus)) {
-          return false
-        }
       }
 
       // Reference tag filter
@@ -158,14 +148,6 @@ export function ProjectDetail() {
       setSourceFilter(filters.source)
     }
 
-    if (filters.hasPatch !== undefined) {
-      if (filters.hasPatch) {
-        setPatchAvailabilityFilter(['available', 'partial'])
-      } else {
-        setPatchAvailabilityFilter(['none'])
-      }
-    }
-
     toast.success('Preset Loaded', `Filter preset "${preset.name}" has been applied.`)
   }
 
@@ -189,10 +171,6 @@ export function ProjectDetail() {
 
     if (sourceFilter.length > 0) {
       filters.source = sourceFilter as Vulnerability['source'][]
-    }
-
-    if (patchAvailabilityFilter.length > 0) {
-      filters.hasPatch = patchAvailabilityFilter.includes('available') || patchAvailabilityFilter.includes('partial')
     }
 
     return filters
@@ -264,7 +242,7 @@ export function ProjectDetail() {
         <header className="border-b border-border bg-background px-6 py-4">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               className="text-muted-foreground hover:text-foreground"
               aria-label="back"
             >
@@ -280,7 +258,7 @@ export function ProjectDetail() {
               <h3 className="text-lg font-medium">Project not found</h3>
               <p className="text-muted-foreground">The project you're looking for doesn't exist</p>
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/dashboard')}
                 className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Back to Dashboard
@@ -295,7 +273,7 @@ export function ProjectDetail() {
   const handleDeleteProject = () => {
     if (confirm(`Are you sure you want to delete "${project.name}"?`)) {
       deleteProject(project.id)
-      navigate('/')
+      navigate('/dashboard')
     }
   }
 
@@ -1001,19 +979,6 @@ export function ProjectDetail() {
                       onChange={setSourceFilter}
                     />
                     <MultiSelectFilter
-                      label="Patch Availability"
-                      options={[
-                        { value: 'available', label: 'Fix Available' },
-                        { value: 'partial', label: 'Partial Fix' },
-                        { value: 'upstream', label: 'Fix Upstream' },
-                        { value: 'investigating', label: 'Investigating' },
-                        { value: 'none', label: 'No Fix Available' },
-                        { value: 'not-specified', label: 'Not Specified' },
-                      ]}
-                      selected={patchAvailabilityFilter}
-                      onChange={setPatchAvailabilityFilter}
-                    />
-                    <MultiSelectFilter
                       label="Reference Tags"
                       options={[
                         { value: 'exploit', label: 'Exploit' },
@@ -1030,7 +995,6 @@ export function ProjectDetail() {
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">
                       {(sourceFilter.length > 0 ||
-                        patchAvailabilityFilter.length > 0 ||
                         referenceTagFilter.length > 0 ||
                         cvssRange[0] !== 0 ||
                         cvssRange[1] !== 10) && <span>Advanced filters active</span>}
@@ -1039,7 +1003,6 @@ export function ProjectDetail() {
                       onClick={() => {
                         setCvssRange([0, 10])
                         setSourceFilter([])
-                        setPatchAvailabilityFilter([])
                         setReferenceTagFilter([])
                       }}
                       className="text-sm text-primary hover:underline"
@@ -1115,7 +1078,6 @@ export function ProjectDetail() {
                               setSeverityFilter('all')
                               setCvssRange([0, 10])
                               setSourceFilter([])
-                              setPatchAvailabilityFilter([])
                               setReferenceTagFilter([])
                             }}
                             className="mt-2 text-sm text-primary hover:underline"
@@ -1453,7 +1415,7 @@ export function ProjectDetail() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               className="text-muted-foreground hover:text-foreground"
               aria-label="back"
             >

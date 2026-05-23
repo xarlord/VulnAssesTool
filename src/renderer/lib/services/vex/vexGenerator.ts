@@ -269,9 +269,9 @@ export class VexGenerator {
       metadata: {
         timestamp: new Date().toISOString(),
         tool: {
-          name: 'VulnAssesTool',
+          name: 'D-Fence',
           version: '2.0.0',
-          vendor: 'VulnAssesTool',
+          vendor: 'D-Fence',
         },
         author: this.options.author || {
           name: 'FPF System',

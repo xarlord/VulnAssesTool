@@ -88,7 +88,7 @@ router.post('/search', async (req, res) => {
 
       case 'cpe':
         results = database.searchCVEsByCPE(sanitizedQuery, validatedRequest.limit || 100, validatedRequest.offset || 0)
-        total = database.getTotalCVECount()
+        total = results.length
         break
 
       case 'text': {
@@ -103,11 +103,25 @@ router.post('/search', async (req, res) => {
           })
           return
         }
-        results = database.searchCVEsByText(
-          escapeLikePattern(sanitizedQuery),
-          validatedRequest.limit || 100,
-          validatedRequest.offset || 0,
-        )
+
+        const rawDb = database.getRawDb()
+        const limit = validatedRequest.limit || 100
+        const offset = validatedRequest.offset || 0
+
+        if (rawDb) {
+          const ftsTable = rawDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get()
+          if (ftsTable) {
+            const ftsIds = searchCVEsFTS(rawDb, sanitizedQuery, limit, offset)
+            const batchDetails = database.getCVEsByIds(ftsIds.map((r) => r.id))
+            results = ftsIds
+              .map((f) => batchDetails.get(f.id))
+              .filter((r): r is NonNullable<typeof r> => r !== undefined)
+            total = results.length < limit ? offset + results.length : offset + limit + 1
+            break
+          }
+        }
+
+        results = database.searchCVEsByText(escapeLikePattern(sanitizedQuery), limit, offset)
         total = database.getTotalCVECount()
         break
       }
@@ -595,14 +609,13 @@ router.post('/sync/auto', async (req, res) => {
     if (database) {
       const db = database.getRawDb()
       if (db) {
-        db.exec(
+        db.prepare(
           `
           UPDATE sync_status
           SET auto_sync_enabled = ?, auto_sync_interval_hours = ?
           WHERE source = 'NVD'
         `,
-          [enabled ? 1 : 0, intervalHours],
-        )
+        ).run(enabled ? 1 : 0, intervalHours)
       }
     }
     res.json({ success: true })
@@ -731,11 +744,11 @@ router.post('/reset', async (_req, res) => {
     }
     const db = database.getRawDb()
     if (db) {
-      db.run('DELETE FROM "references"')
-      db.run('DELETE FROM cpe_matches')
-      db.run('DELETE FROM cves')
-      db.run('DELETE FROM cwe_references')
-      db.run('DELETE FROM cvss_metrics')
+      db.exec('DELETE FROM "references"')
+      db.exec('DELETE FROM cpe_matches')
+      db.exec('DELETE FROM cves')
+      db.exec('DELETE FROM cwe_references')
+      db.exec('DELETE FROM cvss_metrics')
     }
     res.json({ success: true })
   } catch (error) {
@@ -756,10 +769,10 @@ router.post('/rebuild', async (_req, res) => {
     const db = database.getRawDb()
     if (db) {
       try {
-        const tableCheck = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'")
+        const ftsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get()
 
-        if (tableCheck.length === 0 || tableCheck[0].values.length === 0) {
-          db.run(`
+        if (!ftsTable) {
+          db.exec(`
             CREATE VIRTUAL TABLE IF NOT EXISTS cves_fts USING fts5(
               id,
               description,
@@ -770,8 +783,8 @@ router.post('/rebuild', async (_req, res) => {
           console.log('Created FTS5 table: cves_fts')
         }
 
-        db.run('DELETE FROM cves_fts')
-        db.run(`
+        db.exec('DELETE FROM cves_fts')
+        db.exec(`
           INSERT INTO cves_fts(rowid, id, description)
           SELECT rowid, id, description FROM cves
         `)
@@ -802,8 +815,8 @@ router.post('/fts/search', async (req, res) => {
       return
     }
 
-    const tableCheck = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'")
-    if (tableCheck.length === 0 || tableCheck[0].values.length === 0) {
+    const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get()
+    if (!tableCheck) {
       res.json({ success: false, error: 'FTS index not available' })
       return
     }

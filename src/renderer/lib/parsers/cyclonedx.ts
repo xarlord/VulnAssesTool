@@ -287,6 +287,16 @@ function extractComponentsFromXml(bom: CycloneDXBom, components: Component[] = [
 }
 
 /**
+ * Sanitize version string — normalize separators to dots.
+ * Converts formats like "2/9/05" → "2.9.05", "2-9-05" → "2.9.05".
+ * Preserves semantic versioning patterns (e.g., "1.0.0-beta").
+ */
+function sanitizeVersion(version: string): string {
+  if (!version || version === 'unknown') return version
+  return version.replace(/[/\\]/g, '.').replace(/\.{2,}/g, '.')
+}
+
+/**
  * Generate a unique ID for a component
  */
 function generateComponentId(name: string, version: string, parentId?: string): string {
@@ -302,7 +312,8 @@ function generateComponentId(name: string, version: string, parentId?: string): 
  */
 function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: string): Component {
   const name = comp.name || 'unknown'
-  const version = comp.version || 'unknown'
+  const rawVersion = comp.version || 'unknown'
+  const version = sanitizeVersion(rawVersion)
 
   // Use PURL as ID if available, otherwise generate from name/version
   // This ensures vulnerability references (which use PURLs) match component IDs
@@ -334,7 +345,8 @@ function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: st
  */
 function mapXmlComponentToComponent(comp: CycloneDXComponent, parentId?: string): Component {
   const name = comp.name || 'unknown'
-  const version = comp.version || 'unknown'
+  const rawVersion = comp.version || 'unknown'
+  const version = sanitizeVersion(rawVersion)
 
   // Use PURL as ID if available, otherwise generate from name/version
   // This ensures vulnerability references (which use PURLs) match component IDs

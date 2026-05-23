@@ -7,7 +7,9 @@
  * @module EpssService
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * EPSS score data
@@ -64,13 +66,13 @@ const DEFAULT_CONFIG: EpssServiceConfig = {
  * Uses on-demand fetching with 24-hour cache TTL.
  */
 export class EpssService {
-  private db: Database
+  private db: BetterDb
   private config: EpssServiceConfig
   private requestQueue: Array<() => Promise<void>> = []
   private isProcessingQueue = false
   private lastRequestTime = 0
 
-  constructor(db: Database, config: Partial<EpssServiceConfig> = {}) {
+  constructor(db: BetterDb, config: Partial<EpssServiceConfig> = {}) {
     this.db = db
     this.config = { ...DEFAULT_CONFIG, ...config }
   }
@@ -138,9 +140,9 @@ export class EpssService {
    */
   async refreshEpssScore(cveId: string): Promise<EpssScore | null> {
     // Clear cached entry
-    this.db.run('UPDATE cves SET epss_score = NULL, epss_percentile = NULL, epss_updated_at = NULL WHERE id = ?', [
-      cveId,
-    ])
+    this.db
+      .prepare('UPDATE cves SET epss_score = NULL, epss_percentile = NULL, epss_updated_at = NULL WHERE id = ?')
+      .run(cveId)
 
     // Fetch fresh
     return this.getEpssScore(cveId)
@@ -154,25 +156,27 @@ export class EpssService {
     cutoffDate.setHours(cutoffDate.getHours() - this.config.cacheTtlHours)
     const cutoffIso = cutoffDate.toISOString()
 
-    const result = this.db.exec(
-      `
-      SELECT COUNT(*) FROM cves
+    const countRow = this.db
+      .prepare(
+        `
+      SELECT COUNT(*) as cnt FROM cves
       WHERE epss_updated_at IS NOT NULL AND epss_updated_at < ?
     `,
-      [cutoffIso],
-    )
+      )
+      .get(cutoffIso) as { cnt: number } | undefined
 
-    const expiredCount = result.length > 0 ? (result[0].values[0][0] as number) : 0
+    const expiredCount = countRow?.cnt ?? 0
 
     if (expiredCount > 0) {
-      this.db.run(
-        `
+      this.db
+        .prepare(
+          `
         UPDATE cves
         SET epss_score = NULL, epss_percentile = NULL, epss_updated_at = NULL
         WHERE epss_updated_at IS NOT NULL AND epss_updated_at < ?
       `,
-        [cutoffIso],
-      )
+        )
+        .run(cutoffIso)
 
       console.log(`[EpssService] Cleaned up ${expiredCount} expired cache entries`)
     }
@@ -184,31 +188,29 @@ export class EpssService {
    * Get cached score if available and not expired
    */
   private getCachedScore(cveId: string): EpssScore | null {
-    const result = this.db.exec(
-      `
+    const row = this.db
+      .prepare(
+        `
       SELECT epss_score, epss_percentile, epss_updated_at
       FROM cves
       WHERE id = ?
     `,
-      [cveId],
-    )
+      )
+      .get(cveId) as
+      | { epss_score: number | null; epss_percentile: number | null; epss_updated_at: string | null }
+      | undefined
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (!row) {
       return null
     }
 
-    const row = result[0].values[0]
-    const score = row[0] as number | null
-    const percentile = row[1] as number | null
-    const updatedAt = row[2] as string | null
-
     // Check if cached data exists
-    if (score === null || percentile === null || !updatedAt) {
+    if (row.epss_score === null || row.epss_percentile === null || !row.epss_updated_at) {
       return null
     }
 
     // Check cache TTL
-    const cachedTime = new Date(updatedAt)
+    const cachedTime = new Date(row.epss_updated_at)
     const ttlMs = this.config.cacheTtlHours * 60 * 60 * 1000
     const isExpired = Date.now() - cachedTime.getTime() > ttlMs
 
@@ -218,8 +220,8 @@ export class EpssService {
 
     return {
       cveId,
-      score,
-      percentile,
+      score: row.epss_score,
+      percentile: row.epss_percentile,
       fetchedAt: cachedTime,
     }
   }
@@ -228,14 +230,15 @@ export class EpssService {
    * Store score in cache
    */
   private cacheScore(score: EpssScore): void {
-    this.db.run(
-      `
+    this.db
+      .prepare(
+        `
       UPDATE cves
       SET epss_score = ?, epss_percentile = ?, epss_updated_at = ?
       WHERE id = ?
     `,
-      [score.score, score.percentile, score.fetchedAt.toISOString(), score.cveId],
-    )
+      )
+      .run(score.score, score.percentile, score.fetchedAt.toISOString(), score.cveId)
   }
 
   /**
@@ -349,24 +352,27 @@ export class EpssService {
    * Get EPSS statistics
    */
   getStats(): { cachedCount: number; avgScore: number; avgPercentile: number } {
-    const result = this.db.exec(`
+    const row = this.db
+      .prepare(
+        `
       SELECT
-        COUNT(*) as count,
+        COUNT(*) as cached_count,
         AVG(epss_score) as avg_score,
         AVG(epss_percentile) as avg_percentile
       FROM cves
       WHERE epss_score IS NOT NULL
-    `)
+    `,
+      )
+      .get() as { cached_count: number; avg_score: number | null; avg_percentile: number | null } | undefined
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (!row) {
       return { cachedCount: 0, avgScore: 0, avgPercentile: 0 }
     }
 
-    const row = result[0].values[0]
     return {
-      cachedCount: row[0] as number,
-      avgScore: (row[1] as number) || 0,
-      avgPercentile: (row[2] as number) || 0,
+      cachedCount: row.cached_count,
+      avgScore: row.avg_score || 0,
+      avgPercentile: row.avg_percentile || 0,
     }
   }
 }
@@ -377,7 +383,7 @@ let epssServiceInstance: EpssService | null = null
 /**
  * Get or create EpssService singleton
  */
-export function getEpssService(db?: Database): EpssService {
+export function getEpssService(db?: BetterDb): EpssService {
   if (!epssServiceInstance && db) {
     epssServiceInstance = new EpssService(db)
   }

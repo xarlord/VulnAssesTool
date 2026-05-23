@@ -56,17 +56,29 @@ interface CredentialStore {
   [key: string]: string
 }
 
-function loadCredentialStore(): CredentialStore {
-  const filePath = config.CREDENTIALS_PATH
-  if (!filePath) return {}
+let cachedStore: CredentialStore | null = null
 
-  if (!existsSync(filePath)) return {}
+function loadCredentialStore(): CredentialStore {
+  if (cachedStore !== null) return cachedStore
+
+  const filePath = config.CREDENTIALS_PATH
+  if (!filePath) {
+    cachedStore = {}
+    return cachedStore
+  }
+
+  if (!existsSync(filePath)) {
+    cachedStore = {}
+    return cachedStore
+  }
 
   try {
     const content = readFileSync(filePath, 'utf-8')
-    return JSON.parse(content)
+    cachedStore = JSON.parse(content)
+    return cachedStore
   } catch {
-    return {}
+    cachedStore = {}
+    return cachedStore
   }
 }
 
@@ -80,6 +92,7 @@ function saveCredentialStore(store: CredentialStore): void {
   }
 
   writeFileSync(filePath, JSON.stringify(store, null, 2), 'utf-8')
+  cachedStore = store
 }
 
 function tryImportExportedKeys(): void {
@@ -212,5 +225,6 @@ export async function migratePlaintextKeys(): Promise<{
 }
 
 export function initializeStorage(): void {
+  loadCredentialStore()
   tryImportExportedKeys()
 }

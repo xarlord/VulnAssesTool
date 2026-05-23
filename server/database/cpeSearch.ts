@@ -4,10 +4,12 @@
  * Used for software identification and vulnerability matching
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import { escapeLikePattern, sanitizeSqlInput } from './sqlSanitizer.js'
 import type { CacheManager } from '../services/CacheManager.js'
 import { getCacheManager } from '../services/CacheManager.js'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * Result from a CPE search
@@ -61,15 +63,15 @@ const CACHE_NAMESPACE = 'cpe-search'
  * CPESearch class for searching CPE data in the database
  */
 export class CPESearch {
-  private db: Database
+  private db: BetterDb
   private cacheManager: CacheManager | null = null
 
   /**
    * Create a new CPESearch instance
-   * @param db - The sql.js Database instance
+   * @param db - The Database instance
    * @param options - Optional configuration including cache manager
    */
-  constructor(db: Database, options?: { cacheManager?: CacheManager }) {
+  constructor(db: BetterDb, options?: { cacheManager?: CacheManager }) {
     if (!db) {
       throw new Error('Database instance is required')
     }
@@ -192,9 +194,9 @@ export class CPESearch {
       LIMIT ?
     `
 
-    const results = this.db.exec(query, [pattern, actualLimit])
+    const results = this.db.prepare(query).all(pattern, actualLimit) as Array<{ cpe23_uri: string; vulnerable: number }>
 
-    return this.parseSearchResults(results)
+    return this.parseSearchResultsFromObjects(results)
   }
 
   /**
@@ -232,9 +234,12 @@ export class CPESearch {
       LIMIT ?
     `
 
-    const results = this.db.exec(query, [...likePatterns, actualLimit])
+    const results = this.db.prepare(query).all(...likePatterns, actualLimit) as Array<{
+      cpe23_uri: string
+      vulnerable: number
+    }>
 
-    return this.parseSearchResults(results)
+    return this.parseSearchResultsFromObjects(results)
   }
 
   /**
@@ -289,16 +294,14 @@ export class CPESearch {
       ORDER BY cpe23_uri
     `
 
-    const results = this.db.exec(query)
+    const results = this.db.prepare(query).all() as Array<{ cpe23_uri: string }>
     const products = new Set<string>()
 
-    if (results.length > 0 && results[0].values) {
-      for (const row of results[0].values) {
-        const uri = row[0] as string
-        const parsed = this.parseCPE23Uri(uri)
-        if (parsed && parsed.product) {
-          products.add(parsed.product)
-        }
+    for (const row of results) {
+      const uri = row.cpe23_uri
+      const parsed = this.parseCPE23Uri(uri)
+      if (parsed && parsed.product) {
+        products.add(parsed.product)
       }
     }
 
@@ -331,16 +334,14 @@ export class CPESearch {
       ORDER BY cpe23_uri
     `
 
-    const results = this.db.exec(query, [pattern])
+    const results = this.db.prepare(query).all(pattern) as Array<{ cpe23_uri: string }>
     const vendors = new Set<string>()
 
-    if (results.length > 0 && results[0].values) {
-      for (const row of results[0].values) {
-        const uri = row[0] as string
-        const parsed = this.parseCPE23Uri(uri)
-        if (parsed && parsed.vendor) {
-          vendors.add(parsed.vendor)
-        }
+    for (const row of results) {
+      const uri = row.cpe23_uri
+      const parsed = this.parseCPE23Uri(uri)
+      if (parsed && parsed.vendor) {
+        vendors.add(parsed.vendor)
       }
     }
 
@@ -349,19 +350,15 @@ export class CPESearch {
 
   /**
    * Parse database results into CPESearchResult array
-   * @param results - Raw database results
+   * @param results - Raw database result objects
    * @returns Array of CPESearchResult
    */
-  private parseSearchResults(results: Array<{ values: Array<Array<unknown>> }>): CPESearchResult[] {
+  private parseSearchResultsFromObjects(results: Array<{ cpe23_uri: string; vulnerable: number }>): CPESearchResult[] {
     const searchResults: CPESearchResult[] = []
 
-    if (results.length === 0 || !results[0].values) {
-      return searchResults
-    }
-
-    for (const row of results[0].values) {
-      const uri = row[0] as string
-      const vulnerable = row[1] === 1
+    for (const row of results) {
+      const uri = row.cpe23_uri
+      const vulnerable = row.vulnerable === 1
 
       const parsed = this.parseCPE23Uri(uri)
       if (parsed) {
@@ -399,9 +396,9 @@ export class CPESearch {
 
 /**
  * Create a CPESearch instance
- * @param db - The sql.js Database instance
+ * @param db - The Database instance
  * @returns CPESearch instance
  */
-export function createCPESearch(db: Database): CPESearch {
+export function createCPESearch(db: BetterDb): CPESearch {
   return new CPESearch(db)
 }

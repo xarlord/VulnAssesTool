@@ -3,8 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   DbSeedingService,
   createDbSeedingService,
@@ -18,33 +17,26 @@ import { runMigrations } from './migrations/v2SchemaMigration.js'
 import * as fs from 'node:fs'
 import { EventEmitter } from 'node:events'
 
-let db: Database
-let sqlJs: unknown
+let db: InstanceType<typeof Database>
 const testDbPath = '/tmp/test-nvd-seed.db'
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  const database = new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  const database = new Database(':memory:')
 
-  // Create metadata table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS metadata (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
   `)
 
-  // Create schema migrations table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     )
   `)
 
-  // Apply all migrations
   runMigrations(database, 0)
 
   return database
@@ -54,29 +46,31 @@ async function createTestDatabase(): Promise<Database> {
 vi.mock('./nvd/nvdApiV2Client.js', () => ({
   createNvdApiV2Client: vi.fn().mockImplementation(() => ({
     setApiKey: vi.fn(),
-    fetchYear: vi.fn().mockImplementation(async ({ year, onProgress }: any) => {
-      // Simulate progress
-      if (onProgress) {
-        onProgress({
-          phase: 'complete',
-          startIndex: 0,
-          totalResults: 10,
-          resultsPerPage: 2000,
-          percentage: 100,
-          cvesDownloaded: 10,
-          elapsedTimeMs: 100,
-          estimatedTimeRemainingMs: 0,
-        })
-      }
+    fetchYear: vi
+      .fn()
+      .mockImplementation(async ({ year, onProgress }: { year: number; onProgress?: (p: unknown) => void }) => {
+        // Simulate progress
+        if (onProgress) {
+          onProgress({
+            phase: 'complete',
+            startIndex: 0,
+            totalResults: 10,
+            resultsPerPage: 2000,
+            percentage: 100,
+            cvesDownloaded: 10,
+            elapsedTimeMs: 100,
+            estimatedTimeRemainingMs: 0,
+          })
+        }
 
-      return {
-        cves: [],
-        totalResults: 0,
-        truncated: false,
-        durationMs: 100,
-        fromCache: false,
-      }
-    }),
+        return {
+          cves: [],
+          totalResults: 0,
+          truncated: false,
+          durationMs: 100,
+          fromCache: false,
+        }
+      }),
     cancel: vi.fn(),
     getRateLimiterStatus: vi.fn().mockReturnValue({ queueSize: 0, timeUntilNextRequest: 0 }),
     setConcurrency: vi.fn(),
@@ -170,8 +164,8 @@ beforeEach(() => {
 describe('DbSeedingService', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -187,8 +181,8 @@ describe('DbSeedingService', () => {
       expect(seedingService).toBeInstanceOf(DbSeedingService)
     })
 
-    it('should create seeding service with API key', async () => {
-      const testDb = await createTestDatabase()
+    it('should create seeding service with API key', () => {
+      const testDb = createTestDatabase()
       const service = createDbSeedingService(testDb, testDbPath, 'test-api-key')
       expect(service).toBeInstanceOf(DbSeedingService)
       testDb.close()
@@ -207,14 +201,15 @@ describe('DbSeedingService', () => {
 
     it('should detect has_seed state after seeding', async () => {
       // Add some CVEs to simulate seeded state
-      db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
-              VALUES ('CVE-2024-00001', 'Test', '2024-01-01', '2024-01-01', 'NVD')`)
+      db.prepare(
+        `INSERT INTO cves (id, description, published_at, modified_at, source)
+              VALUES (?, 'Test', '2024-01-01', '2024-01-01', 'NVD')`,
+      ).run('CVE-2024-00001')
 
-      // Record seed metadata
-      db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_version', '2.0.0-20250224')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '1')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_version', '2.0.0-20250224')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '1')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
 
       const result = seedingService.checkFirstRun()
 
@@ -225,18 +220,16 @@ describe('DbSeedingService', () => {
     it('should detect has_full_data for complete database', async () => {
       // Add many CVEs to simulate full database (>200K)
       for (let i = 0; i < 100; i++) {
-        db.run(
+        db.prepare(
           `INSERT INTO cves (id, description, published_at, modified_at, source)
                 VALUES (?, 'Test', '2020-01-01', '2020-01-01', 'NVD')`,
-          [`CVE-2020-${i.toString().padStart(5, '0')}`],
-        )
+        ).run(`CVE-2020-${i.toString().padStart(5, '0')}`)
       }
 
-      // Update metadata to show seed data with matching seed version
-      db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_version', '2.0.0-20250224')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '250000')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_version', '2.0.0-20250224')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '250000')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
 
       // Create new service to refresh state
       const newService = createDbSeedingService(db, testDbPath)
@@ -268,7 +261,7 @@ describe('DbSeedingService', () => {
 
     it('should return state after setting', () => {
       // Set background sync state
-      db.run(`INSERT INTO metadata (key, value) VALUES (?, ?)`, [
+      db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(
         'background_sync_state',
         JSON.stringify({
           status: 'syncing',
@@ -276,7 +269,7 @@ describe('DbSeedingService', () => {
           yearsCompleted: [2023, 2022],
           yearsRemaining: [2021, 2020],
         }),
-      ])
+      )
 
       const state = seedingService.getBackgroundSyncState()
 
@@ -293,27 +286,27 @@ describe('DbSeedingService', () => {
     })
 
     it('should return true when sync is in progress', () => {
-      db.run(`INSERT INTO metadata (key, value) VALUES (?, ?)`, [
+      db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(
         'background_sync_state',
         JSON.stringify({
           status: 'syncing',
           yearsCompleted: [],
           yearsRemaining: [2023, 2022],
         }),
-      ])
+      )
 
       expect(seedingService.isBackgroundSyncInProgress()).toBe(true)
     })
 
     it('should return false when sync is complete', () => {
-      db.run(`INSERT INTO metadata (key, value) VALUES (?, ?)`, [
+      db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(
         'background_sync_state',
         JSON.stringify({
           status: 'complete',
           yearsCompleted: [2023, 2022],
           yearsRemaining: [],
         }),
-      ])
+      )
 
       expect(seedingService.isBackgroundSyncInProgress()).toBe(false)
     })
@@ -335,10 +328,10 @@ describe('DbSeedingService', () => {
   describe('startSeeding', () => {
     it('should skip seeding if already seeded', async () => {
       // Add existing seed data
-      db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '50000')`)
-      db.run(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
-      db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '50000')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
+      db.exec(`INSERT INTO cves (id, description, published_at, modified_at, source)
               VALUES ('CVE-2024-00001', 'Test', '2024-01-01', '2024-01-01', 'NVD')`)
 
       // Create new service to refresh state
@@ -392,15 +385,15 @@ describe('DbSeedingService', () => {
 })
 
 describe('createDbSeedingService', () => {
-  it('should create seeding service instance', async () => {
-    const testDb = await createTestDatabase()
+  it('should create seeding service instance', () => {
+    const testDb = createTestDatabase()
     const service = createDbSeedingService(testDb, testDbPath)
     expect(service).toBeInstanceOf(DbSeedingService)
     testDb.close()
   })
 
-  it('should create seeding service with API key', async () => {
-    const testDb = await createTestDatabase()
+  it('should create seeding service with API key', () => {
+    const testDb = createTestDatabase()
     const service = createDbSeedingService(testDb, testDbPath, 'test-key')
     expect(service).toBeInstanceOf(DbSeedingService)
     testDb.close()
@@ -431,8 +424,8 @@ describe('copyBundledSeed', () => {
 describe('SeedingProgress', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -477,8 +470,8 @@ describe('SeedingProgress', () => {
 describe('FirstRunCheckResult', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -507,10 +500,10 @@ describe('FirstRunCheckResult', () => {
 
   it('should detect update needed', () => {
     // Set an old seed version
-    db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '1.0.0-20200101')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '1000')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2020-01-01')`)
-    db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '1.0.0-20200101')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '1000')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2020-01-01')`)
+    db.exec(`INSERT INTO cves (id, description, published_at, modified_at, source)
             VALUES ('CVE-2020-00001', 'Test', '2020-01-01', '2020-01-01', 'NVD')`)
 
     const newService = createDbSeedingService(db, testDbPath)
@@ -527,8 +520,8 @@ describe('FirstRunCheckResult', () => {
 describe('checkFirstRun - has_full_data state', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -540,24 +533,24 @@ describe('checkFirstRun - has_full_data state', () => {
 
   it('should detect has_full_data when database has sufficient CVEs', async () => {
     // Set up a seeded database with matching seed version
-    db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_version', '2.0.0-20250224')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '250000')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_version', '2.0.0-20250224')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '250000')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
 
     // Insert enough CVEs to satisfy totalCves >= 200000 (needsHistoricalSync check)
     // Use batch insert for speed
     for (let batch = 0; batch < 200; batch++) {
-      db.run('BEGIN TRANSACTION')
+      const insertStmt = db.prepare(
+        `INSERT INTO cves (id, description, published_at, modified_at, source)
+         VALUES (?, 'Test', '2020-01-01', '2020-01-01', 'NVD')`,
+      )
+      db.exec('BEGIN TRANSACTION')
       for (let i = 0; i < 1000; i++) {
         const id = `CVE-2020-${(batch * 1000 + i).toString().padStart(7, '0')}`
-        db.run(
-          `INSERT INTO cves (id, description, published_at, modified_at, source)
-           VALUES (?, 'Test', '2020-01-01', '2020-01-01', 'NVD')`,
-          [id],
-        )
+        insertStmt.run(id)
       }
-      db.run('COMMIT')
+      db.exec('COMMIT')
     }
 
     const newService = createDbSeedingService(db, testDbPath)
@@ -573,8 +566,8 @@ describe('checkFirstRun - has_full_data state', () => {
 describe('checkFirstRun - incompatible state', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -586,13 +579,12 @@ describe('checkFirstRun - incompatible state', () => {
 
   it('should detect incompatible state when schema version is invalid', () => {
     // Add data so it's not a pure first run
-    db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
+    db.exec(`INSERT INTO cves (id, description, published_at, modified_at, source)
             VALUES ('CVE-2024-00001', 'Test', '2024-01-01', '2024-01-01', 'NVD')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '1')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '1')`)
 
-    // Force incompatible schema version using INSERT OR REPLACE
-    db.run(`INSERT INTO metadata (key, value) VALUES ('schema_version', '-1')
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('schema_version', '-1')
             ON CONFLICT(key) DO UPDATE SET value = '-1'`)
 
     const newService = createDbSeedingService(db, testDbPath)
@@ -673,8 +665,8 @@ describe('copyBundledSeed - with seed present', () => {
 describe('startSeeding - background sync triggered', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -687,7 +679,7 @@ describe('startSeeding - background sync triggered', () => {
 
   it('should start background sync after import when data exists', async () => {
     // Pre-insert a CVE so hasSeed=true and needsHistoricalSync=true after import
-    db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
+    db.exec(`INSERT INTO cves (id, description, published_at, modified_at, source)
             VALUES ('CVE-2024-00001', 'Test', '2024-01-01', '2024-01-01', 'NVD')`)
 
     const result = await seedingService.startSeeding()
@@ -699,10 +691,10 @@ describe('startSeeding - background sync triggered', () => {
 
   it('should start background sync for already-seeded database needing historical data', async () => {
     // Set up a seeded database that still needs historical sync
-    db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '500')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
-    db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '500')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
+    db.exec(`INSERT INTO cves (id, description, published_at, modified_at, source)
             VALUES ('CVE-2024-00001', 'Test', '2024-01-01', '2024-01-01', 'NVD')`)
 
     const newService = createDbSeedingService(db, testDbPath)
@@ -715,7 +707,7 @@ describe('startSeeding - background sync triggered', () => {
 
 describe('startSeeding - error handling', () => {
   it('should handle errors during seeding with non-abort error', async () => {
-    const localDb = await createTestDatabase()
+    const localDb = createTestDatabase()
     // Close the database to cause errors during import
     localDb.close()
 
@@ -727,7 +719,7 @@ describe('startSeeding - error handling', () => {
   })
 
   it('should set error progress on failure', async () => {
-    const localDb = await createTestDatabase()
+    const localDb = createTestDatabase()
     localDb.close()
 
     const service = createDbSeedingService(localDb, testDbPath)
@@ -742,8 +734,8 @@ describe('startSeeding - error handling', () => {
 describe('startSeeding - abort error in catch block', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -757,11 +749,10 @@ describe('startSeeding - abort error in catch block', () => {
   it('should set Cancelled error progress when signal is aborted during error', async () => {
     const controller = new AbortController()
 
-    // Set up a seeded database that will pass checkFirstRun but cause an error later
-    db.run(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '500')`)
-    db.run(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
-    db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '500')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
+    db.exec(`INSERT INTO cves (id, description, published_at, modified_at, source)
             VALUES ('CVE-2024-00001', 'Test', '2024-01-01', '2024-01-01', 'NVD')`)
 
     // Use forceDownload to trigger the download path, then abort
@@ -790,8 +781,8 @@ describe('startSeeding - abort error in catch block', () => {
 describe('downloadPrebuiltDatabase - cleanup on extraction failure', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -870,8 +861,8 @@ describe('downloadPrebuiltDatabase - cleanup on extraction failure', () => {
 describe('downloadFile - progress with time estimation', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 
@@ -945,8 +936,8 @@ describe('downloadFile - progress with time estimation', () => {
 describe('startSeeding - download paths', () => {
   let seedingService: DbSeedingService
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     seedingService = createDbSeedingService(db, testDbPath)
   })
 

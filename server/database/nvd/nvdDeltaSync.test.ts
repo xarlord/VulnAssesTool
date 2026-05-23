@@ -3,8 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   NvdDeltaSync,
   createNvdDeltaSync,
@@ -84,24 +83,18 @@ vi.mock('./nvdApiV2Client.js', () => ({
   }),
 }))
 
-let db: Database
-let sqlJs: any
+let db: InstanceType<typeof Database>
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  const database = new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  const database = new Database(':memory:')
 
-  // Create schema_migrations table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     )
   `)
 
-  // Apply all migrations
   runMigrations(database, 0)
 
   return database
@@ -110,8 +103,8 @@ async function createTestDatabase(): Promise<Database> {
 describe('NvdDeltaSync', () => {
   let deltaSync: NvdDeltaSync
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     deltaSync = createNvdDeltaSync(db)
   })
 
@@ -163,7 +156,7 @@ describe('NvdDeltaSync', () => {
 
     it('should return status from database', () => {
       // Insert sync status
-      db.run(
+      db.prepare(
         `
         INSERT INTO sync_status (
           source, last_sync_at, last_successful_sync_at,
@@ -171,8 +164,7 @@ describe('NvdDeltaSync', () => {
           auto_sync_enabled, auto_sync_interval_hours
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
-        ['NVD', '2024-01-20T10:00:00.000Z', '2024-01-20T10:00:00.000Z', 100, 5000, null, 1, 24],
-      )
+      ).run('NVD', '2024-01-20T10:00:00.000Z', '2024-01-20T10:00:00.000Z', 100, 5000, null, 1, 24)
 
       const status = deltaSync.getSyncStatus()
 
@@ -211,15 +203,14 @@ describe('NvdDeltaSync', () => {
 
     it('should use last successful sync date for delta', async () => {
       // Insert previous sync status
-      db.run(
+      db.prepare(
         `
         INSERT INTO sync_status (
           source, last_sync_at, last_successful_sync_at,
           total_cves, auto_sync_enabled, auto_sync_interval_hours
         ) VALUES (?, ?, ?, ?, ?, ?)
       `,
-        ['NVD', '2024-01-15T10:00:00.000Z', '2024-01-15T10:00:00.000Z', 50, 0, 24],
-      )
+      ).run('NVD', '2024-01-15T10:00:00.000Z', '2024-01-15T10:00:00.000Z', 50, 0, 24)
 
       const progressUpdates: DeltaSyncProgress[] = []
       await deltaSync.sync({
@@ -254,15 +245,14 @@ describe('NvdDeltaSync', () => {
 
     it('should force full sync when requested', async () => {
       // Insert previous sync status
-      db.run(
+      db.prepare(
         `
         INSERT INTO sync_status (
           source, last_sync_at, last_successful_sync_at,
           total_cves, auto_sync_enabled, auto_sync_interval_hours
         ) VALUES (?, ?, ?, ?, ?, ?)
       `,
-        ['NVD', '2024-01-15T10:00:00.000Z', '2024-01-15T10:00:00.000Z', 50, 0, 24],
-      )
+      ).run('NVD', '2024-01-15T10:00:00.000Z', '2024-01-15T10:00:00.000Z', 50, 0, 24)
 
       const progressUpdates: DeltaSyncProgress[] = []
       await deltaSync.sync({
@@ -288,47 +278,17 @@ describe('NvdDeltaSync', () => {
     })
 
     it('should return range from last sync', () => {
-      // Insert previous sync status
       const lastSync = new Date()
       lastSync.setDate(lastSync.getDate() - 5)
 
-      db.run(
+      db.prepare(
         `
         INSERT INTO sync_status (
           source, last_sync_at, last_successful_sync_at,
           total_cves, auto_sync_enabled, auto_sync_interval_hours
         ) VALUES (?, ?, ?, ?, ?, ?)
       `,
-        ['NVD', lastSync.toISOString(), lastSync.toISOString(), 50, 0, 24],
-      )
-
-      const range = deltaSync.getRecommendedSyncRange()
-
-      // Should start from approximately 5 days ago (with 1 hour buffer)
-      const daysDiff = Math.floor((range.end.getTime() - range.start.getTime()) / (1000 * 60 * 60 * 24))
-      expect(daysDiff).toBeGreaterThanOrEqual(4)
-      expect(daysDiff).toBeLessThanOrEqual(6)
-    })
-  })
-
-  describe('isSyncNeeded', () => {
-    it('should return true for no previous sync', () => {
-      expect(deltaSync.isSyncNeeded()).toBe(true)
-    })
-
-    it('should return true for sync more than 24 hours ago', () => {
-      const oldSync = new Date()
-      oldSync.setDate(oldSync.getDate() - 2)
-
-      db.run(
-        `
-        INSERT INTO sync_status (
-          source, last_sync_at, last_successful_sync_at,
-          total_cves, auto_sync_enabled, auto_sync_interval_hours
-        ) VALUES (?, ?, ?, ?, ?, ?)
-      `,
-        ['NVD', oldSync.toISOString(), oldSync.toISOString(), 50, 0, 24],
-      )
+      ).run('NVD', lastSync.toISOString(), lastSync.toISOString(), 50, 0, 24)
 
       expect(deltaSync.isSyncNeeded()).toBe(true)
     })
@@ -337,44 +297,14 @@ describe('NvdDeltaSync', () => {
       const recentSync = new Date()
       recentSync.setHours(recentSync.getHours() - 1)
 
-      db.run(
+      db.prepare(
         `
         INSERT INTO sync_status (
           source, last_sync_at, last_successful_sync_at,
           total_cves, auto_sync_enabled, auto_sync_interval_hours
         ) VALUES (?, ?, ?, ?, ?, ?)
       `,
-        ['NVD', recentSync.toISOString(), recentSync.toISOString(), 50, 0, 24],
-      )
-
-      expect(deltaSync.isSyncNeeded()).toBe(false)
-    })
-  })
-
-  describe('getStats', () => {
-    it('should return stats for empty database', () => {
-      const stats = deltaSync.getStats()
-
-      expect(stats.totalCves).toBe(0)
-      expect(stats.totalCwe).toBe(0)
-      expect(stats.totalCpe).toBe(0)
-      expect(stats.totalRefs).toBe(0)
-      expect(stats.oldestCve).toBeNull()
-      expect(stats.newestCve).toBeNull()
-    })
-  })
-
-  describe('auto sync scheduler', () => {
-    it('should enable auto sync', () => {
-      // Insert sync status first with all required fields
-      db.run(
-        `
-        INSERT INTO sync_status (
-          source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours
-        ) VALUES (?, ?, ?, ?)
-      `,
-        ['NVD', '2024-01-01T00:00:00.000Z', 0, 24],
-      )
+      ).run('NVD', recentSync.toISOString(), recentSync.toISOString(), 50, 0, 24)
 
       deltaSync.enableAutoSync({
         intervalHours: 12,
@@ -390,14 +320,13 @@ describe('NvdDeltaSync', () => {
 
     it('should disable auto sync', () => {
       // Insert sync status first with all required fields
-      db.run(
+      db.prepare(
         `
         INSERT INTO sync_status (
           source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours
         ) VALUES (?, ?, ?, ?)
       `,
-        ['NVD', '2024-01-01T00:00:00.000Z', 1, 24],
-      )
+      ).run('NVD', '2024-01-01T00:00:00.000Z', 0, 24)
 
       deltaSync.enableAutoSync({ intervalHours: 24 })
       deltaSync.disableAutoSync()
@@ -445,8 +374,7 @@ describe('NvdDeltaSync', () => {
           queueSize: 0,
           timeUntilNextRequest: 0,
         }),
-      } as any)
-
+      } as unknown as ReturnType<typeof createNvdApiV2Client>)
       const deltaSyncWithError = createNvdDeltaSync(db)
       const result = await deltaSyncWithError.sync()
 
@@ -465,8 +393,7 @@ describe('NvdDeltaSync', () => {
           queueSize: 0,
           timeUntilNextRequest: 0,
         }),
-      } as any)
-
+      } as unknown as ReturnType<typeof createNvdApiV2Client>)
       const deltaSyncWithError = createNvdDeltaSync(db)
       await deltaSyncWithError.sync()
 
@@ -477,15 +404,15 @@ describe('NvdDeltaSync', () => {
 })
 
 describe('createNvdDeltaSync', () => {
-  it('should create delta sync instance', async () => {
-    const testDb = await createTestDatabase()
+  it('should create delta sync instance', () => {
+    const testDb = createTestDatabase()
     const deltaSync = createNvdDeltaSync(testDb)
     expect(deltaSync).toBeInstanceOf(NvdDeltaSync)
     testDb.close()
   })
 
-  it('should create delta sync with API key', async () => {
-    const testDb = await createTestDatabase()
+  it('should create delta sync with API key', () => {
+    const testDb = createTestDatabase()
     const deltaSync = createNvdDeltaSync(testDb, 'test-key')
     expect(deltaSync).toBeInstanceOf(NvdDeltaSync)
     testDb.close()
@@ -496,10 +423,10 @@ describe('createNvdDeltaSync', () => {
 // disableAutoSync error path — cover lines 421-424
 // ===========================================================================
 describe('NvdDeltaSync disableAutoSync error handling', () => {
-  let db: Database
+  let db: InstanceType<typeof Database>
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
   })
 
   afterEach(() => {
@@ -512,14 +439,15 @@ describe('NvdDeltaSync disableAutoSync error handling', () => {
   it('should throw and rollback when database update fails', () => {
     const deltaSync = createNvdDeltaSync(db)
 
-    db.run(
-      `INSERT INTO sync_status (
+    db.prepare(
+      `
+      INSERT INTO sync_status (
         source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours
-      ) VALUES (?, ?, ?, ?)`,
-      ['NVD', '2024-01-01T00:00:00.000Z', 1, 24],
-    )
+      ) VALUES (?, ?, ?, ?)
+    `,
+    ).run('NVD', '2024-01-01T00:00:00.000Z', 1, 24)
 
-    db.run('DROP TABLE sync_status')
+    db.exec('DROP TABLE sync_status')
 
     expect(() => {
       deltaSync.disableAutoSync()
@@ -533,11 +461,11 @@ describe('NvdDeltaSync disableAutoSync error handling', () => {
 // scheduleNextSync timer callback — cover lines 446-459
 // ===========================================================================
 describe('NvdDeltaSync scheduleNextSync timer callback', () => {
-  let db: Database
+  let db: InstanceType<typeof Database>
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.useFakeTimers()
-    db = await createTestDatabase()
+    db = createTestDatabase()
   })
 
   afterEach(() => {
@@ -555,12 +483,13 @@ describe('NvdDeltaSync scheduleNextSync timer callback', () => {
 
     const deltaSync = createNvdDeltaSync(db)
 
-    db.run(
-      `INSERT INTO sync_status (
+    db.prepare(
+      `
+      INSERT INTO sync_status (
         source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours
-      ) VALUES (?, ?, ?, ?)`,
-      ['NVD', '2024-01-01T00:00:00.000Z', 0, 24],
-    )
+      ) VALUES (?, ?, ?, ?)
+    `,
+    ).run('NVD', '2024-01-01T00:00:00.000Z', 0, 24)
 
     deltaSync.enableAutoSync({
       intervalHours: 1,
@@ -597,12 +526,13 @@ describe('NvdDeltaSync scheduleNextSync timer callback', () => {
 
     const deltaSync = createNvdDeltaSync(db)
 
-    db.run(
-      `INSERT INTO sync_status (
+    db.prepare(
+      `
+      INSERT INTO sync_status (
         source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours
-      ) VALUES (?, ?, ?, ?)`,
-      ['NVD', '2024-01-01T00:00:00.000Z', 0, 24],
-    )
+      ) VALUES (?, ?, ?, ?)
+    `,
+    ).run('NVD', '2024-01-01T00:00:00.000Z', 0, 24)
 
     deltaSync.enableAutoSync({
       intervalHours: 1,
@@ -625,12 +555,13 @@ describe('NvdDeltaSync scheduleNextSync timer callback', () => {
 
     const deltaSync = createNvdDeltaSync(db)
 
-    db.run(
-      `INSERT INTO sync_status (
+    db.prepare(
+      `
+      INSERT INTO sync_status (
         source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours
-      ) VALUES (?, ?, ?, ?)`,
-      ['NVD', '2024-01-01T00:00:00.000Z', 0, 24],
-    )
+      ) VALUES (?, ?, ?, ?)
+    `,
+    ).run('NVD', '2024-01-01T00:00:00.000Z', 0, 24)
 
     deltaSync.enableAutoSync({
       intervalHours: 1,

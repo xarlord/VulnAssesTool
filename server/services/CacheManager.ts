@@ -12,7 +12,9 @@
  * - Automatic cleanup of expired entries
  */
 
-import type { Database as DatabaseType } from 'sql.js'
+import Database from 'better-sqlite3'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * Cache configuration options
@@ -73,7 +75,7 @@ export interface CacheStats {
  */
 export class CacheManager {
   private static instance: CacheManager | null = null
-  private db: DatabaseType | null = null
+  private db: BetterDb | null = null
   private config: CacheConfig
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
   private stats = {
@@ -105,7 +107,7 @@ export class CacheManager {
   /**
    * Initialize the cache manager with a database instance
    */
-  public async initialize(db: DatabaseType): Promise<void> {
+  public async initialize(db: BetterDb): Promise<void> {
     this.db = db
     this.createTables()
 
@@ -123,7 +125,7 @@ export class CacheManager {
   private createTables(): void {
     if (!this.db) return
 
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS cache_entries (
         key TEXT NOT NULL,
         value TEXT NOT NULL,
@@ -136,19 +138,19 @@ export class CacheManager {
     `)
 
     // Create index on last_accessed_at for LRU queries
-    this.db.run(`
+    this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_cache_last_accessed
       ON cache_entries(last_accessed_at)
     `)
 
     // Create index on namespace for namespace-based operations
-    this.db.run(`
+    this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_cache_namespace
       ON cache_entries(namespace)
     `)
 
     // Create index on created_at for TTL cleanup
-    this.db.run(`
+    this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_cache_created_at
       ON cache_entries(created_at)
     `)
@@ -163,20 +165,17 @@ export class CacheManager {
     }
 
     const now = Date.now()
-    const result = this.db.exec(`SELECT value, created_at FROM cache_entries WHERE key = ? AND namespace = ?`, [
-      key,
-      namespace,
-    ])
+    const row = this.db
+      .prepare('SELECT value, created_at FROM cache_entries WHERE key = ? AND namespace = ?')
+      .get(key, namespace) as { value: string; created_at: number } | undefined
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (!row) {
       this.stats.misses++
       return null
     }
 
-    const [valueJson, createdAt] = result[0].values[0] as [string, number]
-
     // Check TTL
-    if (now - createdAt > this.config.ttlMs) {
+    if (now - row.created_at > this.config.ttlMs) {
       // Entry has expired, delete it
       this.delete(key, namespace)
       this.stats.misses++
@@ -184,12 +183,14 @@ export class CacheManager {
     }
 
     // Update last accessed time
-    this.db.run(`UPDATE cache_entries SET last_accessed_at = ? WHERE key = ? AND namespace = ?`, [now, key, namespace])
+    this.db
+      .prepare('UPDATE cache_entries SET last_accessed_at = ? WHERE key = ? AND namespace = ?')
+      .run(now, key, namespace)
 
     this.stats.hits++
 
     try {
-      return JSON.parse(valueJson) as T
+      return JSON.parse(row.value) as T
     } catch {
       console.error('[CacheManager] Failed to parse cached value for key:', key)
       return null
@@ -206,18 +207,18 @@ export class CacheManager {
 
     const now = Date.now()
     const valueJson = JSON.stringify(value)
-    const size = new Blob([valueJson]).size
-
-    // Check if we need to evict entries to make room
-    this.evictIfNeeded(size)
+    const size = Buffer.byteLength(valueJson, 'utf-8')
 
     try {
-      this.db.run(
-        `INSERT OR REPLACE INTO cache_entries
-         (key, value, created_at, last_accessed_at, size, namespace)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [key, valueJson, now, now, size, namespace],
-      )
+      this.evictIfNeeded(size)
+
+      this.db
+        .prepare(
+          `INSERT OR REPLACE INTO cache_entries
+           (key, value, created_at, last_accessed_at, size, namespace)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(key, valueJson, now, now, size, namespace)
       return true
     } catch (error) {
       console.error('[CacheManager] Failed to set cache entry:', error)
@@ -232,7 +233,7 @@ export class CacheManager {
     if (!this.db) return false
 
     try {
-      this.db.run(`DELETE FROM cache_entries WHERE key = ? AND namespace = ?`, [key, namespace])
+      this.db.prepare('DELETE FROM cache_entries WHERE key = ? AND namespace = ?').run(key, namespace)
       return true
     } catch (error) {
       console.error('[CacheManager] Failed to delete cache entry:', error)
@@ -248,14 +249,18 @@ export class CacheManager {
 
     try {
       if (namespace) {
-        const result = this.db.exec(`SELECT COUNT(*) FROM cache_entries WHERE namespace = ?`, [namespace])
-        const count = result.length > 0 ? (result[0].values[0][0] as number) : 0
-        this.db.run(`DELETE FROM cache_entries WHERE namespace = ?`, [namespace])
+        const countRow = this.db
+          .prepare('SELECT COUNT(*) as cnt FROM cache_entries WHERE namespace = ?')
+          .get(namespace) as { cnt: number } | undefined
+        const count = countRow?.cnt ?? 0
+        this.db.prepare('DELETE FROM cache_entries WHERE namespace = ?').run(namespace)
         return count
       } else {
-        const result = this.db.exec(`SELECT COUNT(*) FROM cache_entries`)
-        const count = result.length > 0 ? (result[0].values[0][0] as number) : 0
-        this.db.run(`DELETE FROM cache_entries`)
+        const countRow = this.db.prepare('SELECT COUNT(*) as cnt FROM cache_entries').get() as
+          | { cnt: number }
+          | undefined
+        const count = countRow?.cnt ?? 0
+        this.db.exec('DELETE FROM cache_entries')
         return count
       }
     } catch (error) {
@@ -273,19 +278,16 @@ export class CacheManager {
     }
 
     const now = Date.now()
-    const result = this.db.exec(`SELECT created_at FROM cache_entries WHERE key = ? AND namespace = ?`, [
-      key,
-      namespace,
-    ])
+    const row = this.db
+      .prepare('SELECT created_at FROM cache_entries WHERE key = ? AND namespace = ?')
+      .get(key, namespace) as { created_at: number } | undefined
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (!row) {
       return false
     }
 
-    const createdAt = result[0].values[0][0] as number
-
     // Check TTL
-    return now - createdAt <= this.config.ttlMs
+    return now - row.created_at <= this.config.ttlMs
   }
 
   /**
@@ -302,17 +304,18 @@ export class CacheManager {
     }
 
     if (this.db) {
-      const countResult = this.db.exec(
-        `SELECT COUNT(*), COALESCE(SUM(size), 0), MIN(created_at), MAX(created_at)
-         FROM cache_entries`,
-      )
+      const countRow = this.db
+        .prepare(
+          `SELECT COUNT(*) as cnt, COALESCE(SUM(size), 0) as total_size, MIN(created_at) as oldest, MAX(created_at) as newest
+           FROM cache_entries`,
+        )
+        .get() as { cnt: number; total_size: number; oldest: number | null; newest: number | null } | undefined
 
-      if (countResult.length > 0 && countResult[0].values.length > 0) {
-        const [count, size, oldest, newest] = countResult[0].values[0] as [number, number, number | null, number | null]
-        stats.entryCount = count
-        stats.sizeBytes = size
-        stats.oldestEntry = oldest ?? undefined
-        stats.newestEntry = newest ?? undefined
+      if (countRow) {
+        stats.entryCount = countRow.cnt
+        stats.sizeBytes = countRow.total_size
+        stats.oldestEntry = countRow.oldest ?? undefined
+        stats.newestEntry = countRow.newest ?? undefined
       }
     }
 
@@ -353,28 +356,31 @@ export class CacheManager {
     if (!this.db) return
 
     const maxSizeBytes = this.config.maxSizeMB * 1024 * 1024
-    const result = this.db.exec(`SELECT COALESCE(SUM(size), 0) FROM cache_entries`)
-    const currentSize = result.length > 0 ? (result[0].values[0][0] as number) : 0
+    const sizeRow = this.db.prepare('SELECT COALESCE(SUM(size), 0) as total FROM cache_entries').get() as
+      | { total: number }
+      | undefined
+    const currentSize = sizeRow?.total ?? 0
 
     // If adding the new entry would exceed the limit, evict oldest entries
     let sizeToFree = currentSize + newEntrySize - maxSizeBytes
 
     while (sizeToFree > 0) {
       // Get the least recently used entry
-      const lruResult = this.db.exec(
-        `SELECT key, namespace, size FROM cache_entries
-         ORDER BY last_accessed_at ASC LIMIT 1`,
-      )
+      const lruRow = this.db
+        .prepare(
+          `SELECT key, namespace, size FROM cache_entries
+           ORDER BY last_accessed_at ASC LIMIT 1`,
+        )
+        .get() as { key: string; namespace: string; size: number } | undefined
 
-      if (lruResult.length === 0 || lruResult[0].values.length === 0) {
+      if (!lruRow) {
         break
       }
 
-      const [key, namespace, size] = lruResult[0].values[0] as [string, string, number]
-      this.db.run(`DELETE FROM cache_entries WHERE key = ? AND namespace = ?`, [key, namespace])
+      this.db.prepare('DELETE FROM cache_entries WHERE key = ? AND namespace = ?').run(lruRow.key, lruRow.namespace)
 
-      sizeToFree -= size
-      console.log(`[CacheManager] Evicted LRU entry: ${key} (freed ${size} bytes)`)
+      sizeToFree -= lruRow.size
+      console.log(`[CacheManager] Evicted LRU entry: ${lruRow.key} (freed ${lruRow.size} bytes)`)
     }
   }
 
@@ -388,10 +394,12 @@ export class CacheManager {
     const cutoffTime = now - this.config.ttlMs
 
     try {
-      const countResult = this.db.exec(`SELECT COUNT(*) FROM cache_entries WHERE created_at < ?`, [cutoffTime])
-      const count = countResult.length > 0 ? (countResult[0].values[0][0] as number) : 0
+      const countRow = this.db
+        .prepare('SELECT COUNT(*) as cnt FROM cache_entries WHERE created_at < ?')
+        .get(cutoffTime) as { cnt: number } | undefined
+      const count = countRow?.cnt ?? 0
 
-      this.db.run(`DELETE FROM cache_entries WHERE created_at < ?`, [cutoffTime])
+      this.db.prepare('DELETE FROM cache_entries WHERE created_at < ?').run(cutoffTime)
 
       if (count > 0) {
         console.log(`[CacheManager] Cleaned up ${count} expired entries`)
@@ -444,13 +452,11 @@ export class CacheManager {
   public getKeys(namespace: string = 'default'): string[] {
     if (!this.db) return []
 
-    const result = this.db.exec(`SELECT key FROM cache_entries WHERE namespace = ?`, [namespace])
+    const rows = this.db.prepare('SELECT key FROM cache_entries WHERE namespace = ?').all(namespace) as Array<{
+      key: string
+    }>
 
-    if (result.length === 0 || result[0].values.length === 0) {
-      return []
-    }
-
-    return result[0].values.map((row) => row[0] as string)
+    return rows.map((row) => row.key)
   }
 
   /**
@@ -459,17 +465,16 @@ export class CacheManager {
   public getNamespaceStats(): Record<string, { count: number; sizeBytes: number }> {
     if (!this.db) return {}
 
-    const result = this.db.exec(`SELECT namespace, COUNT(*), SUM(size) FROM cache_entries GROUP BY namespace`)
+    const rows = this.db
+      .prepare('SELECT namespace, COUNT(*) as cnt, SUM(size) as total_size FROM cache_entries GROUP BY namespace')
+      .all() as Array<{ namespace: string; cnt: number; total_size: number | null }>
 
     const stats: Record<string, { count: number; sizeBytes: number }> = {}
 
-    if (result.length > 0) {
-      for (const row of result[0].values) {
-        const [namespace, count, size] = row as [string, number, number]
-        stats[namespace] = {
-          count,
-          sizeBytes: size || 0,
-        }
+    for (const row of rows) {
+      stats[row.namespace] = {
+        count: row.cnt,
+        sizeBytes: row.total_size || 0,
       }
     }
 
@@ -502,10 +507,7 @@ export const getCacheManager = (config?: Partial<CacheConfig>): CacheManager => 
 }
 
 // Export initialization helper
-export const initializeCacheManager = async (
-  db: DatabaseType,
-  config?: Partial<CacheConfig>,
-): Promise<CacheManager> => {
+export const initializeCacheManager = async (db: BetterDb, config?: Partial<CacheConfig>): Promise<CacheManager> => {
   const manager = CacheManager.getInstance(config)
   await manager.initialize(db)
   return manager

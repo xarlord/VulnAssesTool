@@ -3,7 +3,7 @@ import { X, Upload, FileText, AlertCircle, CheckCircle, Loader2 } from 'lucide-r
 import { useCurrentProject, useStore } from '@/store/useStore'
 import { parseCycloneDX } from '@/lib/parsers/cyclonedx'
 import { parseSpdx } from '@/lib/parsers/spdx'
-import { estimateCpesForComponents } from '@/lib/services/cpeEstimationPipeline'
+import { estimateCpesForComponents, createCpeDatabaseSearchFn } from '@/lib/services/cpeEstimationPipeline'
 import type { SbomFile, Component, Vulnerability } from '@@/types'
 import type { AmbiguousComponent } from '@/lib/generators/excelParser'
 import { CPEMatchDialog } from './CPEMatchDialog'
@@ -147,7 +147,9 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
 
       // Run CPE estimation for components missing CPEs
       setStep('estimating-cpe')
-      const cpeResult = await estimateCpesForComponents(result.components)
+      const cpeResult = await estimateCpesForComponents(result.components, {
+        externalSearchFn: createCpeDatabaseSearchFn(),
+      })
 
       // Store estimation stats for display
       setCpeEstimationStats({

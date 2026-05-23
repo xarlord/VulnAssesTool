@@ -8,9 +8,11 @@
  * - Provides scheduling for automatic daily sync
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import { NvdApiV2Client, createNvdApiV2Client, type NvdCveV2 } from './nvdApiV2Client.js'
 import { NvdDataImporter, createNvdDataImporter } from './nvdDataImporter.js'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * Sync status information
@@ -83,7 +85,7 @@ export interface SchedulerOptions {
  * NVD Delta Sync Manager
  */
 export class NvdDeltaSync {
-  private db: Database
+  private db: BetterDb
   private apiClient: NvdApiV2Client
   private importer: NvdDataImporter
   private progress: DeltaSyncProgress
@@ -91,7 +93,7 @@ export class NvdDeltaSync {
   private schedulerTimer: ReturnType<typeof setTimeout> | null = null
   private schedulerOptions: SchedulerOptions | null = null
 
-  constructor(db: Database, apiKey?: string) {
+  constructor(db: BetterDb, apiKey?: string) {
     this.db = db
     this.apiClient = createNvdApiV2Client(apiKey)
     this.importer = createNvdDataImporter(db)
@@ -129,7 +131,9 @@ export class NvdDeltaSync {
    * Get sync status from database
    */
   getSyncStatus(): SyncStatus {
-    const result = this.db.exec(`
+    const row = this.db
+      .prepare(
+        `
       SELECT
         last_sync_at,
         last_successful_sync_at,
@@ -143,7 +147,20 @@ export class NvdDeltaSync {
       WHERE source = 'NVD'
       ORDER BY id DESC
       LIMIT 1
-    `)
+    `,
+      )
+      .get() as
+      | {
+          last_sync_at: string | null
+          last_successful_sync_at: string | null
+          total_cves: number
+          sync_duration_ms: number | null
+          last_error: string | null
+          next_scheduled_sync: string | null
+          auto_sync_enabled: number
+          auto_sync_interval_hours: number
+        }
+      | undefined
 
     const defaultStatus: SyncStatus = {
       lastSyncAt: null,
@@ -156,20 +173,19 @@ export class NvdDeltaSync {
       autoSyncIntervalHours: 24,
     }
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (!row) {
       return defaultStatus
     }
 
-    const row = result[0].values[0]
     return {
-      lastSyncAt: row[0] as string | null,
-      lastSuccessfulSyncAt: row[1] as string | null,
-      totalCves: row[2] as number,
-      syncDurationMs: row[3] as number | null,
-      lastError: row[4] as string | null,
-      nextScheduledSync: row[5] as string | null,
-      autoSyncEnabled: row[6] === 1,
-      autoSyncIntervalHours: row[7] as number,
+      lastSyncAt: row.last_sync_at,
+      lastSuccessfulSyncAt: row.last_successful_sync_at,
+      totalCves: row.total_cves,
+      syncDurationMs: row.sync_duration_ms,
+      lastError: row.last_error,
+      nextScheduledSync: row.next_scheduled_sync,
+      autoSyncEnabled: row.auto_sync_enabled === 1,
+      autoSyncIntervalHours: row.auto_sync_interval_hours,
     }
   }
 
@@ -323,15 +339,18 @@ export class NvdDeltaSync {
     const now = result.syncedAt
     const totalCves = this.importer.getStats().totalCves
 
-    this.db.run('BEGIN TRANSACTION')
+    this.db.exec('BEGIN TRANSACTION')
     try {
       // Check if sync_status entry exists
-      const existing = this.db.exec("SELECT id FROM sync_status WHERE source = 'NVD'")
+      const existing = this.db.prepare("SELECT id FROM sync_status WHERE source = 'NVD'").get() as
+        | { id: number }
+        | undefined
 
-      if (existing.length > 0 && existing[0].values.length > 0) {
+      if (existing) {
         // Update existing
-        this.db.run(
-          `
+        this.db
+          .prepare(
+            `
           UPDATE sync_status SET
             last_sync_at = ?,
             last_successful_sync_at = ?,
@@ -340,12 +359,13 @@ export class NvdDeltaSync {
             last_error = ?
           WHERE source = 'NVD'
         `,
-          [now, isError ? null : now, totalCves, result.durationMs, isError ? result.errors.join('; ') : null],
-        )
+          )
+          .run(now, isError ? null : now, totalCves, result.durationMs, isError ? result.errors.join('; ') : null)
       } else {
         // Insert new
-        this.db.run(
-          `
+        this.db
+          .prepare(
+            `
           INSERT INTO sync_status (
             source,
             last_sync_at,
@@ -357,12 +377,19 @@ export class NvdDeltaSync {
             auto_sync_interval_hours
           ) VALUES (?, ?, ?, ?, ?, ?, 0, 24)
         `,
-          ['NVD', now, isError ? null : now, totalCves, result.durationMs, isError ? result.errors.join('; ') : null],
-        )
+          )
+          .run(
+            'NVD',
+            now,
+            isError ? null : now,
+            totalCves,
+            result.durationMs,
+            isError ? result.errors.join('; ') : null,
+          )
       }
-      this.db.run('COMMIT')
+      this.db.exec('COMMIT')
     } catch (error) {
-      this.db.run('ROLLBACK')
+      this.db.exec('ROLLBACK')
       throw error
     }
   }
@@ -376,20 +403,21 @@ export class NvdDeltaSync {
     this.schedulerOptions = options
 
     // Update database in transaction
-    this.db.run('BEGIN TRANSACTION')
+    this.db.exec('BEGIN TRANSACTION')
     try {
-      this.db.run(
-        `
+      this.db
+        .prepare(
+          `
         UPDATE sync_status SET
           auto_sync_enabled = 1,
           auto_sync_interval_hours = ?
         WHERE source = 'NVD'
       `,
-        [options.intervalHours],
-      )
-      this.db.run('COMMIT')
+        )
+        .run(options.intervalHours)
+      this.db.exec('COMMIT')
     } catch (error) {
-      this.db.run('ROLLBACK')
+      this.db.exec('ROLLBACK')
       throw error
     }
 
@@ -409,17 +437,17 @@ export class NvdDeltaSync {
     this.schedulerOptions = null
 
     // Update database in transaction
-    this.db.run('BEGIN TRANSACTION')
+    this.db.exec('BEGIN TRANSACTION')
     try {
-      this.db.run(`
+      this.db.exec(`
         UPDATE sync_status SET
           auto_sync_enabled = 0,
           next_scheduled_sync = NULL
         WHERE source = 'NVD'
       `)
-      this.db.run('COMMIT')
+      this.db.exec('COMMIT')
     } catch (error) {
-      this.db.run('ROLLBACK')
+      this.db.exec('ROLLBACK')
       throw error
     }
   }
@@ -434,14 +462,15 @@ export class NvdDeltaSync {
     const nextSync = new Date(Date.now() + intervalMs)
 
     // Update next scheduled time in database
-    this.db.run(
-      `
+    this.db
+      .prepare(
+        `
       UPDATE sync_status SET
         next_scheduled_sync = ?
       WHERE source = 'NVD'
     `,
-      [nextSync.toISOString()],
-    )
+      )
+      .run(nextSync.toISOString())
 
     this.schedulerTimer = setTimeout(async () => {
       if (!this.schedulerOptions) return
@@ -509,13 +538,13 @@ export class NvdDeltaSync {
   } {
     const importerStats = this.importer.getStats()
 
-    const oldestResult = this.db.exec('SELECT MIN(published_at) FROM cves')
-    const newestResult = this.db.exec('SELECT MAX(published_at) FROM cves')
+    const oldestRow = this.db.prepare('SELECT MIN(published_at) as pub FROM cves').get() as { pub: string | null }
+    const newestRow = this.db.prepare('SELECT MAX(published_at) as pub FROM cves').get() as { pub: string | null }
 
     return {
       ...importerStats,
-      oldestCve: oldestResult[0]?.values[0]?.[0] as string | null,
-      newestCve: newestResult[0]?.values[0]?.[0] as string | null,
+      oldestCve: oldestRow?.pub ?? null,
+      newestCve: newestRow?.pub ?? null,
     }
   }
 
@@ -531,6 +560,6 @@ export class NvdDeltaSync {
 /**
  * Create a delta sync manager
  */
-export function createNvdDeltaSync(db: Database, apiKey?: string): NvdDeltaSync {
+export function createNvdDeltaSync(db: BetterDb, apiKey?: string): NvdDeltaSync {
   return new NvdDeltaSync(db, apiKey)
 }

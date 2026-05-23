@@ -52,6 +52,10 @@ export function getServerToken(): string {
   return serverToken
 }
 
+export function initAuth(): void {
+  getServerToken()
+}
+
 const SKIP_AUTH_PATHS = ['/api/health', '/api/handshake']
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {

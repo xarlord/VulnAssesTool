@@ -570,7 +570,7 @@ export class ContainerScanner {
         timestamp: new Date().toISOString(),
         tools: [
           {
-            vendor: 'VulnAssesTool',
+            vendor: 'D-Fence',
             name: 'ContainerScanner',
             version: '1.0.0',
           },

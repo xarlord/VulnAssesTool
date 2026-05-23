@@ -50,7 +50,7 @@ export function MenuActionListener() {
           break
 
         case 'navigate-dashboard':
-          navigate('/')
+          navigate('/dashboard')
           break
 
         case 'toggle-sidebar':

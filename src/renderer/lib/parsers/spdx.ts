@@ -164,7 +164,8 @@ function generateComponentId(name: string, version: string): string {
  */
 function mapSpdxPackageToComponent(pkg: SpdxJsonPackage): Component {
   const name = pkg.name || 'unknown'
-  const version = pkg.versionInfo || 'unknown'
+  const rawVersion = pkg.versionInfo || 'unknown'
+  const version = rawVersion === 'unknown' ? rawVersion : rawVersion.replace(/[/\\]/g, '.').replace(/\.{2,}/g, '.')
   const id = generateComponentId(name, version)
 
   // Extract licenses

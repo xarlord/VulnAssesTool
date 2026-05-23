@@ -3,8 +3,9 @@
  * Adds FTS5 virtual table for fast text search on CVE descriptions
  */
 
-import type { Database } from 'sql.js'
-import { rowsToObjects } from './queryUtils.js'
+import Database from 'better-sqlite3'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * Run FTS5 migration on the database
@@ -16,20 +17,22 @@ import { rowsToObjects } from './queryUtils.js'
  *
  * @param db The SQLite database instance
  */
-export async function runFTSMigration(db: Database): Promise<void> {
+export async function runFTSMigration(db: BetterDb): Promise<void> {
   console.log('[FTS Migration] Starting FTS5 migration...')
 
   // Check if migration already ran
-  const checkResult = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'")
+  const checkResult = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get() as
+    | { name: string }
+    | undefined
 
-  if (checkResult.length > 0) {
+  if (checkResult) {
     console.log('[FTS Migration] FTS5 table already exists, skipping migration')
     return
   }
 
   try {
     // Create FTS5 virtual table for CVE descriptions
-    db.run(`
+    db.exec(`
       CREATE VIRTUAL TABLE cves_fts USING fts5(
         id,
         description,
@@ -41,19 +44,23 @@ export async function runFTSMigration(db: Database): Promise<void> {
     console.log('[FTS Migration] Created FTS5 virtual table')
 
     // Create indexes for FTS table
-    db.run('CREATE INDEX IF NOT EXISTS idx_cves_fts_id ON cves_fts(id)')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cves_fts_id ON cves_fts(id)')
 
     // Populate FTS table with existing data
-    const populateResult = db.exec(`
+    const populateResult = db
+      .prepare(
+        `
       INSERT INTO cves_fts(rowid, id, description)
       SELECT rowid, id, description FROM cves WHERE description IS NOT NULL
-    `)
+    `,
+      )
+      .run()
 
-    console.log(`[FTS Migration] Populated FTS5 table with ${populateResult.length} rows`)
+    console.log(`[FTS Migration] Populated FTS5 table with ${populateResult.changes} rows`)
 
     // Create triggers to keep FTS table in sync
     // Trigger for INSERT
-    db.run(`
+    db.exec(`
       CREATE TRIGGER IF NOT EXISTS cves_fts_insert AFTER INSERT ON cves
       BEGIN
         INSERT INTO cves_fts(rowid, id, description)
@@ -62,7 +69,7 @@ export async function runFTSMigration(db: Database): Promise<void> {
     `)
 
     // Trigger for UPDATE
-    db.run(`
+    db.exec(`
       CREATE TRIGGER IF NOT EXISTS cves_fts_update AFTER UPDATE ON cves
       BEGIN
         UPDATE cves_fts
@@ -72,7 +79,7 @@ export async function runFTSMigration(db: Database): Promise<void> {
     `)
 
     // Trigger for DELETE
-    db.run(`
+    db.exec(`
       CREATE TRIGGER IF NOT EXISTS cves_fts_delete AFTER DELETE ON cves
       BEGIN
         DELETE FROM cves_fts WHERE rowid = OLD.rowid;
@@ -104,14 +111,15 @@ export async function runFTSMigration(db: Database): Promise<void> {
  * @returns Array of CVE IDs matching the query
  */
 export function searchCVEsFTS(
-  db: Database,
+  db: BetterDb,
   query: string,
   limit = 100,
   offset = 0,
 ): Array<{ id: string; rank: number }> {
   // Use FTS5 search with BM25 ranking
-  const results = db.exec(
-    `
+  const results = db
+    .prepare(
+      `
     SELECT
       c.id,
       c.description,
@@ -128,19 +136,16 @@ export function searchCVEsFTS(
     ORDER BY search_rank
     LIMIT ? OFFSET ?
   `,
-    [query, limit, offset],
-  )
+    )
+    .all(query, limit, offset) as Array<{ id: string; search_rank: number }>
 
   const cves: Array<{ id: string; rank: number }> = []
 
-  if (results.length > 0) {
-    const rows = rowsToObjects(results[0].columns, results[0].values)
-    for (const cve of rows) {
-      cves.push({
-        id: cve.id as string,
-        rank: cve.search_rank as number,
-      })
-    }
+  for (const cve of results) {
+    cves.push({
+      id: cve.id,
+      rank: cve.search_rank,
+    })
   }
 
   return cves
@@ -152,9 +157,11 @@ export function searchCVEsFTS(
  * @param db The SQLite database instance
  * @returns true if FTS5 table exists
  */
-export function isFTSAvailable(db: Database): boolean {
-  const result = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'")
-  return result.length > 0
+export function isFTSAvailable(db: BetterDb): boolean {
+  const result = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get() as
+    | { name: string }
+    | undefined
+  return result !== undefined
 }
 
 /**
@@ -163,16 +170,15 @@ export function isFTSAvailable(db: Database): boolean {
  * @param db The SQLite database instance
  * @returns Statistics about the FTS5 index
  */
-export function getFTSStats(db: Database): {
+export function getFTSStats(db: BetterDb): {
   indexedCount: number
   totalCount: number
 } {
-  const totalResult = db.exec('SELECT COUNT(*) as count FROM cves')
-  const ftsResult = db.exec('SELECT COUNT(*) as count FROM cves_fts')
+  const totalRow = db.prepare('SELECT COUNT(*) as count FROM cves').get() as { count: number } | undefined
+  const ftsRow = db.prepare('SELECT COUNT(*) as count FROM cves_fts').get() as { count: number } | undefined
 
-  const total = totalResult.length > 0 && totalResult[0].values.length > 0 ? (totalResult[0].values[0][0] as number) : 0
-
-  const indexed = ftsResult.length > 0 && ftsResult[0].values.length > 0 ? (ftsResult[0].values[0][0] as number) : 0
+  const total = totalRow?.count ?? 0
+  const indexed = ftsRow?.count ?? 0
 
   return {
     indexedCount: indexed,

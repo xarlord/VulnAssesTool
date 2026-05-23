@@ -513,9 +513,9 @@ describe('VexGenerator', () => {
       const events = [createMockAuditEvent()]
       const result = generator.generateFromAuditEvents(events, context)
 
-      expect(result.document.metadata.tool.name).toBe('VulnAssesTool')
+      expect(result.document.metadata.tool.name).toBe('D-Fence')
       expect(result.document.metadata.tool.version).toBe('2.0.0')
-      expect(result.document.metadata.tool.vendor).toBe('VulnAssesTool')
+      expect(result.document.metadata.tool.vendor).toBe('D-Fence')
     })
 
     it('should generate unique serial numbers', () => {
@@ -1123,7 +1123,7 @@ describe('VexGenerator Coverage Gap Tests', () => {
     const parsed = JSON.parse(json) as VexDocument
 
     expect(parsed.statements).toHaveLength(0)
-    expect(parsed.metadata.tool.name).toBe('VulnAssesTool')
+    expect(parsed.metadata.tool.name).toBe('D-Fence')
   })
 
   it('should generate document with custom lifecycle from convenience function', () => {

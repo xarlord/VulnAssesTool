@@ -7,9 +7,11 @@
  * @module KevService
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import * as fs from 'fs'
 import * as path from 'path'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * KEV catalog entry from CISA
@@ -90,13 +92,13 @@ const DEFAULT_CONFIG: KevServiceConfig = {
  * Implements hybrid approach: bundled baseline for offline use, daily sync for updates.
  */
 export class KevService {
-  private db: Database
+  private db: BetterDb
   private config: KevServiceConfig
   private kevCache: Set<string> | null = null
   private lastSyncTime: Date | null = null
   private syncTimer: NodeJS.Timeout | null = null
 
-  constructor(db: Database, config: Partial<KevServiceConfig> = {}) {
+  constructor(db: BetterDb, config: Partial<KevServiceConfig> = {}) {
     this.db = db
     this.config = { ...DEFAULT_CONFIG, ...config }
   }
@@ -197,20 +199,22 @@ export class KevService {
     let imported = 0
 
     // Use transaction for bulk insert
-    this.db.run('BEGIN TRANSACTION')
+    this.db.exec('BEGIN TRANSACTION')
 
     try {
       for (const vuln of catalog.vulnerabilities) {
         try {
-          this.db.run(
-            `
+          this.db
+            .prepare(
+              `
             INSERT OR REPLACE INTO kev_catalog (
               cve_id, vendor_project, product, vulnerability_name,
               date_added, short_description, required_action,
               due_date, known_ransomware_use, notes, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
           `,
-            [
+            )
+            .run(
               vuln.cveID,
               vuln.vendorProject,
               vuln.product,
@@ -221,11 +225,10 @@ export class KevService {
               vuln.dueDate || null,
               vuln.knownRansomwareCampaignUse === 'Known' ? 1 : 0,
               vuln.notes || null,
-            ],
-          )
+            )
 
           // Update is_kev flag in cves table
-          this.db.run('UPDATE cves SET is_kev = 1 WHERE id = ?', [vuln.cveID])
+          this.db.prepare('UPDATE cves SET is_kev = 1 WHERE id = ?').run(vuln.cveID)
 
           imported++
         } catch (err) {
@@ -233,14 +236,14 @@ export class KevService {
         }
       }
 
-      this.db.run('COMMIT')
+      this.db.exec('COMMIT')
 
       const duration = Date.now() - startTime
       console.log(`[KevService] Imported ${imported} KEV entries from ${source} in ${duration}ms`)
 
       return imported
     } catch (error) {
-      this.db.run('ROLLBACK')
+      this.db.exec('ROLLBACK')
       throw error
     }
   }
@@ -332,17 +335,20 @@ export class KevService {
     }
 
     // Fallback to database query
-    const result = this.db.exec('SELECT 1 FROM kev_catalog WHERE cve_id = ?', [cveId])
+    const row = this.db.prepare('SELECT 1 FROM kev_catalog WHERE cve_id = ?').get(cveId) as
+      | Record<string, unknown>
+      | undefined
 
-    return result.length > 0 && result[0].values.length > 0
+    return row !== undefined
   }
 
   /**
    * Get KEV details for a specific CVE
    */
   getKevDetails(cveId: string): KevEntry | null {
-    const result = this.db.exec(
-      `
+    const row = this.db
+      .prepare(
+        `
       SELECT
         cve_id, vendor_project, product, vulnerability_name,
         date_added, short_description, required_action,
@@ -350,26 +356,37 @@ export class KevService {
       FROM kev_catalog
       WHERE cve_id = ?
     `,
-      [cveId],
-    )
+      )
+      .get(cveId) as
+      | {
+          cve_id: string
+          vendor_project: string
+          product: string
+          vulnerability_name: string
+          date_added: string
+          short_description: string
+          required_action: string
+          due_date: string | null
+          known_ransomware_use: number
+          notes: string | null
+        }
+      | undefined
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (!row) {
       return null
     }
 
-    const row = result[0].values[0]
-
     return {
-      cveId: row[0] as string,
-      vendorProject: row[1] as string,
-      product: row[2] as string,
-      vulnerabilityName: row[3] as string,
-      dateAdded: row[4] as string,
-      shortDescription: row[5] as string,
-      requiredAction: row[6] as string,
-      dueDate: row[7] as string | undefined,
-      knownRansomwareUse: row[8] === 1,
-      notes: row[9] as string | undefined,
+      cveId: row.cve_id,
+      vendorProject: row.vendor_project,
+      product: row.product,
+      vulnerabilityName: row.vulnerability_name,
+      dateAdded: row.date_added,
+      shortDescription: row.short_description,
+      requiredAction: row.required_action,
+      dueDate: row.due_date ?? undefined,
+      knownRansomwareUse: row.known_ransomware_use === 1,
+      notes: row.notes ?? undefined,
     }
   }
 
@@ -381,13 +398,11 @@ export class KevService {
       return this.kevCache
     }
 
-    const result = this.db.exec('SELECT cve_id FROM kev_catalog')
+    const rows = this.db.prepare('SELECT cve_id FROM kev_catalog').all() as Array<{ cve_id: string }>
     const ids = new Set<string>()
 
-    if (result.length > 0) {
-      for (const row of result[0].values) {
-        ids.add(row[0] as string)
-      }
+    for (const row of rows) {
+      ids.add(row.cve_id)
     }
 
     return ids
@@ -397,8 +412,9 @@ export class KevService {
    * Get KEV entries by date range
    */
   getKevByDateRange(startDate: string, endDate: string): KevEntry[] {
-    const result = this.db.exec(
-      `
+    const rows = this.db
+      .prepare(
+        `
       SELECT
         cve_id, vendor_project, product, vulnerability_name,
         date_added, short_description, required_action,
@@ -407,24 +423,31 @@ export class KevService {
       WHERE date_added >= ? AND date_added <= ?
       ORDER BY date_added DESC
     `,
-      [startDate, endDate],
-    )
+      )
+      .all(startDate, endDate) as Array<{
+      cve_id: string
+      vendor_project: string
+      product: string
+      vulnerability_name: string
+      date_added: string
+      short_description: string
+      required_action: string
+      due_date: string | null
+      known_ransomware_use: number
+      notes: string | null
+    }>
 
-    if (result.length === 0) {
-      return []
-    }
-
-    return result[0].values.map((row) => ({
-      cveId: row[0] as string,
-      vendorProject: row[1] as string,
-      product: row[2] as string,
-      vulnerabilityName: row[3] as string,
-      dateAdded: row[4] as string,
-      shortDescription: row[5] as string,
-      requiredAction: row[6] as string,
-      dueDate: row[7] as string | undefined,
-      knownRansomwareUse: row[8] === 1,
-      notes: row[9] as string | undefined,
+    return rows.map((row) => ({
+      cveId: row.cve_id,
+      vendorProject: row.vendor_project,
+      product: row.product,
+      vulnerabilityName: row.vulnerability_name,
+      dateAdded: row.date_added,
+      shortDescription: row.short_description,
+      requiredAction: row.required_action,
+      dueDate: row.due_date ?? undefined,
+      knownRansomwareUse: row.known_ransomware_use === 1,
+      notes: row.notes ?? undefined,
     }))
   }
 
@@ -432,17 +455,18 @@ export class KevService {
    * Get catalog statistics
    */
   getCatalogStats(): { total: number; ransomwareRelated: number; lastUpdated: string | null } {
-    const totalResult = this.db.exec('SELECT COUNT(*) FROM kev_catalog')
-    const ransomwareResult = this.db.exec('SELECT COUNT(*) FROM kev_catalog WHERE known_ransomware_use = 1')
-    const lastUpdatedResult = this.db.exec('SELECT MAX(updated_at) FROM kev_catalog')
+    const totalRow = this.db.prepare('SELECT COUNT(*) as cnt FROM kev_catalog').get() as { cnt: number } | undefined
+    const ransomwareRow = this.db
+      .prepare('SELECT COUNT(*) as cnt FROM kev_catalog WHERE known_ransomware_use = 1')
+      .get() as { cnt: number } | undefined
+    const lastUpdatedRow = this.db.prepare('SELECT MAX(updated_at) as last_updated FROM kev_catalog').get() as
+      | { last_updated: string | null }
+      | undefined
 
     return {
-      total: totalResult.length > 0 ? (totalResult[0].values[0][0] as number) : 0,
-      ransomwareRelated: ransomwareResult.length > 0 ? (ransomwareResult[0].values[0][0] as number) : 0,
-      lastUpdated:
-        lastUpdatedResult.length > 0 && lastUpdatedResult[0].values.length > 0
-          ? (lastUpdatedResult[0].values[0][0] as string)
-          : null,
+      total: totalRow?.cnt ?? 0,
+      ransomwareRelated: ransomwareRow?.cnt ?? 0,
+      lastUpdated: lastUpdatedRow?.last_updated ?? null,
     }
   }
 
@@ -450,8 +474,8 @@ export class KevService {
    * Get catalog entry count
    */
   private getCatalogCount(): number {
-    const result = this.db.exec('SELECT COUNT(*) FROM kev_catalog')
-    return result.length > 0 ? (result[0].values[0][0] as number) : 0
+    const row = this.db.prepare('SELECT COUNT(*) as cnt FROM kev_catalog').get() as { cnt: number } | undefined
+    return row?.cnt ?? 0
   }
 
   /**
@@ -467,15 +491,15 @@ export class KevService {
    * Check if sync is needed
    */
   private async isSyncNeeded(): Promise<boolean> {
-    const result = this.db.exec(`
-      SELECT value FROM sync_metadata WHERE key = 'kev_last_sync'
-    `)
+    const row = this.db.prepare("SELECT value FROM sync_metadata WHERE key = 'kev_last_sync'").get() as
+      | { value: string }
+      | undefined
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (!row) {
       return true
     }
 
-    const lastSync = new Date(result[0].values[0][0] as string)
+    const lastSync = new Date(row.value)
     const hoursSinceSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60)
 
     return hoursSinceSync >= this.config.syncIntervalHours
@@ -485,20 +509,21 @@ export class KevService {
    * Update sync timestamp
    */
   private updateSyncTimestamp(): void {
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS sync_metadata (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       )
     `)
 
-    this.db.run(
-      `
+    this.db
+      .prepare(
+        `
       INSERT OR REPLACE INTO sync_metadata (key, value)
       VALUES ('kev_last_sync', ?)
     `,
-      [new Date().toISOString()],
-    )
+      )
+      .run(new Date().toISOString())
 
     this.lastSyncTime = new Date()
   }
@@ -792,7 +817,7 @@ let kevServiceInstance: KevService | null = null
 /**
  * Get or create KevService singleton
  */
-export function getKevService(db?: Database): KevService {
+export function getKevService(db?: BetterDb): KevService {
   if (!kevServiceInstance && db) {
     kevServiceInstance = new KevService(db)
   }

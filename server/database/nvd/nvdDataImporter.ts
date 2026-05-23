@@ -9,8 +9,10 @@
  * - Enhanced references with types
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import type { NvdCveV2 } from './nvdApiV2Client.js'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * Import progress information
@@ -131,12 +133,12 @@ interface CvssMetricV2 {
  * NVD Data Importer for v2 Schema
  */
 export class NvdDataImporter {
-  private db: Database
+  private db: BetterDb
   private batchSize: number
   private progress: ImportProgress
   private startTime: number = 0
 
-  constructor(db: Database) {
+  constructor(db: BetterDb) {
     this.db = db
     this.batchSize = 500
     this.progress = this.createInitialProgress()
@@ -193,7 +195,7 @@ export class NvdDataImporter {
     // Begin transaction
     let transactionActive = false
     try {
-      this.db.run('BEGIN TRANSACTION')
+      this.db.exec('BEGIN TRANSACTION')
       transactionActive = true
     } catch {
       // Transaction might already be active in some edge cases
@@ -206,7 +208,7 @@ export class NvdDataImporter {
         if (options.signal?.aborted) {
           if (transactionActive) {
             try {
-              this.db.run('ROLLBACK')
+              this.db.exec('ROLLBACK')
               transactionActive = false
             } catch {
               // Ignore rollback errors
@@ -262,7 +264,7 @@ export class NvdDataImporter {
       }
 
       if (transactionActive) {
-        this.db.run('COMMIT')
+        this.db.exec('COMMIT')
         transactionActive = false
       }
 
@@ -276,7 +278,7 @@ export class NvdDataImporter {
     } catch (error) {
       if (transactionActive) {
         try {
-          this.db.run('ROLLBACK')
+          this.db.exec('ROLLBACK')
         } catch {
           // Ignore rollback errors
         }
@@ -376,15 +378,17 @@ export class NvdDataImporter {
    * Check if CVE exists
    */
   private cveExists(id: string): boolean {
-    const result = this.db.exec('SELECT 1 FROM cves WHERE id = ?', [id])
-    return result.length > 0 && result[0].values.length > 0
+    const row = this.db.prepare('SELECT 1 FROM cves WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    return row !== undefined
   }
 
   /**
    * Insert CVE
    */
   private insertCve(cve: TransformedCve): void {
-    const stmt = this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO cves (
         id, description,
         cvss_v31_score, cvss_v31_vector, cvss_v31_severity,
@@ -393,38 +397,38 @@ export class NvdDataImporter {
         cvss_score, cvss_vector, severity,
         published_at, modified_at, source, vuln_status, assigner
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-
-    stmt.run([
-      cve.id,
-      cve.description,
-      cve.cvss_v31_score,
-      cve.cvss_v31_vector,
-      cve.cvss_v31_severity,
-      cve.cvss_v30_score,
-      cve.cvss_v30_vector,
-      cve.cvss_v30_severity,
-      cve.cvss_v2_score,
-      cve.cvss_v2_vector,
-      cve.cvss_v2_severity,
-      cve.cvss_score,
-      cve.cvss_vector,
-      cve.severity,
-      cve.published_at,
-      cve.modified_at,
-      cve.source,
-      cve.vuln_status,
-      cve.assigner,
-    ])
-
-    stmt.free()
+    `,
+      )
+      .run(
+        cve.id,
+        cve.description,
+        cve.cvss_v31_score,
+        cve.cvss_v31_vector,
+        cve.cvss_v31_severity,
+        cve.cvss_v30_score,
+        cve.cvss_v30_vector,
+        cve.cvss_v30_severity,
+        cve.cvss_v2_score,
+        cve.cvss_v2_vector,
+        cve.cvss_v2_severity,
+        cve.cvss_score,
+        cve.cvss_vector,
+        cve.severity,
+        cve.published_at,
+        cve.modified_at,
+        cve.source,
+        cve.vuln_status,
+        cve.assigner,
+      )
   }
 
   /**
    * Update CVE
    */
   private updateCve(cve: TransformedCve): void {
-    const stmt = this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE cves SET
         description = ?,
         cvss_v31_score = ?, cvss_v31_vector = ?, cvss_v31_severity = ?,
@@ -434,29 +438,27 @@ export class NvdDataImporter {
         modified_at = ?, vuln_status = ?, assigner = ?,
         last_synced_at = datetime('now')
       WHERE id = ?
-    `)
-
-    stmt.run([
-      cve.description,
-      cve.cvss_v31_score,
-      cve.cvss_v31_vector,
-      cve.cvss_v31_severity,
-      cve.cvss_v30_score,
-      cve.cvss_v30_vector,
-      cve.cvss_v30_severity,
-      cve.cvss_v2_score,
-      cve.cvss_v2_vector,
-      cve.cvss_v2_severity,
-      cve.cvss_score,
-      cve.cvss_vector,
-      cve.severity,
-      cve.modified_at,
-      cve.vuln_status,
-      cve.assigner,
-      cve.id,
-    ])
-
-    stmt.free()
+    `,
+      )
+      .run(
+        cve.description,
+        cve.cvss_v31_score,
+        cve.cvss_v31_vector,
+        cve.cvss_v31_severity,
+        cve.cvss_v30_score,
+        cve.cvss_v30_vector,
+        cve.cvss_v30_severity,
+        cve.cvss_v2_score,
+        cve.cvss_v2_vector,
+        cve.cvss_v2_severity,
+        cve.cvss_score,
+        cve.cvss_vector,
+        cve.severity,
+        cve.modified_at,
+        cve.vuln_status,
+        cve.assigner,
+        cve.id,
+      )
   }
 
   /**
@@ -551,7 +553,7 @@ export class NvdDataImporter {
    */
   private insertCweReferences(cveId: string, refs: CweReference[]): void {
     // Delete existing
-    this.db.run('DELETE FROM cwe_references WHERE cve_id = ?', [cveId])
+    this.db.prepare('DELETE FROM cwe_references WHERE cve_id = ?').run(cveId)
 
     if (refs.length === 0) return
 
@@ -561,10 +563,8 @@ export class NvdDataImporter {
     `)
 
     for (const ref of refs) {
-      stmt.run([ref.cve_id, ref.cwe_id, ref.description])
+      stmt.run(ref.cve_id, ref.cwe_id, ref.description)
     }
-
-    stmt.free()
   }
 
   /**
@@ -572,7 +572,7 @@ export class NvdDataImporter {
    */
   private insertCpeMatches(cveId: string, matches: CpeMatchV2[]): void {
     // Delete existing
-    this.db.run('DELETE FROM cpe_matches WHERE cve_id = ?', [cveId])
+    this.db.prepare('DELETE FROM cpe_matches WHERE cve_id = ?').run(cveId)
 
     if (matches.length === 0) return
 
@@ -585,7 +585,7 @@ export class NvdDataImporter {
     `)
 
     for (const match of matches) {
-      stmt.run([
+      stmt.run(
         match.cve_id,
         match.cpe23_uri,
         match.vulnerable,
@@ -593,10 +593,8 @@ export class NvdDataImporter {
         match.version_start_excluding,
         match.version_end_including,
         match.version_end_excluding,
-      ])
+      )
     }
-
-    stmt.free()
   }
 
   /**
@@ -604,7 +602,7 @@ export class NvdDataImporter {
    */
   private insertReferences(cveId: string, refs: ReferenceV2[]): void {
     // Delete existing
-    this.db.run('DELETE FROM "references" WHERE cve_id = ?', [cveId])
+    this.db.prepare('DELETE FROM "references" WHERE cve_id = ?').run(cveId)
 
     if (refs.length === 0) return
 
@@ -614,10 +612,8 @@ export class NvdDataImporter {
     `)
 
     for (const ref of refs) {
-      stmt.run([ref.cve_id, ref.url, ref.source, ref.tags, ref.reference_type])
+      stmt.run(ref.cve_id, ref.url, ref.source, ref.tags, ref.reference_type)
     }
-
-    stmt.free()
   }
 
   /**
@@ -685,7 +681,7 @@ export class NvdDataImporter {
    */
   private insertCvssMetrics(cveId: string, metrics: CvssMetricV2[]): void {
     // Delete existing
-    this.db.run('DELETE FROM cvss_metrics WHERE cve_id = ?', [cveId])
+    this.db.prepare('DELETE FROM cvss_metrics WHERE cve_id = ?').run(cveId)
 
     if (metrics.length === 0) return
 
@@ -697,7 +693,7 @@ export class NvdDataImporter {
     `)
 
     for (const m of metrics) {
-      stmt.run([
+      stmt.run(
         m.cve_id,
         m.source,
         m.type,
@@ -707,10 +703,8 @@ export class NvdDataImporter {
         m.vector,
         m.exploitability_score,
         m.impact_score,
-      ])
+      )
     }
-
-    stmt.free()
   }
 
   /**
@@ -719,11 +713,13 @@ export class NvdDataImporter {
   private rebuildFtsIndex(): void {
     try {
       // Check if FTS table exists, create if not
-      const tableCheck = this.db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'")
+      const tableCheck = this.db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'")
+        .get() as { name: string } | undefined
 
-      if (tableCheck.length === 0 || tableCheck[0].values.length === 0) {
+      if (!tableCheck) {
         // Create FTS5 virtual table
-        this.db.run(`
+        this.db.exec(`
           CREATE VIRTUAL TABLE IF NOT EXISTS cves_fts USING fts5(
             id,
             description,
@@ -735,10 +731,10 @@ export class NvdDataImporter {
       }
 
       // Clear existing FTS data
-      this.db.run('DELETE FROM cves_fts')
+      this.db.exec('DELETE FROM cves_fts')
 
       // Rebuild FTS
-      this.db.run(`
+      this.db.exec(`
         INSERT INTO cves_fts(rowid, id, description)
         SELECT rowid, id, description FROM cves
       `)
@@ -771,16 +767,16 @@ export class NvdDataImporter {
     totalCpe: number
     totalRefs: number
   } {
-    const cves = this.db.exec('SELECT COUNT(*) FROM cves')
-    const cwe = this.db.exec('SELECT COUNT(*) FROM cwe_references')
-    const cpe = this.db.exec('SELECT COUNT(*) FROM cpe_matches')
-    const refs = this.db.exec('SELECT COUNT(*) FROM "references"')
+    const cvesRow = this.db.prepare('SELECT COUNT(*) as cnt FROM cves').get() as { cnt: number }
+    const cweRow = this.db.prepare('SELECT COUNT(*) as cnt FROM cwe_references').get() as { cnt: number }
+    const cpeRow = this.db.prepare('SELECT COUNT(*) as cnt FROM cpe_matches').get() as { cnt: number }
+    const refsRow = this.db.prepare('SELECT COUNT(*) as cnt FROM "references"').get() as { cnt: number }
 
     return {
-      totalCves: (cves[0]?.values[0]?.[0] as number) || 0,
-      totalCwe: (cwe[0]?.values[0]?.[0] as number) || 0,
-      totalCpe: (cpe[0]?.values[0]?.[0] as number) || 0,
-      totalRefs: (refs[0]?.values[0]?.[0] as number) || 0,
+      totalCves: cvesRow?.cnt || 0,
+      totalCwe: cweRow?.cnt || 0,
+      totalCpe: cpeRow?.cnt || 0,
+      totalRefs: refsRow?.cnt || 0,
     }
   }
 }
@@ -788,6 +784,6 @@ export class NvdDataImporter {
 /**
  * Create an NVD data importer
  */
-export function createNvdDataImporter(db: Database): NvdDataImporter {
+export function createNvdDataImporter(db: BetterDb): NvdDataImporter {
   return new NvdDataImporter(db)
 }

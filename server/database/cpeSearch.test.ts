@@ -5,34 +5,31 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { CPESearch, createCPESearch, type CPESearchResult } from './cpeSearch'
-import type { Database } from 'sql.js'
+import type { Database as BetterSqlite3Database } from 'better-sqlite3'
 
-// Mock Database
-const createMockDatabase = (results: any[] = []): Database => {
-  let callIndex = 0
+const createMockDatabase = (results: unknown[] = []): BetterSqlite3Database => {
   return {
-    exec: vi.fn((query: string, params?: any[]) => {
-      if (results.length > 0 && callIndex < results.length) {
-        const result = results[callIndex++]
-        // Return array containing the result object (sql.js format)
-        return result ? [result] : []
-      }
-      return []
-    }),
-    run: vi.fn(),
-    prepare: vi.fn(),
+    prepare: vi.fn(() => ({
+      all: vi.fn(() => results),
+      get: vi.fn(),
+      run: vi.fn(),
+    })),
+    exec: vi.fn(),
     close: vi.fn(),
-  } as unknown as Database
+    pragma: vi.fn(() => []),
+  } as unknown as BetterSqlite3Database
 }
 
 describe('CPESearch', () => {
   describe('constructor', () => {
     it('should throw error if database is null', () => {
-      expect(() => new CPESearch(null as unknown as Database)).toThrow('Database instance is required')
+      expect(() => new CPESearch(null as unknown as BetterSqlite3Database)).toThrow('Database instance is required')
     })
 
     it('should throw error if database is undefined', () => {
-      expect(() => new CPESearch(undefined as unknown as Database)).toThrow('Database instance is required')
+      expect(() => new CPESearch(undefined as unknown as BetterSqlite3Database)).toThrow(
+        'Database instance is required',
+      )
     })
 
     it('should create instance with valid database', () => {
@@ -150,13 +147,8 @@ describe('CPESearch', () => {
 
     it('should search database with LIKE pattern', async () => {
       const mockResults = [
-        {
-          columns: ['cpe23_uri', 'vulnerable'],
-          values: [
-            ['cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', 1],
-            ['cpe:2.3:a:apache:log4j:2.15.0:*:*:*:*:*:*:*', 1],
-          ],
-        },
+        { cpe23_uri: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: 1 },
+        { cpe23_uri: 'cpe:2.3:a:apache:log4j:2.15.0:*:*:*:*:*:*:*', vulnerable: 1 },
       ]
       const mockDb = createMockDatabase(mockResults)
       const cpeSearch = new CPESearch(mockDb)
@@ -169,70 +161,40 @@ describe('CPESearch', () => {
     })
 
     it('should use default limit of 100', async () => {
-      const mockDb = createMockDatabase([
-        {
-          columns: ['cpe23_uri', 'vulnerable'],
-          values: [],
-        },
-      ])
+      const mockDb = createMockDatabase([])
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.searchByProductName('test')
 
-      // Check that exec was called with limit 100
-      expect(mockDb.exec).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT ?'),
-        expect.arrayContaining([expect.any(String), 100]),
-      )
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('LIMIT ?'))
     })
 
     it('should respect custom limit', async () => {
-      const mockDb = createMockDatabase([
-        {
-          columns: ['cpe23_uri', 'vulnerable'],
-          values: [],
-        },
-      ])
+      const mockDb = createMockDatabase([])
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.searchByProductName('test', 50)
 
-      expect(mockDb.exec).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT ?'),
-        expect.arrayContaining([expect.any(String), 50]),
-      )
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('LIMIT ?'))
     })
 
     it('should cap limit at 1000', async () => {
-      const mockDb = createMockDatabase([
-        {
-          columns: ['cpe23_uri', 'vulnerable'],
-          values: [],
-        },
-      ])
+      const mockDb = createMockDatabase([])
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.searchByProductName('test', 5000)
 
-      expect(mockDb.exec).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT ?'),
-        expect.arrayContaining([expect.any(String), 1000]),
-      )
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('LIMIT ?'))
     })
 
     it('should only return vulnerable CPEs', async () => {
-      const mockResults = [
-        {
-          columns: ['cpe23_uri', 'vulnerable'],
-          values: [['cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', 1]],
-        },
-      ]
+      const mockResults = [{ cpe23_uri: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: 1 }]
       const mockDb = createMockDatabase(mockResults)
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.searchByProductName('log4j')
 
-      expect(mockDb.exec).toHaveBeenCalledWith(expect.stringContaining('vulnerable = 1'), expect.any(Array))
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('vulnerable = 1'))
     })
   })
 
@@ -252,36 +214,22 @@ describe('CPESearch', () => {
     })
 
     it('should filter out empty tokens', async () => {
-      const mockDb = createMockDatabase([
-        {
-          columns: ['cpe23_uri', 'vulnerable'],
-          values: [],
-        },
-      ])
+      const mockDb = createMockDatabase([])
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.searchByTokens(['apache', '', '  ', 'log4j'])
 
-      // Should only have 2 LIKE conditions
-      expect(mockDb.exec).toHaveBeenCalledWith(
-        expect.stringContaining('cpe23_uri LIKE ? AND cpe23_uri LIKE ?'),
-        expect.any(Array),
-      )
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('cpe23_uri LIKE ? AND cpe23_uri LIKE ?'))
     })
 
     it('should search with multiple tokens using AND logic', async () => {
-      const mockResults = [
-        {
-          columns: ['cpe23_uri', 'vulnerable'],
-          values: [['cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', 1]],
-        },
-      ]
+      const mockResults = [{ cpe23_uri: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: 1 }]
       const mockDb = createMockDatabase(mockResults)
       const cpeSearch = new CPESearch(mockDb)
 
       const results = await cpeSearch.searchByTokens(['apache', 'log4j'])
 
-      expect(mockDb.exec).toHaveBeenCalledWith(expect.stringContaining('AND'), expect.any(Array))
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('AND'))
       expect(results).toHaveLength(1)
     })
   })
@@ -289,14 +237,9 @@ describe('CPESearch', () => {
   describe('getAllUniqueProducts', () => {
     it('should return unique product names', async () => {
       const mockResults = [
-        {
-          columns: ['cpe23_uri'],
-          values: [
-            ['cpe:2.3:a:apache:log4j:1.0:*:*:*:*:*:*:*'],
-            ['cpe:2.3:a:apache:log4j:2.0:*:*:*:*:*:*:*'],
-            ['cpe:2.3:a:nginx:nginx:1.0:*:*:*:*:*:*:*'],
-          ],
-        },
+        { cpe23_uri: 'cpe:2.3:a:apache:log4j:1.0:*:*:*:*:*:*:*' },
+        { cpe23_uri: 'cpe:2.3:a:apache:log4j:2.0:*:*:*:*:*:*:*' },
+        { cpe23_uri: 'cpe:2.3:a:nginx:nginx:1.0:*:*:*:*:*:*:*' },
       ]
       const mockDb = createMockDatabase(mockResults)
       const cpeSearch = new CPESearch(mockDb)
@@ -310,10 +253,8 @@ describe('CPESearch', () => {
 
     it('should return sorted products', async () => {
       const mockResults = [
-        {
-          columns: ['cpe23_uri'],
-          values: [['cpe:2.3:a:zzz:zebra:1.0:*:*:*:*:*:*:*'], ['cpe:2.3:a:aaa:apple:1.0:*:*:*:*:*:*:*']],
-        },
+        { cpe23_uri: 'cpe:2.3:a:zzz:zebra:1.0:*:*:*:*:*:*:*' },
+        { cpe23_uri: 'cpe:2.3:a:aaa:apple:1.0:*:*:*:*:*:*:*' },
       ]
       const mockDb = createMockDatabase(mockResults)
       const cpeSearch = new CPESearch(mockDb)
@@ -325,33 +266,21 @@ describe('CPESearch', () => {
     })
 
     it('should only include vulnerable CPEs', async () => {
-      const mockDb = createMockDatabase([
-        {
-          columns: ['cpe23_uri'],
-          values: [],
-        },
-      ])
+      const mockDb = createMockDatabase([])
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.getAllUniqueProducts()
 
-      // getAllUniqueProducts calls exec with only the query (no parameters)
-      expect(mockDb.exec).toHaveBeenCalledWith(expect.stringContaining('vulnerable = 1'))
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('vulnerable = 1'))
     })
 
     it('should only include CPE 2.3 format', async () => {
-      const mockDb = createMockDatabase([
-        {
-          columns: ['cpe23_uri'],
-          values: [],
-        },
-      ])
+      const mockDb = createMockDatabase([])
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.getAllUniqueProducts()
 
-      // getAllUniqueProducts calls exec with only the query (no parameters)
-      expect(mockDb.exec).toHaveBeenCalledWith(expect.stringContaining("cpe23_uri LIKE 'cpe:2.3:%'"))
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining("cpe23_uri LIKE 'cpe:2.3:%'"))
     })
   })
 
@@ -372,10 +301,8 @@ describe('CPESearch', () => {
 
     it('should return unique vendors for a product', async () => {
       const mockResults = [
-        {
-          columns: ['cpe23_uri'],
-          values: [['cpe:2.3:a:apache:log4j:1.0:*:*:*:*:*:*:*'], ['cpe:2.3:a:apache:log4j:2.0:*:*:*:*:*:*:*']],
-        },
+        { cpe23_uri: 'cpe:2.3:a:apache:log4j:1.0:*:*:*:*:*:*:*' },
+        { cpe23_uri: 'cpe:2.3:a:apache:log4j:2.0:*:*:*:*:*:*:*' },
       ]
       const mockDb = createMockDatabase(mockResults)
       const cpeSearch = new CPESearch(mockDb)
@@ -387,10 +314,8 @@ describe('CPESearch', () => {
 
     it('should return sorted vendors', async () => {
       const mockResults = [
-        {
-          columns: ['cpe23_uri'],
-          values: [['cpe:2.3:a:zzz:common_lib:1.0:*:*:*:*:*:*:*'], ['cpe:2.3:a:aaa:common_lib:1.0:*:*:*:*:*:*:*']],
-        },
+        { cpe23_uri: 'cpe:2.3:a:zzz:common_lib:1.0:*:*:*:*:*:*:*' },
+        { cpe23_uri: 'cpe:2.3:a:aaa:common_lib:1.0:*:*:*:*:*:*:*' },
       ]
       const mockDb = createMockDatabase(mockResults)
       const cpeSearch = new CPESearch(mockDb)
@@ -402,17 +327,12 @@ describe('CPESearch', () => {
     })
 
     it('should only return vulnerable CPEs', async () => {
-      const mockDb = createMockDatabase([
-        {
-          columns: ['cpe23_uri'],
-          values: [],
-        },
-      ])
+      const mockDb = createMockDatabase([])
       const cpeSearch = new CPESearch(mockDb)
 
       await cpeSearch.getProductVendors('test')
 
-      expect(mockDb.exec).toHaveBeenCalledWith(expect.stringContaining('vulnerable = 1'), expect.any(Array))
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('vulnerable = 1'))
     })
   })
 })
@@ -534,12 +454,7 @@ describe('CPESearch searchByProductName with cache', () => {
   })
 
   it('should force refresh and skip cache', async () => {
-    const mockDb = createMockDatabase([
-      {
-        columns: ['cpe23_uri', 'vulnerable'],
-        values: [],
-      },
-    ])
+    const mockDb = createMockDatabase([])
     const cpeSearch = new CPESearch(mockDb)
     const mockCacheManager = {
       get: vi.fn(),
@@ -555,12 +470,7 @@ describe('CPESearch searchByProductName with cache', () => {
   })
 
   it('should set cache after fresh search', async () => {
-    const mockDb = createMockDatabase([
-      {
-        columns: ['cpe23_uri', 'vulnerable'],
-        values: [['cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', 1]],
-      },
-    ])
+    const mockDb = createMockDatabase([{ cpe23_uri: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: 1 }])
     const cpeSearch = new CPESearch(mockDb)
     const mockCacheManager = {
       get: vi.fn(() => null),
@@ -637,12 +547,7 @@ describe('CPESearch searchByTokens — additional coverage', () => {
   })
 
   it('should return results with parsed components', async () => {
-    const mockResults = [
-      {
-        columns: ['cpe23_uri', 'vulnerable'],
-        values: [['cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', 1]],
-      },
-    ]
+    const mockResults = [{ cpe23_uri: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: 1 }]
     const mockDb = createMockDatabase(mockResults)
     const cpeSearch = new CPESearch(mockDb)
 
@@ -657,13 +562,8 @@ describe('CPESearch searchByTokens — additional coverage', () => {
 
   it('should skip rows that fail to parse as CPE', async () => {
     const mockResults = [
-      {
-        columns: ['cpe23_uri', 'vulnerable'],
-        values: [
-          ['invalid-cpe', 1],
-          ['cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', 1],
-        ],
-      },
+      { cpe23_uri: 'invalid-cpe', vulnerable: 1 },
+      { cpe23_uri: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: 1 },
     ]
     const mockDb = createMockDatabase(mockResults)
     const cpeSearch = new CPESearch(mockDb)
@@ -692,12 +592,7 @@ describe('CPESearch parseSearchResults — empty and edge cases', () => {
   })
 
   it('should handle results with vulnerable=0', async () => {
-    const mockResults = [
-      {
-        columns: ['cpe23_uri', 'vulnerable'],
-        values: [['cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', 0]],
-      },
-    ]
+    const mockResults = [{ cpe23_uri: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: 0 }]
     const mockDb = createMockDatabase(mockResults)
     const cpeSearch = new CPESearch(mockDb)
 

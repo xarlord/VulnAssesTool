@@ -3,8 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   DbVersionManager,
   createDbVersionManager,
@@ -14,32 +13,25 @@ import {
 } from './dbVersionManager.js'
 import { runMigrations } from './migrations/v2SchemaMigration.js'
 
-let db: Database
-let sqlJs: unknown
+let db: InstanceType<typeof Database>
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  const database = new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  const database = new Database(':memory:')
 
-  // Create metadata table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS metadata (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
   `)
 
-  // Create schema migrations table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     )
   `)
 
-  // Apply all migrations
   runMigrations(database, 0)
 
   return database
@@ -48,8 +40,8 @@ async function createTestDatabase(): Promise<Database> {
 describe('DbVersionManager', () => {
   let versionManager: DbVersionManager
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     versionManager = createDbVersionManager(db, {
       appVersion: '2.0.0',
       schemaVersion: 10,
@@ -277,8 +269,10 @@ describe('DbVersionManager', () => {
 
     it('should indicate need for historical sync', () => {
       // Add some CVEs but not enough for full history
-      db.run(`INSERT INTO cves (id, description, published_at, modified_at, source)
-              VALUES ('CVE-2024-00001', 'Test', '2024-01-01', '2024-01-01', 'NVD')`)
+      db.prepare(
+        `INSERT INTO cves (id, description, published_at, modified_at, source)
+              VALUES (?, 'Test', '2024-01-01', '2024-01-01', 'NVD')`,
+      ).run('CVE-2024-00001')
 
       versionManager.recordSeed('2.0.0-20250224', 1, '2025-02-24')
 
@@ -291,16 +285,16 @@ describe('DbVersionManager', () => {
 })
 
 describe('createDbVersionManager', () => {
-  it('should create version manager with default options', async () => {
-    const testDb = await createTestDatabase()
+  it('should create version manager with default options', () => {
+    const testDb = createTestDatabase()
     const vm = createDbVersionManager(testDb)
 
     expect(vm).toBeInstanceOf(DbVersionManager)
     testDb.close()
   })
 
-  it('should create version manager with custom options', async () => {
-    const testDb = await createTestDatabase()
+  it('should create version manager with custom options', () => {
+    const testDb = createTestDatabase()
     const vm = createDbVersionManager(testDb, {
       appVersion: '3.0.0',
       schemaVersion: 15,

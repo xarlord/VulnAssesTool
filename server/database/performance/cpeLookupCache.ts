@@ -11,7 +11,9 @@
  * - Memory-efficient storage with compression
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * CPE lookup result
@@ -120,7 +122,7 @@ export class CPELookupCache {
   /**
    * Initialize the cache with data from the database
    */
-  async initialize(db: Database): Promise<void> {
+  async initialize(db: BetterDb): Promise<void> {
     if (this.initialized) return
 
     console.log('[CPELookupCache] Initializing cache...')
@@ -142,9 +144,10 @@ export class CPELookupCache {
   /**
    * Load vendor statistics from database
    */
-  private async loadVendorStats(db: Database): Promise<void> {
-    const results = db.exec(
-      `
+  private async loadVendorStats(db: BetterDb): Promise<void> {
+    const rows = db
+      .prepare(
+        `
       SELECT
         cpe_vendor as vendor,
         COUNT(DISTINCT cpe_product) as product_count,
@@ -156,26 +159,29 @@ export class CPELookupCache {
       ORDER BY cve_count DESC
       LIMIT ?
     `,
-      [this.options.maxVendors],
-    )
+      )
+      .all(this.options.maxVendors) as Array<{
+      vendor: string
+      product_count: number
+      cve_count: number
+      vulnerable_cve_count: number
+    }>
 
-    if (results.length > 0) {
-      for (const row of results[0].values) {
-        const stats: VendorStats = {
-          vendor: row[0] as string,
-          productCount: row[1] as number,
-          cveCount: row[2] as number,
-          vulnerableCveCount: (row[3] as number) || 0,
-        }
-        this.vendorCache.set(stats.vendor, stats)
+    for (const row of rows) {
+      const stats: VendorStats = {
+        vendor: row.vendor,
+        productCount: row.product_count,
+        cveCount: row.cve_count,
+        vulnerableCveCount: row.vulnerable_cve_count || 0,
       }
+      this.vendorCache.set(stats.vendor, stats)
     }
   }
 
   /**
    * Preload data for popular vendors
    */
-  private async preloadPopularVendorsData(db: Database): Promise<void> {
+  private async preloadPopularVendorsData(db: BetterDb): Promise<void> {
     for (const vendor of POPULAR_VENDORS) {
       if (this.vendorCache.has(vendor)) {
         await this.loadProductsForVendor(db, vendor)
@@ -186,9 +192,10 @@ export class CPELookupCache {
   /**
    * Load products for a specific vendor
    */
-  private async loadProductsForVendor(db: Database, vendor: string): Promise<void> {
-    const results = db.exec(
-      `
+  private async loadProductsForVendor(db: BetterDb, vendor: string): Promise<void> {
+    const rows = db
+      .prepare(
+        `
       SELECT
         cpe_product as product,
         COUNT(DISTINCT cve_id) as cve_count,
@@ -199,21 +206,22 @@ export class CPELookupCache {
       ORDER BY cve_count DESC
       LIMIT ?
     `,
-      [vendor, this.options.maxProductsPerVendor],
-    )
+      )
+      .all(vendor, this.options.maxProductsPerVendor) as Array<{
+      product: string
+      cve_count: number
+      vulnerable_cve_count: number
+    }>
 
-    if (results.length > 0) {
-      for (const row of results[0].values) {
-        const product = row[0] as string
-        const cacheKey = `${vendor}:${product}`
-        const stats: ProductStats = {
-          vendor,
-          product,
-          cveCount: row[1] as number,
-          vulnerableCveCount: (row[2] as number) || 0,
-        }
-        this.productCache.set(cacheKey, stats)
+    for (const row of rows) {
+      const cacheKey = `${vendor}:${row.product}`
+      const stats: ProductStats = {
+        vendor,
+        product: row.product,
+        cveCount: row.cve_count,
+        vulnerableCveCount: row.vulnerable_cve_count || 0,
       }
+      this.productCache.set(cacheKey, stats)
     }
   }
 
@@ -294,7 +302,7 @@ export class CPELookupCache {
   /**
    * Update cache with new CPE data (called after database import)
    */
-  async updateFromDatabase(db: Database): Promise<void> {
+  async updateFromDatabase(db: BetterDb): Promise<void> {
     console.log('[CPELookupCache] Updating cache from database...')
 
     // Clear existing caches
@@ -425,7 +433,7 @@ export function resetCPELookupCache(): void {
  * Helper function to perform cached CPE lookup
  */
 export async function cachedCPELookup(
-  db: Database,
+  db: BetterDb,
   vendor: string,
   product?: string,
   options: {
@@ -471,13 +479,11 @@ export async function cachedCPELookup(
   sql += ' ORDER BY cve_id LIMIT ?'
   params.push(5000) // Get up to 5000 for caching
 
-  const results = db.exec(sql, params)
+  const rows = db.prepare(sql).all(...params) as Array<{ cve_id: string }>
   const cveIds: string[] = []
 
-  if (results.length > 0) {
-    for (const row of results[0].values) {
-      cveIds.push(row[0] as string)
-    }
+  for (const row of rows) {
+    cveIds.push(row.cve_id)
   }
 
   const lookupResult: CPELookupResult = {

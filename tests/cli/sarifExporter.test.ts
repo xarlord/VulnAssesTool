@@ -35,7 +35,7 @@ describe('SARIF Exporter', () => {
   describe('exportToSarif', () => {
     it('creates valid SARIF 2.1.0 structure', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -49,18 +49,18 @@ describe('SARIF Exporter', () => {
 
     it('includes tool information', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
-      expect(result.runs[0].tool.driver.name).toBe('VulnAssesTool')
+      expect(result.runs[0].tool.driver.name).toBe('D-Fence')
       expect(result.runs[0].tool.driver.version).toBe('2.0.0')
       expect(result.runs[0].tool.driver.informationUri).toBe('https://github.com/vulnasstool/vuln-asses-tool')
     })
 
     it('maps severity to SARIF levels correctly', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -84,7 +84,7 @@ describe('SARIF Exporter', () => {
         },
       ]
       const result = exportToSarif(mediumVuln, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -104,7 +104,7 @@ describe('SARIF Exporter', () => {
         },
       ]
       const result = exportToSarif(lowVuln, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -123,7 +123,7 @@ describe('SARIF Exporter', () => {
         },
       ]
       const result = exportToSarif(noneVuln, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -132,7 +132,7 @@ describe('SARIF Exporter', () => {
 
     it('includes vulnerability details in message', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -145,7 +145,7 @@ describe('SARIF Exporter', () => {
 
     it('includes CVSS score in properties', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -157,7 +157,7 @@ describe('SARIF Exporter', () => {
 
     it('includes EPSS score in properties', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -168,7 +168,7 @@ describe('SARIF Exporter', () => {
 
     it('includes KEV status in properties', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -181,7 +181,7 @@ describe('SARIF Exporter', () => {
 
     it('includes CWE information', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -192,7 +192,7 @@ describe('SARIF Exporter', () => {
 
     it('includes component location', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -205,7 +205,7 @@ describe('SARIF Exporter', () => {
 
     it('includes remediation guidance', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -217,7 +217,7 @@ describe('SARIF Exporter', () => {
 
     it('handles empty vulnerability list', () => {
       const result = exportToSarif([], {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -226,7 +226,7 @@ describe('SARIF Exporter', () => {
 
     it('filters by minimum severity when provided', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
         minSeverity: 'critical',
       })
@@ -237,7 +237,7 @@ describe('SARIF Exporter', () => {
 
     it('filters by minimum EPSS when provided', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
         minEpss: 0.5,
       })
@@ -248,7 +248,7 @@ describe('SARIF Exporter', () => {
 
     it('filters by KEV status when requested', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
         onlyKev: true,
       })
@@ -259,7 +259,7 @@ describe('SARIF Exporter', () => {
 
     it('includes references as related locations', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 
@@ -271,7 +271,7 @@ describe('SARIF Exporter', () => {
 
     it('generates rules for unique CWEs', () => {
       const result = exportToSarif(mockVulnerabilities, {
-        toolName: 'VulnAssesTool',
+        toolName: 'D-Fence',
         toolVersion: '2.0.0',
       })
 

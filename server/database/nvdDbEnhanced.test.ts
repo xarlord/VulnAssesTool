@@ -5,8 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import { NvdDatabase } from './nvdDb.js'
 
 // Mock Electron's app module
@@ -17,24 +16,14 @@ vi.mock('electron', () => ({
   },
 }))
 
-// Mock sql.js initialization
-let sqlJs: any
-
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  return new sqlJs.Database()
-}
-
 describe('NvdDatabase Enhanced Queries (250K+ Optimization)', () => {
-  let db: Database
+  let db: InstanceType<typeof Database>
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = new Database(':memory:')
 
     // Create schema_migrations table
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         version INTEGER PRIMARY KEY,
         applied_at TEXT NOT NULL
@@ -42,7 +31,7 @@ describe('NvdDatabase Enhanced Queries (250K+ Optimization)', () => {
     `)
 
     // Create base tables (simulating a migrated database)
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS cves (
         id TEXT PRIMARY KEY,
         description TEXT NOT NULL,
@@ -67,7 +56,7 @@ describe('NvdDatabase Enhanced Queries (250K+ Optimization)', () => {
       )
     `)
 
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS cpe_matches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cve_id TEXT NOT NULL,
@@ -86,7 +75,7 @@ describe('NvdDatabase Enhanced Queries (250K+ Optimization)', () => {
       )
     `)
 
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS "references" (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cve_id TEXT NOT NULL,
@@ -98,7 +87,7 @@ describe('NvdDatabase Enhanced Queries (250K+ Optimization)', () => {
       )
     `)
 
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS metadata (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -106,17 +95,17 @@ describe('NvdDatabase Enhanced Queries (250K+ Optimization)', () => {
     `)
 
     // Create indexes (simulating migration 10)
-    db.run('CREATE INDEX IF NOT EXISTS idx_cves_severity ON cves(severity)')
-    db.run('CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves(cvss_score)')
-    db.run('CREATE INDEX IF NOT EXISTS idx_cves_published_at ON cves(published_at)')
-    db.run('CREATE INDEX IF NOT EXISTS idx_cpe_matches_cve_id ON cpe_matches(cve_id)')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cves_severity ON cves(severity)')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves(cvss_score)')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cves_published_at ON cves(published_at)')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_cpe_matches_cve_id ON cpe_matches(cve_id)')
 
     // Mark all migrations as applied
     for (let i = 1; i <= 10; i++) {
-      db.run('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)', [
+      db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
         i,
         new Date().toISOString(),
-      ])
+      )
     }
   })
 
@@ -174,7 +163,7 @@ describe('NvdDatabase Enhanced Queries (250K+ Optimization)', () => {
       const emptyResult = NvdDatabase.parseCPE('')
       expect(emptyResult.part).toBeNull()
 
-      const nullResult = NvdDatabase.parseCPE(null as any)
+      const nullResult = NvdDatabase.parseCPE(null as unknown as string)
       expect(nullResult.part).toBeNull()
     })
   })

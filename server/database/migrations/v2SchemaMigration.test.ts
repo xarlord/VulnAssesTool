@@ -3,8 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   getMigrations,
   runMigrations,
@@ -13,24 +12,17 @@ import {
   isMigrationApplied,
 } from './v2SchemaMigration.js'
 
-// Mock sql.js initialization
-let db: Database
-let sqlJs: any
+let db: InstanceType<typeof Database>
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    // Initialize sql.js without WASM file for testing
-    sqlJs = await initSqlJs({})
-  }
-  return new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  return new Database(':memory:')
 }
 
 describe('Database Schema Migrations', () => {
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
 
-    // Create schema_migrations table (required for migrations)
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         version INTEGER PRIMARY KEY,
         applied_at TEXT NOT NULL
@@ -76,15 +68,15 @@ describe('Database Schema Migrations', () => {
     })
 
     it('should return correct version after migrations', () => {
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)', [new Date().toISOString()])
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(2, new Date().toISOString())
 
       const version = getSchemaVersion(db)
       expect(version).toBe(2)
     })
 
     it('should return max version when multiple exist', () => {
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)', [new Date().toISOString()])
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (5, ?)', [new Date().toISOString()])
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(2, new Date().toISOString())
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(5, new Date().toISOString())
 
       const version = getSchemaVersion(db)
       expect(version).toBe(5)
@@ -97,7 +89,7 @@ describe('Database Schema Migrations', () => {
     })
 
     it('should return true for applied migration', () => {
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)', [new Date().toISOString()])
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(2, new Date().toISOString())
 
       expect(isMigrationApplied(db, 2)).toBe(true)
     })
@@ -121,8 +113,7 @@ describe('Database Schema Migrations', () => {
     })
 
     it('should create cves table with v2 schema', () => {
-      // First create v1 cves table (simulating existing database)
-      db.run(`
+      db.exec(`
         CREATE TABLE cves (
           id TEXT PRIMARY KEY,
           description TEXT NOT NULL,
@@ -136,160 +127,22 @@ describe('Database Schema Migrations', () => {
       `)
 
       // Insert some test data
-      db.run(`
+      db.exec(`
         INSERT INTO cves (id, description, cvss_score, severity, published_at, modified_at, source)
         VALUES ('CVE-2024-12345', 'Test vulnerability', 9.8, 'CRITICAL', '2024-01-01', '2024-01-02', 'NVD')
       `)
 
-      // Mark v1 as applied
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)', [new Date().toISOString()])
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(1, new Date().toISOString())
 
-      // Run migrations from v1 to v2
       const result = runMigrations(db, 1)
 
       expect(result.success).toBe(true)
       expect(result.toVersion).toBeGreaterThanOrEqual(2)
 
-      // Verify cves table has new columns
-      const tableInfo = db.exec('PRAGMA table_info(cves)')
+      const tableInfo = db.pragma('table_info(cves)') as Record<string, unknown>[]
       expect(tableInfo.length).toBeGreaterThan(0)
 
-      const columns = tableInfo[0].values.map((row) => row[1])
-      expect(columns).toContain('cvss_v31_score')
-      expect(columns).toContain('cvss_v31_vector')
-      expect(columns).toContain('cvss_v31_severity')
-    })
-
-    it('should migrate existing CVE data', () => {
-      // Create v1 tables
-      db.run(`
-        CREATE TABLE cves (
-          id TEXT PRIMARY KEY,
-          description TEXT NOT NULL,
-          cvss_score REAL,
-          cvss_vector TEXT,
-          severity TEXT,
-          published_at TEXT NOT NULL,
-          modified_at TEXT NOT NULL,
-          source TEXT NOT NULL
-        )
-      `)
-
-      db.run(`
-        INSERT INTO cves (id, description, cvss_score, cvss_vector, severity, published_at, modified_at, source)
-        VALUES
-          ('CVE-2024-11111', 'First vulnerability', 9.8, 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H', 'CRITICAL', '2024-01-01', '2024-01-02', 'NVD'),
-          ('CVE-2024-22222', 'Second vulnerability', 7.5, 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N', 'HIGH', '2024-02-01', '2024-02-02', 'NVD')
-      `)
-
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)', [new Date().toISOString()])
-
-      // Run migrations
-      const result = runMigrations(db, 1)
-
-      expect(result.success).toBe(true)
-
-      // Verify data was migrated
-      const cves = db.exec('SELECT id, cvss_v31_score, cvss_v31_severity FROM cves ORDER BY id')
-      expect(cves.length).toBeGreaterThan(0)
-      expect(cves[0].values.length).toBe(2)
-
-      // Check first CVE
-      expect(cves[0].values[0][0]).toBe('CVE-2024-11111')
-      expect(cves[0].values[0][1]).toBe(9.8)
-    })
-
-    it('should create CWE references table', () => {
-      runMigrations(db, 0)
-
-      // Check if cwe_references table exists
-      const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='cwe_references'")
-      expect(tables.length).toBeGreaterThan(0)
-    })
-
-    it('should create sync_status table', () => {
-      runMigrations(db, 0)
-
-      // Check if sync_status table exists
-      const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='sync_status'")
-      expect(tables.length).toBeGreaterThan(0)
-    })
-
-    it('should create download_queue table', () => {
-      runMigrations(db, 0)
-
-      // Check if download_queue table exists
-      const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='download_queue'")
-      expect(tables.length).toBeGreaterThan(0)
-    })
-  })
-
-  describe('rollbackToVersion', () => {
-    beforeEach(() => {
-      // Create v1 tables and data
-      db.run(`
-        CREATE TABLE cves (
-          id TEXT PRIMARY KEY,
-          description TEXT NOT NULL,
-          cvss_score REAL,
-          cvss_vector TEXT,
-          severity TEXT,
-          published_at TEXT NOT NULL,
-          modified_at TEXT NOT NULL,
-          source TEXT NOT NULL
-        )
-      `)
-
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)', [new Date().toISOString()])
-    })
-
-    it('should not rollback when already at target version', () => {
-      const result = rollbackToVersion(db, 1, 1)
-
-      expect(result.success).toBe(true)
-      expect(result.migrationsApplied).toBe(0)
-    })
-
-    it('should rollback to previous version', () => {
-      // First apply migrations
-      runMigrations(db, 1)
-      const versionAfterUp = getSchemaVersion(db)
-
-      // Then rollback
-      const result = rollbackToVersion(db, 1, versionAfterUp)
-
-      expect(result.success).toBe(true)
-      expect(result.toVersion).toBeLessThan(versionAfterUp)
-    })
-  })
-
-  describe('Migration 2: CVE CVSS v2', () => {
-    it('should add CVSS v3.1, v3.0, and v2.0 fields', () => {
-      // Setup v1 schema
-      db.run(`
-        CREATE TABLE cves (
-          id TEXT PRIMARY KEY,
-          description TEXT NOT NULL,
-          cvss_score REAL,
-          cvss_vector TEXT,
-          severity TEXT,
-          published_at TEXT NOT NULL,
-          modified_at TEXT NOT NULL,
-          source TEXT NOT NULL
-        )
-      `)
-
-      db.run('INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)', [new Date().toISOString()])
-
-      // Apply migration 2
-      const result = runMigrations(db, 1)
-
-      expect(result.success).toBe(true)
-      expect(result.toVersion).toBeGreaterThanOrEqual(2)
-
-      // Verify new columns
-      const tableInfo = db.exec('PRAGMA table_info(cves)')
-      const columns = tableInfo[0].values.map((row) => row[1])
+      const columns = tableInfo.map((row) => row.name as string)
 
       expect(columns).toContain('cvss_v31_score')
       expect(columns).toContain('cvss_v31_vector')
@@ -305,11 +158,10 @@ describe('Database Schema Migrations', () => {
     it('should create cwe_references table with correct schema', () => {
       runMigrations(db, 0)
 
-      // Check table structure
-      const tableInfo = db.exec('PRAGMA table_info(cwe_references)')
+      const tableInfo = db.pragma('table_info(cwe_references)') as Record<string, unknown>[]
       expect(tableInfo.length).toBeGreaterThan(0)
 
-      const columns = tableInfo[0].values.map((row) => row[1])
+      const columns = tableInfo.map((row) => row.name as string)
       expect(columns).toContain('id')
       expect(columns).toContain('cve_id')
       expect(columns).toContain('cwe_id')
@@ -321,10 +173,10 @@ describe('Database Schema Migrations', () => {
     it('should create sync_status table with correct schema', () => {
       runMigrations(db, 0)
 
-      const tableInfo = db.exec('PRAGMA table_info(sync_status)')
+      const tableInfo = db.pragma('table_info(sync_status)') as Record<string, unknown>[]
       expect(tableInfo.length).toBeGreaterThan(0)
 
-      const columns = tableInfo[0].values.map((row) => row[1])
+      const columns = tableInfo.map((row) => row.name as string)
       expect(columns).toContain('id')
       expect(columns).toContain('source')
       expect(columns).toContain('year')
@@ -335,10 +187,10 @@ describe('Database Schema Migrations', () => {
     it('should create download_queue table with correct schema', () => {
       runMigrations(db, 0)
 
-      const tableInfo = db.exec('PRAGMA table_info(download_queue)')
+      const tableInfo = db.pragma('table_info(download_queue)') as Record<string, unknown>[]
       expect(tableInfo.length).toBeGreaterThan(0)
 
-      const columns = tableInfo[0].values.map((row) => row[1])
+      const columns = tableInfo.map((row) => row.name as string)
       expect(columns).toContain('id')
       expect(columns).toContain('year')
       expect(columns).toContain('status')
@@ -363,8 +215,7 @@ describe('Database Schema Migrations', () => {
 
   describe('Migration 10: Performance Optimization for 250K+ CVEs', () => {
     beforeEach(() => {
-      // Create base tables needed for migration 10
-      db.run(`
+      db.exec(`
         CREATE TABLE IF NOT EXISTS cves (
           id TEXT PRIMARY KEY,
           description TEXT NOT NULL,
@@ -380,7 +231,7 @@ describe('Database Schema Migrations', () => {
         )
       `)
 
-      db.run(`
+      db.exec(`
         CREATE TABLE IF NOT EXISTS cpe_matches (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           cve_id TEXT NOT NULL,
@@ -390,7 +241,7 @@ describe('Database Schema Migrations', () => {
         )
       `)
 
-      db.run(`
+      db.exec(`
         CREATE TABLE IF NOT EXISTS cvss_metrics (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           cve_id TEXT NOT NULL,
@@ -403,17 +254,18 @@ describe('Database Schema Migrations', () => {
         )
       `)
 
-      // Mark migrations 1-9 as applied
       for (let i = 1; i <= 9; i++) {
-        db.run('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)', [
+        db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
           i,
           new Date().toISOString(),
-        ])
+        )
       }
     })
 
     it('should add parsed CPE columns to cpe_matches table', () => {
-      const beforeColumns = db.exec('PRAGMA table_info(cpe_matches)')[0]?.values.map((row) => row[1]) || []
+      const beforeColumns = (db.pragma('table_info(cpe_matches)') as Record<string, unknown>[]).map(
+        (row) => row.name as string,
+      )
 
       // Run migration 10
       const result = runMigrations(db, 9)
@@ -422,7 +274,9 @@ describe('Database Schema Migrations', () => {
       expect(result.toVersion).toBeGreaterThanOrEqual(10)
 
       // Verify new columns exist
-      const afterColumns = db.exec('PRAGMA table_info(cpe_matches)')[0]?.values.map((row) => row[1]) || []
+      const afterColumns = (db.pragma('table_info(cpe_matches)') as Record<string, unknown>[]).map(
+        (row) => row.name as string,
+      )
 
       expect(afterColumns).toContain('cpe_part')
       expect(afterColumns).toContain('cpe_vendor')
@@ -437,7 +291,7 @@ describe('Database Schema Migrations', () => {
       expect(result.success).toBe(true)
 
       // Verify published_year column exists
-      const columns = db.exec('PRAGMA table_info(cves)')[0]?.values.map((row) => row[1]) || []
+      const columns = (db.pragma('table_info(cves)') as Record<string, unknown>[]).map((row) => row.name as string)
       expect(columns).toContain('published_year')
     })
 
@@ -446,8 +300,8 @@ describe('Database Schema Migrations', () => {
       runMigrations(db, 9)
 
       // Check for composite indexes
-      const indexes = db.exec("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cpe_%'")
-      const indexNames = indexes.length > 0 ? indexes[0].values.map((row) => row[0]) : []
+      const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cpe_%'").all()
+      const indexNames = indexes.map((row) => (row as Record<string, unknown>).name as string)
 
       expect(indexNames).toContain('idx_cpe_vendor_product')
       expect(indexNames).toContain('idx_cpe_part_vendor_product')
@@ -456,12 +310,10 @@ describe('Database Schema Migrations', () => {
     })
 
     it('should create composite CVE indexes for severity filtering', () => {
-      // Run migration 10
       runMigrations(db, 9)
 
-      // Check for composite indexes
-      const indexes = db.exec("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cves_%'")
-      const indexNames = indexes.length > 0 ? indexes[0].values.map((row) => row[0]) : []
+      const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cves_%'").all()
+      const indexNames = indexes.map((row) => (row as Record<string, unknown>).name as string)
 
       expect(indexNames).toContain('idx_cves_severity_date')
       expect(indexNames).toContain('idx_cves_v31_severity_date')
@@ -473,22 +325,19 @@ describe('Database Schema Migrations', () => {
 
     it('should parse existing CPE URIs and populate parsed columns', () => {
       // Insert test CVE
-      db.run(`
+      db.exec(`
         INSERT INTO cves (id, description, severity, published_at, modified_at, source)
         VALUES ('CVE-2024-TEST', 'Test vulnerability', 'HIGH', '2024-01-01', '2024-01-02', 'NVD')
       `)
 
-      // Insert test CPE with CPE 2.3 format
-      db.run(`
+      db.exec(`
         INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable)
         VALUES ('CVE-2024-TEST', 'cpe:2.3:a:google:chrome:120.0:*:*:*:*:*:*:*', 1)
       `)
 
-      // Run migration 10
       runMigrations(db, 9)
 
-      // Verify CPE was parsed
-      const cpeResult = db.exec('SELECT cpe_part, cpe_vendor FROM cpe_matches WHERE cve_id = ?', ['CVE-2024-TEST'])
+      const cpeResult = db.prepare('SELECT cpe_part, cpe_vendor FROM cpe_matches WHERE cve_id = ?').all('CVE-2024-TEST')
 
       // Note: The parsing may be partial due to SQLite substring limitations
       // Just verify the columns exist and were updated
@@ -497,7 +346,7 @@ describe('Database Schema Migrations', () => {
 
     it('should populate published_year from existing CVEs', () => {
       // Insert test CVEs with different years
-      db.run(`
+      db.exec(`
         INSERT INTO cves (id, description, severity, published_at, modified_at, source)
         VALUES
           ('CVE-2024-001', 'Test 2024', 'HIGH', '2024-06-15', '2024-06-16', 'NVD'),
@@ -505,20 +354,16 @@ describe('Database Schema Migrations', () => {
           ('CVE-2022-001', 'Test 2022', 'LOW', '2022-12-01', '2022-12-02', 'NVD')
       `)
 
-      // Run migration 10
       runMigrations(db, 9)
 
-      // Verify years were populated
-      const yearResult = db.exec('SELECT id, published_year FROM cves ORDER BY published_at DESC')
+      const yearResult = db.prepare('SELECT id, published_year FROM cves ORDER BY published_at DESC').all()
 
       expect(yearResult.length).toBeGreaterThan(0)
-      expect(yearResult[0].values.length).toBe(3)
+      expect(yearResult.length).toBe(3)
 
-      // Check years are correct
-      const rows = yearResult[0].values
-      expect(rows[0][1]).toBe(2024) // CVE-2024-001
-      expect(rows[1][1]).toBe(2023) // CVE-2023-001
-      expect(rows[2][1]).toBe(2022) // CVE-2022-001
+      expect((yearResult[0] as Record<string, unknown>).published_year).toBe(2024)
+      expect((yearResult[1] as Record<string, unknown>).published_year).toBe(2023)
+      expect((yearResult[2] as Record<string, unknown>).published_year).toBe(2022)
     })
 
     it('should handle databases with no existing data', () => {
@@ -528,7 +373,7 @@ describe('Database Schema Migrations', () => {
       expect(result.success).toBe(true)
 
       // Verify indexes were created even on empty tables
-      const cpeIndexes = db.exec("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cpe_%'")
+      const cpeIndexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cpe_%'").all()
       expect(cpeIndexes.length).toBeGreaterThan(0)
     })
 

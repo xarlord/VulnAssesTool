@@ -104,10 +104,8 @@ export class CPEEstimationService {
 
     const results: CPEMatchResult[] = []
 
-    // 1. Get suggestions from known mappings
     const knownSuggestions = suggestCPEs(componentName, version)
     for (const suggestion of knownSuggestions) {
-      // Filter out low confidence if not included
       if (!this.options.includeLowConfidence && suggestion.confidence === 'low') {
         continue
       }
@@ -115,16 +113,47 @@ export class CPEEstimationService {
       results.push(this.suggestionToMatchResult(suggestion))
     }
 
-    // 2. If external search function provided, use it
     if (this.options.externalSearchFn) {
       try {
-        const externalResults = await this.options.externalSearchFn(componentName, this.options.maxResultsPerComponent)
+        const dbResults = await this.options.externalSearchFn(componentName, this.options.maxResultsPerComponent)
+        const normalizedVersion = version.toLowerCase().replace(/[/\\]/g, '.')
 
-        // Merge with existing results, avoiding duplicates
-        for (const external of externalResults) {
-          const isDuplicate = results.some((r) => r.cpe === external.cpe)
+        function extractCpeVersion(cpe: string): string {
+          const parts = cpe.split(':')
+          return parts.length >= 6 ? parts[5] : ''
+        }
+
+        for (const local of results) {
+          const dbMatch = dbResults.find(
+            (db) =>
+              db.vendor.toLowerCase() === local.vendor.toLowerCase() &&
+              db.product.toLowerCase() === local.product.toLowerCase(),
+          )
+
+          if (dbMatch) {
+            const dbVersion = extractCpeVersion(dbMatch.cpe).toLowerCase()
+            if (dbVersion && (dbVersion === normalizedVersion || dbVersion === '*')) {
+              local.confidence = 'high'
+              local.matchScore = 90
+              local.cpe = dbMatch.cpe
+            } else {
+              local.confidence = 'medium'
+              local.matchScore = 70
+            }
+          } else {
+            local.confidence = 'low'
+            local.matchScore = 40
+          }
+        }
+
+        for (const db of dbResults) {
+          const isDuplicate = results.some(
+            (r) =>
+              r.vendor.toLowerCase() === db.vendor.toLowerCase() &&
+              r.product.toLowerCase() === db.product.toLowerCase(),
+          )
           if (!isDuplicate) {
-            results.push(external)
+            results.push({ ...db })
           }
         }
       } catch (error) {
@@ -132,7 +161,6 @@ export class CPEEstimationService {
       }
     }
 
-    // 3. Sort by match score (highest first) and limit results
     results.sort((a, b) => b.matchScore - a.matchScore)
 
     return results.slice(0, this.options.maxResultsPerComponent)
@@ -290,4 +318,31 @@ export function toAmbiguousComponent(result: EstimationResult): AmbiguousCompone
  */
 export function toAmbiguousComponents(results: EstimationResult[]): AmbiguousComponent[] {
   return results.filter((r) => r.needsUserConfirmation && r.estimatedCPEs.length > 0).map(toAmbiguousComponent)
+}
+
+export function createCpeDatabaseSearchFn(): (productName: string, limit?: number) => Promise<CPEMatchResult[]> {
+  return async (productName: string, limit?: number): Promise<CPEMatchResult[]> => {
+    try {
+      const { getPlatform } = await import('../platform')
+      const platform = getPlatform()
+      const response = await platform.database.cpeSearch({
+        productName,
+        limit: limit ?? 10,
+      })
+
+      if (!response.success || !response.results) {
+        return []
+      }
+
+      return response.results.map((r) => ({
+        cpe: r.cpe23Uri,
+        vendor: r.vendor,
+        product: r.product,
+        confidence: r.vulnerable ? 'high' : 'medium',
+        matchScore: r.vulnerable ? 90 : 70,
+      }))
+    } catch {
+      return []
+    }
+  }
 }
