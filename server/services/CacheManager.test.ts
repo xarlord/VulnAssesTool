@@ -5,31 +5,26 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import { CacheManager, getCacheManager, initializeCacheManager, type CacheConfig } from './CacheManager'
 
 describe('CacheManager', () => {
-  let db: Database
+  let db: InstanceType<typeof Database>
   let cacheManager: CacheManager
 
   const testConfig: Partial<CacheConfig> = {
-    maxSizeMB: 1, // 1 MB for testing
-    ttlMs: 1000, // 1 second for testing
-    cleanupIntervalMs: 500, // 500ms for testing
+    maxSizeMB: 1,
+    ttlMs: 1000,
+    cleanupIntervalMs: 500,
   }
 
-  beforeEach(async () => {
-    // Reset singleton
+  beforeEach(() => {
     CacheManager.resetInstance()
 
-    // Initialize SQL.js
-    const SQL = await initSqlJs({})
-    db = new SQL.Database()
+    db = new Database(':memory:')
 
-    // Get fresh instance
     cacheManager = getCacheManager(testConfig)
-    await cacheManager.initialize(db)
+    cacheManager.initialize(db)
   })
 
   afterEach(() => {
@@ -39,22 +34,26 @@ describe('CacheManager', () => {
   })
 
   describe('initialization', () => {
-    it('should create cache tables on initialization', async () => {
-      const result = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='cache_entries'`)
+    it('should create cache tables on initialization', () => {
+      const result = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cache_entries'").all()
       expect(result.length).toBeGreaterThan(0)
     })
 
-    it('should create indexes for LRU queries', async () => {
-      const result = db.exec(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_cache_last_accessed'`)
+    it('should create indexes for LRU queries', () => {
+      const result = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_cache_last_accessed'")
+        .all()
       expect(result.length).toBeGreaterThan(0)
     })
 
-    it('should create indexes for namespace queries', async () => {
-      const result = db.exec(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_cache_namespace'`)
+    it('should create indexes for namespace queries', () => {
+      const result = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_cache_namespace'")
+        .all()
       expect(result.length).toBeGreaterThan(0)
     })
 
-    it('should accept custom configuration', async () => {
+    it('should accept custom configuration', () => {
       const customConfig: Partial<CacheConfig> = {
         maxSizeMB: 100,
         ttlMs: 3600000,
@@ -62,7 +61,7 @@ describe('CacheManager', () => {
 
       CacheManager.resetInstance()
       const manager = getCacheManager(customConfig)
-      await manager.initialize(db)
+      manager.initialize(db)
 
       const config = manager.getConfig()
       expect(config.maxSizeMB).toBe(100)
@@ -125,8 +124,11 @@ describe('CacheManager', () => {
 
       cacheManager.get('access-key')
 
-      const result = db.exec(`SELECT last_accessed_at FROM cache_entries WHERE key = 'access-key'`)
-      const lastAccessed = result[0].values[0][0] as number
+      const result = db.prepare("SELECT last_accessed_at FROM cache_entries WHERE key = 'access-key'").get() as Record<
+        string,
+        unknown
+      >
+      const lastAccessed = result.last_accessed_at as number
 
       expect(lastAccessed).toBeGreaterThanOrEqual(beforeTime + 100)
       vi.useRealTimers()
@@ -135,11 +137,10 @@ describe('CacheManager', () => {
     it('should handle invalid JSON in cached value', () => {
       // Insert invalid JSON directly into the database
       const now = Date.now()
-      db.run(
+      db.prepare(
         `INSERT INTO cache_entries (key, value, created_at, last_accessed_at, size, namespace)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        ['bad-json-key', '{not valid json', now, now, 100, 'default'],
-      )
+      ).run('bad-json-key', '{not valid json', now, now, 100, 'default')
 
       const result = cacheManager.get('bad-json-key')
       expect(result).toBeNull()
@@ -171,8 +172,10 @@ describe('CacheManager', () => {
 
       cacheManager.get('expire-delete-key')
 
-      const result = db.exec(`SELECT COUNT(*) FROM cache_entries WHERE key = 'expire-delete-key'`)
-      const count = result[0].values[0][0] as number
+      const result = db.prepare("SELECT COUNT(*) as cnt FROM cache_entries WHERE key = 'expire-delete-key'").get() as {
+        cnt: number
+      }
+      const count = result.cnt
 
       expect(count).toBe(0)
     })
@@ -180,7 +183,7 @@ describe('CacheManager', () => {
     it('should respect custom TTL configuration', async () => {
       CacheManager.resetInstance()
       const longTtlManager = getCacheManager({ ttlMs: 10000 })
-      await longTtlManager.initialize(db)
+      longTtlManager.initialize(db)
 
       longTtlManager.set('long-ttl-key', 'value')
 
@@ -284,8 +287,8 @@ describe('CacheManager', () => {
       cacheManager.get('key1')
 
       // Verify order in database
-      const result = db.exec(`SELECT key FROM cache_entries ORDER BY last_accessed_at ASC`)
-      const keys = result[0].values.map((row) => row[0] as string)
+      const result = db.prepare(`SELECT key FROM cache_entries ORDER BY last_accessed_at ASC`).all()
+      const keys = result.map((row) => (row as Record<string, unknown>).key as string)
 
       // key2 should be older (first to evict)
       expect(keys[0]).toBe('key2')
@@ -336,7 +339,7 @@ describe('CacheManager', () => {
     })
 
     it('should return false on database error', () => {
-      db.run('DROP TABLE cache_entries')
+      db.exec('DROP TABLE cache_entries')
       const result = cacheManager.delete('key')
       expect(result).toBe(false)
     })
@@ -360,7 +363,7 @@ describe('CacheManager', () => {
     })
 
     it('should return 0 on database error', () => {
-      db.run('DROP TABLE cache_entries')
+      db.exec('DROP TABLE cache_entries')
       const cleared = cacheManager.clear()
       expect(cleared).toBe(0)
     })
@@ -441,7 +444,7 @@ describe('CacheManager', () => {
     })
 
     it('should return 0 on database error', () => {
-      db.run('DROP TABLE cache_entries')
+      db.exec('DROP TABLE cache_entries')
       const cleaned = cacheManager.cleanup()
       expect(cleaned).toBe(0)
     })
@@ -596,9 +599,7 @@ describe('CacheManager', () => {
     })
 
     it('should return false from set on insert error', () => {
-      // evictIfNeeded uses db.exec (SELECT) which succeeds on empty cache;
-      // only the INSERT db.run is affected by the spy
-      vi.spyOn(db, 'run').mockImplementation(() => {
+      vi.spyOn(db, 'prepare').mockImplementation(() => {
         throw new Error('DB insert error')
       })
 

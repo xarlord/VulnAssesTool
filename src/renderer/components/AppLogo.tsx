@@ -84,14 +84,14 @@ export function AppLogo({ size = 'md', showText = true, className = '' }: AppLog
         ) : (
           <img
             src={isDark ? '/logo-dark.png' : '/logo-light.png'}
-            alt="VulnAssessTool"
+            alt="D-Fence"
             height={height}
             className="h-full w-auto object-contain"
             onError={() => setImageError(true)}
           />
         )}
       </div>
-      {showText && <h1 className="text-2xl font-bold">VulnAssessTool</h1>}
+      {showText && <h1 className="text-2xl font-bold">D-Fence</h1>}
     </div>
   )
 }

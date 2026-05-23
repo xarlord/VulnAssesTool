@@ -99,7 +99,7 @@ export function Search() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(query)
-    })
+    }, 300)
 
     return () => clearTimeout(timer)
   }, [query])

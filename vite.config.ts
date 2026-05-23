@@ -52,6 +52,7 @@ export default defineConfig({
           'vendor-cytoscape': ['cytoscape'],
           'vendor-recharts': ['recharts'],
           'vendor-pdf': ['jspdf', 'jspdf-autotable'],
+          'vendor-xlsx': ['xlsx'],
         },
       },
     },

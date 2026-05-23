@@ -16,6 +16,7 @@ interface ClientInfo {
 
 const clients = new Set<ClientInfo>()
 const lastEvents = new Map<string, unknown>()
+const MAX_LAST_EVENTS = 50
 let wss: WebSocketServer | null = null
 
 export function initWebSocketServer(server: Server): void {
@@ -68,6 +69,10 @@ export function initWebSocketServer(server: Server): void {
 
 export function broadcast(type: string, data: unknown): void {
   lastEvents.set(type, data)
+  if (lastEvents.size > MAX_LAST_EVENTS) {
+    const firstKey = lastEvents.keys().next().value
+    if (firstKey !== undefined) lastEvents.delete(firstKey)
+  }
 
   const message = JSON.stringify({ type, data })
   for (const client of clients) {

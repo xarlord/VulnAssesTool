@@ -3,8 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   NvdBulkImporter,
   createNvdBulkImporter,
@@ -17,8 +16,7 @@ import { runMigrations } from './migrations/v2SchemaMigration.js'
 import { createNvdApiV2Client } from './nvd/nvdApiV2Client.js'
 import type { NvdCveV2 } from './nvd/nvdApiV2Client.js'
 
-let db: Database
-let sqlJs: unknown
+let db: InstanceType<typeof Database>
 
 // Mock NVD API client
 vi.mock('./nvd/nvdApiV2Client.js', () => {
@@ -177,29 +175,23 @@ vi.mock('./nvd/nvdApiV2Client.js', () => {
   }
 })
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  const database = new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  const database = new Database(':memory:')
 
-  // Create metadata table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS metadata (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
   `)
 
-  // Create schema migrations table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     )
   `)
 
-  // Apply all migrations
   runMigrations(database, 0)
 
   return database
@@ -208,8 +200,8 @@ async function createTestDatabase(): Promise<Database> {
 describe('NvdBulkImporter', () => {
   let importer: NvdBulkImporter
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     importer = createNvdBulkImporter(db)
   })
 
@@ -537,7 +529,7 @@ describe('NvdBulkImporter', () => {
 
     it('should handle corrupted state in loadState', () => {
       // Insert invalid JSON as state to trigger parse error
-      db.run(`INSERT INTO metadata (key, value) VALUES ('bulk_import_state', 'not-valid-json')`)
+      db.exec(`INSERT INTO metadata (key, value) VALUES ('bulk_import_state', 'not-valid-json')`)
 
       // loadState should catch the parse error and return null
       expect(importer.hasResumableImport()).toBe(false)
@@ -616,15 +608,15 @@ describe('NvdBulkImporter', () => {
 })
 
 describe('createNvdBulkImporter', () => {
-  it('should create importer instance', async () => {
-    const testDb = await createTestDatabase()
+  it('should create importer instance', () => {
+    const testDb = createTestDatabase()
     const importer = createNvdBulkImporter(testDb)
     expect(importer).toBeInstanceOf(NvdBulkImporter)
     testDb.close()
   })
 
-  it('should create importer with API key', async () => {
-    const testDb = await createTestDatabase()
+  it('should create importer with API key', () => {
+    const testDb = createTestDatabase()
     const importer = createNvdBulkImporter(testDb, 'test-key')
     expect(importer).toBeInstanceOf(NvdBulkImporter)
     testDb.close()
@@ -710,8 +702,8 @@ describe('getImportYears', () => {
 describe('Import Progress Tracking', () => {
   let importer: NvdBulkImporter
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     importer = createNvdBulkImporter(db)
   })
 
@@ -801,8 +793,8 @@ describe('Import Progress Tracking', () => {
 describe('Error Recovery', () => {
   let importer: NvdBulkImporter
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     importer = createNvdBulkImporter(db)
   })
 
@@ -836,7 +828,7 @@ describe('Error Recovery', () => {
 
   it('should handle saveState error gracefully', async () => {
     // Drop metadata table to cause saveState to fail
-    db.run('DROP TABLE metadata')
+    db.exec('DROP TABLE metadata')
 
     const controller = new AbortController()
     controller.abort()
@@ -861,7 +853,7 @@ describe('Error Recovery', () => {
     })
 
     // Drop metadata table to make clearState fail
-    db.run('DROP TABLE metadata')
+    db.exec('DROP TABLE metadata')
 
     // Another successful import — clearState fails silently on completion
     const result = await importer.startImport({
@@ -897,7 +889,7 @@ describe('Error Recovery', () => {
     const postImportCallIndex = callPhases.findIndex((c) => c.includes('complete'))
     const throwOnCall = postImportCallIndex > 0 ? postImportCallIndex : callCount - 1
 
-    const freshDb = await createTestDatabase()
+    const freshDb = createTestDatabase()
     const freshImporter = createNvdBulkImporter(freshDb)
     let throwCount = 0
 
@@ -928,7 +920,7 @@ describe('Error Recovery', () => {
     // Drop the cves table so the real data importer's insertCve fails.
     // The data importer catches per-CVE errors and pushes them to result.errors,
     // which nvdBulkImporter then iterates at lines 451-461.
-    db.run('DROP TABLE cves')
+    db.exec('DROP TABLE cves')
 
     const collectedErrors: ImportError[] = []
 
@@ -953,8 +945,8 @@ describe('Error Recovery', () => {
 describe('Database Integration', () => {
   let importer: NvdBulkImporter
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     importer = createNvdBulkImporter(db)
   })
 
@@ -972,10 +964,9 @@ describe('Database Integration', () => {
     })
 
     // Check database has CVEs
-    const result = db.exec('SELECT COUNT(*) FROM cves')
-    const count = result[0]?.values[0]?.[0] as number
+    const result = db.prepare('SELECT COUNT(*) as cnt FROM cves').get() as { cnt: number }
 
-    expect(count).toBeGreaterThan(0)
+    expect(result.cnt).toBeGreaterThan(0)
   })
 
   it('should store CPE matches', async () => {
@@ -986,10 +977,9 @@ describe('Database Integration', () => {
     })
 
     // Check database has CPE matches
-    const result = db.exec('SELECT COUNT(*) FROM cpe_matches')
-    const count = result[0]?.values[0]?.[0] as number
+    const result = db.prepare('SELECT COUNT(*) as cnt FROM cpe_matches').get() as { cnt: number }
 
-    expect(count).toBeGreaterThanOrEqual(0)
+    expect(result.cnt).toBeGreaterThanOrEqual(0)
   })
 
   it('should store references', async () => {
@@ -1000,9 +990,8 @@ describe('Database Integration', () => {
     })
 
     // Check database has references
-    const result = db.exec('SELECT COUNT(*) FROM "references"')
-    const count = result[0]?.values[0]?.[0] as number
+    const result = db.prepare('SELECT COUNT(*) as cnt FROM "references"').get() as { cnt: number }
 
-    expect(count).toBeGreaterThanOrEqual(0)
+    expect(result.cnt).toBeGreaterThanOrEqual(0)
   })
 })

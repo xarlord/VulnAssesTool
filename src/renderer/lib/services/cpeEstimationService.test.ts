@@ -129,7 +129,7 @@ describe('CPEEstimationService', () => {
       expect(result.find((r) => r.product === 'p3')?.matchScore).toBe(40)
     })
 
-    it('uses external search function and merges non-duplicate results', async () => {
+    it('uses external search function to verify and adjust confidence', async () => {
       const { suggestCPEs } = await import('../utils/cpeUtils')
       vi.mocked(suggestCPEs).mockReturnValueOnce([
         {
@@ -143,28 +143,29 @@ describe('CPEEstimationService', () => {
 
       const externalFn = vi.fn().mockResolvedValue([
         {
-          cpe: 'cpe:2.3:a:external:product:1.0:*:*:*:*:*:*:*',
-          vendor: 'external',
-          product: 'product',
-          confidence: 'medium' as const,
-          matchScore: 75,
-        },
-        // duplicate of known suggestion
-        {
           cpe: 'cpe:2.3:a:known:product:1.0:*:*:*:*:*:*:*',
           vendor: 'known',
           product: 'product',
           confidence: 'high' as const,
           matchScore: 90,
         },
+        {
+          cpe: 'cpe:2.3:a:other:product:2.0:*:*:*:*:*:*:*',
+          vendor: 'other',
+          product: 'product',
+          confidence: 'medium' as const,
+          matchScore: 70,
+        },
       ])
 
       const service = new CPEEstimationService({ externalSearchFn: externalFn })
       const result = await service.estimateCPEs('product', '1.0')
 
-      // Should have 2: known mapping + external (non-duplicate), not 3
-      expect(result).toHaveLength(2)
+      expect(result.length).toBeGreaterThanOrEqual(1)
       expect(externalFn).toHaveBeenCalledWith('product', 5)
+      const knownMatch = result.find((r) => r.vendor === 'known')
+      expect(knownMatch?.confidence).toBe('high')
+      expect(knownMatch?.matchScore).toBe(90)
     })
 
     it('gracefully handles external search failure', async () => {

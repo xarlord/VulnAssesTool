@@ -3,8 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   BulkDownloadManager,
   createBulkDownloadManager,
@@ -58,17 +57,12 @@ vi.mock('./nvdApiV2Client.js', () => ({
   }),
 }))
 
-let db: Database
-let sqlJs: any
+let db: InstanceType<typeof Database>
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  const database = new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  const database = new Database(':memory:')
 
-  // Create required tables
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS download_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       year INTEGER NOT NULL,
@@ -87,8 +81,8 @@ async function createTestDatabase(): Promise<Database> {
 describe('BulkDownloadManager', () => {
   let manager: BulkDownloadManager
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     manager = createBulkDownloadManager(db)
   })
 
@@ -141,8 +135,8 @@ describe('BulkDownloadManager', () => {
       const abortController = new AbortController()
 
       // Initialize queue manually for testing
-      db.run("INSERT INTO download_queue (year, status) VALUES (2024, 'pending')")
-      db.run("INSERT INTO download_queue (year, status) VALUES (2025, 'pending')")
+      db.exec("INSERT INTO download_queue (year, status) VALUES (2024, 'pending')")
+      db.exec("INSERT INTO download_queue (year, status) VALUES (2025, 'pending')")
 
       const status = manager.getQueueStatus()
       expect(status.length).toBe(2)
@@ -153,7 +147,7 @@ describe('BulkDownloadManager', () => {
 
   describe('clearQueue', () => {
     it('should clear the queue', () => {
-      db.run("INSERT INTO download_queue (year, status) VALUES (2024, 'pending')")
+      db.exec("INSERT INTO download_queue (year, status) VALUES (2024, 'pending')")
       expect(manager.getQueueStatus().length).toBe(1)
 
       manager.clearQueue()
@@ -163,8 +157,11 @@ describe('BulkDownloadManager', () => {
 
   describe('retryFailed', () => {
     it('should update failed items to pending', () => {
-      db.run("INSERT INTO download_queue (year, status, error_message) VALUES (2024, 'failed', 'Test error')")
-      db.run("INSERT INTO download_queue (year, status) VALUES (2025, 'complete')")
+      db.prepare("INSERT INTO download_queue (year, status, error_message) VALUES (?, 'failed', ?)").run(
+        2024,
+        'Test error',
+      )
+      db.exec("INSERT INTO download_queue (year, status) VALUES (2025, 'complete')")
 
       manager.retryFailed()
 
@@ -300,8 +297,7 @@ describe('BulkDownloadManager', () => {
           queueSize: 0,
           timeUntilNextRequest: 0,
         }),
-      } as any)
-
+      } as unknown as ReturnType<typeof createNvdApiV2Client>)
       const managerWithError = createBulkDownloadManager(db)
       const yearErrorCallback = vi.fn()
 
@@ -325,8 +321,7 @@ describe('BulkDownloadManager', () => {
           queueSize: 0,
           timeUntilNextRequest: 0,
         }),
-      } as any)
-
+      } as unknown as ReturnType<typeof createNvdApiV2Client>)
       const managerWithError = createBulkDownloadManager(db)
 
       await managerWithError.startDownload({
@@ -352,8 +347,11 @@ describe('BulkDownloadManager', () => {
 
     it('should support resume from queue', async () => {
       // Setup: Add failed items to queue
-      db.run("INSERT INTO download_queue (year, status, error_message) VALUES (2023, 'failed', 'Previous error')")
-      db.run("INSERT INTO download_queue (year, status) VALUES (2024, 'complete')")
+      db.prepare("INSERT INTO download_queue (year, status, error_message) VALUES (?, 'failed', ?)").run(
+        2023,
+        'Previous error',
+      )
+      db.exec("INSERT INTO download_queue (year, status) VALUES (2024, 'complete')")
 
       const result = await manager.startDownload({
         resumeFromQueue: true,
@@ -369,15 +367,15 @@ describe('BulkDownloadManager', () => {
 })
 
 describe('createBulkDownloadManager', () => {
-  it('should create manager instance', async () => {
-    const testDb = await createTestDatabase()
+  it('should create manager instance', () => {
+    const testDb = createTestDatabase()
     const manager = createBulkDownloadManager(testDb)
     expect(manager).toBeInstanceOf(BulkDownloadManager)
     testDb.close()
   })
 
-  it('should create manager with API key', async () => {
-    const testDb = await createTestDatabase()
+  it('should create manager with API key', () => {
+    const testDb = createTestDatabase()
     const manager = createBulkDownloadManager(testDb, 'test-key')
     expect(manager).toBeInstanceOf(BulkDownloadManager)
     testDb.close()

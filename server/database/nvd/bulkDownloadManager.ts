@@ -9,13 +9,15 @@
  * - Database integration for queue management
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   NvdApiV2Client,
   createNvdApiV2Client,
   getAvailableYearsForDownload,
   type NvdDownloadProgress,
 } from './nvdApiV2Client.js'
+
+type BetterDb = InstanceType<typeof Database>
 
 /**
  * Download status for a year
@@ -87,13 +89,13 @@ interface DownloadQueueItem {
  */
 export class BulkDownloadManager {
   private apiClient: NvdApiV2Client
-  private db: Database
+  private db: BetterDb
   private abortController: AbortController | null = null
   private progress: BulkDownloadProgress
   private options: Omit<Required<BulkDownloadOptions>, 'signal'> & { signal: AbortSignal | undefined }
   private startTime: number = 0
 
-  constructor(db: Database, apiKey?: string) {
+  constructor(db: BetterDb, apiKey?: string) {
     this.db = db
     this.apiClient = createNvdApiV2Client(apiKey)
     this.options = {
@@ -314,7 +316,7 @@ export class BulkDownloadManager {
    */
   private initializeQueue(years: number[]): void {
     // Clear existing queue
-    this.db.run('DELETE FROM download_queue')
+    this.db.exec('DELETE FROM download_queue')
 
     // Insert years
     const stmt = this.db.prepare(`
@@ -323,27 +325,25 @@ export class BulkDownloadManager {
     `)
 
     for (const year of years) {
-      stmt.run([year])
+      stmt.run(year)
     }
-
-    stmt.free()
   }
 
   /**
    * Get years from queue that need downloading
    */
   private getYearsFromQueue(): number[] {
-    const result = this.db.exec(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT year FROM download_queue
       WHERE status IN ('pending', 'failed')
       ORDER BY year ASC
-    `)
+    `,
+      )
+      .all() as Array<{ year: number }>
 
-    if (result.length === 0 || result[0].values.length === 0) {
-      return []
-    }
-
-    return result[0].values.map((row) => row[0] as number)
+    return rows.map((row) => row.year)
   }
 
   /**
@@ -351,32 +351,35 @@ export class BulkDownloadManager {
    */
   private updateQueueStatus(year: number, status: DownloadStatus, errorMessage?: string): void {
     if (status === 'downloading') {
-      this.db.run(
-        `
+      this.db
+        .prepare(
+          `
         UPDATE download_queue
         SET status = ?, started_at = datetime('now')
         WHERE year = ?
       `,
-        [status, year],
-      )
+        )
+        .run(status, year)
     } else if (status === 'complete') {
-      this.db.run(
-        `
+      this.db
+        .prepare(
+          `
         UPDATE download_queue
         SET status = ?, completed_at = datetime('now')
         WHERE year = ?
       `,
-        [status, year],
-      )
+        )
+        .run(status, year)
     } else if (status === 'failed') {
-      this.db.run(
-        `
+      this.db
+        .prepare(
+          `
         UPDATE download_queue
         SET status = ?, error_message = ?, retry_count = retry_count + 1
         WHERE year = ?
       `,
-        [status, errorMessage || 'Unknown error', year],
-      )
+        )
+        .run(status, errorMessage || 'Unknown error', year)
     }
   }
 
@@ -384,24 +387,32 @@ export class BulkDownloadManager {
    * Get queue status
    */
   getQueueStatus(): DownloadQueueItem[] {
-    const result = this.db.exec(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT id, year, status, started_at, completed_at, error_message, retry_count
       FROM download_queue
       ORDER BY year ASC
-    `)
+    `,
+      )
+      .all() as Array<{
+      id: number
+      year: number
+      status: DownloadStatus
+      started_at: string | null
+      completed_at: string | null
+      error_message: string | null
+      retry_count: number
+    }>
 
-    if (result.length === 0) {
-      return []
-    }
-
-    return result[0].values.map((row) => ({
-      id: row[0] as number,
-      year: row[1] as number,
-      status: row[2] as DownloadStatus,
-      started_at: row[3] as string | null,
-      completed_at: row[4] as string | null,
-      error_message: row[5] as string | null,
-      retry_count: row[6] as number,
+    return rows.map((row) => ({
+      id: row.id,
+      year: row.year,
+      status: row.status,
+      started_at: row.started_at,
+      completed_at: row.completed_at,
+      error_message: row.error_message,
+      retry_count: row.retry_count,
     }))
   }
 
@@ -409,14 +420,14 @@ export class BulkDownloadManager {
    * Clear download queue
    */
   clearQueue(): void {
-    this.db.run('DELETE FROM download_queue')
+    this.db.exec('DELETE FROM download_queue')
   }
 
   /**
    * Retry failed downloads
    */
   retryFailed(): void {
-    this.db.run(`
+    this.db.exec(`
       UPDATE download_queue
       SET status = 'pending', error_message = NULL
       WHERE status = 'failed'
@@ -464,6 +475,6 @@ export class BulkDownloadManager {
 /**
  * Create a bulk download manager
  */
-export function createBulkDownloadManager(db: Database, apiKey?: string): BulkDownloadManager {
+export function createBulkDownloadManager(db: BetterDb, apiKey?: string): BulkDownloadManager {
   return new BulkDownloadManager(db, apiKey)
 }

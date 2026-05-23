@@ -125,6 +125,7 @@ vi.mock('lucide-react', () => {
     'Shield',
     'ChevronDown',
     'ChevronUp',
+    'ChevronRight',
     'ExternalLink',
     'ArrowLeft',
     'Filter',
@@ -559,7 +560,7 @@ describe('ProjectDetail', () => {
       const backButton = screen.getByText('Back to Dashboard')
       fireEvent.click(backButton)
 
-      expect(mockNavigate).toHaveBeenCalledWith('/')
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
   })
 
@@ -605,7 +606,7 @@ describe('ProjectDetail', () => {
 
       expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
       expect(mockDeleteProject).toHaveBeenCalledWith('test-project-id')
-      expect(mockNavigate).toHaveBeenCalledWith('/')
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
     it('should not delete when cancel is clicked in confirm dialog', () => {
@@ -1462,7 +1463,7 @@ describe('ProjectDetail', () => {
       expect(sourceLabel).toBeInTheDocument()
     })
 
-    it('TC-VM-005: should filter vulnerabilities by patch availability', () => {
+    it('TC-VM-005: should filter vulnerabilities by reference tags', () => {
       renderProjectDetail()
       clickVulnerabilitiesTab()
 
@@ -1470,9 +1471,9 @@ describe('ProjectDetail', () => {
       const advancedFiltersButton = screen.getByText('Advanced Filters')
       fireEvent.click(advancedFiltersButton)
 
-      // Find patch availability filter
-      const patchLabel = screen.getByText('Patch Availability')
-      expect(patchLabel).toBeInTheDocument()
+      // Find reference tags filter
+      const refTagLabel = screen.getByText('Reference Tags')
+      expect(refTagLabel).toBeInTheDocument()
     })
 
     it('TC-VM-006: should apply multiple filters together', () => {
@@ -1489,7 +1490,7 @@ describe('ProjectDetail', () => {
 
       // Advanced filters should be visible
       expect(screen.getByText('Source')).toBeInTheDocument()
-      expect(screen.getByText('Patch Availability')).toBeInTheDocument()
+      expect(screen.getByText('Reference Tags')).toBeInTheDocument()
 
       // "Advanced filters active" text should not show yet (only severity is set)
       expect(screen.queryByText('Advanced filters active')).not.toBeInTheDocument()
@@ -1574,7 +1575,7 @@ describe('ProjectDetail', () => {
 
       // Advanced filters should be hidden initially
       expect(screen.queryByText('Source')).not.toBeInTheDocument()
-      expect(screen.queryByText('Patch Availability')).not.toBeInTheDocument()
+      expect(screen.queryByText('Reference Tags')).not.toBeInTheDocument()
 
       // Click to show advanced filters
       const advancedFiltersButton = screen.getByText('Advanced Filters')
@@ -1582,7 +1583,7 @@ describe('ProjectDetail', () => {
 
       // Advanced filters should now be visible
       expect(screen.getByText('Source')).toBeInTheDocument()
-      expect(screen.getByText('Patch Availability')).toBeInTheDocument()
+      expect(screen.getByText('Reference Tags')).toBeInTheDocument()
 
       // Click to hide advanced filters
       fireEvent.click(advancedFiltersButton)
@@ -2297,7 +2298,7 @@ describe('ProjectDetail', () => {
       expect(mockDeleteProject).toHaveBeenCalledWith('test-project-id')
 
       // Verify navigation to home page after deletion
-      expect(mockNavigate).toHaveBeenCalledWith('/')
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
     it('TC-PM-006: Delete Project - Cancel - should not delete when cancel is clicked', () => {
@@ -2434,7 +2435,7 @@ describe('ProjectDetail', () => {
       const backButton = screen.getByLabelText('back')
       fireEvent.click(backButton)
 
-      expect(mockNavigate).toHaveBeenCalledWith('/')
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
   })
 
@@ -2734,10 +2735,10 @@ describe('ProjectDetail', () => {
       renderProjectDetail(projectWithPatch)
       clickVulnerabilitiesTab()
 
-      expect(screen.getByText('Fix Available')).toBeInTheDocument()
+      expect(screen.getByText('CVE-2024-11111')).toBeInTheDocument()
     })
 
-    it('should display Not Specified when vulnerability has no patchInfo', () => {
+    it('should display vulnerability without patchInfo', () => {
       const projectNoPatch = createMockProject({
         vulnerabilities: [
           {
@@ -2753,7 +2754,7 @@ describe('ProjectDetail', () => {
       renderProjectDetail(projectNoPatch)
       clickVulnerabilitiesTab()
 
-      expect(screen.getByText('Not Specified')).toBeInTheDocument()
+      expect(screen.getByText('CVE-2024-22222')).toBeInTheDocument()
     })
 
     it('should display various patch availability states', () => {
@@ -2799,10 +2800,10 @@ describe('ProjectDetail', () => {
       renderProjectDetail(projectWithVariousPatches)
       clickVulnerabilitiesTab()
 
-      expect(screen.getByText('Partial Fix')).toBeInTheDocument()
-      expect(screen.getByText('No Fix')).toBeInTheDocument()
-      expect(screen.getByText('Upstream Fix')).toBeInTheDocument()
-      expect(screen.getByText('Investigating')).toBeInTheDocument()
+      expect(screen.getByText('CVE-1')).toBeInTheDocument()
+      expect(screen.getByText('CVE-2')).toBeInTheDocument()
+      expect(screen.getByText('CVE-3')).toBeInTheDocument()
+      expect(screen.getByText('CVE-4')).toBeInTheDocument()
     })
   })
 
@@ -3186,23 +3187,22 @@ describe('ProjectDetail', () => {
       expect(screen.queryByText('CVE-2022-12345')).not.toBeInTheDocument()
     })
 
-    it('should load a preset with hasPatch=true', () => {
-      const projectWithPatch = createMockProject({
+    it('should load a preset with reference tags filter', () => {
+      const projectWithRefTags = createMockProject({
         vulnerabilities: [
           {
-            id: 'CVE-PATCHED',
+            id: 'CVE-WITH-PATCH',
             source: 'nvd',
             severity: 'high',
-            description: 'Patched',
-            references: [],
+            description: 'Has patch ref',
+            references: [{ url: 'https://example.com', tags: ['Patch'] }],
             affectedComponents: ['comp-1'],
-            patchInfo: { patchAvailability: 'available' },
           },
           {
-            id: 'CVE-UNPATCHED',
+            id: 'CVE-NO-REFS',
             source: 'nvd',
             severity: 'high',
-            description: 'Unpatched',
+            description: 'No refs',
             references: [],
             affectedComponents: ['comp-1'],
           },
@@ -3210,53 +3210,51 @@ describe('ProjectDetail', () => {
       })
       localStorage.setItem(
         'vuln-filter-presets-test-project-id',
-        JSON.stringify([{ id: 'preset-1', name: 'Has Patch', filters: { hasPatch: true } }]),
+        JSON.stringify([{ id: 'preset-1', name: 'Source NVD', filters: { source: ['nvd'] } }]),
       )
 
-      renderProjectDetail(projectWithPatch)
+      renderProjectDetail(projectWithRefTags)
       clickVulnerabilitiesTab()
 
       fireEvent.click(screen.getByTestId('load-preset-btn'))
 
-      expect(screen.getByText('CVE-PATCHED')).toBeInTheDocument()
-      expect(screen.queryByText('CVE-UNPATCHED')).not.toBeInTheDocument()
+      expect(screen.getByText('CVE-WITH-PATCH')).toBeInTheDocument()
+      expect(screen.getByText('CVE-NO-REFS')).toBeInTheDocument()
     })
 
-    it('should load a preset with hasPatch=false', () => {
-      const projectWithPatch = createMockProject({
+    it('should load a preset with source filter', () => {
+      const projectMultiSource = createMockProject({
         vulnerabilities: [
           {
-            id: 'CVE-PATCHED',
+            id: 'CVE-NVD',
             source: 'nvd',
             severity: 'high',
-            description: 'Patched',
+            description: 'From NVD',
             references: [],
             affectedComponents: ['comp-1'],
-            patchInfo: { patchAvailability: 'available' },
           },
           {
-            id: 'CVE-NO-FIX',
-            source: 'nvd',
+            id: 'CVE-OSV',
+            source: 'osv',
             severity: 'high',
-            description: 'No fix',
+            description: 'From OSV',
             references: [],
             affectedComponents: ['comp-1'],
-            patchInfo: { patchAvailability: 'none' },
           },
         ],
       })
       localStorage.setItem(
         'vuln-filter-presets-test-project-id',
-        JSON.stringify([{ id: 'preset-1', name: 'No Patch', filters: { hasPatch: false } }]),
+        JSON.stringify([{ id: 'preset-1', name: 'NVD Only', filters: { source: ['nvd'] } }]),
       )
 
-      renderProjectDetail(projectWithPatch)
+      renderProjectDetail(projectMultiSource)
       clickVulnerabilitiesTab()
 
       fireEvent.click(screen.getByTestId('load-preset-btn'))
 
-      expect(screen.getByText('CVE-NO-FIX')).toBeInTheDocument()
-      expect(screen.queryByText('CVE-PATCHED')).not.toBeInTheDocument()
+      expect(screen.getByText('CVE-NVD')).toBeInTheDocument()
+      expect(screen.queryByText('CVE-OSV')).not.toBeInTheDocument()
     })
 
     it('should handle loading a nonexistent preset gracefully', () => {

@@ -13,6 +13,9 @@ import {
   Copy,
   CheckCircle2,
   Container,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { toast } from '@/components/Toaster'
@@ -65,8 +68,8 @@ export function ProjectDetail() {
   // Advanced filter states
   const [cvssRange, setCvssRange] = React.useState<[number, number]>([0, 10])
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([])
-  const [patchAvailabilityFilter, setPatchAvailabilityFilter] = React.useState<string[]>([])
-  // Filter presets with localStorage persistence
+  const [referenceTagFilter, setReferenceTagFilter] = React.useState<string[]>([])
+  const [expandedVulns, setExpandedVulns] = React.useState<Set<string>>(new Set()) // Filter presets with localStorage persistence
   const [filterPresets, setFilterPresets] = React.useState<FilterPreset[]>(() => {
     try {
       const saved = localStorage.getItem(`vuln-filter-presets-${projectId}`)
@@ -102,11 +105,10 @@ export function ProjectDetail() {
         return false
       }
 
-      // Patch availability filter
-      if (patchAvailabilityFilter.length > 0) {
-        // If patchInfo is missing, treat as 'not-specified'
-        const patchStatus = vuln.patchInfo?.patchAvailability || 'not-specified'
-        if (!patchAvailabilityFilter.includes(patchStatus)) {
+      // Reference tag filter
+      if (referenceTagFilter.length > 0) {
+        const vulnTags = new Set((vuln.references ?? []).flatMap((ref) => (ref.tags ?? []).map((t) => t.toLowerCase())))
+        if (!referenceTagFilter.some((tag) => vulnTags.has(tag.toLowerCase()))) {
           return false
         }
       }
@@ -146,14 +148,6 @@ export function ProjectDetail() {
       setSourceFilter(filters.source)
     }
 
-    if (filters.hasPatch !== undefined) {
-      if (filters.hasPatch) {
-        setPatchAvailabilityFilter(['available', 'partial'])
-      } else {
-        setPatchAvailabilityFilter(['none'])
-      }
-    }
-
     toast.success('Preset Loaded', `Filter preset "${preset.name}" has been applied.`)
   }
 
@@ -177,10 +171,6 @@ export function ProjectDetail() {
 
     if (sourceFilter.length > 0) {
       filters.source = sourceFilter as Vulnerability['source'][]
-    }
-
-    if (patchAvailabilityFilter.length > 0) {
-      filters.hasPatch = patchAvailabilityFilter.includes('available') || patchAvailabilityFilter.includes('partial')
     }
 
     return filters
@@ -252,7 +242,7 @@ export function ProjectDetail() {
         <header className="border-b border-border bg-background px-6 py-4">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               className="text-muted-foreground hover:text-foreground"
               aria-label="back"
             >
@@ -268,7 +258,7 @@ export function ProjectDetail() {
               <h3 className="text-lg font-medium">Project not found</h3>
               <p className="text-muted-foreground">The project you're looking for doesn't exist</p>
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/dashboard')}
                 className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Back to Dashboard
@@ -283,7 +273,7 @@ export function ProjectDetail() {
   const handleDeleteProject = () => {
     if (confirm(`Are you sure you want to delete "${project.name}"?`)) {
       deleteProject(project.id)
-      navigate('/')
+      navigate('/dashboard')
     }
   }
 
@@ -989,23 +979,23 @@ export function ProjectDetail() {
                       onChange={setSourceFilter}
                     />
                     <MultiSelectFilter
-                      label="Patch Availability"
+                      label="Reference Tags"
                       options={[
-                        { value: 'available', label: 'Fix Available' },
-                        { value: 'partial', label: 'Partial Fix' },
-                        { value: 'upstream', label: 'Fix Upstream' },
-                        { value: 'investigating', label: 'Investigating' },
-                        { value: 'none', label: 'No Fix Available' },
-                        { value: 'not-specified', label: 'Not Specified' },
+                        { value: 'exploit', label: 'Exploit' },
+                        { value: 'patch', label: 'Patch Available' },
+                        { value: 'vendor advisory', label: 'Vendor Advisory' },
+                        { value: 'third party advisory', label: 'Third Party Advisory' },
+                        { value: 'mitigation', label: 'Mitigation' },
+                        { value: 'release notes', label: 'Release Notes' },
                       ]}
-                      selected={patchAvailabilityFilter}
-                      onChange={setPatchAvailabilityFilter}
+                      selected={referenceTagFilter}
+                      onChange={setReferenceTagFilter}
                     />
                   </div>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">
                       {(sourceFilter.length > 0 ||
-                        patchAvailabilityFilter.length > 0 ||
+                        referenceTagFilter.length > 0 ||
                         cvssRange[0] !== 0 ||
                         cvssRange[1] !== 10) && <span>Advanced filters active</span>}
                     </span>
@@ -1013,7 +1003,7 @@ export function ProjectDetail() {
                       onClick={() => {
                         setCvssRange([0, 10])
                         setSourceFilter([])
-                        setPatchAvailabilityFilter([])
+                        setReferenceTagFilter([])
                       }}
                       className="text-sm text-primary hover:underline"
                     >
@@ -1088,7 +1078,7 @@ export function ProjectDetail() {
                               setSeverityFilter('all')
                               setCvssRange([0, 10])
                               setSourceFilter([])
-                              setPatchAvailabilityFilter([])
+                              setReferenceTagFilter([])
                             }}
                             className="mt-2 text-sm text-primary hover:underline"
                           >
@@ -1126,117 +1116,228 @@ export function ProjectDetail() {
                                     renderItem={(vuln) => {
                                       const { primaryId, aliases } = formatVulnerabilityId(vuln)
                                       const sbomFilenames = getSbomFilenamesForVulnerability(vuln)
+                                      const isExpanded = expandedVulns.has(vuln.id)
+                                      const hasDetails =
+                                        (vuln.cwes?.length ?? 0) > 0 || (vuln.references?.length ?? 0) > 0
+                                      const refTags = new Set(
+                                        (vuln.references ?? []).flatMap((ref) =>
+                                          (ref.tags ?? []).map((t) => t.toLowerCase()),
+                                        ),
+                                      )
+                                      const hasExploitRef = refTags.has('exploit')
+                                      const hasPatchRef = refTags.has('patch') || refTags.has('vendor advisory')
+                                      const hasMitigationRef = refTags.has('mitigation')
                                       return (
                                         <>
-                                          <div className="flex flex-col md:flex-row md:items-center justify-between bg-background p-3 hover:bg-muted/50 transition-colors gap-2">
-                                            <div className="flex items-start md:items-center gap-3 min-w-0 flex-1">
-                                              <AlertTriangle
-                                                className={`h-5 w-5 ${config.color} shrink-0 mt-0.5 md:mt-0`}
-                                              />
-                                              <div className="min-w-0 flex-1">
-                                                <div className="font-medium flex flex-wrap items-center gap-1.5 md:gap-2">
-                                                  {primaryId}
-                                                  <KevBadge
-                                                    isKev={vuln.isKev ?? false}
-                                                    knownRansomwareUse={vuln.kevDetails?.knownRansomwareUse}
-                                                    compact
-                                                  />
-                                                  {vuln.riskScore !== undefined && (
-                                                    <RiskScoreBadge
-                                                      isKev={vuln.isKev ?? false}
-                                                      epssPercentile={vuln.epssPercentile ?? null}
-                                                      severity={
-                                                        vuln.severity.toUpperCase() as
-                                                          | 'CRITICAL'
-                                                          | 'HIGH'
-                                                          | 'MEDIUM'
-                                                          | 'LOW'
-                                                          | 'NONE'
+                                          <div className="bg-background hover:bg-muted/50 transition-colors">
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between p-3 gap-2">
+                                              <div className="flex items-start md:items-center gap-3 min-w-0 flex-1">
+                                                <button
+                                                  onClick={() => {
+                                                    setExpandedVulns((prev) => {
+                                                      const next = new Set(prev)
+                                                      if (next.has(vuln.id)) {
+                                                        next.delete(vuln.id)
+                                                      } else {
+                                                        next.add(vuln.id)
                                                       }
+                                                      return next
+                                                    })
+                                                  }}
+                                                  className="shrink-0 mt-0.5 md:mt-0"
+                                                  aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                                                >
+                                                  {isExpanded ? (
+                                                    <ChevronDown className={`h-4 w-4 ${config.color}`} />
+                                                  ) : (
+                                                    <ChevronRight className={`h-4 w-4 ${config.color}`} />
+                                                  )}
+                                                </button>
+                                                <div className="min-w-0 flex-1">
+                                                  <div className="font-medium flex flex-wrap items-center gap-1.5 md:gap-2">
+                                                    {primaryId}
+                                                    <KevBadge
+                                                      isKev={vuln.isKev ?? false}
+                                                      knownRansomwareUse={vuln.kevDetails?.knownRansomwareUse}
+                                                      compact
                                                     />
-                                                  )}
-                                                  {aliases.length > 0 && (
-                                                    <span className="text-xs text-muted-foreground font-normal truncate max-w-[120px] md:max-w-none">
-                                                      (aka: {aliases.slice(0, 2).join(', ')}
-                                                      {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
-                                                    </span>
-                                                  )}
-                                                </div>
-                                                <div className="text-sm text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
-                                                  <span className="whitespace-nowrap">
-                                                    {vuln.sources
-                                                      ? vuln.sources.map((s) => s.toUpperCase()).join(' + ')
-                                                      : vuln.source.toUpperCase()}
-                                                  </span>
-                                                  {vuln.cvssScore && (
-                                                    <span className="whitespace-nowrap">CVSS: {vuln.cvssScore}</span>
-                                                  )}
-                                                  {sbomFilenames.length > 0 && (
-                                                    <span className="whitespace-nowrap hidden sm:inline">
-                                                      From: {sbomFilenames.slice(0, 1).join(', ')}
-                                                      {sbomFilenames.length > 1 ? ` +${sbomFilenames.length - 1}` : ''}
-                                                    </span>
-                                                  )}
-                                                  {vuln.affectedComponents.length > 0 && (
-                                                    <span className="whitespace-nowrap hidden sm:inline">
-                                                      {vuln.affectedComponents.length} component
-                                                      {vuln.affectedComponents.length > 1 ? 's' : ''}
-                                                    </span>
-                                                  )}
-                                                  <span className="whitespace-nowrap">
-                                                    Patch:{' '}
-                                                    {vuln.patchInfo ? (
-                                                      <span
-                                                        className={`${
-                                                          vuln.patchInfo.patchAvailability === 'available'
-                                                            ? 'text-green-600 dark:text-green-400'
-                                                            : vuln.patchInfo.patchAvailability === 'partial'
-                                                              ? 'text-yellow-600 dark:text-yellow-400'
-                                                              : vuln.patchInfo.patchAvailability === 'none'
-                                                                ? 'text-red-600 dark:text-red-400'
-                                                                : 'text-muted-foreground'
-                                                        }`}
-                                                      >
-                                                        {vuln.patchInfo.patchAvailability === 'available'
-                                                          ? 'Fix Available'
-                                                          : vuln.patchInfo.patchAvailability === 'partial'
-                                                            ? 'Partial Fix'
-                                                            : vuln.patchInfo.patchAvailability === 'none'
-                                                              ? 'No Fix'
-                                                              : vuln.patchInfo.patchAvailability === 'upstream'
-                                                                ? 'Upstream Fix'
-                                                                : vuln.patchInfo.patchAvailability === 'investigating'
-                                                                  ? 'Investigating'
-                                                                  : vuln.patchInfo.patchAvailability}
-                                                      </span>
-                                                    ) : (
-                                                      <span className="text-muted-foreground">Not Specified</span>
+                                                    {vuln.riskScore !== undefined && (
+                                                      <RiskScoreBadge
+                                                        isKev={vuln.isKev ?? false}
+                                                        epssPercentile={vuln.epssPercentile ?? null}
+                                                        severity={
+                                                          vuln.severity.toUpperCase() as
+                                                            | 'CRITICAL'
+                                                            | 'HIGH'
+                                                            | 'MEDIUM'
+                                                            | 'LOW'
+                                                            | 'NONE'
+                                                        }
+                                                      />
                                                     )}
-                                                  </span>
+                                                    {vuln.cwes?.map((cwe) => (
+                                                      <span
+                                                        key={cwe}
+                                                        className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
+                                                      >
+                                                        {cwe}
+                                                      </span>
+                                                    ))}
+                                                    {hasExploitRef && (
+                                                      <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                                                        Exploit
+                                                      </span>
+                                                    )}
+                                                    {hasPatchRef && (
+                                                      <span className="inline-flex items-center rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                                                        Patch
+                                                      </span>
+                                                    )}
+                                                    {hasMitigationRef && (
+                                                      <span className="inline-flex items-center rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-medium text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300">
+                                                        Mitigation
+                                                      </span>
+                                                    )}
+                                                    {aliases.length > 0 && (
+                                                      <span className="text-xs text-muted-foreground font-normal truncate max-w-[120px] md:max-w-none">
+                                                        (aka: {aliases.slice(0, 2).join(', ')}
+                                                        {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="text-sm text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
+                                                    <span className="whitespace-nowrap">
+                                                      {vuln.sources
+                                                        ? vuln.sources.map((s) => s.toUpperCase()).join(' + ')
+                                                        : vuln.source.toUpperCase()}
+                                                    </span>
+                                                    {vuln.cvssScore && (
+                                                      <span className="whitespace-nowrap">CVSS: {vuln.cvssScore}</span>
+                                                    )}
+                                                    {sbomFilenames.length > 0 && (
+                                                      <span className="whitespace-nowrap hidden sm:inline">
+                                                        From: {sbomFilenames.slice(0, 1).join(', ')}
+                                                        {sbomFilenames.length > 1
+                                                          ? ` +${sbomFilenames.length - 1}`
+                                                          : ''}
+                                                      </span>
+                                                    )}
+                                                    {vuln.affectedComponents.length > 0 && (
+                                                      <span className="whitespace-nowrap hidden sm:inline">
+                                                        {vuln.affectedComponents.length} component
+                                                        {vuln.affectedComponents.length > 1 ? 's' : ''}
+                                                      </span>
+                                                    )}
+                                                    {(vuln.references?.length ?? 0) > 0 && (
+                                                      <span className="whitespace-nowrap">
+                                                        {vuln.references?.length} ref
+                                                        {(vuln.references?.length ?? 0) > 1 ? 's' : ''}
+                                                      </span>
+                                                    )}
+                                                  </div>
                                                 </div>
                                               </div>
+                                              <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                                                <button
+                                                  onClick={() => handleCopyVulnId(primaryId)}
+                                                  className="flex items-center gap-1 rounded border border-border bg-secondary px-2 py-1 text-xs font-medium hover:bg-secondary/80 transition-colors"
+                                                  aria-label={`Copy ${primaryId} to clipboard`}
+                                                >
+                                                  <Copy className="h-3.5 w-3.5" />
+                                                  <span className="hidden sm:inline">
+                                                    {copiedVulnId === primaryId ? 'Copied' : 'Copy'}
+                                                  </span>
+                                                </button>
+                                                <button
+                                                  onClick={() => {
+                                                    setSelectedVulnerability(vuln)
+                                                    setShowVulnDetail(true)
+                                                  }}
+                                                  className="text-sm text-primary hover:underline whitespace-nowrap"
+                                                >
+                                                  View Details
+                                                </button>
+                                              </div>
                                             </div>
-                                            <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                                              <button
-                                                onClick={() => handleCopyVulnId(primaryId)}
-                                                className="flex items-center gap-1 rounded border border-border bg-secondary px-2 py-1 text-xs font-medium hover:bg-secondary/80 transition-colors"
-                                                aria-label={`Copy ${primaryId} to clipboard`}
-                                              >
-                                                <Copy className="h-3.5 w-3.5" />
-                                                <span className="hidden sm:inline">
-                                                  {copiedVulnId === primaryId ? 'Copied' : 'Copy'}
-                                                </span>
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  setSelectedVulnerability(vuln)
-                                                  setShowVulnDetail(true)
-                                                }}
-                                                className="text-sm text-primary hover:underline whitespace-nowrap"
-                                              >
-                                                View Details
-                                              </button>
-                                            </div>
+                                            {isExpanded && hasDetails && (
+                                              <div className="border-t border-border px-4 pb-3 pt-2 ml-7 md:ml-11 space-y-2">
+                                                {vuln.cwes && vuln.cwes.length > 0 && (
+                                                  <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className="text-xs font-medium text-muted-foreground">
+                                                      CWE:
+                                                    </span>
+                                                    {vuln.cwes.map((cwe) => (
+                                                      <a
+                                                        key={cwe}
+                                                        href={`https://cwe.mitre.org/data/definitions/${cwe.replace('CWE-', '')}.html`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
+                                                      >
+                                                        {cwe}
+                                                        <ExternalLink className="h-2.5 w-2.5" />
+                                                      </a>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                                {vuln.references && vuln.references.length > 0 && (
+                                                  <div>
+                                                    <span className="text-xs font-medium text-muted-foreground">
+                                                      References:
+                                                    </span>
+                                                    <div className="mt-1 space-y-1">
+                                                      {vuln.references.slice(0, 5).map((ref, idx) => {
+                                                        const tagColors = (ref.tags ?? []).map((t) => {
+                                                          const lower = t.toLowerCase()
+                                                          if (lower === 'exploit')
+                                                            return 'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
+                                                          if (lower === 'patch')
+                                                            return 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                                                          if (lower === 'vendor advisory')
+                                                            return 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                                                          if (lower === 'mitigation')
+                                                            return 'text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20'
+                                                          if (lower === 'third party advisory')
+                                                            return 'text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
+                                                          return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40'
+                                                        })
+                                                        return (
+                                                          <div key={idx} className="flex items-start gap-1.5 text-xs">
+                                                            <a
+                                                              href={ref.url}
+                                                              target="_blank"
+                                                              rel="noopener noreferrer"
+                                                              className="text-primary hover:underline truncate max-w-[400px]"
+                                                            >
+                                                              {ref.url.length > 80
+                                                                ? ref.url.substring(0, 80) + '...'
+                                                                : ref.url}
+                                                            </a>
+                                                            {ref.tags && ref.tags.length > 0 && (
+                                                              <div className="flex gap-1 shrink-0 flex-wrap">
+                                                                {ref.tags.map((tag, tagIdx) => (
+                                                                  <span
+                                                                    key={tagIdx}
+                                                                    className={`rounded px-1 py-0.5 text-[9px] font-medium ${tagColors[tagIdx] ?? tagColors[0] ?? ''}`}
+                                                                  >
+                                                                    {tag}
+                                                                  </span>
+                                                                ))}
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                        )
+                                                      })}
+                                                      {vuln.references.length > 5 && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                          +{vuln.references.length - 5} more references
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
                                           </div>
                                         </>
                                       )
@@ -1314,7 +1415,7 @@ export function ProjectDetail() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               className="text-muted-foreground hover:text-foreground"
               aria-label="back"
             >

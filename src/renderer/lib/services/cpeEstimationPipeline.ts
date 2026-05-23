@@ -251,6 +251,8 @@ export function resetCPEEstimationPipeline(): void {
  * @param options - Optional pipeline options
  * @returns Pipeline result
  */
+export { createCpeDatabaseSearchFn } from './cpeEstimationService'
+
 export async function estimateCpesForComponents(
   components: Component[],
   options?: PipelineOptions,

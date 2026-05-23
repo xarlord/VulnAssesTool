@@ -17,6 +17,7 @@ vi.mock('@/lib/services/cpeEstimationPipeline', () => ({
       summary: { autoSelected: 0, needsConfirmation: 0, noMatchFound: 0 },
     }),
   ),
+  createCpeDatabaseSearchFn: vi.fn().mockReturnValue(vi.fn().mockResolvedValue([])),
 }))
 vi.mock('./CPEMatchDialog', () => ({
   CPEMatchDialog: (props: { open?: boolean; onClose?: () => void; onConfirm?: (s: Map<string, string>) => void }) =>

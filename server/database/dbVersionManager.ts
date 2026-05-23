@@ -13,7 +13,9 @@
  * - BUILD: Data freshness timestamp (YYYYMMDD)
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
+
+type BetterDb = InstanceType<typeof Database>
 
 // Metadata keys for version tracking
 const VERSION_KEY = 'db_version'
@@ -70,10 +72,10 @@ export interface VersionManagerOptions {
  * Database Version Manager
  */
 export class DbVersionManager {
-  private db: Database
+  private db: BetterDb
   private options: VersionManagerOptions
 
-  constructor(db: Database, options: VersionManagerOptions) {
+  constructor(db: BetterDb, options: VersionManagerOptions) {
     this.db = db
     this.options = options
   }
@@ -278,10 +280,8 @@ export class DbVersionManager {
    */
   private getTotalCveCount(): number {
     try {
-      const result = this.db.exec('SELECT COUNT(*) FROM cves')
-      if (result.length > 0 && result[0].values.length > 0) {
-        return result[0].values[0][0] as number
-      }
+      const row = this.db.prepare('SELECT COUNT(*) as cnt FROM cves').get() as { cnt: number } | undefined
+      return row?.cnt ?? 0
     } catch {
       // Table might not exist yet
     }
@@ -320,9 +320,9 @@ export class DbVersionManager {
    */
   private getMetadataValue(key: string, defaultValue: string): string {
     try {
-      const result = this.db.exec('SELECT value FROM metadata WHERE key = ?', [key])
-      if (result.length > 0 && result[0].values.length > 0) {
-        return result[0].values[0][0] as string
+      const row = this.db.prepare('SELECT value FROM metadata WHERE key = ?').get(key) as { value: string } | undefined
+      if (row) {
+        return row.value
       }
     } catch {
       // Table might not exist yet
@@ -334,21 +334,22 @@ export class DbVersionManager {
    * Set metadata value in database
    */
   private setMetadataValue(key: string, value: string): void {
-    this.db.run(
-      `
+    this.db
+      .prepare(
+        `
       INSERT INTO metadata (key, value)
       VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `,
-      [key, value],
-    )
+      )
+      .run(key, value)
   }
 }
 
 /**
  * Create a version manager instance
  */
-export function createDbVersionManager(db: Database, options?: Partial<VersionManagerOptions>): DbVersionManager {
+export function createDbVersionManager(db: BetterDb, options?: Partial<VersionManagerOptions>): DbVersionManager {
   const defaultOptions: VersionManagerOptions = {
     appVersion: '2.0.0',
     schemaVersion: 12, // Current schema version from migrations

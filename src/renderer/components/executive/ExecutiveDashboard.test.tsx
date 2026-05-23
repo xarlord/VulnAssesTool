@@ -250,13 +250,13 @@ describe('ExecutiveDashboard', () => {
       expect(screen.getByText('High-level security overview and compliance metrics')).toBeInTheDocument()
     })
 
-    it('should render a back button that navigates to /', () => {
+    it('should render a back button that navigates to /dashboard', () => {
       renderDashboard()
 
       const backButton = screen.getByText('Back to Dashboard')
       fireEvent.click(backButton)
 
-      expect(mockNavigate).toHaveBeenCalledWith('/')
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
     it('should render the Export Report button', () => {
@@ -379,11 +379,11 @@ describe('ExecutiveDashboard', () => {
       expect(screen.getByText('Go to Dashboard')).toBeInTheDocument()
     })
 
-    it('should navigate to / when "Go to Dashboard" is clicked', () => {
+    it('should navigate to /dashboard when "Go to Dashboard" is clicked', () => {
       renderDashboard([])
 
       fireEvent.click(screen.getByText('Go to Dashboard'))
-      expect(mockNavigate).toHaveBeenCalledWith('/')
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
     it('should show date-range message when projects exist but none match the filter', () => {

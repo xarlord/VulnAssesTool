@@ -14,7 +14,7 @@
  */
 
 import { config } from '../config.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as https from 'node:https'
@@ -34,6 +34,8 @@ import {
   type DatabaseVersion,
 } from './dbVersionManager.js'
 import { NvdBulkImporter, createNvdBulkImporter, type ImportProgress, type ImportResult } from './nvdBulkImporter.js'
+
+type BetterDb = InstanceType<typeof Database>
 
 // ============================================================================
 // Type Definitions
@@ -163,14 +165,14 @@ const CURRENT_PREBUILT: PrebuiltDbOptions = {
  * Handles first-run detection, pre-seeding, and background sync management
  */
 export class DbSeedingService {
-  private db: Database
+  private db: BetterDb
   private dbPath: string
   private versionManager: DbVersionManager
   private bulkImporter: NvdBulkImporter | null = null
   private progress: SeedingProgress
   private startTime: number = 0
 
-  constructor(db: Database, dbPath: string, apiKey?: string) {
+  constructor(db: BetterDb, dbPath: string, apiKey?: string) {
     this.db = db
     this.dbPath = dbPath
     this.versionManager = createDbVersionManager(db)
@@ -247,10 +249,12 @@ export class DbSeedingService {
     lastError?: string
   } | null {
     try {
-      const result = this.db.exec('SELECT value FROM metadata WHERE key = ?', [BACKGROUND_SYNC_STATE_KEY])
+      const row = this.db.prepare('SELECT value FROM metadata WHERE key = ?').get(BACKGROUND_SYNC_STATE_KEY) as
+        | { value: string }
+        | undefined
 
-      if (result.length > 0 && result[0].values.length > 0) {
-        return JSON.parse(result[0].values[0][0] as string)
+      if (row) {
+        return JSON.parse(row.value)
       }
     } catch {
       // Ignore errors
@@ -702,14 +706,15 @@ export class DbSeedingService {
     yearsRemaining: number[]
     lastError?: string
   }): void {
-    this.db.run(
-      `
+    this.db
+      .prepare(
+        `
       INSERT INTO metadata (key, value)
       VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `,
-      [BACKGROUND_SYNC_STATE_KEY, JSON.stringify(state)],
-    )
+      )
+      .run(BACKGROUND_SYNC_STATE_KEY, JSON.stringify(state))
   }
 
   /**
@@ -751,7 +756,7 @@ export class DbSeedingService {
 /**
  * Create a database seeding service instance
  */
-export function createDbSeedingService(db: Database, dbPath: string, apiKey?: string): DbSeedingService {
+export function createDbSeedingService(db: BetterDb, dbPath: string, apiKey?: string): DbSeedingService {
   return new DbSeedingService(db, dbPath, apiKey)
 }
 

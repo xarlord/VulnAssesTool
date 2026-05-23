@@ -28,11 +28,11 @@ interface AboutDialogProps {
 // ============================================================================
 
 const APP_INFO = {
-  name: 'VulnAssesTool',
+  name: 'D-Fence',
   version: '2.0.0',
   description: 'Vulnerability Assessment Tool',
   buildDate: new Date().toISOString().split('T')[0],
-  author: 'VulnAssesTool Team',
+  author: 'D-Fence Team',
   license: 'MIT',
   repository: 'https://github.com/xarlord/d-fence-vulnerability-assesment-tool',
   documentation: 'https://github.com/xarlord/d-fence-vulnerability-assesment-tool#readme',
@@ -55,7 +55,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="sr-only">About VulnAssesTool</DialogTitle>
+          <DialogTitle className="sr-only">About D-Fence</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col items-center text-center py-4">

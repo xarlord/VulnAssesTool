@@ -1,4 +1,4 @@
-import type { Component, Vulnerability } from '@@/types'
+import type { Component, Vulnerability, VulnerabilityReference } from '@@/types'
 import { queryByPurls } from './osv'
 import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT } from '@@/constants'
 import { getPlatform } from '@/lib/platform'
@@ -116,9 +116,15 @@ async function searchLocalNvdByCpe(cpe: string, limit: number = VULN_SEARCH_CPE_
       severity: cve.severity.toLowerCase() as Vulnerability['severity'],
       cvssScore: cve.cvssScore,
       cvssVector: cve.cvssVector ?? undefined,
-      cwes: [],
+      cwes: cve.cwes ?? [],
       description: cve.description,
-      references: [],
+      references: (cve.references ?? []).map(
+        (ref): VulnerabilityReference => ({
+          source: ref.source ?? cve.source,
+          url: ref.url,
+          tags: ref.tags,
+        }),
+      ),
       affectedComponents: [],
       publishedAt: cve.publishedAt ? new Date(cve.publishedAt) : undefined,
       modifiedAt: cve.modifiedAt ? new Date(cve.modifiedAt) : undefined,
@@ -179,9 +185,15 @@ async function searchLocalNvdByName(
       severity: cve.severity.toLowerCase() as Vulnerability['severity'],
       cvssScore: cve.cvssScore,
       cvssVector: cve.cvssVector ?? undefined,
-      cwes: [],
+      cwes: cve.cwes ?? [],
       description: cve.description,
-      references: [],
+      references: (cve.references ?? []).map(
+        (ref): VulnerabilityReference => ({
+          source: ref.source ?? cve.source,
+          url: ref.url,
+          tags: ref.tags,
+        }),
+      ),
       affectedComponents: [],
       publishedAt: cve.publishedAt ? new Date(cve.publishedAt) : undefined,
       modifiedAt: cve.modifiedAt ? new Date(cve.modifiedAt) : undefined,

@@ -16,12 +16,22 @@ import type { Command } from './types'
 function createNavigationCommands(navigate: (path: string) => void): Command[] {
   return [
     {
+      id: 'navigation.home',
+      label: 'Go to Home',
+      category: 'navigation',
+      shortcut: 'Ctrl+Shift+H',
+      icon: 'Home',
+      action: () => navigate('/'),
+      keywords: ['welcome', 'hero', 'start'],
+      priority: 5,
+    },
+    {
       id: 'navigation.dashboard',
       label: 'Go to Dashboard',
       category: 'navigation',
       shortcut: 'Ctrl+Shift+D',
       icon: 'LayoutDashboard',
-      action: () => navigate('/'),
+      action: () => navigate('/dashboard'),
       keywords: ['home', 'main', 'start'],
       priority: 10,
     },

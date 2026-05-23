@@ -361,7 +361,12 @@ export const useStore = create<AppState>()(
       name: 'vuln-assess-storage',
       partialize: (state) => ({
         settings: state.settings,
-        projects: state.projects,
+        projects: state.projects.map((p) => ({
+          ...p,
+          vulnerabilities: [],
+          components: [],
+          dependencyGraph: undefined,
+        })),
         activeProfileId: state.activeProfileId,
       }),
       storage: createJSONStorage(() => localStorage),

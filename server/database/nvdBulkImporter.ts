@@ -15,7 +15,7 @@
  * - Leverages composite indexes for efficient bulk inserts
  */
 
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import {
   NvdApiV2Client,
   createNvdApiV2Client,
@@ -28,6 +28,8 @@ import {
   createNvdDataImporter,
   type ImportProgress as DataImportProgress,
 } from './nvd/nvdDataImporter.js'
+
+type BetterDb = InstanceType<typeof Database>
 
 // Configuration constants
 const DEFAULT_BATCH_SIZE = 1000 // CVEs per batch for database import
@@ -126,7 +128,7 @@ interface ImportState {
  * Handles efficient import of 250,000+ CVEs from NVD database
  */
 export class NvdBulkImporter {
-  private db: Database
+  private db: BetterDb
   private apiClient: NvdApiV2Client
   private dataImporter: NvdDataImporter
   private progress: ImportProgress
@@ -134,7 +136,7 @@ export class NvdBulkImporter {
   private startTime: number = 0
   private consecutiveErrors: number = 0
 
-  constructor(db: Database, apiKey?: string) {
+  constructor(db: BetterDb, apiKey?: string) {
     this.db = db
     this.apiClient = createNvdApiV2Client(apiKey)
     this.dataImporter = createNvdDataImporter(db)
@@ -482,12 +484,12 @@ export class NvdBulkImporter {
     // Batch check for existing CVEs
     if (cvesToCheck.length > 0) {
       const placeholders = cvesToCheck.map(() => '?').join(',')
-      const result = this.db.exec(`SELECT id FROM cves WHERE id IN (${placeholders})`, cvesToCheck)
+      const rows = this.db.prepare(`SELECT id FROM cves WHERE id IN (${placeholders})`).all(...cvesToCheck) as Array<{
+        id: string
+      }>
 
-      if (result.length > 0) {
-        for (const row of result[0].values) {
-          existingIds.add(row[0] as string)
-        }
+      for (const row of rows) {
+        existingIds.add(row.id)
       }
     }
 
@@ -544,14 +546,15 @@ export class NvdBulkImporter {
       const stateKey = `${STATE_KEY_PREFIX}state`
       const stateJson = JSON.stringify(this.state)
 
-      this.db.run(
-        `
+      this.db
+        .prepare(
+          `
         INSERT INTO metadata (key, value)
         VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `,
-        [stateKey, stateJson],
-      )
+        )
+        .run(stateKey, stateJson)
     } catch (error) {
       console.error('Failed to save import state:', error)
     }
@@ -563,11 +566,12 @@ export class NvdBulkImporter {
   private loadState(): ImportState | null {
     try {
       const stateKey = `${STATE_KEY_PREFIX}state`
-      const result = this.db.exec('SELECT value FROM metadata WHERE key = ?', [stateKey])
+      const row = this.db.prepare('SELECT value FROM metadata WHERE key = ?').get(stateKey) as
+        | { value: string }
+        | undefined
 
-      if (result.length > 0 && result[0].values.length > 0) {
-        const stateJson = result[0].values[0][0] as string
-        return JSON.parse(stateJson) as ImportState
+      if (row) {
+        return JSON.parse(row.value) as ImportState
       }
     } catch (error) {
       console.error('Failed to load import state:', error)
@@ -582,7 +586,7 @@ export class NvdBulkImporter {
   private clearState(): void {
     try {
       const stateKey = `${STATE_KEY_PREFIX}state`
-      this.db.run('DELETE FROM metadata WHERE key = ?', [stateKey])
+      this.db.prepare('DELETE FROM metadata WHERE key = ?').run(stateKey)
     } catch (error) {
       console.error('Failed to clear import state:', error)
     }
@@ -665,7 +669,7 @@ export class NvdBulkImporter {
 /**
  * Create a bulk importer instance
  */
-export function createNvdBulkImporter(db: Database, apiKey?: string): NvdBulkImporter {
+export function createNvdBulkImporter(db: BetterDb, apiKey?: string): NvdBulkImporter {
   return new NvdBulkImporter(db, apiKey)
 }
 

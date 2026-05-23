@@ -13,6 +13,25 @@ import {
   type ProductStats,
 } from './cpeLookupCache.js'
 
+/**
+ * Helper to create a better-sqlite3-compatible mock database.
+ *
+ * The production code uses `db.prepare(sql).all(...params)` exclusively,
+ * so `prepare` must return a statement object with `.all()` that resolves
+ * via the provided handler.
+ */
+function createMockDb(handler: (sql: string) => Record<string, unknown>[] = () => []): Record<string, unknown> {
+  return {
+    prepare: vi.fn((sql: string) => ({
+      all: vi.fn(() => handler(sql)),
+      get: vi.fn(() => undefined),
+      run: vi.fn(() => ({ changes: 0, lastInsertRowid: 0 })),
+    })),
+    exec: vi.fn(),
+    pragma: vi.fn(() => []),
+  }
+}
+
 describe('CPELookupCache', () => {
   let cache: CPELookupCache
 
@@ -44,10 +63,7 @@ describe('CPELookupCache', () => {
 
   describe('initialize', () => {
     it('should initialize without database if no tables', async () => {
-      // Create a mock database with no tables
-      const mockDb = {
-        exec: vi.fn().mockReturnValue([]),
-      } as unknown
+      const mockDb = createMockDb()
 
       await cache.initialize(mockDb)
 
@@ -55,9 +71,7 @@ describe('CPELookupCache', () => {
     })
 
     it('should skip re-initialization', async () => {
-      const mockDb = {
-        exec: vi.fn().mockReturnValue([]),
-      } as unknown
+      const mockDb = createMockDb()
 
       await cache.initialize(mockDb)
       await cache.initialize(mockDb)
@@ -131,9 +145,7 @@ describe('CPELookupCache', () => {
     })
 
     it('should return false for recently initialized cache', async () => {
-      const mockDb = {
-        exec: vi.fn().mockReturnValue([]),
-      } as unknown
+      const mockDb = createMockDb()
 
       await cache.initialize(mockDb)
       expect(cache.needsRefresh()).toBe(false)
@@ -142,9 +154,7 @@ describe('CPELookupCache', () => {
     it('should return true after TTL expires', async () => {
       vi.useFakeTimers()
 
-      const mockDb = {
-        exec: vi.fn().mockReturnValue([]),
-      } as unknown
+      const mockDb = createMockDb()
 
       await cache.initialize(mockDb)
 
@@ -194,9 +204,7 @@ describe('CPELookupCache', () => {
 
   describe('getStats', () => {
     it('should return cache statistics', async () => {
-      const mockDb = {
-        exec: vi.fn().mockReturnValue([]),
-      } as unknown
+      const mockDb = createMockDb()
 
       await cache.initialize(mockDb)
 
@@ -314,16 +322,11 @@ describe('cachedCPELookup', () => {
   })
 
   it('should query database on cache miss and store result', async () => {
-    const mockCveResults = [['CVE-2024-0001'], ['CVE-2024-0002']]
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) return []
-        if (sql.includes('SELECT DISTINCT cve_id')) {
-          return [{ columns: ['cve_id'], values: mockCveResults }]
-        }
-        return []
-      }),
-    } as unknown
+    const mockCveRows = [{ cve_id: 'CVE-2024-0001' }, { cve_id: 'CVE-2024-0002' }]
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('SELECT DISTINCT cve_id')) return mockCveRows
+      return []
+    })
 
     const result = await cachedCPELookup(mockDb, 'microsoft', 'windows')
 
@@ -332,18 +335,15 @@ describe('cachedCPELookup', () => {
   })
 
   it('should return cached result on cache hit', async () => {
-    const mockCveResults = [['CVE-2024-0001']]
+    const mockCveRows = [{ cve_id: 'CVE-2024-0001' }]
     const callCount = { value: 0 }
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) return []
-        if (sql.includes('SELECT DISTINCT cve_id')) {
-          callCount.value++
-          return [{ columns: ['cve_id'], values: mockCveResults }]
-        }
-        return []
-      }),
-    } as unknown
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('SELECT DISTINCT cve_id')) {
+        callCount.value++
+        return mockCveRows
+      }
+      return []
+    })
 
     await cachedCPELookup(mockDb, 'microsoft', 'windows')
     const lookupCallsBefore = callCount.value
@@ -356,16 +356,13 @@ describe('cachedCPELookup', () => {
 
   it('should query without product filter when product is undefined', async () => {
     let capturedSql = ''
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) return []
-        if (sql.includes('SELECT DISTINCT cve_id')) {
-          capturedSql = sql
-          return [{ columns: ['cve_id'], values: [['CVE-1']] }]
-        }
-        return []
-      }),
-    } as unknown
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('SELECT DISTINCT cve_id')) {
+        capturedSql = sql
+        return [{ cve_id: 'CVE-1' }]
+      }
+      return []
+    })
 
     await cachedCPELookup(mockDb, 'microsoft')
 
@@ -374,16 +371,13 @@ describe('cachedCPELookup', () => {
 
   it('should filter by vulnerable flag when set to false', async () => {
     let capturedSql = ''
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) return []
-        if (sql.includes('SELECT DISTINCT cve_id')) {
-          capturedSql = sql
-          return [{ columns: ['cve_id'], values: [['CVE-1']] }]
-        }
-        return []
-      }),
-    } as unknown
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('SELECT DISTINCT cve_id')) {
+        capturedSql = sql
+        return [{ cve_id: 'CVE-1' }]
+      }
+      return []
+    })
 
     await cachedCPELookup(mockDb, 'microsoft', 'windows', { vulnerable: false })
 
@@ -391,16 +385,11 @@ describe('cachedCPELookup', () => {
   })
 
   it('should apply pagination with limit and offset', async () => {
-    const mockCveResults = Array.from({ length: 10 }, (_, i) => [`CVE-2024-${String(i).padStart(4, '0')}`])
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) return []
-        if (sql.includes('SELECT DISTINCT cve_id')) {
-          return [{ columns: ['cve_id'], values: mockCveResults }]
-        }
-        return []
-      }),
-    } as unknown
+    const mockCveRows = Array.from({ length: 10 }, (_, i) => ({ cve_id: `CVE-2024-${String(i).padStart(4, '0')}` }))
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('SELECT DISTINCT cve_id')) return mockCveRows
+      return []
+    })
 
     const result = await cachedCPELookup(mockDb, 'microsoft', 'windows', { limit: 3, offset: 2 })
 
@@ -409,16 +398,11 @@ describe('cachedCPELookup', () => {
   })
 
   it('should apply pagination on cache hit', async () => {
-    const mockCveResults = Array.from({ length: 5 }, (_, i) => [`CVE-${i}`])
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) return []
-        if (sql.includes('SELECT DISTINCT cve_id')) {
-          return [{ columns: ['cve_id'], values: mockCveResults }]
-        }
-        return []
-      }),
-    } as unknown
+    const mockCveRows = Array.from({ length: 5 }, (_, i) => ({ cve_id: `CVE-${i}` }))
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('SELECT DISTINCT cve_id')) return mockCveRows
+      return []
+    })
 
     await cachedCPELookup(mockDb, 'vendor1', 'product1')
 
@@ -429,9 +413,7 @@ describe('cachedCPELookup', () => {
   })
 
   it('should handle empty database results', async () => {
-    const mockDb = {
-      exec: vi.fn().mockReturnValue([]),
-    } as unknown
+    const mockDb = createMockDb()
 
     const result = await cachedCPELookup(mockDb, 'nonexistent', 'product')
 
@@ -460,9 +442,7 @@ describe('CPELookupCache updateFromDatabase', () => {
   })
 
   it('should clear existing cache and reinitialize', async () => {
-    const mockDb = {
-      exec: vi.fn().mockReturnValue([]),
-    } as unknown
+    const mockDb = createMockDb()
 
     await cache.initialize(mockDb)
     cache.storeLookup('vendor1', 'product1', true, {
@@ -500,30 +480,18 @@ describe('CPELookupCache invalidateVendor with products', () => {
   })
 
   it('should remove product stats when invalidating vendor', async () => {
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) {
-          return [
-            {
-              columns: ['vendor', 'product_count', 'cve_count', 'vulnerable_cve_count'],
-              values: [['microsoft', 2, 10, 8]],
-            },
-          ]
-        }
-        if (sql.includes('GROUP BY cpe_product')) {
-          return [
-            {
-              columns: ['product', 'cve_count', 'vulnerable_cve_count'],
-              values: [
-                ['windows', 5, 4],
-                ['office', 5, 4],
-              ],
-            },
-          ]
-        }
-        return []
-      }),
-    } as unknown
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('GROUP BY cpe_vendor')) {
+        return [{ vendor: 'microsoft', product_count: 2, cve_count: 10, vulnerable_cve_count: 8 }]
+      }
+      if (sql.includes('GROUP BY cpe_product')) {
+        return [
+          { product: 'windows', cve_count: 5, vulnerable_cve_count: 4 },
+          { product: 'office', cve_count: 5, vulnerable_cve_count: 4 },
+        ]
+      }
+      return []
+    })
 
     const productCache = new CPELookupCache({
       maxVendors: 100,
@@ -547,9 +515,7 @@ describe('CPELookupCache invalidateVendor with products', () => {
   })
 
   it('should remove lookup cache entries for vendor', async () => {
-    const mockDb = {
-      exec: vi.fn().mockReturnValue([]),
-    } as unknown
+    const mockDb = createMockDb()
 
     await cache.initialize(mockDb)
 
@@ -591,22 +557,15 @@ describe('CPELookupCache getCachedVendors and getCachedProducts', () => {
   })
 
   it('should return list of cached vendors', async () => {
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) {
-          return [
-            {
-              columns: ['vendor', 'product_count', 'cve_count', 'vulnerable_cve_count'],
-              values: [
-                ['apache', 3, 15, 10],
-                ['nginx', 1, 5, 3],
-              ],
-            },
-          ]
-        }
-        return []
-      }),
-    } as unknown
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('GROUP BY cpe_vendor')) {
+        return [
+          { vendor: 'apache', product_count: 3, cve_count: 15, vulnerable_cve_count: 10 },
+          { vendor: 'nginx', product_count: 1, cve_count: 5, vulnerable_cve_count: 3 },
+        ]
+      }
+      return []
+    })
 
     await cache.initialize(mockDb)
 
@@ -624,30 +583,18 @@ describe('CPELookupCache getCachedVendors and getCachedProducts', () => {
       preloadPopularVendors: true,
     })
 
-    const mockDb = {
-      exec: vi.fn().mockImplementation((sql: string) => {
-        if (sql.includes('GROUP BY cpe_vendor')) {
-          return [
-            {
-              columns: ['vendor', 'product_count', 'cve_count', 'vulnerable_cve_count'],
-              values: [['apache', 2, 10, 8]],
-            },
-          ]
-        }
-        if (sql.includes('GROUP BY cpe_product')) {
-          return [
-            {
-              columns: ['product', 'cve_count', 'vulnerable_cve_count'],
-              values: [
-                ['log4j', 5, 4],
-                ['tomcat', 5, 4],
-              ],
-            },
-          ]
-        }
-        return []
-      }),
-    } as unknown
+    const mockDb = createMockDb((sql: string) => {
+      if (sql.includes('GROUP BY cpe_vendor')) {
+        return [{ vendor: 'apache', product_count: 2, cve_count: 10, vulnerable_cve_count: 8 }]
+      }
+      if (sql.includes('GROUP BY cpe_product')) {
+        return [
+          { product: 'log4j', cve_count: 5, vulnerable_cve_count: 4 },
+          { product: 'tomcat', cve_count: 5, vulnerable_cve_count: 4 },
+        ]
+      }
+      return []
+    })
 
     await productCache.initialize(mockDb)
 
@@ -659,9 +606,7 @@ describe('CPELookupCache getCachedVendors and getCachedProducts', () => {
   })
 
   it('should return empty array for vendor with no products', async () => {
-    const mockDb = {
-      exec: vi.fn().mockReturnValue([]),
-    } as unknown
+    const mockDb = createMockDb()
 
     await cache.initialize(mockDb)
 

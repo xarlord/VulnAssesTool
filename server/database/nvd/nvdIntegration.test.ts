@@ -9,24 +9,22 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import { runMigrations, getSchemaVersion } from '../migrations/v2SchemaMigration.js'
 import { createNvdDataImporter, type NvdDataImporter } from './nvdDataImporter.js'
 import { createNvdDeltaSync, type NvdDeltaSync } from './nvdDeltaSync.js'
 import type { NvdCveV2 } from './nvdApiV2Client.js'
 
-let db: Database
-let sqlJs: any
+let db: InstanceType<typeof Database>
 let fts5Available: boolean = false
 
 /**
  * Check if FTS5 is available in the SQLite build
  */
-function checkFts5Availability(db: Database): boolean {
+function checkFts5Availability(db: InstanceType<typeof Database>): boolean {
   try {
-    db.run('CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_test USING fts5(content)')
-    db.run('DROP TABLE IF EXISTS _fts5_test')
+    db.exec('CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_test USING fts5(content)')
+    db.exec('DROP TABLE IF EXISTS _fts5_test')
     return true
   } catch {
     return false
@@ -97,32 +95,26 @@ const sampleCve: NvdCveV2 = {
   ],
 }
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  const database = new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  const database = new Database(':memory:')
 
-  // Check FTS5 availability
   fts5Available = checkFts5Availability(database)
 
-  // Create schema_migrations table
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     )
   `)
 
-  // Apply all migrations
   runMigrations(database, 0)
 
   return database
 }
 
 describe('NVD Database Integration Tests', () => {
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
   })
 
   afterEach(() => {
@@ -139,9 +131,9 @@ describe('NVD Database Integration Tests', () => {
     })
 
     it('should have all required tables', () => {
-      const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all()
 
-      const tableNames = tables[0]?.values.map((v) => v[0]) || []
+      const tableNames = tables.map((r) => (r as Record<string, unknown>).name as string)
 
       expect(tableNames).toContain('cves')
       expect(tableNames).toContain('cwe_references')
@@ -158,8 +150,8 @@ describe('NVD Database Integration Tests', () => {
     })
 
     it('should have correct CVE table schema', () => {
-      const columns = db.exec('PRAGMA table_info(cves)')
-      const columnNames = columns[0]?.values.map((v) => v[1]) || []
+      const columns = db.pragma('table_info(cves)')
+      const columnNames = columns.map((c) => (c as Record<string, unknown>).name as string)
 
       expect(columnNames).toContain('id')
       expect(columnNames).toContain('description')
@@ -172,8 +164,8 @@ describe('NVD Database Integration Tests', () => {
     })
 
     it('should have sync_status with auto sync fields', () => {
-      const columns = db.exec('PRAGMA table_info(sync_status)')
-      const columnNames = columns[0]?.values.map((v) => v[1]) || []
+      const columns = db.pragma('table_info(sync_status)')
+      const columnNames = columns.map((c) => (c as Record<string, unknown>).name as string)
 
       expect(columnNames).toContain('last_sync_at')
       expect(columnNames).toContain('last_successful_sync_at')
@@ -196,20 +188,17 @@ describe('NVD Database Integration Tests', () => {
       expect(result.importedCves).toBe(1)
 
       // Verify CVE
-      const cveResult = db.exec('SELECT * FROM cves WHERE id = ?', [sampleCve.id])
-      expect(cveResult[0]?.values.length).toBe(1)
+      const cveResult = db.prepare('SELECT * FROM cves WHERE id = ?').all(sampleCve.id)
+      expect(cveResult.length).toBe(1)
 
-      // Verify CWE references
-      const cweResult = db.exec('SELECT * FROM cwe_references WHERE cve_id = ?', [sampleCve.id])
-      expect(cweResult[0]?.values.length).toBe(1)
+      const cweResult = db.prepare('SELECT * FROM cwe_references WHERE cve_id = ?').all(sampleCve.id)
+      expect(cweResult.length).toBe(1)
 
-      // Verify CPE matches
-      const cpeResult = db.exec('SELECT * FROM cpe_matches WHERE cve_id = ?', [sampleCve.id])
-      expect(cpeResult[0]?.values.length).toBe(1)
+      const cpeResult = db.prepare('SELECT * FROM cpe_matches WHERE cve_id = ?').all(sampleCve.id)
+      expect(cpeResult.length).toBe(1)
 
-      // Verify references
-      const refResult = db.exec('SELECT * FROM "references" WHERE cve_id = ?', [sampleCve.id])
-      expect(refResult[0]?.values.length).toBe(1)
+      const refResult = db.prepare('SELECT * FROM "references" WHERE cve_id = ?').all(sampleCve.id)
+      expect(refResult.length).toBe(1)
     })
 
     it('should handle batch import with progress', async () => {
@@ -221,7 +210,7 @@ describe('NVD Database Integration Tests', () => {
         })
       }
 
-      const progressUpdates: any[] = []
+      const progressUpdates: unknown[] = []
       const result = await importer.importCves(cves, {
         onProgress: (p) => progressUpdates.push({ ...p }),
       })
@@ -247,8 +236,8 @@ describe('NVD Database Integration Tests', () => {
       expect(result.updatedCves).toBe(1)
 
       // Verify update
-      const cveResult = db.exec('SELECT description FROM cves WHERE id = ?', [sampleCve.id])
-      expect(cveResult[0]?.values[0]?.[0]).toBe('Updated description')
+      const cveResult = db.prepare('SELECT description FROM cves WHERE id = ?').all(sampleCve.id)
+      expect(cveResult[0]?.description).toBe('Updated description')
     })
   })
 
@@ -297,13 +286,12 @@ describe('NVD Database Integration Tests', () => {
 
     it('should support auto sync configuration', () => {
       // Insert initial sync status
-      db.run(
+      db.prepare(
         `
         INSERT INTO sync_status (source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours)
         VALUES (?, ?, ?, ?)
       `,
-        ['NVD', '2024-01-01T00:00:00.000Z', 0, 24],
-      )
+      ).run('NVD', '2024-01-01T00:00:00.000Z', 0, 24)
 
       deltaSync.enableAutoSync({ intervalHours: 12 })
 
@@ -335,7 +323,7 @@ describe('NVD Database Integration Tests', () => {
 
       // 3. Verify FTS search works (only if FTS5 is available)
       if (fts5Available) {
-        const searchResult = db.exec('SELECT * FROM cves_fts WHERE cves_fts MATCH ?', ['vulnerability'])
+        const searchResult = db.prepare('SELECT * FROM cves_fts WHERE cves_fts MATCH ?').all('vulnerability')
         expect(searchResult.length).toBeGreaterThan(0)
       }
 

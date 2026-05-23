@@ -3,14 +3,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import initSqlJs from 'sql.js'
-import type { Database } from 'sql.js'
+import Database from 'better-sqlite3'
 import { NvdDataImporter, createNvdDataImporter, type ImportProgress, type ImportResult } from './nvdDataImporter.js'
 import { runMigrations, getSchemaVersion } from '../migrations/v2SchemaMigration.js'
 import type { NvdCveV2 } from './nvdApiV2Client.js'
 
-let db: Database
-let sqlJs: any
+let db: InstanceType<typeof Database>
 
 // Sample CVE for testing
 const sampleCve: NvdCveV2 = {
@@ -112,21 +110,16 @@ const sampleCve: NvdCveV2 = {
   ],
 }
 
-async function createTestDatabase(): Promise<Database> {
-  if (!sqlJs) {
-    sqlJs = await initSqlJs({})
-  }
-  const database = new sqlJs.Database()
+function createTestDatabase(): InstanceType<typeof Database> {
+  const database = new Database(':memory:')
 
-  // Run migrations to set up v2 schema
-  database.run(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
     )
   `)
 
-  // Apply all migrations
   runMigrations(database, 0)
 
   return database
@@ -135,8 +128,8 @@ async function createTestDatabase(): Promise<Database> {
 describe('NvdDataImporter', () => {
   let importer: NvdDataImporter
 
-  beforeEach(async () => {
-    db = await createTestDatabase()
+  beforeEach(() => {
+    db = createTestDatabase()
     importer = createNvdDataImporter(db)
   })
 
@@ -200,68 +193,68 @@ describe('NvdDataImporter', () => {
     it('should import CVSS v3.1 scores', async () => {
       await importer.importCves([sampleCve])
 
-      const result = db.exec('SELECT cvss_v31_score, cvss_v31_severity FROM cves WHERE id = ?', [sampleCve.id])
+      const result = db.prepare('SELECT cvss_v31_score, cvss_v31_severity FROM cves WHERE id = ?').all(sampleCve.id)
 
       expect(result.length).toBeGreaterThan(0)
-      expect(result[0].values[0][0]).toBe(9.8)
-      expect(result[0].values[0][1]).toBe('CRITICAL')
+      expect(result[0].cvss_v31_score).toBe(9.8)
+      expect(result[0].cvss_v31_severity).toBe('CRITICAL')
     })
 
     it('should import CVSS v2.0 scores', async () => {
       await importer.importCves([sampleCve])
 
-      const result = db.exec('SELECT cvss_v2_score, cvss_v2_severity FROM cves WHERE id = ?', [sampleCve.id])
+      const result = db.prepare('SELECT cvss_v2_score, cvss_v2_severity FROM cves WHERE id = ?').all(sampleCve.id)
 
       expect(result.length).toBeGreaterThan(0)
-      expect(result[0].values[0][0]).toBe(7.5)
+      expect(result[0].cvss_v2_score).toBe(7.5)
     })
 
     it('should import CWE references', async () => {
       await importer.importCves([sampleCve])
 
-      const result = db.exec('SELECT cwe_id FROM cwe_references WHERE cve_id = ?', [sampleCve.id])
+      const result = db.prepare('SELECT cwe_id FROM cwe_references WHERE cve_id = ?').all(sampleCve.id)
 
       expect(result.length).toBeGreaterThan(0)
-      expect(result[0].values.length).toBe(2) // CWE-79 and CWE-89
+      expect(result.length).toBe(2)
     })
 
     it('should import CPE matches with version ranges', async () => {
       await importer.importCves([sampleCve])
 
-      const result = db.exec(
-        `
+      const result = db
+        .prepare(
+          `
         SELECT cpe23_uri, vulnerable, version_start_including, version_end_excluding
         FROM cpe_matches WHERE cve_id = ?
       `,
-        [sampleCve.id],
-      )
+        )
+        .all(sampleCve.id)
 
       expect(result.length).toBeGreaterThan(0)
-      expect(result[0].values.length).toBe(2)
+      expect(result.length).toBe(2)
 
-      // Check vulnerable CPE
-      const vulnerableCpe = result[0].values.find((v) => v[1] === 1)
+      const vulnerableCpe = result.find((r) => r.vulnerable === 1)
       expect(vulnerableCpe).toBeDefined()
-      expect(vulnerableCpe![2]).toBe('1.0')
-      expect(vulnerableCpe![3]).toBe('2.0')
+      expect(vulnerableCpe?.version_start_including).toBe('1.0')
+      expect(vulnerableCpe?.version_end_excluding).toBe('2.0')
     })
 
     it('should import references with types', async () => {
       await importer.importCves([sampleCve])
 
-      const result = db.exec(
-        `
+      const result = db
+        .prepare(
+          `
         SELECT url, source, tags, reference_type
         FROM "references" WHERE cve_id = ?
       `,
-        [sampleCve.id],
-      )
+        )
+        .all(sampleCve.id)
 
       expect(result.length).toBeGreaterThan(0)
-      expect(result[0].values.length).toBe(2)
+      expect(result.length).toBe(2)
 
-      // Check reference with type
-      const vendorRef = result[0].values.find((v) => v[3] === 'vendor')
+      const vendorRef = result.find((r) => r.reference_type === 'vendor')
       expect(vendorRef).toBeDefined()
     })
 
@@ -291,8 +284,8 @@ describe('NvdDataImporter', () => {
       expect(result.updatedCves).toBe(1)
 
       // Verify update
-      const cveResult = db.exec('SELECT description FROM cves WHERE id = ?', [sampleCve.id])
-      expect(cveResult[0].values[0][0]).toBe('Updated description')
+      const cveResult = db.prepare('SELECT description FROM cves WHERE id = ?').all(sampleCve.id)
+      expect(cveResult[0].description).toBe('Updated description')
     })
 
     it('should track import statistics', async () => {
@@ -332,8 +325,10 @@ describe('NvdDataImporter', () => {
       expect(result.importedCves).toBe(1)
 
       // Should not have any CPE matches
-      const cpeResult = db.exec('SELECT COUNT(*) FROM cpe_matches WHERE cve_id = ?', [cveWithoutConfig.id])
-      expect(cpeResult[0].values[0][0]).toBe(0)
+      const cpeResult = db
+        .prepare('SELECT COUNT(*) as cnt FROM cpe_matches WHERE cve_id = ?')
+        .get(cveWithoutConfig.id) as { cnt: number }
+      expect(cpeResult.cnt).toBe(0)
     })
 
     it('should handle CVE without references', async () => {
@@ -402,27 +397,24 @@ describe('NvdDataImporter', () => {
       expect(result.success).toBe(true)
       expect(result.importedCves).toBe(1)
 
-      // Verify CVSS v3.0 fields were stored
-      const cveRow = db.exec(
-        'SELECT cvss_v30_score, cvss_v30_severity, cvss_v30_vector, cvss_score, severity FROM cves WHERE id = ?',
-        [cveWithV30.id],
-      )
-      expect(cveRow[0].values[0][0]).toBe(9.6)
-      expect(cveRow[0].values[0][1]).toBe('CRITICAL')
-      expect(cveRow[0].values[0][2]).toBe('CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H')
+      const cveRow = db
+        .prepare(
+          'SELECT cvss_v30_score, cvss_v30_severity, cvss_v30_vector, cvss_score, severity FROM cves WHERE id = ?',
+        )
+        .all(cveWithV30.id)
+      expect(cveRow[0].cvss_v30_score).toBe(9.6)
+      expect(cveRow[0].cvss_v30_severity).toBe('CRITICAL')
+      expect(cveRow[0].cvss_v30_vector).toBe('CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H')
 
-      // v3.0 should be used as primary since no v3.1 exists
-      expect(cveRow[0].values[0][3]).toBe(9.6)
-      expect(cveRow[0].values[0][4]).toBe('CRITICAL')
+      expect(cveRow[0].cvss_score).toBe(9.6)
+      expect(cveRow[0].severity).toBe('CRITICAL')
 
-      // Verify v3.0 CVSS metrics were stored
-      const metricsRow = db.exec(
-        "SELECT version, score, severity FROM cvss_metrics WHERE cve_id = ? AND version = '3.0'",
-        [cveWithV30.id],
-      )
+      const metricsRow = db
+        .prepare("SELECT version, score, severity FROM cvss_metrics WHERE cve_id = ? AND version = '3.0'")
+        .all(cveWithV30.id)
       expect(metricsRow.length).toBeGreaterThan(0)
-      expect(metricsRow[0].values[0][0]).toBe('3.0')
-      expect(metricsRow[0].values[0][1]).toBe(9.6)
+      expect(metricsRow[0].version).toBe('3.0')
+      expect(metricsRow[0].score).toBe(9.6)
     })
 
     it('should import CVE with multiple CVSS v3.0 sources', async () => {
@@ -481,10 +473,10 @@ describe('NvdDataImporter', () => {
       expect(result.importedCves).toBe(1)
 
       // Both v3.0 metrics should be stored
-      const metricsRows = db.exec("SELECT source, type, score FROM cvss_metrics WHERE cve_id = ? AND version = '3.0'", [
-        cveWithMultipleV30.id,
-      ])
-      expect(metricsRows[0].values.length).toBe(2)
+      const metricsRows = db
+        .prepare("SELECT source, type, score FROM cvss_metrics WHERE cve_id = ? AND version = '3.0'")
+        .all(cveWithMultipleV30.id)
+      expect(metricsRows.length).toBe(2)
     })
 
     it('should use CVSS v2 as primary fallback when no v3.x metrics exist', async () => {
@@ -521,10 +513,12 @@ describe('NvdDataImporter', () => {
       expect(result.importedCves).toBe(1)
 
       // v2 should be used as primary since no v3.x exists
-      const cveRow = db.exec('SELECT cvss_score, severity, cvss_v2_score FROM cves WHERE id = ?', [cveWithV2Only.id])
-      expect(cveRow[0].values[0][0]).toBe(7.5)
-      expect(cveRow[0].values[0][1]).toBe('HIGH')
-      expect(cveRow[0].values[0][2]).toBe(7.5)
+      const cveRow = db
+        .prepare('SELECT cvss_score, severity, cvss_v2_score FROM cves WHERE id = ?')
+        .all(cveWithV2Only.id)
+      expect(cveRow[0].cvss_score).toBe(7.5)
+      expect(cveRow[0].severity).toBe('HIGH')
+      expect(cveRow[0].cvss_v2_score).toBe(7.5)
     })
 
     it('should handle CVE with no vulnStatus or sourceIdentifier', async () => {
@@ -540,9 +534,9 @@ describe('NvdDataImporter', () => {
       expect(result.success).toBe(true)
       expect(result.importedCves).toBe(1)
 
-      const cveRow = db.exec('SELECT vuln_status, assigner FROM cves WHERE id = ?', [cveMinimal.id])
-      expect(cveRow[0].values[0][0]).toBeNull()
-      expect(cveRow[0].values[0][1]).toBeNull()
+      const cveRow = db.prepare('SELECT vuln_status, assigner FROM cves WHERE id = ?').all(cveMinimal.id)
+      expect(cveRow[0].vuln_status).toBeNull()
+      expect(cveRow[0].assigner).toBeNull()
     })
 
     it('should handle CVE with empty descriptions', async () => {
@@ -556,8 +550,8 @@ describe('NvdDataImporter', () => {
 
       expect(result.success).toBe(true)
 
-      const cveRow = db.exec('SELECT description FROM cves WHERE id = ?', [cveNoDesc.id])
-      expect(cveRow[0].values[0][0]).toBe('No description available')
+      const cveRow = db.prepare('SELECT description FROM cves WHERE id = ?').all(cveNoDesc.id)
+      expect(cveRow[0].description).toBe('No description available')
     })
 
     it('should handle CVE with non-English description only', async () => {
@@ -571,9 +565,8 @@ describe('NvdDataImporter', () => {
 
       expect(result.success).toBe(true)
 
-      const cveRow = db.exec('SELECT description FROM cves WHERE id = ?', [cveNonEn.id])
-      // Falls back to first description when no English one exists
-      expect(cveRow[0].values[0][0]).toBe('Descripción en español')
+      const cveRow = db.prepare('SELECT description FROM cves WHERE id = ?').all(cveNonEn.id)
+      expect(cveRow[0].description).toBe('Descripción en español')
     })
 
     it('should handle weakness entries with non-CWE values', async () => {
@@ -597,8 +590,8 @@ describe('NvdDataImporter', () => {
       expect(result.success).toBe(true)
 
       // Only CWE-20 should be stored, NVD-CWE-Other is filtered out
-      const cweRows = db.exec('SELECT cwe_id FROM cwe_references WHERE cve_id = ?', [cveNonCwe.id])
-      const cweIds = cweRows[0].values.map((v) => v[0])
+      const cweRows = db.prepare('SELECT cwe_id FROM cwe_references WHERE cve_id = ?').all(cveNonCwe.id)
+      const cweIds = cweRows.map((r) => r.cwe_id)
       expect(cweIds).not.toContain('NVD-CWE-Other')
       expect(cweIds).toContain('CWE-20')
     })
@@ -622,17 +615,17 @@ describe('NvdDataImporter', () => {
 
       expect(result.success).toBe(true)
 
-      const refRows = db.exec('SELECT url, reference_type FROM "references" WHERE cve_id = ?', [cveWithRefs.id])
-      const refs = refRows[0].values
+      const refRows = db.prepare('SELECT url, reference_type FROM "references" WHERE cve_id = ?').all(cveWithRefs.id)
+      const refs = refRows
 
-      const findByUrl = (url: string) => refs.find((r) => r[0] === url)
-      expect(findByUrl('https://example.com/patch')?.[1]).toBe('patch')
-      expect(findByUrl('https://example.com/third-party')?.[1]).toBe('third-party')
-      expect(findByUrl('https://example.com/issue')?.[1]).toBe('issue')
-      expect(findByUrl('https://example.com/release')?.[1]).toBe('release')
-      expect(findByUrl('https://example.com/exploit')?.[1]).toBe('exploit')
-      expect(findByUrl('https://example.com/unknown')?.[1]).toBeNull()
-      expect(findByUrl('https://example.com/notags')?.[1]).toBeNull()
+      const findByUrl = (url: string) => refs.find((r) => r.url === url)
+      expect(findByUrl('https://example.com/patch')?.reference_type).toBe('patch')
+      expect(findByUrl('https://example.com/third-party')?.reference_type).toBe('third-party')
+      expect(findByUrl('https://example.com/issue')?.reference_type).toBe('issue')
+      expect(findByUrl('https://example.com/release')?.reference_type).toBe('release')
+      expect(findByUrl('https://example.com/exploit')?.reference_type).toBe('exploit')
+      expect(findByUrl('https://example.com/unknown')?.reference_type).toBeNull()
+      expect(findByUrl('https://example.com/notags')?.reference_type).toBeNull()
     })
 
     it('should handle reference without source or tags', async () => {
@@ -646,12 +639,12 @@ describe('NvdDataImporter', () => {
 
       expect(result.success).toBe(true)
 
-      const refRows = db.exec('SELECT source, tags, reference_type FROM "references" WHERE cve_id = ?', [
-        cveWithMinimalRef.id,
-      ])
-      expect(refRows[0].values[0][0]).toBeNull() // source
-      expect(refRows[0].values[0][1]).toBeNull() // tags
-      expect(refRows[0].values[0][2]).toBeNull() // reference_type
+      const refRows = db
+        .prepare('SELECT source, tags, reference_type FROM "references" WHERE cve_id = ?')
+        .all(cveWithMinimalRef.id)
+      expect(refRows[0].source).toBeNull()
+      expect(refRows[0].tags).toBeNull()
+      expect(refRows[0].reference_type).toBeNull()
     })
 
     it('should rebuild FTS index on subsequent imports', async () => {
@@ -672,9 +665,8 @@ describe('NvdDataImporter', () => {
       // Pre-create a regular table named cves_fts to bypass FTS5 creation.
       // This simulates the FTS table already existing so the code skips
       // CREATE VIRTUAL TABLE and goes directly to DELETE + INSERT (lines 738-741).
-      db.run('CREATE TABLE IF NOT EXISTS cves_fts (id TEXT, description TEXT)')
-      // Seed it so DELETE has something to clear
-      db.run("INSERT INTO cves_fts (id, description) VALUES ('old', 'old desc')")
+      db.exec('CREATE TABLE IF NOT EXISTS cves_fts (id TEXT, description TEXT)')
+      db.exec("INSERT INTO cves_fts (id, description) VALUES ('old', 'old desc')")
 
       const cve = { ...sampleCve, id: 'CVE-2024-FAKEFTS' }
       const result = await importer.importCves([cve])
@@ -683,8 +675,8 @@ describe('NvdDataImporter', () => {
       expect(result.importedCves).toBe(1)
 
       // Verify the FTS table was rebuilt (old data cleared, new data inserted)
-      const ftsRows = db.exec('SELECT id FROM cves_fts')
-      const ids = ftsRows[0]?.values.map((v) => v[0]) || []
+      const ftsRows = db.prepare('SELECT id FROM cves_fts').all()
+      const ids = ftsRows.map((r) => r.id)
       expect(ids).not.toContain('old')
       expect(ids).toContain('CVE-2024-FAKEFTS')
     })
@@ -747,11 +739,11 @@ describe('NvdDataImporter', () => {
 
       expect(result.success).toBe(true)
 
-      const metricsRows = db.exec('SELECT exploitability_score, impact_score FROM cvss_metrics WHERE cve_id = ?', [
-        cveNoExploitScores.id,
-      ])
-      expect(metricsRows[0].values[0][0]).toBeNull()
-      expect(metricsRows[0].values[0][1]).toBeNull()
+      const metricsRows = db
+        .prepare('SELECT exploitability_score, impact_score FROM cvss_metrics WHERE cve_id = ?')
+        .all(cveNoExploitScores.id)
+      expect(metricsRows[0].exploitability_score).toBeNull()
+      expect(metricsRows[0].impact_score).toBeNull()
     })
   })
 
@@ -779,8 +771,8 @@ describe('NvdDataImporter', () => {
 })
 
 describe('createNvdDataImporter', () => {
-  it('should create importer instance', async () => {
-    const testDb = await createTestDatabase()
+  it('should create importer instance', () => {
+    const testDb = createTestDatabase()
     const importer = createNvdDataImporter(testDb)
     expect(importer).toBeInstanceOf(NvdDataImporter)
     testDb.close()

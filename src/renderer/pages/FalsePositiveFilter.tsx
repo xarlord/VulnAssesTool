@@ -103,7 +103,7 @@ export function FalsePositiveFilterPage() {
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/dashboard')}
             className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -117,7 +117,7 @@ export function FalsePositiveFilterPage() {
               Select a project from the dashboard to use the False Positive Filter.
             </p>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             >
               Go to Dashboard
