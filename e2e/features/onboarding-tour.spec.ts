@@ -9,7 +9,7 @@ test.describe('Onboarding Tour', () => {
   test.describe('First Launch', () => {
     test('should show tour on first launch', async ({ page, browserName }) => {
       test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await page.goto('/')
+      await page.goto('/dashboard')
       await page.waitForLoadState('domcontentloaded')
       await page.waitForTimeout(E2E_UI_DELAY)
 
@@ -220,7 +220,7 @@ test.describe('Onboarding Tour', () => {
   test.describe('Manual Trigger', () => {
     test('should be able to restart tour from menu', async ({ page, browserName }) => {
       test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await page.goto('/')
+      await page.goto('/dashboard')
       await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
 
       await page.evaluate(() => {

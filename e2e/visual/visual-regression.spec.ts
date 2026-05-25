@@ -24,7 +24,7 @@ const E2E_SEARCH_DELAY = 1000
 
 const test = base.extend({
   page: async ({ page }, use) => {
-    await page.goto('/', {
+    await page.goto('/dashboard', {
       timeout: E2E_LOAD_TIMEOUT,
       waitUntil: 'domcontentloaded',
     })

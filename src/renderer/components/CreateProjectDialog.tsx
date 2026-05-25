@@ -68,7 +68,12 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') handleCancel()
+      }}
+    >
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50" onClick={handleCancel} aria-hidden="true" />
 

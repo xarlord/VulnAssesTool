@@ -3,6 +3,15 @@ import { queryByPurls } from './osv'
 import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT } from '@@/constants'
 import { getPlatform } from '@/lib/platform'
 
+export interface ScanProgressEvent {
+  phase: 'nvd-cpe' | 'nvd-name' | 'osv' | 'dedup' | 'done'
+  current: number
+  total: number
+  message: string
+}
+
+export type ScanProgressCallback = (event: ScanProgressEvent) => void
+
 /**
  * CPE 2.3 URI string validation and parsing
  * CPE format: cpe:2.3:<part>:<vendor>:<product>:<version>:<update>:<edition>:<language>:<sw_edition>:<target_sw>:<target_hw>:<other>
@@ -367,9 +376,11 @@ export async function matchVulnerabilitiesForComponent(
 export async function matchVulnerabilitiesForComponents(
   components: Component[],
   _nvdApiKey?: string,
+  onProgress?: ScanProgressCallback,
 ): Promise<Map<string, Vulnerability[]>> {
   const resultMap = new Map<string, Vulnerability[]>()
   const vulnerabilityMap = new Map<string, Vulnerability>()
+  const totalComponents = components.length
 
   // Initialize result map
   for (const component of components) {
@@ -377,7 +388,9 @@ export async function matchVulnerabilitiesForComponents(
   }
 
   // Process each component with CPE-prioritized matching
+  let componentIndex = 0
   for (const component of components) {
+    componentIndex++
     let foundVulns = false
 
     // ============================================================
@@ -385,6 +398,12 @@ export async function matchVulnerabilitiesForComponents(
     // ============================================================
     if (component.cpe) {
       try {
+        onProgress?.({
+          phase: 'nvd-cpe',
+          current: componentIndex,
+          total: totalComponents,
+          message: `Searching NVD by CPE: ${component.name} (${componentIndex}/${totalComponents})`,
+        })
         let vulns = await searchLocalNvdByCpe(component.cpe)
 
         // If CPE search returned results, use them exclusively (most accurate)
@@ -393,6 +412,12 @@ export async function matchVulnerabilitiesForComponents(
           console.log(`[VulnMatcher] Batch: Found ${vulns.length} vulns for ${component.name} via CPE`)
         } else if (component.name) {
           // CPE search returned no results, try fallback text search by name
+          onProgress?.({
+            phase: 'nvd-name',
+            current: componentIndex,
+            total: totalComponents,
+            message: `CPE had no results, searching NVD by name: ${component.name}`,
+          })
           vulns = await searchLocalNvdByName(component.name, component.cpe)
         }
 
@@ -415,6 +440,12 @@ export async function matchVulnerabilitiesForComponents(
       const highConfidenceCpes = component.suggestedCpes.filter((cpe) => cpe.confidence === 'high')
 
       if (highConfidenceCpes.length > 0) {
+        onProgress?.({
+          phase: 'nvd-cpe',
+          current: componentIndex,
+          total: totalComponents,
+          message: `Trying ${highConfidenceCpes.length} suggested CPEs for ${component.name}`,
+        })
         console.log(
           `[VulnMatcher] Batch: Using ${highConfidenceCpes.length} high-confidence suggested CPEs for ${component.name}`,
         )
@@ -461,6 +492,12 @@ export async function matchVulnerabilitiesForComponents(
     // ============================================================
     else if (component.name) {
       try {
+        onProgress?.({
+          phase: 'nvd-name',
+          current: componentIndex,
+          total: totalComponents,
+          message: `Searching NVD by name: ${component.name} (${componentIndex}/${totalComponents})`,
+        })
         const vulns = await searchLocalNvdByName(component.name)
         for (const vuln of vulns) {
           if (!vulnerabilityMap.has(vuln.id)) {
@@ -480,6 +517,14 @@ export async function matchVulnerabilitiesForComponents(
   // See matchVulnerabilitiesForComponent documentation for details.
   if (typeof window === 'undefined' || !getPlatform()?.database) {
     const purls = components.filter((c) => c.purl).map((c) => c.purl as string)
+    if (purls.length > 0) {
+      onProgress?.({
+        phase: 'osv',
+        current: 0,
+        total: purls.length,
+        message: `Querying OSV database for ${purls.length} package URLs...`,
+      })
+    }
     try {
       const osvResults = await queryByPurls(purls)
       for (const component of components) {
@@ -500,6 +545,12 @@ export async function matchVulnerabilitiesForComponents(
   }
 
   // Populate result map
+  onProgress?.({
+    phase: 'dedup',
+    current: 0,
+    total: 0,
+    message: `Deduplicating ${vulnerabilityMap.size} unique vulnerabilities across ${components.length} components...`,
+  })
   for (const component of components) {
     const componentVulns: Vulnerability[] = []
     for (const vuln of vulnerabilityMap.values()) {

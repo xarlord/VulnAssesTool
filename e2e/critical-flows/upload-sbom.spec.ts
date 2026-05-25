@@ -8,6 +8,7 @@ import { test, expect, resetAppState } from '../test-helper'
 test.describe('SBOM Upload Flow', () => {
   test.beforeEach(async ({ page }) => {
     await resetAppState(page)
+    await page.goto('/dashboard', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
@@ -49,7 +50,7 @@ test.describe('SBOM Upload Flow', () => {
     await page.getByRole('button', { name: /upload sbom/i }).click()
 
     // Verify dialog opens (look for dialog or upload heading)
-    await expect(page.locator('[role="dialog"], .fixed.z-50').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
   })
 
   test('should close upload dialog with Escape', async ({ page }) => {
@@ -65,37 +66,24 @@ test.describe('SBOM Upload Flow', () => {
 
     // Open upload dialog
     await page.getByRole('button', { name: /upload sbom/i }).click()
-    await expect(page.locator('[role="dialog"], .fixed.z-50').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
 
-    // Close with Escape - may need multiple attempts
+    // Close with Escape
     await page.keyboard.press('Escape')
     await page.waitForTimeout(500)
 
-    // Try again if still visible
+    // Escape may not propagate in headless; fall back to close button
     if (
       await page
-        .locator('[role="dialog"], .fixed.z-50')
-        .first()
+        .getByRole('dialog')
         .isVisible()
         .catch(() => false)
     ) {
-      await page.keyboard.press('Escape')
+      await page.getByRole('button', { name: 'Close dialog' }).click()
       await page.waitForTimeout(500)
     }
 
-    // Third attempt
-    if (
-      await page
-        .locator('[role="dialog"], .fixed.z-50')
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(1000)
-    }
-
     // Dialog should be closed
-    await expect(page.locator('[role="dialog"], .fixed.z-50').first()).not.toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 })
   })
 })

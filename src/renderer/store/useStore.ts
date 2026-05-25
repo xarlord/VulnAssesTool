@@ -14,6 +14,7 @@ import {
   exportSettingsToFile,
   importSettingsFromFile,
 } from '@/lib/settings'
+import { saveProjectToServer, loadProjectFromServer } from '@/lib/api/projectPersistence'
 
 interface AppState {
   // Settings
@@ -39,6 +40,7 @@ interface AppState {
   updateProject: (id: string, updates: Partial<Project>) => void
   deleteProject: (id: string) => void
   setCurrentProject: (project: Project | null) => void
+  hydrateProjectFromServer: (projectId: string) => Promise<Project | null>
   refreshVulnerabilityData: (projectId: string) => Promise<void>
 
   // UI State
@@ -212,18 +214,60 @@ export const useStore = create<AppState>()(
         set((state) => ({
           projects: [...state.projects, project],
         })),
-      updateProject: (id, updates) =>
+      updateProject: (id, updates) => {
         set((state) => ({
           projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
           currentProject:
             state.currentProject?.id === id ? { ...state.currentProject, ...updates } : state.currentProject,
-        })),
+        }))
+        const updated = get().projects.find((p) => p.id === id)
+        if (updated && (updates.vulnerabilities || updates.components)) {
+          saveProjectToServer({
+            id: updated.id,
+            name: updated.name,
+            description: updated.description,
+            vulnerabilities: updated.vulnerabilities || [],
+            components: updated.components || [],
+            dependencyGraph: updated.dependencyGraph,
+            lastScanAt: updated.lastScanAt?.toString(),
+            updatedAt: updated.updatedAt?.toString(),
+            statistics: updated.statistics as Record<string, unknown> | undefined,
+          }).catch((err) => {
+            console.error('[Store] Failed to persist project to server:', err)
+          })
+        }
+      },
       deleteProject: (id) =>
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           currentProject: state.currentProject?.id === id ? null : state.currentProject,
         })),
       setCurrentProject: (project) => set({ currentProject: project }),
+      hydrateProjectFromServer: async (projectId: string): Promise<Project | null> => {
+        try {
+          const data = await loadProjectFromServer(projectId)
+          if (!data) return null
+          const existing = get().projects.find((p) => p.id === projectId)
+          if (!existing) return null
+          const merged: Project = {
+            ...existing,
+            vulnerabilities: (data.vulnerabilities as Project['vulnerabilities']) || existing.vulnerabilities,
+            components: (data.components as Project['components']) || existing.components,
+            dependencyGraph: (data.dependencyGraph as Project['dependencyGraph']) || existing.dependencyGraph,
+            lastScanAt: data.lastScanAt ? new Date(data.lastScanAt) : existing.lastScanAt,
+            updatedAt: data.updatedAt ? new Date(data.updatedAt) : existing.updatedAt,
+            statistics: (data.statistics as Project['statistics']) || existing.statistics,
+          }
+          set((state) => ({
+            projects: state.projects.map((p) => (p.id === projectId ? merged : p)),
+            currentProject: state.currentProject?.id === projectId ? merged : state.currentProject,
+          }))
+          return merged
+        } catch (err) {
+          console.error('[Store] Failed to hydrate project from server:', err)
+          return null
+        }
+      },
       refreshVulnerabilityData: async (projectId) => {
         const state = get()
         const project = state.projects.find((p) => p.id === projectId)

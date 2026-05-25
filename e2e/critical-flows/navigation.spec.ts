@@ -224,6 +224,14 @@ test.describe('Navigation Flow', () => {
  */
 async function createTestProject(page: Page, name: string, description: string): Promise<string> {
   const uniqueName = `${name} ${Date.now()}`
-  await createProjectOnly(page, uniqueName)
+  await page.getByRole('button', { name: 'New Project' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
+  await page.locator('#project-name').fill(uniqueName)
+  if (description) {
+    await page.locator('#project-description').fill(description)
+  }
+  await page.getByRole('button', { name: 'Create Project' }).click()
+  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 })
+  await expect(page.getByText(uniqueName)).toBeVisible({ timeout: 5000 })
   return uniqueName
 }
