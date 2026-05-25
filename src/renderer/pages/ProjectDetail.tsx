@@ -32,6 +32,7 @@ import { VirtualList } from '@/components/VirtualList'
 import { KevBadge } from '@/components/vulnerabilities/KevBadge'
 import { RiskScoreBadge } from '@/components/vulnerabilities/RiskScoreCell'
 import { matchVulnerabilitiesForComponents, getVulnerabilityStatistics, sortBySeverity } from '@/lib/api/vulnMatcher'
+import type { ScanProgressEvent } from '@/lib/api/vulnMatcher'
 import { refreshVulnerabilityData } from '@/lib/refresh'
 import { calculateComponentHealth, calculateProjectHealth, calculateTrend } from '@/lib/health'
 import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
@@ -44,8 +45,16 @@ type TabValue = 'overview' | 'components' | 'vulnerabilities' | 'health'
 export function ProjectDetail() {
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
-  const { projects, currentProject, setCurrentProject, deleteProject, updateProject, settings, refreshingProjectIds } =
-    useStore()
+  const {
+    projects,
+    currentProject,
+    setCurrentProject,
+    deleteProject,
+    updateProject,
+    settings,
+    refreshingProjectIds,
+    hydrateProjectFromServer,
+  } = useStore()
 
   const [showEditDialog, setShowEditDialog] = React.useState(false)
   const [showUploadDialog, setShowUploadDialog] = React.useState(false)
@@ -56,6 +65,8 @@ export function ProjectDetail() {
   const [isScanning, setIsScanning] = React.useState(false)
   const [isRefreshingVuln, setIsRefreshingVuln] = React.useState(false)
   const [scanProgress, setScanProgress] = React.useState(0)
+  const [scanLog, setScanLog] = React.useState<string[]>([])
+  const [scanPhase, setScanPhase] = React.useState<string>('')
   const [severityFilter, setSeverityFilter] = React.useState<'all' | Vulnerability['severity']>('all')
   const [activeTab, setActiveTab] = React.useState<TabValue>('overview')
   const [copiedVulnId, setCopiedVulnId] = React.useState<string | null>(null)
@@ -236,6 +247,23 @@ export function ProjectDetail() {
     }
   }, [project, projectId, setCurrentProject])
 
+  // Hydrate scan results from server when component mounts
+  // (vulnerabilities/components are stripped from localStorage by partialize)
+  React.useEffect(() => {
+    if (!projectId) return
+    const needsHydration =
+      project &&
+      project.id === projectId &&
+      project.lastScanAt &&
+      (!project.vulnerabilities || project.vulnerabilities.length === 0) &&
+      (!project.components || project.components.length === 0)
+    if (needsHydration) {
+      hydrateProjectFromServer(projectId).catch((err) => {
+        console.error('[ProjectDetail] Failed to hydrate:', err)
+      })
+    }
+  }, [projectId])
+
   if (!project) {
     return (
       <div className="flex min-h-screen flex-col">
@@ -302,8 +330,6 @@ export function ProjectDetail() {
       return
     }
 
-    // Check if NVD API key is configured
-    // API key is now fetched from secure storage, not from settings
     const secureKeyService = getSecureKeyService()
     const nvdApiKey = await secureKeyService.getApiKey('nvd')
 
@@ -316,37 +342,43 @@ export function ProjectDetail() {
 
     setIsScanning(true)
     setScanProgress(0)
+    setScanLog([])
+    setScanPhase('Initializing...')
 
-    // Simulate progress for better UX
-    const progressInterval = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(progressInterval)
-          return 90
-        }
-        return prev + 10
-      })
-    }, 200)
+    const appendLog = (msg: string) => {
+      setScanLog((prev) => [...prev.slice(-4), msg])
+    }
+
+    const handleMatchProgress = (event: ScanProgressEvent) => {
+      const pct = event.total > 0 ? Math.round((event.current / event.total) * 70) : 70
+      setScanProgress(pct)
+      setScanPhase(event.message)
+      appendLog(event.message)
+    }
 
     try {
-      // Match vulnerabilities for all components, passing NVD API key
-      const results = await matchVulnerabilitiesForComponents(project.components, nvdApiKey ?? undefined)
+      const results = await matchVulnerabilitiesForComponents(
+        project.components,
+        nvdApiKey ?? undefined,
+        handleMatchProgress,
+      )
 
-      // Flatten results into a single array of vulnerabilities
+      setScanProgress(75)
+      setScanPhase('Deduplicating results...')
+      appendLog('Deduplicating vulnerability results...')
+
       const allVulnerabilities: Vulnerability[] = []
       const seenIds = new Set<string>()
 
       for (const [componentId, vulns] of results.entries()) {
         for (const vuln of vulns) {
           if (!seenIds.has(vuln.id)) {
-            // Update affectedComponents
             allVulnerabilities.push({
               ...vuln,
               affectedComponents: [componentId],
             })
             seenIds.add(vuln.id)
           } else {
-            // Add component to existing vulnerability
             const existingVuln = allVulnerabilities.find((v) => v.id === vuln.id)
             if (existingVuln && !existingVuln.affectedComponents.includes(componentId)) {
               existingVuln.affectedComponents.push(componentId)
@@ -355,40 +387,46 @@ export function ProjectDetail() {
         }
       }
 
-      clearInterval(progressInterval)
-      setScanProgress(100)
+      setScanProgress(80)
+      setScanPhase('Merging with SBOM data...')
+      appendLog(`Found ${allVulnerabilities.length} vulnerabilities from NVD/OSV`)
 
-      // Merge with existing vulnerabilities from SBOM (preserve those not found in NVD/OSV)
       const existingVulnerabilities = project.vulnerabilities || []
       const mergedVulnerabilities: Vulnerability[] = []
 
-      // Add existing vulnerabilities (from SBOM) first
       for (const existingVuln of existingVulnerabilities) {
         const foundInScan = allVulnerabilities.find((v) => v.id === existingVuln.id)
         if (foundInScan) {
-          // Use the one from scan (has fresh data from NVD/OSV)
           mergedVulnerabilities.push(foundInScan)
         } else {
-          // Keep the SBOM vulnerability even if not found in NVD/OSV
           mergedVulnerabilities.push(existingVuln)
         }
       }
 
-      // Add any new vulnerabilities from scan that weren't in existing
       for (const scanVuln of allVulnerabilities) {
         if (!existingVulnerabilities.some((v) => v.id === scanVuln.id)) {
           mergedVulnerabilities.push(scanVuln)
         }
       }
 
-      // Enrich vulnerabilities with KEV/EPSS intelligence
-      const enrichedVulnerabilities = await enrichVulnerabilities(mergedVulnerabilities)
+      setScanProgress(85)
+      setScanPhase('Enriching with KEV/EPSS intelligence...')
+      appendLog(`Enriching ${mergedVulnerabilities.length} vulnerabilities with threat intelligence...`)
 
-      // Calculate statistics from enriched vulnerabilities
+      const enrichedVulnerabilities = await enrichVulnerabilities(mergedVulnerabilities, {
+        onProgress: (msg) => {
+          appendLog(msg)
+          setScanPhase(msg)
+        },
+      })
+
+      setScanProgress(95)
+      setScanPhase('Calculating statistics...')
+      appendLog('Finalizing scan results...')
+
       const stats = getVulnerabilityStatistics(enrichedVulnerabilities)
       const vulnerableComponents = new Set(enrichedVulnerabilities.flatMap((v) => v.affectedComponents)).size
 
-      // Update project with enriched vulnerabilities and statistics
       updateProject(project.id, {
         vulnerabilities: enrichedVulnerabilities,
         lastScanAt: new Date(),
@@ -403,6 +441,10 @@ export function ProjectDetail() {
           vulnerableComponents,
         },
       })
+
+      setScanProgress(100)
+      setScanPhase('Scan complete!')
+      appendLog(`Done: ${stats.total} vulnerabilities (${stats.critical} critical, ${stats.high} high)`)
 
       const newVulnsFound = allVulnerabilities.length
       const sbomVulnsPreserved =
@@ -420,6 +462,7 @@ export function ProjectDetail() {
     } finally {
       setIsScanning(false)
       setScanProgress(0)
+      setScanPhase('')
     }
   }
 
@@ -1442,13 +1485,29 @@ export function ProjectDetail() {
           </div>
           <div className="flex items-center gap-2">
             {isScanning ? (
-              <button
-                disabled
-                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground opacity-75"
-              >
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Scanning {scanProgress}%
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  disabled
+                  className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground opacity-75"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Scanning {scanProgress}%
+                </button>
+                {scanPhase && (
+                  <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
+                    <p className="text-xs text-muted-foreground truncate max-w-xs">{scanPhase}</p>
+                    {scanLog.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {scanLog.slice(-3).map((line, idx) => (
+                          <p key={idx} className="text-xs text-muted-foreground/70 truncate">
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : (
               <button
                 onClick={handleScan}

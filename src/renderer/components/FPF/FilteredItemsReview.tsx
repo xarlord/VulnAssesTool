@@ -18,6 +18,8 @@ import {
   CheckCircle,
   AlertCircle,
   ExternalLink,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import type { FilterAction } from '@@/types/fpf'
 
@@ -57,6 +59,9 @@ export interface FilteredVulnerability {
 
   /** Filter tier */
   tier: 1 | 2 | 3
+
+  /** Filter type identifier (e.g. disabled_interface, version_mismatch) */
+  filterType?: string
 
   /** Whether this is flagged for miss-filter */
   isMissFilter?: boolean
@@ -203,6 +208,7 @@ export function FilteredItemsReview({
   const [activeTab, setActiveTab] = useState<ReviewTab>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
@@ -274,6 +280,25 @@ export function FilteredItemsReview({
   const handleExportSelected = () => {
     const selected = (items || []).filter((i) => selectedItems.has(i.vulnerabilityId))
     onExport(selected)
+  }
+
+  const toggleRow = (id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const getConfidenceLabel = (confidence: number): string => {
+    if (confidence >= 90) return 'High confidence — strong evidence this is a false positive'
+    if (confidence >= 70) return 'Medium confidence — likely a false positive but worth reviewing'
+    if (confidence >= 50) return 'Low confidence — consider manual review'
+    return 'Very low confidence — manual review recommended'
   }
 
   return (
@@ -420,98 +445,133 @@ export function FilteredItemsReview({
                 </td>
               </tr>
             ) : (
-              paginatedItems.map((item) => (
-                <tr
-                  key={item.vulnerabilityId}
-                  className="hover:bg-muted/30"
-                  data-testid={`row-${item.vulnerabilityId}`}
-                >
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedItems.has(item.vulnerabilityId)}
-                      onChange={() => handleSelectItem(item.vulnerabilityId)}
-                      className="h-4 w-4 rounded border-border"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm">{item.cveId}</span>
-                      {item.isMissFilter && (
-                        <span
-                          className="rounded bg-yellow-500/20 px-1 text-xs text-yellow-600"
-                          title="Potential miss-filter"
-                        >
-                          MF
-                        </span>
-                      )}
-                      <a
-                        href={`https://nvd.nist.gov/vuln/detail/${item.cveId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <SeverityBadge severity={item.severity} />
-                    <span className="ml-2 text-xs text-muted-foreground">{item.cvssScore.toFixed(1)}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium">{item.componentName}</p>
-                      <p className="text-xs text-muted-foreground">v{item.componentVersion}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="text-sm">{item.filteredBy}</p>
-                      <p className="text-xs text-muted-foreground">Tier {item.tier}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <ConfidenceIndicator confidence={item.confidence} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <ActionBadge action={item.action} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1">
-                      {onViewDetails && (
-                        <button
-                          onClick={() => onViewDetails(item.vulnerabilityId)}
-                          className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                          title="View details"
-                          data-testid={`view-details-${item.vulnerabilityId}`}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => onUndo(item.vulnerabilityId)}
-                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        title="Undo filter decision"
-                        data-testid={`undo-${item.vulnerabilityId}`}
-                      >
-                        <Undo2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => onLlmAnalysis(item.vulnerabilityId)}
-                        disabled={llmLoadingIds.includes(item.vulnerabilityId)}
-                        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                        title="Run LLM analysis"
-                        data-testid={`llm-analysis-${item.vulnerabilityId}`}
-                      >
-                        <Sparkles
-                          className={`h-4 w-4 ${llmLoadingIds.includes(item.vulnerabilityId) ? 'animate-pulse' : ''}`}
+              paginatedItems.map((item) => {
+                const isExpanded = expandedRows.has(item.vulnerabilityId)
+                return (
+                  <React.Fragment key={item.vulnerabilityId}>
+                    <tr
+                      className={`hover:bg-muted/30 cursor-pointer ${isExpanded ? 'bg-muted/20' : ''}`}
+                      onClick={() => toggleRow(item.vulnerabilityId)}
+                      data-testid={`row-${item.vulnerabilityId}`}
+                    >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.has(item.vulnerabilityId)}
+                          onChange={() => handleSelectItem(item.vulnerabilityId)}
+                          className="h-4 w-4 rounded border-border"
                         />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronUp className="h-3 w-3 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                          )}
+                          <span className="font-mono text-sm">{item.cveId}</span>
+                          {item.isMissFilter && (
+                            <span
+                              className="rounded bg-yellow-500/20 px-1 text-xs text-yellow-600"
+                              title="Potential miss-filter"
+                            >
+                              MF
+                            </span>
+                          )}
+                          <a
+                            href={`https://nvd.nist.gov/vuln/detail/${item.cveId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <SeverityBadge severity={item.severity} />
+                        <span className="ml-2 text-xs text-muted-foreground">{item.cvssScore.toFixed(1)}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="text-sm font-medium">{item.componentName}</p>
+                          <p className="text-xs text-muted-foreground">v{item.componentVersion}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="text-sm">{item.filteredBy}</p>
+                          <p className="text-xs text-muted-foreground">Tier {item.tier}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <ConfidenceIndicator confidence={item.confidence} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <ActionBadge action={item.action} />
+                      </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-end gap-1">
+                          {onViewDetails && (
+                            <button
+                              onClick={() => onViewDetails(item.vulnerabilityId)}
+                              className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              title="View details"
+                              data-testid={`view-details-${item.vulnerabilityId}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => onUndo(item.vulnerabilityId)}
+                            className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            title="Undo filter decision"
+                            data-testid={`undo-${item.vulnerabilityId}`}
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => onLlmAnalysis(item.vulnerabilityId)}
+                            disabled={llmLoadingIds.includes(item.vulnerabilityId)}
+                            className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Run LLM analysis"
+                            data-testid={`llm-analysis-${item.vulnerabilityId}`}
+                          >
+                            <Sparkles
+                              className={`h-4 w-4 ${llmLoadingIds.includes(item.vulnerabilityId) ? 'animate-pulse' : ''}`}
+                            />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="bg-muted/10" data-testid={`detail-${item.vulnerabilityId}`}>
+                        <td colSpan={8} className="px-8 py-3">
+                          <div className="space-y-1 text-sm">
+                            <div className="flex gap-6">
+                              <div>
+                                <span className="text-muted-foreground">Filter type:</span>{' '}
+                                <span className="font-medium">{item.filterType ?? 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Tier:</span>{' '}
+                                <span className="font-medium">{item.tier}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Confidence:</span>{' '}
+                                <span className="font-medium">{item.confidence}%</span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{getConfidenceLabel(item.confidence)}</p>
+                            <p className="text-xs text-muted-foreground">Reason: {item.filteredBy}</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })
             )}
           </tbody>
         </table>

@@ -15,12 +15,10 @@ import { calculateRiskScore, type Severity } from '../riskScore'
  * Enrichment options
  */
 export interface EnrichmentOptions {
-  /** Include KEV status */
   includeKev?: boolean
-  /** Include EPSS scores */
   includeEpss?: boolean
-  /** Calculate composite risk score */
   includeRiskScore?: boolean
+  onProgress?: (message: string) => void
 }
 
 const DEFAULT_OPTIONS: EnrichmentOptions = {
@@ -95,6 +93,7 @@ export async function enrichVulnerabilities(
   // Batch fetch EPSS scores for efficiency
   const epssScores: Map<string, { score: number; percentile: number }> = new Map()
   if (options.includeEpss) {
+    options.onProgress?.(`Fetching EPSS scores for ${cveIds.length} vulnerabilities...`)
     try {
       const response = await getPlatform().intelligence.getEpssScores(cveIds)
       if (response.success) {
@@ -108,6 +107,7 @@ export async function enrichVulnerabilities(
   }
 
   // Batch check KEV status (we need to check each individually, but can parallelize)
+  options.onProgress?.(`Checking KEV status for ${vulnerabilities.length} vulnerabilities...`)
   const enriched: Vulnerability[] = await Promise.all(
     vulnerabilities.map(async (vuln) => {
       const result = { ...vuln }

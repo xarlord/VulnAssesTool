@@ -30,7 +30,7 @@ function getErrors(messages: ConsoleMessage[]): ConsoleMessage[] {
 }
 
 async function gotoDashboard(page: Page) {
-  await page.goto('/', { waitUntil: 'networkidle', timeout: 30000 })
+  await page.goto('/dashboard', { waitUntil: 'networkidle', timeout: 30000 })
   await page.waitForTimeout(2000)
   await expect(page.locator('#root')).not.toBeEmpty({ timeout: 15000 })
 }

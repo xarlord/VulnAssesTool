@@ -67,6 +67,13 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
     onClose()
   }
 
+  const handleEscape = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      handleClose()
+    }
+  }
+
   const detectFormat = (content: string, filename: string): FileFormat => {
     // Try to detect from filename first
     const lowerFilename = filename.toLowerCase()
@@ -289,7 +296,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={handleEscape}>
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50" onClick={handleClose} aria-hidden="true" />
 

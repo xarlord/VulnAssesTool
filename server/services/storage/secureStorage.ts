@@ -74,8 +74,10 @@ function loadCredentialStore(): CredentialStore {
 
   try {
     const content = readFileSync(filePath, 'utf-8')
-    cachedStore = JSON.parse(content)
-    return cachedStore
+    const parsed = JSON.parse(content)
+    const store: CredentialStore = typeof parsed === 'object' && parsed !== null ? parsed : {}
+    cachedStore = store
+    return store
   } catch {
     cachedStore = {}
     return cachedStore

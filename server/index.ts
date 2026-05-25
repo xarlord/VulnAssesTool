@@ -24,6 +24,7 @@ import { storageRoutes } from './routes/storage.js'
 import { intelligenceRoutes } from './routes/intelligence.js'
 import { backupRoutes } from './routes/backup.js'
 import { containerRoutes } from './routes/container.js'
+import { projectRouter } from './routes/projects.js'
 import { defaultLimiter } from './middleware/rateLimit.js'
 
 const currentFilename = fileURLToPath(import.meta.url)
@@ -78,6 +79,7 @@ function createApp(): express.Express {
   app.use('/api/storage', defaultLimiter, storageRoutes)
   app.use('/api/backup', defaultLimiter, backupRoutes)
   app.use('/api/container', defaultLimiter, containerRoutes)
+  app.use('/api/projects', defaultLimiter, projectRouter)
 
   // 3. SPA fallback — must be LAST. Serves index.html for all
   //    non-API, non-static GET requests (client-side routing).

@@ -165,7 +165,7 @@ export async function navigateToSettings(page: Page): Promise<boolean> {
     return false
   }
 
-  await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible({ timeout: 10000 })
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible({ timeout: 10000 })
   return true
 }
 

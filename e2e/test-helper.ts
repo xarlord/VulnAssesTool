@@ -36,7 +36,7 @@ export async function resetAppState(page: Page) {
 
     await page.waitForTimeout(100)
 
-    await page.goto('/', { timeout: 15000, waitUntil: 'domcontentloaded' })
+    await page.goto('/dashboard', { timeout: 15000, waitUntil: 'domcontentloaded' })
 
     await page.waitForTimeout(300)
 
