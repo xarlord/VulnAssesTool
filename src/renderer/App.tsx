@@ -3,10 +3,10 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSettings, useSetSidebarOpen, useSidebarOpen } from './store/useStore'
 import { Toaster } from './components/Toaster'
 import { MenuActionListener } from './components/MenuActionListener'
-// NotificationCenter is used via Toaster notification system
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette, useCommandPalette, CommandPaletteTrigger } from './components/CommandPalette'
 import { OnboardingTour, useOnboardingTour } from './components/onboarding'
+import { AppLayout } from './components/layout'
 import { useSyncNotifications } from './lib/hooks'
 import { registerAppCommands, unregisterAppCommands } from './lib/commands'
 
@@ -31,6 +31,25 @@ function PageLoader() {
     <div className="flex items-center justify-center min-h-[50vh]">
       <div className="animate-pulse text-muted-foreground">Loading...</div>
     </div>
+  )
+}
+
+function LayoutRoutes() {
+  return (
+    <AppLayout>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/executive" element={<ExecutiveDashboard />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/project/:projectId" element={<ProjectDetail />} />
+          <Route path="/project/:projectId/fpf" element={<FalsePositiveFilterPage />} />
+          <Route path="/project/:projectId/graph" element={<DependencyGraphPage />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </AppLayout>
   )
 }
 
@@ -139,14 +158,7 @@ export function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/executive" element={<ExecutiveDashboard />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/project/:projectId" element={<ProjectDetail />} />
-            <Route path="/project/:projectId/fpf" element={<FalsePositiveFilterPage />} />
-            <Route path="/project/:projectId/graph" element={<DependencyGraphPage />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/*" element={<LayoutRoutes />} />
           </Routes>
         </Suspense>
         <Toaster />
