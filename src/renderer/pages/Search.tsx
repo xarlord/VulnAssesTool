@@ -24,7 +24,7 @@ import {
 } from '@/lib/search'
 import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
-import { EmptyState } from '@/components/EmptyState'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
 import type { CveResult, NvdSearchRequest } from '@@/types'
 

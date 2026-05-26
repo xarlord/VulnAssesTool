@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import {
-  Skeleton,
-  CardSkeleton,
-  ProjectStatsSkeleton,
-  ComponentListSkeleton,
-  VulnerabilityListSkeleton,
-} from './Skeleton'
+import { Skeleton, SkeletonCard, SkeletonStats, SkeletonList, SkeletonTable } from './ui/skeleton'
 
 describe('Skeleton', () => {
   describe('Base Skeleton Component', () => {
@@ -29,54 +23,54 @@ describe('Skeleton', () => {
     })
   })
 
-  describe('CardSkeleton', () => {
+  describe('SkeletonCard', () => {
     it('should render card skeleton without crashing', () => {
-      const { container } = render(<CardSkeleton />)
+      const { container } = render(<SkeletonCard />)
       expect(container.querySelector('div')).toBeInTheDocument()
     })
 
     it('should contain animated skeleton elements', () => {
-      const { container } = render(<CardSkeleton />)
-      const skeletons = container.querySelectorAll('.animate-pulse')
+      const { container } = render(<SkeletonCard />)
+      const skeletons = container.querySelectorAll('.skeleton')
       expect(skeletons.length).toBeGreaterThan(0)
     })
   })
 
-  describe('ProjectStatsSkeleton', () => {
+  describe('SkeletonStats', () => {
     it('should render without crashing', () => {
-      const { container } = render(<ProjectStatsSkeleton />)
+      const { container } = render(<SkeletonStats />)
       expect(container.querySelector('div')).toBeInTheDocument()
     })
 
-    it('should render 4 stat card skeletons', () => {
-      const { container } = render(<ProjectStatsSkeleton />)
+    it('should render stat card skeletons', () => {
+      const { container } = render(<SkeletonStats count={4} />)
       const cards = container.querySelectorAll('.rounded-lg')
       expect(cards.length).toBeGreaterThanOrEqual(4)
     })
   })
 
-  describe('ComponentListSkeleton', () => {
+  describe('SkeletonList', () => {
     it('should render without crashing', () => {
-      const { container } = render(<ComponentListSkeleton />)
+      const { container } = render(<SkeletonList />)
       expect(container.querySelector('div')).toBeInTheDocument()
     })
 
     it('should render multiple row skeletons', () => {
-      const { container } = render(<ComponentListSkeleton />)
-      const skeletons = container.querySelectorAll('.animate-pulse')
+      const { container } = render(<SkeletonList items={5} />)
+      const skeletons = container.querySelectorAll('.skeleton')
       expect(skeletons.length).toBeGreaterThan(0)
     })
   })
 
-  describe('VulnerabilityListSkeleton', () => {
+  describe('SkeletonTable', () => {
     it('should render without crashing', () => {
-      const { container } = render(<VulnerabilityListSkeleton />)
+      const { container } = render(<SkeletonTable />)
       expect(container.querySelector('div')).toBeInTheDocument()
     })
 
-    it('should render multiple row skeletons', () => {
-      const { container } = render(<VulnerabilityListSkeleton />)
-      const skeletons = container.querySelectorAll('.animate-pulse')
+    it('should render row skeletons', () => {
+      const { container } = render(<SkeletonTable rows={5} />)
+      const skeletons = container.querySelectorAll('.skeleton')
       expect(skeletons.length).toBeGreaterThan(0)
     })
   })
@@ -84,10 +78,10 @@ describe('Skeleton', () => {
   describe('Exported Components', () => {
     it('should export all skeleton variants', () => {
       expect(Skeleton).toBeDefined()
-      expect(CardSkeleton).toBeDefined()
-      expect(ProjectStatsSkeleton).toBeDefined()
-      expect(ComponentListSkeleton).toBeDefined()
-      expect(VulnerabilityListSkeleton).toBeDefined()
+      expect(SkeletonCard).toBeDefined()
+      expect(SkeletonStats).toBeDefined()
+      expect(SkeletonList).toBeDefined()
+      expect(SkeletonTable).toBeDefined()
     })
   })
 })

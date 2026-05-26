@@ -1,0 +1,3 @@
+
+[DIAG] main.cjs loading...
+[DIAG] require(electron) type: object

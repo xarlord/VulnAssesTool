@@ -1,0 +1,1 @@
+import Database from 'better-sqlite3'; const db = new Database(':memory:'); db.exec('CREATE TABLE t(x)'); db.exec('INSERT INTO t VALUES(1)'); console.log(db.prepare('SELECT * FROM t').all()); db.close();
