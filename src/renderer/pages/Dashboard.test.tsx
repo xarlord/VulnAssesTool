@@ -204,20 +204,20 @@ describe('Dashboard', () => {
     it('should render the header with app name', () => {
       renderDashboard()
 
-      expect(screen.getByText('VulnAssessTool')).toBeInTheDocument()
+      expect(screen.getByText('Dashboard')).toBeInTheDocument()
     })
 
-    it('should render Settings button', () => {
+    it('should not render Settings button (sidebar handles navigation)', () => {
       renderDashboard()
 
-      expect(screen.getByText('Settings')).toBeInTheDocument()
+      expect(screen.queryByText('Settings')).not.toBeInTheDocument()
     })
 
     it('should render quick action buttons', () => {
       renderDashboard()
 
       expect(screen.getByText('New Project')).toBeInTheDocument()
-      expect(screen.getByText('Import SBOM')).toBeInTheDocument()
+      expect(screen.getByText('Import')).toBeInTheDocument()
     })
 
     it('should render statistics cards', () => {
@@ -502,7 +502,7 @@ describe('Dashboard', () => {
 
       renderDashboard(mockProjects)
 
-      const importButton = screen.getByText('Import SBOM')
+      const importButton = screen.getByText('Import')
       fireEvent.click(importButton)
 
       expect(screen.getByTestId('sbom-upload-dialog')).toBeInTheDocument()
@@ -511,7 +511,7 @@ describe('Dashboard', () => {
     it('should disable Import SBOM button when no projects exist', () => {
       renderDashboard([])
 
-      const importButton = screen.getByText('Import SBOM')
+      const importButton = screen.getByText('Import')
       expect(importButton).toBeDisabled()
     })
 
@@ -540,7 +540,7 @@ describe('Dashboard', () => {
 
       renderDashboard(mockProjects)
 
-      const importButton = screen.getByText('Import SBOM')
+      const importButton = screen.getByText('Import')
       expect(importButton).not.toBeDisabled()
     })
   })
@@ -564,13 +564,11 @@ describe('Dashboard', () => {
   })
 
   describe('Navigation', () => {
-    it('should navigate to settings when Settings button is clicked', () => {
+    it('should not navigate to settings from header (sidebar handles navigation)', () => {
       renderDashboard()
 
-      const settingsButton = screen.getByText('Settings')
-      fireEvent.click(settingsButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith('/settings')
+      expect(screen.queryByText('Settings')).not.toBeInTheDocument()
+      expect(mockNavigate).not.toHaveBeenCalled()
     })
 
     it('should navigate to project detail when project card View button is clicked', () => {
@@ -663,7 +661,7 @@ describe('Dashboard', () => {
       renderDashboard(mockProjects)
 
       // Open the dialog
-      fireEvent.click(screen.getByText('Import SBOM'))
+      fireEvent.click(screen.getByText('Import'))
       expect(screen.getByTestId('sbom-upload-dialog')).toBeInTheDocument()
 
       // Close the dialog
@@ -836,13 +834,13 @@ describe('Dashboard', () => {
 
     it('should open Generate SBOM from Excel dialog', () => {
       renderDashboard(oneProject)
-      fireEvent.click(screen.getByText('Generate SBOM from Excel'))
+      fireEvent.click(screen.getByText('Generate SBOM'))
       expect(screen.getByTestId('sbom-generator-dialog')).toBeInTheDocument()
     })
 
     it('should close Generate SBOM dialog when close is clicked', () => {
       renderDashboard(oneProject)
-      fireEvent.click(screen.getByText('Generate SBOM from Excel'))
+      fireEvent.click(screen.getByText('Generate SBOM'))
       expect(screen.getByTestId('sbom-generator-dialog')).toBeInTheDocument()
 
       fireEvent.click(screen.getByText('Close'))
@@ -851,13 +849,13 @@ describe('Dashboard', () => {
 
     it('should open Export dialog when Export All is clicked', () => {
       renderDashboard(oneProject)
-      fireEvent.click(screen.getByText('Export All'))
+      fireEvent.click(screen.getByText('Export'))
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
     })
 
     it('should disable Export All when no projects exist', () => {
       renderDashboard([])
-      expect(screen.getByText('Export All')).toBeDisabled()
+      expect(screen.getByText('Export')).toBeDisabled()
     })
 
     it('should navigate to search page', () => {
@@ -868,13 +866,13 @@ describe('Dashboard', () => {
 
     it('should navigate to executive dashboard', () => {
       renderDashboard(oneProject)
-      fireEvent.click(screen.getByText('Executive Dashboard'))
+      fireEvent.click(screen.getByText('Executive'))
       expect(mockNavigate).toHaveBeenCalledWith('/executive')
     })
 
     it('should disable Executive Dashboard when no projects exist', () => {
       renderDashboard([])
-      expect(screen.getByText('Executive Dashboard')).toBeDisabled()
+      expect(screen.getByText('Executive')).toBeDisabled()
     })
   })
 
@@ -1154,7 +1152,7 @@ describe('Dashboard', () => {
       const checkboxes = screen.getAllByRole('checkbox')
       fireEvent.click(checkboxes[1])
 
-      fireEvent.click(screen.getByText('Export'))
+      fireEvent.click(screen.getAllByText('Export')[1])
 
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
     })
@@ -1735,7 +1733,7 @@ describe('Dashboard', () => {
       renderDashboard(oneProject)
 
       // Open the export dialog
-      fireEvent.click(screen.getByText('Export All'))
+      fireEvent.click(screen.getByText('Export'))
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
 
       // Close it — exercises line 420's onClose={() => setShowExportDialog(false)}
