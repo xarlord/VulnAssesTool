@@ -87,8 +87,8 @@ describe('ProjectCard', () => {
     it('should render Shield icon', () => {
       renderCard()
 
-      const shield = document.querySelector('.text-primary')
-      expect(shield).toBeInTheDocument()
+      const icons = document.querySelectorAll('[data-testid="lucide-icon"]')
+      expect(icons.length).toBeGreaterThan(0)
     })
   })
 
@@ -108,14 +108,14 @@ describe('ProjectCard', () => {
     it('should display last updated date', () => {
       renderCard()
 
-      expect(screen.getByText(/Updated/)).toBeInTheDocument()
+      expect(screen.getByText(/Jan 2, 2024/)).toBeInTheDocument()
     })
 
     it('should format date correctly', () => {
       const project = createMockProject({ updatedAt: new Date('2024-03-15T10:30:00') })
       renderCard(project)
 
-      expect(screen.getByText(/Updated/)).toBeInTheDocument()
+      expect(screen.getByText(/Mar 15, 2024/)).toBeInTheDocument()
     })
   })
 
@@ -161,7 +161,7 @@ describe('ProjectCard', () => {
       renderCard()
 
       const criticalBadge = screen.getByText(/1 Critical/)
-      expect(criticalBadge.className).toContain('bg-destructive/15')
+      expect(criticalBadge.className).toContain('bg-destructive')
       expect(criticalBadge.className).toContain('text-destructive')
     })
   })
@@ -191,29 +191,27 @@ describe('ProjectCard', () => {
       const project = createMockProject()
       renderCard(project)
 
-      const card = screen.getByText('Test Project').closest('.group')
-      if (card) {
-        fireEvent.click(card)
-        expect(mockOnView).toHaveBeenCalledWith(project)
-      }
+      const card = screen.getByRole('button', { name: /View project Test Project/ })
+      fireEvent.click(card)
+      expect(mockOnView).toHaveBeenCalledWith(project)
     })
 
-    it('should call onView when View button is clicked', () => {
-      renderCard()
+    it('should call onView when card button is clicked', () => {
+      const project = createMockProject()
+      renderCard(project)
 
-      const viewButton = screen.getByText('View')
-      fireEvent.click(viewButton)
+      const card = screen.getByRole('button', { name: /View project Test Project/ })
+      fireEvent.click(card)
 
       expect(mockOnView).toHaveBeenCalled()
     })
 
-    it('should stop propagation on View button click', () => {
+    it('should trigger onView exactly once on card click', () => {
       renderCard()
 
-      const viewButton = screen.getByText('View')
-      fireEvent.click(viewButton)
+      const card = screen.getByRole('button', { name: /View project Test Project/ })
+      fireEvent.click(card)
 
-      // Should be called once, not twice (card click shouldn't trigger)
       expect(mockOnView).toHaveBeenCalledTimes(1)
     })
   })
@@ -284,9 +282,8 @@ describe('ProjectCard', () => {
       renderCard()
 
       const card = document.querySelector('.group')
-      // The className contains hover:bg-muted/50 (with forward slash)
-      expect(card?.className).toContain('hover:bg-muted')
-      expect(card?.className).toContain('/50')
+      expect(card?.className).toContain('hover:shadow-md')
+      expect(card?.className).toContain('hover:border-primary')
     })
 
     it('should show actions on hover with opacity transition', () => {

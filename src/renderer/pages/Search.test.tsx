@@ -96,16 +96,13 @@ vi.mock('@/lib/database/nvdDbFts', () => ({
 }))
 
 // Mock EmptyState component (named export)
-vi.mock('@/components/EmptyState', () => ({
-  EmptyState: ({ title, description, action }: Record<string, unknown>) => (
+vi.mock('@/components/ui/EmptyState', () => ({
+  EmptyState: ({ title, description, action, children }: Record<string, unknown>) => (
     <div data-testid="empty-state">
       <div>{title as string}</div>
       <div>{description as string}</div>
-      {action && (
-        <button onClick={(action as Record<string, unknown>).onClick as () => void}>
-          {(action as Record<string, unknown>).label as string}
-        </button>
-      )}
+      {action as React.ReactNode}
+      {children as React.ReactNode}
     </div>
   ),
 }))
@@ -146,6 +143,22 @@ vi.mock('react-router-dom', async () => {
 
 const renderWithRouter = (component: React.ReactElement) => {
   return render(<BrowserRouter>{component}</BrowserRouter>)
+}
+
+const getResultsCountElement = (): HTMLElement | null => {
+  return screen.queryByText((_content: string, element: Element | null) => {
+    if (!element || element.tagName !== 'P') return false
+    const text = element.textContent ?? ''
+    return /Found \d+ results?/.test(text)
+  })
+}
+
+const getNvdResultsCountElement = (): HTMLElement | null => {
+  return screen.queryByText((_content: string, element: Element | null) => {
+    if (!element || element.tagName !== 'P') return false
+    const text = element.textContent ?? ''
+    return /Found \d+ results? in NVD database/.test(text)
+  })
 }
 
 describe('Search Page', () => {
@@ -210,9 +223,8 @@ describe('Search Page', () => {
   it('should show search tips initially', () => {
     renderWithRouter(<Search />)
 
-    // Component now shows "Project Search Tips" in projects search mode
-    expect(screen.getByText('Project Search Tips')).toBeInTheDocument()
-    expect(screen.getByText(/• Search is case-insensitive/)).toBeInTheDocument()
+    expect(screen.getByText('Search Tips')).toBeInTheDocument()
+    expect(screen.getByText(/· Search is case-insensitive/)).toBeInTheDocument()
   })
 
   it('should update query when typing', async () => {
@@ -233,7 +245,7 @@ describe('Search Page', () => {
     await user.type(input, 'react')
 
     await waitFor(() => {
-      expect(screen.getByText(/Found \d+ results?/i)).toBeInTheDocument()
+      expect(getResultsCountElement()).toBeInTheDocument()
     })
   })
 
@@ -325,7 +337,7 @@ describe('Search Page', () => {
     await user.type(input, 'react')
 
     await waitFor(() => {
-      expect(screen.getByText(/Found \d+ results?/i)).toBeInTheDocument()
+      expect(getResultsCountElement()).toBeInTheDocument()
     })
 
     // Test arrow down
@@ -356,7 +368,7 @@ describe('Search Page', () => {
     // Wait for results
     await waitFor(
       () => {
-        expect(screen.getByText(/Found \d+ results?/i)).toBeInTheDocument()
+        expect(getResultsCountElement()).toBeInTheDocument()
       },
       { timeout: 1000 },
     )
@@ -383,7 +395,7 @@ describe('Search Page', () => {
     // Should only search once after debounce
     await waitFor(
       () => {
-        expect(screen.getByText(/Found \d+ results?/i)).toBeInTheDocument()
+        expect(getResultsCountElement()).toBeInTheDocument()
       },
       { timeout: 1000 },
     )
@@ -398,7 +410,7 @@ describe('Search Page', () => {
 
     await waitFor(
       () => {
-        const countsText = screen.getByText(/Found \d+ results?/i)
+        const countsText = getResultsCountElement()
         expect(countsText).toBeInTheDocument()
       },
       { timeout: 1000 },
@@ -442,7 +454,7 @@ describe('Search Page', () => {
     )
 
     // Test navigation on click
-    const componentResult = screen.getByText('react').closest('div[onclick]')
+    const componentResult = screen.getByText('react').closest('.cursor-pointer')
     if (componentResult) {
       await user.click(componentResult)
       expect(mockNavigate).toHaveBeenCalledWith('/project/project-1')
@@ -486,7 +498,7 @@ describe('Search Page', () => {
     )
 
     // Test navigation on click
-    const vulnResult = screen.getByText('CVE-2023-1234').closest('div[onclick]')
+    const vulnResult = screen.getByText('CVE-2023-1234').closest('.cursor-pointer')
     if (vulnResult) {
       await user.click(vulnResult)
       expect(mockNavigate).toHaveBeenCalledWith('/project/project-1')
@@ -518,7 +530,7 @@ describe('Search Page', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText(/Found \d+ results?/i)).toBeInTheDocument()
+        expect(getResultsCountElement()).toBeInTheDocument()
       },
       { timeout: 1000 },
     )
@@ -586,7 +598,7 @@ describe('Search Page', () => {
     // Verify results appear
     await waitFor(
       () => {
-        expect(screen.getByText(/Found \d+ results?/i)).toBeInTheDocument()
+        expect(getResultsCountElement()).toBeInTheDocument()
       },
       { timeout: 1000 },
     )
@@ -603,7 +615,7 @@ describe('Search Page', () => {
 
     // Verify results are hidden and empty state is shown
     await waitFor(() => {
-      expect(screen.queryByText(/Found \d+ results?/i)).not.toBeInTheDocument()
+      expect(getResultsCountElement()).not.toBeInTheDocument()
       expect(screen.getByText('Start searching')).toBeInTheDocument()
     })
 
@@ -613,7 +625,7 @@ describe('Search Page', () => {
     // Verify results appear again
     await waitFor(
       () => {
-        expect(screen.getByText(/Found \d+ results?/i)).toBeInTheDocument()
+        expect(getResultsCountElement()).toBeInTheDocument()
       },
       { timeout: 1000 },
     )
@@ -626,7 +638,7 @@ describe('Search Page', () => {
 
     // Verify empty state is shown
     await waitFor(() => {
-      expect(screen.queryByText(/Found \d+ results?/i)).not.toBeInTheDocument()
+      expect(getResultsCountElement()).not.toBeInTheDocument()
       expect(screen.getByText('Start searching')).toBeInTheDocument()
     })
   })
@@ -639,7 +651,7 @@ describe('Search Page', () => {
       const nvdButton = screen.getByText('NVD Database')
       await user.click(nvdButton)
 
-      expect(screen.getByPlaceholderText(/Search NVD database/)).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Search NVD/)).toBeInTheDocument()
     })
 
     it('should show NVD search tips when in NVD mode', async () => {
@@ -649,7 +661,7 @@ describe('Search Page', () => {
       const nvdButton = screen.getByText('NVD Database')
       await user.click(nvdButton)
 
-      expect(screen.getByText('NVD Database Search Tips')).toBeInTheDocument()
+      expect(screen.getByText('NVD Search Tips')).toBeInTheDocument()
       expect(screen.getByText(/Search by CVE ID/)).toBeInTheDocument()
       expect(screen.getByText(/Search by CPE text/)).toBeInTheDocument()
     })
@@ -661,7 +673,7 @@ describe('Search Page', () => {
       renderWithRouter(<Search />)
 
       await waitFor(() => {
-        expect(screen.getByText('FTS Enabled')).toBeInTheDocument()
+        expect(screen.getByText('FTS')).toBeInTheDocument()
       })
     })
 
@@ -670,7 +682,7 @@ describe('Search Page', () => {
       renderWithRouter(<Search />)
 
       await user.click(screen.getByText('NVD Database'))
-      expect(screen.getByPlaceholderText(/Search NVD database/)).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Search NVD/)).toBeInTheDocument()
 
       await user.click(screen.getByText('Project Search'))
       expect(screen.getByPlaceholderText(/search projects, components, vulnerabilities/i)).toBeInTheDocument()
@@ -913,7 +925,7 @@ describe('Search Page', () => {
 
       await waitFor(
         () => {
-          expect(screen.getByText(/Found 2 results in NVD database/)).toBeInTheDocument()
+          expect(getNvdResultsCountElement()).toBeInTheDocument()
           expect(screen.getByText('CVE-2024-11111')).toBeInTheDocument()
           expect(screen.getByText('CVE-2024-22222')).toBeInTheDocument()
         },
@@ -1322,13 +1334,13 @@ describe('Search Page', () => {
         totalResults: 0,
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
 
-      const nvdButton = screen.getByText('NVD Database')
-      fireEvent.click(nvdButton)
+      await user.click(screen.getByText('NVD Database'))
 
       const input = screen.getByTestId('nvd-search-input')
-      fireEvent.change(input, { target: { value: 'testquery' } })
+      await user.type(input, 'testquery')
 
       await waitFor(
         () => {
@@ -1374,10 +1386,10 @@ describe('Search Page', () => {
         return cleanupFn
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
 
-      // Switch to NVD mode to see sync progress UI
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
 
       await waitFor(() => {
         expect(screen.getByText(/Fetching: 50 CVEs/)).toBeInTheDocument()
@@ -1393,10 +1405,10 @@ describe('Search Page', () => {
         return vi.fn()
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
 
-      // Switch to NVD mode to see sync UI
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
 
       await waitFor(() => {
         expect(screen.getByText('Network timeout during sync')).toBeInTheDocument()
@@ -1412,9 +1424,10 @@ describe('Search Page', () => {
         return vi.fn()
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
 
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
 
       await waitFor(() => {
         expect(screen.getByText('[object Object]')).toBeInTheDocument()
@@ -1447,17 +1460,19 @@ describe('Search Page', () => {
         return cleanupFn
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
 
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
 
-      // The cancel button should appear because sync progress set isSyncing=true
-      // The button contains text like "Fetching: 10 CVEs"
-      const cancelButton = await screen.findByText(/Fetching: 10 CVEs/)
-      // Click the parent button element
-      const buttonElement = cancelButton.closest('button')
-      if (buttonElement) {
-        fireEvent.click(buttonElement)
+      // Verify sync progress text is shown
+      await screen.findByText(/Fetching: 10 CVEs/)
+
+      // Find the cancel button (ghost icon button next to progress text)
+      const syncContainer = screen.getByText(/Fetching: 10 CVEs/).closest('.flex.items-center')
+      const cancelButton = syncContainer?.querySelector('button')
+      if (cancelButton) {
+        fireEvent.click(cancelButton)
       }
 
       await waitFor(() => {
@@ -1490,8 +1505,9 @@ describe('Search Page', () => {
         return cleanupFn
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
 
       await waitFor(() => {
         expect(screen.getByText(/5s remaining/)).toBeInTheDocument()
@@ -1521,8 +1537,9 @@ describe('Search Page', () => {
         return cleanupFn
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
 
       await waitFor(() => {
         expect(screen.getByText(/2m 5s remaining/)).toBeInTheDocument()
@@ -1563,11 +1580,12 @@ describe('Search Page', () => {
         totalResults: 1,
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
 
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
       const input = screen.getByTestId('nvd-search-input')
-      fireEvent.change(input, { target: { value: 'test' } })
+      await user.type(input, 'test')
 
       // Wait for results and click
       await waitFor(
@@ -1639,11 +1657,12 @@ describe('Search Page', () => {
         database: undefined as unknown as typeof platform.database,
       })
 
+      const user = userEvent.setup()
       renderWithRouter(<Search />)
 
-      fireEvent.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByText('NVD Database'))
       const input = screen.getByTestId('nvd-search-input')
-      fireEvent.change(input, { target: { value: 'test' } })
+      await user.type(input, 'test')
 
       await waitFor(() => {
         expect(screen.getByText(/Database API not available/)).toBeInTheDocument()

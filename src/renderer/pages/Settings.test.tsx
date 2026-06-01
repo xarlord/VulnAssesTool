@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import React from 'react'
 import { Settings } from './Settings'
 import type { AppSettings } from '@@/types'
 import { useStore } from '@/store/useStore'
 
-// Override lucide-react mock with ALL icons used by Settings component
 vi.mock('lucide-react', () => {
   const StubIcon = (_props: unknown) => null
   const icons = [
@@ -61,7 +61,6 @@ vi.mock('lucide-react', () => {
     'Heart',
     'Package',
     'Database',
-    // Icons used by Settings.tsx
     'UserCircle',
     'Palette',
     'Key',
@@ -81,12 +80,11 @@ vi.mock('lucide-react', () => {
   return mod
 })
 
-// Mock secure key service (used by Settings for API key management)
-// Uses module-level ref so individual tests can configure the returned key
 let mockStoredApiKey: string | null = null
 let mockSetApiKeyResult: boolean = true
 let mockSetApiKeyShouldThrow = false
 let mockSetApiKeyError: Error | null = null
+let mockIsAvailable = true
 const mockDeleteApiKey = vi.fn(() => Promise.resolve(true))
 const mockSetApiKey = vi.fn(() => {
   if (mockSetApiKeyShouldThrow && mockSetApiKeyError) {
@@ -96,7 +94,7 @@ const mockSetApiKey = vi.fn(() => {
 })
 vi.mock('@/lib/storage', () => ({
   getSecureKeyService: () => ({
-    isAvailable: vi.fn(() => Promise.resolve(true)),
+    isAvailable: vi.fn(() => Promise.resolve(mockIsAvailable)),
     getApiKey: vi.fn(() => Promise.resolve(mockStoredApiKey)),
     setApiKey: mockSetApiKey,
     deleteApiKey: mockDeleteApiKey,
@@ -104,7 +102,6 @@ vi.mock('@/lib/storage', () => ({
   }),
 }))
 
-// Mock the store
 const mockUpdateSettings = vi.fn()
 const mockNavigate = vi.fn()
 const defaultSettings: AppSettings = {
@@ -148,7 +145,6 @@ const createMockStore = () => ({
   exportSettingsProfiles: vi.fn(),
 })
 
-// Helper to create a mock profile
 const createMockProfile = (overrides: Record<string, unknown> = {}) => ({
   id: 'profile-1',
   name: 'Test Profile',
@@ -164,7 +160,6 @@ vi.mock('@/store/useStore', () => ({
   useStore: vi.fn(() => createMockStore()),
 }))
 
-// Mock useNavigate
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return {
@@ -173,16 +168,13 @@ vi.mock('react-router-dom', async (importOriginal) => {
   }
 })
 
-// Mock isValidNvdApiKey
 vi.mock('@/lib/api/nvd', () => ({
   isValidNvdApiKey: vi.fn((key: string) => {
-    // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     return uuidRegex.test(key)
   }),
 }))
 
-// Mock CreateProfileDialog (named export)
 vi.mock('@/components/CreateProfileDialog', () => ({
   CreateProfileDialog: ({ open, onClose, onCreate }: Record<string, unknown>) => {
     if (!open) return null
@@ -195,7 +187,6 @@ vi.mock('@/components/CreateProfileDialog', () => ({
   },
 }))
 
-// Mock SettingsProfileCard (named export)
 vi.mock('@/components/SettingsProfileCard', () => ({
   SettingsProfileCard: ({ profile, isActive, onSwitch, onDelete }: Record<string, unknown>) => (
     <div data-testid={`profile-card-${(profile as Record<string, unknown>).id as string}`}>
@@ -213,6 +204,23 @@ vi.mock('@/components/SettingsProfileCard', () => ({
   ),
 }))
 
+vi.mock('@/components/ui/select', () => ({
+  Select: ({ value, onValueChange, children }: Record<string, unknown>) => (
+    <select
+      value={value as string}
+      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => (onValueChange as (val: string) => void)(e.target.value)}
+    >
+      {children as React.ReactNode}
+    </select>
+  ),
+  SelectTrigger: ({ children }: Record<string, unknown>) => <>{children as React.ReactNode}</>,
+  SelectContent: ({ children }: Record<string, unknown>) => <>{children as React.ReactNode}</>,
+  SelectItem: ({ value, children }: Record<string, unknown>) => (
+    <option value={value as string}>{children as React.ReactNode}</option>
+  ),
+  SelectValue: () => null,
+}))
+
 describe('Settings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -223,6 +231,7 @@ describe('Settings', () => {
     mockSetApiKeyResult = true
     mockSetApiKeyShouldThrow = false
     mockSetApiKeyError = null
+    mockIsAvailable = true
   })
 
   const renderSettings = () => {
@@ -233,6 +242,10 @@ describe('Settings', () => {
     )
   }
 
+  const navigateTo = (sectionLabel: string) => {
+    fireEvent.click(screen.getByText(sectionLabel))
+  }
+
   describe('Rendering', () => {
     it('should render Settings header', () => {
       renderSettings()
@@ -240,19 +253,18 @@ describe('Settings', () => {
       expect(screen.getByText('Settings')).toBeInTheDocument()
     })
 
-    it('should render back button', () => {
+    it('should render AppHeader with Settings title', () => {
       renderSettings()
 
-      expect(screen.getByText('← Back')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
     })
 
-    it('should navigate back when back button is clicked', () => {
+    it('should render left-side section navigation', () => {
       renderSettings()
 
-      const backButton = screen.getByText('← Back')
-      fireEvent.click(backButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith(-1)
+      expect(screen.getByText('Appearance')).toBeInTheDocument()
+      expect(screen.getByText('API Configuration')).toBeInTheDocument()
+      expect(screen.getByText('Database')).toBeInTheDocument()
     })
 
     it('should render Appearance section', () => {
@@ -267,10 +279,10 @@ describe('Settings', () => {
       expect(screen.getByText('API Configuration')).toBeInTheDocument()
     })
 
-    it('should render Data Management section', () => {
+    it('should render Database section', () => {
       renderSettings()
 
-      expect(screen.getByText('Data Management')).toBeInTheDocument()
+      expect(screen.getByText('Database')).toBeInTheDocument()
     })
 
     it('should render Danger Zone section', () => {
@@ -282,13 +294,14 @@ describe('Settings', () => {
     it('should render version info', () => {
       renderSettings()
 
-      expect(screen.getByText('VulnAssessTool v0.1.0')).toBeInTheDocument()
+      expect(screen.getByText('D-Fence v0.1.0')).toBeInTheDocument()
     })
   })
 
   describe('Theme Settings', () => {
     it('should render all theme options', () => {
       renderSettings()
+      navigateTo('Appearance')
 
       expect(screen.getByText('light')).toBeInTheDocument()
       expect(screen.getByText('dark')).toBeInTheDocument()
@@ -297,6 +310,7 @@ describe('Settings', () => {
 
     it('should highlight current theme', () => {
       renderSettings()
+      navigateTo('Appearance')
 
       const systemTheme = screen.getByText('system').closest('button')
       expect(systemTheme).toHaveClass('border-primary')
@@ -304,6 +318,7 @@ describe('Settings', () => {
 
     it('should update theme when option is clicked', () => {
       renderSettings()
+      navigateTo('Appearance')
 
       const lightTheme = screen.getByText('light').closest('button')
       if (lightTheme) {
@@ -314,14 +329,16 @@ describe('Settings', () => {
 
     it('should show correct description for each theme', () => {
       renderSettings()
+      navigateTo('Appearance')
 
-      expect(screen.getByText(/Follows your system theme preference/)).toBeInTheDocument()
+      expect(screen.getByText(/Follows your operating system theme preference/)).toBeInTheDocument()
     })
   })
 
   describe('Font Size Settings', () => {
     it('should render all font size options', () => {
       renderSettings()
+      navigateTo('Appearance')
 
       expect(screen.getByText('small')).toBeInTheDocument()
       expect(screen.getByText('default')).toBeInTheDocument()
@@ -330,6 +347,7 @@ describe('Settings', () => {
 
     it('should highlight current font size', () => {
       renderSettings()
+      navigateTo('Appearance')
 
       const defaultSize = screen.getByText('default').closest('button')
       expect(defaultSize).toHaveClass('border-primary')
@@ -337,6 +355,7 @@ describe('Settings', () => {
 
     it('should update font size when option is clicked', () => {
       renderSettings()
+      navigateTo('Appearance')
 
       const largeSize = screen.getByText('large').closest('button')
       if (largeSize) {
@@ -349,26 +368,26 @@ describe('Settings', () => {
   describe('NVD API Key', () => {
     it('should render API key input', async () => {
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Input is hidden behind loading state until secureKeyService resolves
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/)).toBeInTheDocument()
       })
     })
 
-    it('should render optional label', async () => {
+    it('should render secure storage badge', async () => {
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Wait for loading to complete, then check for the label
       await waitFor(() => {
-        expect(screen.getByText(/\(Optional\)/)).toBeInTheDocument()
+        expect(screen.getByText('Secure Storage')).toBeInTheDocument()
       })
     })
 
     it('should show "Saved" indicator after valid key is saved', async () => {
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Wait for the input to appear (async secure storage loading)
       const input = await screen.findByPlaceholderText(/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/)
       fireEvent.change(input, { target: { value: '12345678-1234-1234-1234-123456789012' } })
       fireEvent.blur(input)
@@ -380,8 +399,8 @@ describe('Settings', () => {
 
     it('should show validation error for invalid format', async () => {
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Wait for the input to appear
       const input = await screen.findByPlaceholderText(/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/)
       fireEvent.change(input, { target: { value: 'invalid-key' } })
 
@@ -390,17 +409,15 @@ describe('Settings', () => {
 
     it('should reset to valid value on blur when error exists', async () => {
       renderSettings()
+      navigateTo('API Configuration')
 
       const input = await screen.findByPlaceholderText(/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/)
 
-      // Change to invalid value - error is shown
       fireEvent.change(input, { target: { value: 'invalid' } })
       expect(screen.getByText('Invalid API key format. Expected UUID format.')).toBeInTheDocument()
 
-      // On blur with error, the handler async-resets via secureKeyService.getApiKey
       fireEvent.blur(input)
 
-      // Wait for async reset to complete
       await waitFor(() => {
         expect(screen.queryByText('Invalid API key format. Expected UUID format.')).not.toBeInTheDocument()
         expect(input).toHaveValue('')
@@ -409,16 +426,14 @@ describe('Settings', () => {
 
     it('should save on Enter key press', async () => {
       renderSettings()
+      navigateTo('API Configuration')
 
       const input = (await screen.findByPlaceholderText(/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/)) as HTMLInputElement
       fireEvent.change(input, { target: { value: '12345678-1234-1234-1234-123456789012' } })
       fireEvent.keyDown(input, { key: 'Enter' })
 
-      // Manually trigger blur since jsdom may not fully support it
       fireEvent.blur(input)
 
-      // Enter key triggers blur, which saves the value to secure storage (not updateSettings)
-      // The component uses secureKeyService.setApiKey, not updateSettings for NVD API key
       await waitFor(() => {
         expect(screen.getByText('Saved')).toBeInTheDocument()
       })
@@ -426,8 +441,8 @@ describe('Settings', () => {
 
     it('should link to NIST for API key', async () => {
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Wait for loading to finish so NIST link is visible
       await waitFor(() => {
         const link = screen.getByText('NIST')
         expect(link).toBeInTheDocument()
@@ -440,30 +455,25 @@ describe('Settings', () => {
   describe('Auto Refresh Setting', () => {
     it('should render auto-refresh toggle', () => {
       renderSettings()
+      navigateTo('API Configuration')
 
-      expect(screen.getByText('Auto-refresh Vulnerability Data')).toBeInTheDocument()
+      expect(screen.getByText('Enable auto-refresh')).toBeInTheDocument()
     })
 
     it('should toggle auto-refresh when clicked', () => {
-      const initialCallCount = mockUpdateSettings.mock.calls.length
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Find the toggle button - it has both rounded-full and bg-muted-foreground classes when off
-      const toggle = document.querySelector('button.rounded-full.bg-muted-foreground')
-      if (toggle) {
-        fireEvent.click(toggle)
-        // Check that a new call was made after our initial count
-        expect(mockUpdateSettings.mock.calls.length).toBeGreaterThan(initialCallCount)
-        // Check that autoRefresh was called with true (toggling from false to true)
-        const hasAutoRefreshCall = mockUpdateSettings.mock.calls.some((call) => call[0]?.autoRefresh === true)
-        expect(hasAutoRefreshCall).toBe(true)
-      }
+      const toggle = screen.getByRole('switch', { name: 'Toggle auto-refresh vulnerability data' })
+      fireEvent.click(toggle)
+      expect(mockUpdateSettings).toHaveBeenCalledWith({ autoRefresh: true })
     })
 
     it('should show toggle position based on state', () => {
       renderSettings()
+      navigateTo('API Configuration')
 
-      const toggle = document.querySelector('.rounded-full')
+      const toggle = screen.getByRole('switch', { name: 'Toggle auto-refresh vulnerability data' })
       expect(toggle).toBeInTheDocument()
     })
   })
@@ -471,14 +481,16 @@ describe('Settings', () => {
   describe('Data Retention', () => {
     it('should render retention period select', () => {
       renderSettings()
+      navigateTo('Database')
 
-      expect(screen.getByText('Data Retention Period')).toBeInTheDocument()
+      expect(screen.getByText('Retention Period')).toBeInTheDocument()
       const select = screen.getByDisplayValue('30 days')
       expect(select).toBeInTheDocument()
     })
 
     it('should have all retention options', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('7 days')).toBeInTheDocument()
       expect(screen.getByText('30 days')).toBeInTheDocument()
@@ -491,6 +503,7 @@ describe('Settings', () => {
 
     it('should update retention days when option is selected', () => {
       renderSettings()
+      navigateTo('Database')
 
       const select = screen.getByDisplayValue('30 days')
       fireEvent.change(select, { target: { value: '60' } })
@@ -500,6 +513,7 @@ describe('Settings', () => {
 
     it('should show correct description for current retention', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText(/\(every 30 days\)/)).toBeInTheDocument()
     })
@@ -507,6 +521,7 @@ describe('Settings', () => {
     it('should show never delete description for -1', () => {
       mockSettings.dataRetentionDays = -1
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText(/\. Data is never deleted automatically\./)).toBeInTheDocument()
     })
@@ -515,16 +530,18 @@ describe('Settings', () => {
   describe('Reset to Defaults', () => {
     it('should render reset button', () => {
       renderSettings()
+      navigateTo('Danger Zone')
 
-      expect(screen.getByText('Reset All Settings to Defaults')).toBeInTheDocument()
+      expect(screen.getByText('Reset to Defaults')).toBeInTheDocument()
     })
 
     it('should call confirm when reset is clicked', () => {
       global.confirm = vi.fn(() => true)
 
       renderSettings()
+      navigateTo('Danger Zone')
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
+      const resetButton = screen.getByText('Reset to Defaults')
       fireEvent.click(resetButton)
 
       expect(global.confirm).toHaveBeenCalledWith('Reset all settings to default values?')
@@ -534,14 +551,14 @@ describe('Settings', () => {
       global.confirm = vi.fn(() => true)
 
       renderSettings()
+      navigateTo('Danger Zone')
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
+      const resetButton = screen.getByText('Reset to Defaults')
       fireEvent.click(resetButton)
 
       expect(mockUpdateSettings).toHaveBeenCalledWith({
         theme: 'system',
         fontSize: 'default',
-        nvdApiKey: undefined,
         dataRetentionDays: 30,
         autoRefresh: false,
       })
@@ -551,8 +568,9 @@ describe('Settings', () => {
       global.confirm = vi.fn(() => false)
 
       renderSettings()
+      navigateTo('Danger Zone')
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
+      const resetButton = screen.getByText('Reset to Defaults')
       fireEvent.click(resetButton)
 
       expect(mockUpdateSettings).not.toHaveBeenCalledWith(
@@ -570,39 +588,32 @@ describe('Settings', () => {
 
       expect(screen.getByText('Appearance')).toBeInTheDocument()
       expect(screen.getByText('API Configuration')).toBeInTheDocument()
-      expect(screen.getByText('Data Management')).toBeInTheDocument()
+      expect(screen.getByText('Database')).toBeInTheDocument()
     })
 
     it('should render danger zone with destructive styling', () => {
       renderSettings()
+      navigateTo('Danger Zone')
 
-      const dangerZone = document.querySelector('.bg-destructive\\/5')
+      const dangerZone = document.querySelector('.border-destructive\\/50')
       expect(dangerZone).toBeInTheDocument()
     })
   })
 
   describe('Edge Cases', () => {
     it('should handle existing API key in input', async () => {
-      // The component reads the API key from secure storage, not from settings
       mockStoredApiKey = 'existing-key-1234-5678-9abc-def123456789'
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Wait for async loading to complete
       const input = await screen.findByDisplayValue('existing-key-1234-5678-9abc-def123456789')
       expect(input).toBeInTheDocument()
     })
 
     it('should handle light theme', () => {
       mockSettings.theme = 'light'
-      const { unmount } = renderSettings()
-      unmount()
-
-      const { rerender } = renderSettings()
-      rerender(
-        <MemoryRouter>
-          <Settings />
-        </MemoryRouter>,
-      )
+      renderSettings()
+      navigateTo('Appearance')
 
       const themeButton = screen.getByText('light')
       expect(themeButton.closest('button')).toHaveClass('border-primary')
@@ -610,15 +621,8 @@ describe('Settings', () => {
 
     it('should handle dark theme', () => {
       mockSettings.theme = 'dark'
-      const { unmount } = renderSettings()
-      unmount()
-
-      const { rerender } = renderSettings()
-      rerender(
-        <MemoryRouter>
-          <Settings />
-        </MemoryRouter>,
-      )
+      renderSettings()
+      navigateTo('Appearance')
 
       const themeButton = screen.getByText('dark')
       expect(themeButton.closest('button')).toHaveClass('border-primary')
@@ -626,15 +630,8 @@ describe('Settings', () => {
 
     it('should handle system theme', () => {
       mockSettings.theme = 'system'
-      const { unmount } = renderSettings()
-      unmount()
-
-      const { rerender } = renderSettings()
-      rerender(
-        <MemoryRouter>
-          <Settings />
-        </MemoryRouter>,
-      )
+      renderSettings()
+      navigateTo('Appearance')
 
       const themeButton = screen.getByText('system')
       expect(themeButton.closest('button')).toHaveClass('border-primary')
@@ -642,15 +639,8 @@ describe('Settings', () => {
 
     it('should handle small font size', () => {
       mockSettings.fontSize = 'small'
-      const { unmount } = renderSettings()
-      unmount()
-
-      const { rerender } = renderSettings()
-      rerender(
-        <MemoryRouter>
-          <Settings />
-        </MemoryRouter>,
-      )
+      renderSettings()
+      navigateTo('Appearance')
 
       const sizeButton = screen.getByText('small')
       expect(sizeButton.closest('button')).toHaveClass('border-primary')
@@ -658,15 +648,8 @@ describe('Settings', () => {
 
     it('should handle default font size', () => {
       mockSettings.fontSize = 'default'
-      const { unmount } = renderSettings()
-      unmount()
-
-      const { rerender } = renderSettings()
-      rerender(
-        <MemoryRouter>
-          <Settings />
-        </MemoryRouter>,
-      )
+      renderSettings()
+      navigateTo('Appearance')
 
       const sizeButton = screen.getByText('default')
       expect(sizeButton.closest('button')).toHaveClass('border-primary')
@@ -674,15 +657,8 @@ describe('Settings', () => {
 
     it('should handle large font size', () => {
       mockSettings.fontSize = 'large'
-      const { unmount } = renderSettings()
-      unmount()
-
-      const { rerender } = renderSettings()
-      rerender(
-        <MemoryRouter>
-          <Settings />
-        </MemoryRouter>,
-      )
+      renderSettings()
+      navigateTo('Appearance')
 
       const sizeButton = screen.getByText('large')
       expect(sizeButton.closest('button')).toHaveClass('border-primary')
@@ -690,27 +666,19 @@ describe('Settings', () => {
   })
 
   describe('Settings Profile Tests', () => {
-    /**
-     * TC-SET-006: Set Data Retention Period (P2)
-     * Description: Verify data retention period can be configured
-     * Steps:
-     * 1. Navigate to Settings page
-     * 2. Locate Data Retention Period section
-     * 3. Select different retention period (7, 30, 60, 90 days, 6 months, 1 year, never)
-     * 4. Verify setting is saved
-     * Expected: Data retention period is updated and saved
-     */
     describe('TC-SET-006: Set Data Retention Period', () => {
       it('should render retention period select', () => {
         renderSettings()
+        navigateTo('Database')
 
-        expect(screen.getByText('Data Retention Period')).toBeInTheDocument()
+        expect(screen.getByText('Retention Period')).toBeInTheDocument()
         const select = screen.getByDisplayValue('30 days')
         expect(select).toBeInTheDocument()
       })
 
       it('should update retention days when option is selected', () => {
         renderSettings()
+        navigateTo('Database')
 
         const select = screen.getByDisplayValue('30 days')
         fireEvent.change(select, { target: { value: '60' } })
@@ -720,6 +688,7 @@ describe('Settings', () => {
 
       it('should show correct description for current retention', () => {
         renderSettings()
+        navigateTo('Database')
 
         expect(screen.getByText(/\(every 30 days\)/)).toBeInTheDocument()
       })
@@ -727,76 +696,53 @@ describe('Settings', () => {
       it('should show never delete description for -1', () => {
         mockSettings.dataRetentionDays = -1
         renderSettings()
+        navigateTo('Database')
 
         expect(screen.getByText(/\. Data is never deleted automatically\./)).toBeInTheDocument()
       })
     })
 
-    /**
-     * TC-SET-007: Toggle Auto-Refresh (P1)
-     * Description: Verify auto-refresh toggle can be enabled/disabled
-     * Steps:
-     * 1. Navigate to Settings page
-     * 2. Locate Auto-Refresh Vulnerability Data toggle
-     * 3. Click toggle to enable/disable
-     * 4. Verify setting is saved
-     * Expected: Auto-refresh setting is updated and saved
-     */
     describe('TC-SET-007: Toggle Auto-Refresh', () => {
       it('should render auto-refresh toggle', () => {
         renderSettings()
+        navigateTo('API Configuration')
 
-        expect(screen.getByText('Auto-refresh Vulnerability Data')).toBeInTheDocument()
+        expect(screen.getByText('Enable auto-refresh')).toBeInTheDocument()
       })
 
       it('should toggle auto-refresh when clicked', () => {
-        const initialCallCount = mockUpdateSettings.mock.calls.length
         renderSettings()
+        navigateTo('API Configuration')
 
-        // Find the toggle button - it has both rounded-full and bg-muted-foreground classes when off
-        const toggle = document.querySelector('button.rounded-full.bg-muted-foreground')
-        if (toggle) {
-          fireEvent.click(toggle)
-          // Check that a new call was made after our initial count
-          expect(mockUpdateSettings.mock.calls.length).toBeGreaterThan(initialCallCount)
-          // Check that autoRefresh was called with true (toggling from false to true)
-          const hasAutoRefreshCall = mockUpdateSettings.mock.calls.some((call) => call[0]?.autoRefresh === true)
-          expect(hasAutoRefreshCall).toBe(true)
-        }
+        const toggle = screen.getByRole('switch', { name: 'Toggle auto-refresh vulnerability data' })
+        fireEvent.click(toggle)
+        expect(mockUpdateSettings).toHaveBeenCalledWith({ autoRefresh: true })
       })
 
       it('should show toggle position based on state', () => {
         renderSettings()
+        navigateTo('API Configuration')
 
-        const toggle = document.querySelector('.rounded-full')
+        const toggle = screen.getByRole('switch', { name: 'Toggle auto-refresh vulnerability data' })
         expect(toggle).toBeInTheDocument()
       })
     })
 
-    /**
-     * TC-SET-008: Reset to Defaults (P1)
-     * Description: Verify settings can be reset to default values
-     * Steps:
-     * 1. Navigate to Settings page
-     * 2. Locate Reset All Settings to Defaults button
-     * 3. Click reset button
-     * 4. Accept confirmation dialog
-     * 5. Verify all settings are reset to defaults
-     * Expected: All settings reset to default values
-     */
     describe('TC-SET-008: Reset to Defaults', () => {
       it('should render reset button', () => {
         renderSettings()
+        navigateTo('Danger Zone')
 
-        expect(screen.getByText('Reset All Settings to Defaults')).toBeInTheDocument()
+        expect(screen.getByText('Reset to Defaults')).toBeInTheDocument()
       })
 
       it('should call confirm when reset is clicked', () => {
         global.confirm = vi.fn(() => true)
 
         renderSettings()
+        navigateTo('Danger Zone')
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
+        const resetButton = screen.getByText('Reset to Defaults')
         fireEvent.click(resetButton)
 
         expect(global.confirm).toHaveBeenCalledWith('Reset all settings to default values?')
@@ -806,14 +752,14 @@ describe('Settings', () => {
         global.confirm = vi.fn(() => true)
 
         renderSettings()
+        navigateTo('Danger Zone')
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
+        const resetButton = screen.getByText('Reset to Defaults')
         fireEvent.click(resetButton)
 
         expect(mockUpdateSettings).toHaveBeenCalledWith({
           theme: 'system',
           fontSize: 'default',
-          nvdApiKey: undefined,
           dataRetentionDays: 30,
           autoRefresh: false,
         })
@@ -823,8 +769,9 @@ describe('Settings', () => {
         global.confirm = vi.fn(() => false)
 
         renderSettings()
+        navigateTo('Danger Zone')
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
+        const resetButton = screen.getByText('Reset to Defaults')
         fireEvent.click(resetButton)
 
         expect(mockUpdateSettings).not.toHaveBeenCalledWith(
@@ -836,11 +783,6 @@ describe('Settings', () => {
       })
     })
 
-    /**
-     * TC-SET-009: Create Settings Profile (P1)
-     * Description: Verify new settings profiles can be created
-     * Tests now active with proper mocks
-     */
     describe('TC-SET-009: Create Settings Profile', () => {
       beforeEach(() => {
         vi.clearAllMocks()
@@ -852,17 +794,17 @@ describe('Settings', () => {
         expect(screen.getByText('Settings Profiles')).toBeInTheDocument()
       })
 
-      it('should render "Create New Profile" button', () => {
+      it('should render "Create Profile" button', () => {
         renderSettings()
 
-        expect(screen.getByText('Create New Profile')).toBeInTheDocument()
+        expect(screen.getByText('Create Profile')).toBeInTheDocument()
       })
 
       it('should show empty state when no profiles exist', () => {
         renderSettings()
 
         expect(
-          screen.getByText('No settings profiles yet. Create your first profile to get started!'),
+          screen.getByText('No settings profiles yet. Create your first profile to get started.'),
         ).toBeInTheDocument()
       })
 
@@ -878,20 +820,15 @@ describe('Settings', () => {
         expect(screen.getByText('Test Profile')).toBeInTheDocument()
       })
 
-      it('should show "Create New Profile" button in Settings Profiles section', () => {
+      it('should show "Create Profile" button in Settings Profiles section', () => {
         renderSettings()
 
-        const createButton = screen.getByText('Create New Profile')
+        const createButton = screen.getByText('Create Profile')
         expect(createButton).toBeInTheDocument()
         expect(createButton.closest('button')).toHaveClass('bg-primary')
       })
     })
 
-    /**
-     * TC-SET-010: Switch Settings Profile (P1)
-     * Description: Verify settings profiles can be switched
-     * Tests now active with proper mocks
-     */
     describe('TC-SET-010: Switch Settings Profile', () => {
       it('should render profile cards when profiles exist', () => {
         const mockProfile = createMockProfile()
@@ -929,18 +866,10 @@ describe('Settings', () => {
 
         renderSettings()
 
-        // The mock renders the profile name, which confirms the profile is shown
         expect(screen.getByText('Test Profile')).toBeInTheDocument()
-        // In the real component, last used time would be displayed
-        // The mock component just shows the profile name
       })
     })
 
-    /**
-     * TC-SET-011: Delete Settings Profile (P2)
-     * Description: Verify settings profiles can be deleted
-     * Tests now active with proper mocks
-     */
     describe('TC-SET-011: Delete Settings Profile', () => {
       it('should show delete button on profile card', () => {
         const mockProfile = createMockProfile()
@@ -952,7 +881,6 @@ describe('Settings', () => {
 
         renderSettings()
 
-        // The mock component renders a delete button
         const deleteButton = screen.getByText('Delete')
         expect(deleteButton).toBeInTheDocument()
       })
@@ -967,22 +895,16 @@ describe('Settings', () => {
 
         renderSettings()
 
-        // When profile is active, it shows "Active Profile" indicator instead of delete button
         expect(screen.getByTestId('active-indicator')).toBeInTheDocument()
         expect(screen.getByText('Active Profile')).toBeInTheDocument()
       })
     })
 
-    /**
-     * TC-SET-012: Export/Import Settings Profiles (P1)
-     * Description: Verify settings profiles can be exported and imported
-     * Tests now active with proper mocks
-     */
     describe('TC-SET-012: Export/Import Settings Profiles', () => {
       it('should render Import/Export section', () => {
         renderSettings()
 
-        expect(screen.getByText('Import/Export Settings Profiles')).toBeInTheDocument()
+        expect(screen.getByText('Import & Export')).toBeInTheDocument()
       })
 
       it('should render Export button', () => {
@@ -1025,7 +947,7 @@ describe('Settings', () => {
       it('should show description for Import/Export section', () => {
         renderSettings()
 
-        expect(screen.getByText(/Share your settings profiles across different installations/)).toBeInTheDocument()
+        expect(screen.getByText(/Share settings profiles across different installations/)).toBeInTheDocument()
       })
 
       it('should call exportSettingsProfiles and show success when Export is clicked', () => {
@@ -1049,12 +971,14 @@ describe('Settings', () => {
   describe('Database Management Section', () => {
     it('should render Database Management section', () => {
       renderSettings()
+      navigateTo('Database')
 
-      expect(screen.getByText('Database Management')).toBeInTheDocument()
+      expect(screen.getByText('Database Overview')).toBeInTheDocument()
     })
 
     it('should render database statistics grid', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Total CVEs')).toBeInTheDocument()
       expect(screen.getByText('CPE Matches')).toBeInTheDocument()
@@ -1064,52 +988,58 @@ describe('Settings', () => {
 
     it('should render Sync Schedule dropdown', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Sync Schedule')).toBeInTheDocument()
     })
 
     it('should render Sync Now button', () => {
       renderSettings()
+      navigateTo('Database')
 
-      // "Sync Now" appears in both DB sync and KEV sync sections
       const syncButtons = screen.getAllByText('Sync Now')
       expect(syncButtons.length).toBeGreaterThanOrEqual(1)
     })
 
     it('should render Bulk Download button', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Bulk Download')).toBeInTheDocument()
     })
 
     it('should render Rebuild Indexes button', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Rebuild Indexes')).toBeInTheDocument()
     })
 
     it('should render Reset Database button', () => {
       renderSettings()
+      navigateTo('Database')
 
-      // The button in the DB actions area
       const resetButtons = screen.getAllByText('Reset Database')
       expect(resetButtons.length).toBeGreaterThanOrEqual(1)
     })
 
     it('should render Storage Management section', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Storage Management')).toBeInTheDocument()
     })
 
     it('should render Maximum Database Size dropdown', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Maximum Database Size')).toBeInTheDocument()
     })
 
     it('should render Prune Old CVEs toggle', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Prune Old CVEs')).toBeInTheDocument()
     })
@@ -1124,24 +1054,29 @@ describe('Settings', () => {
 
     it('should render Create Backup button', () => {
       renderSettings()
+      navigateTo('Backup & Recovery')
 
-      expect(screen.getByText('Create Backup')).toBeInTheDocument()
+      const createButtons = screen.getAllByText('Create Backup')
+      expect(createButtons.length).toBeGreaterThanOrEqual(1)
     })
 
     it('should render Backup Configuration', () => {
       renderSettings()
+      navigateTo('Backup & Recovery')
 
-      expect(screen.getByText('Backup Configuration')).toBeInTheDocument()
+      expect(screen.getByText('Retention Policy')).toBeInTheDocument()
     })
 
     it('should render Keep Backups dropdown', () => {
       renderSettings()
+      navigateTo('Backup & Recovery')
 
-      expect(screen.getByText('Keep Backups')).toBeInTheDocument()
+      expect(screen.getByText('Retention Policy')).toBeInTheDocument()
     })
 
     it('should show no backups message when empty', () => {
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       expect(screen.getByText(/No backups available/)).toBeInTheDocument()
     })
@@ -1163,9 +1098,10 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
-        expect(screen.getByText('Available Backups (1)')).toBeInTheDocument()
+        expect(screen.getByText('Available Backups')).toBeInTheDocument()
       })
     })
   })
@@ -1173,18 +1109,21 @@ describe('Settings', () => {
   describe('Performance Tuning Section', () => {
     it('should render Performance Tuning section', () => {
       renderSettings()
+      navigateTo('Database')
 
-      expect(screen.getByText('Performance Tuning')).toBeInTheDocument()
+      expect(screen.getByText('Performance')).toBeInTheDocument()
     })
 
     it('should render Search Result Limit dropdown', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Search Result Limit')).toBeInTheDocument()
     })
 
     it('should render Enable Search Cache toggle', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Enable Search Cache')).toBeInTheDocument()
     })
@@ -1193,12 +1132,14 @@ describe('Settings', () => {
   describe('Threat Intelligence Section', () => {
     it('should render Threat Intelligence section', () => {
       renderSettings()
+      navigateTo('Intelligence')
 
-      expect(screen.getByText('Threat Intelligence')).toBeInTheDocument()
+      expect(screen.getByText('CISA Known Exploited Vulnerabilities')).toBeInTheDocument()
     })
 
     it('should render KEV stats grid', () => {
       renderSettings()
+      navigateTo('Intelligence')
 
       expect(screen.getByText('KEV Entries')).toBeInTheDocument()
       expect(screen.getByText('Ransomware')).toBeInTheDocument()
@@ -1207,15 +1148,16 @@ describe('Settings', () => {
 
     it('should render Sync KEV Catalog section', () => {
       renderSettings()
+      navigateTo('Intelligence')
 
       expect(screen.getByText('Sync KEV Catalog')).toBeInTheDocument()
-      // "Sync Now" appears in both DB sync and KEV sync sections
       const syncButtons = screen.getAllByText('Sync Now')
-      expect(syncButtons.length).toBeGreaterThanOrEqual(2)
+      expect(syncButtons.length).toBeGreaterThanOrEqual(1)
     })
 
     it('should render KEV info text', () => {
       renderSettings()
+      navigateTo('Intelligence')
 
       expect(screen.getByText(/CISA KEV Catalog/)).toBeInTheDocument()
     })
@@ -1223,17 +1165,14 @@ describe('Settings', () => {
 
   describe('ConfirmDialog', () => {
     it('should show Reset Database dialog when button is clicked', () => {
-      // Reset mock implementation to ensure clean state
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('Database')
 
-      // Find the Reset Database button in the DB actions area (not the dialog confirm button)
       const resetButtons = screen.getAllByText('Reset Database')
-      // Click the first one (the action button in the DB section)
       fireEvent.click(resetButtons[0])
 
-      // Dialog should now be open with the warning message
       expect(screen.getByText(/This will delete all CVE data from the local database/)).toBeInTheDocument()
     })
 
@@ -1241,6 +1180,7 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Rebuild Indexes'))
 
@@ -1251,17 +1191,15 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('Database')
 
-      // Open the reset dialog
       const resetButtons = screen.getAllByText('Reset Database')
       fireEvent.click(resetButtons[0])
       expect(screen.getByText(/This will delete all CVE data from the local database/)).toBeInTheDocument()
 
-      // Find and click the Cancel button in the dialog
       const cancelButtons = screen.getAllByText('Cancel')
       fireEvent.click(cancelButtons[cancelButtons.length - 1])
 
-      // Dialog should be closed - the warning text should no longer be present
       expect(screen.queryByText(/This will delete all CVE data from the local database/)).not.toBeInTheDocument()
     })
   })
@@ -1270,9 +1208,10 @@ describe('Settings', () => {
     it('should show secure storage status', async () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
       renderSettings()
+      navigateTo('API Configuration')
 
       await waitFor(() => {
-        expect(screen.getByText('Secure Storage Enabled')).toBeInTheDocument()
+        expect(screen.getByText('Secure Storage')).toBeInTheDocument()
       })
     })
 
@@ -1280,6 +1219,7 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
       mockStoredApiKey = '12345678-1234-1234-1234-123456789012'
       renderSettings()
+      navigateTo('API Configuration')
 
       await waitFor(() => {
         expect(screen.getByText('Delete Key')).toBeInTheDocument()
@@ -1293,6 +1233,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[0])
@@ -1317,6 +1258,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Database')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[0])
@@ -1336,10 +1278,12 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Database')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[0])
 
+      navigateTo('API Configuration')
       await waitFor(() => {
         expect(screen.getByText(/API rate limit exceeded/)).toBeInTheDocument()
       })
@@ -1350,6 +1294,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Bulk Download'))
 
@@ -1373,9 +1318,11 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Bulk Download'))
 
+      navigateTo('API Configuration')
       await waitFor(() => {
         expect(screen.getByText(/Download failed/)).toBeInTheDocument()
       })
@@ -1388,10 +1335,12 @@ describe('Settings', () => {
       vi.mocked(platform.database.startDeltaSync).mockRejectedValueOnce(new Error('Network error'))
 
       renderSettings()
+      navigateTo('Database')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[0])
 
+      navigateTo('API Configuration')
       await waitFor(() => {
         expect(screen.getByText(/Network error/)).toBeInTheDocument()
       })
@@ -1404,9 +1353,11 @@ describe('Settings', () => {
       vi.mocked(platform.database.startBulkDownload).mockRejectedValueOnce(new Error('Connection lost'))
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Bulk Download'))
 
+      navigateTo('API Configuration')
       await waitFor(() => {
         expect(screen.getByText(/Connection lost/)).toBeInTheDocument()
       })
@@ -1419,6 +1370,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       const resetButtons = screen.getAllByText('Reset Database')
       fireEvent.click(resetButtons[0])
@@ -1438,6 +1390,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Rebuild Indexes'))
 
@@ -1461,12 +1414,14 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Rebuild Indexes'))
 
       const confirmButtons = screen.getAllByText('Rebuild Indexes')
       fireEvent.click(confirmButtons[confirmButtons.length - 1])
 
+      navigateTo('API Configuration')
       await waitFor(() => {
         expect(screen.getByText(/Full-text search indexing is not available/)).toBeInTheDocument()
       })
@@ -1479,12 +1434,14 @@ describe('Settings', () => {
       vi.mocked(platform.database.rebuildIndexes).mockRejectedValueOnce(new Error('Disk full'))
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Rebuild Indexes'))
 
       const confirmButtons = screen.getAllByText('Rebuild Indexes')
       fireEvent.click(confirmButtons[confirmButtons.length - 1])
 
+      navigateTo('API Configuration')
       await waitFor(() => {
         expect(screen.getByText(/Disk full/)).toBeInTheDocument()
       })
@@ -1503,6 +1460,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       const syncSelect = screen.getByDisplayValue('Weekly')
       fireEvent.change(syncSelect, { target: { value: 'daily' } })
@@ -1517,6 +1475,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       const pruneToggle = screen.getByRole('switch', { name: 'Toggle prune old CVEs' })
       fireEvent.click(pruneToggle)
@@ -1528,6 +1487,7 @@ describe('Settings', () => {
 
     it('should show prune year dropdown when prune is enabled', async () => {
       renderSettings()
+      navigateTo('Database')
 
       const pruneToggle = screen.getByRole('switch', { name: 'Toggle prune old CVEs' })
       fireEvent.click(pruneToggle)
@@ -1542,6 +1502,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       const sizeSelect = screen.getByDisplayValue('2 GB')
       fireEvent.change(sizeSelect, { target: { value: '1024' } })
@@ -1556,6 +1517,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       const limitSelect = screen.getByDisplayValue('100 results')
       fireEvent.change(limitSelect, { target: { value: '200' } })
@@ -1572,6 +1534,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
       const cacheToggle = screen.getByRole('switch', { name: 'Toggle search cache' })
       fireEvent.click(cacheToggle)
@@ -1583,6 +1546,7 @@ describe('Settings', () => {
 
     it('should hide cache size dropdown when cache is disabled', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('Cache Size')).toBeInTheDocument()
 
@@ -1599,8 +1563,10 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
-      fireEvent.click(screen.getByText('Create Backup'))
+      const createButtons = screen.getAllByText('Create Backup')
+      fireEvent.click(createButtons[createButtons.length - 1])
 
       await waitFor(() => {
         expect(platform.backup.createBackup).toHaveBeenCalled()
@@ -1622,8 +1588,10 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
-      fireEvent.click(screen.getByText('Create Backup'))
+      const createButtons = screen.getAllByText('Create Backup')
+      fireEvent.click(createButtons[createButtons.length - 1])
 
       await waitFor(() => {
         expect(screen.getByText('Backup created successfully')).toBeInTheDocument()
@@ -1640,8 +1608,10 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
-      fireEvent.click(screen.getByText('Create Backup'))
+      const createButtons = screen.getAllByText('Create Backup')
+      fireEvent.click(createButtons[createButtons.length - 1])
 
       await waitFor(() => {
         expect(screen.getByText(/Insufficient disk space/)).toBeInTheDocument()
@@ -1669,6 +1639,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Verify backup integrity')).toBeInTheDocument()
@@ -1698,6 +1669,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Delete backup')).toBeInTheDocument()
@@ -1729,6 +1701,7 @@ describe('Settings', () => {
       window.location.reload = vi.fn()
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Restore backup')).toBeInTheDocument()
@@ -1751,6 +1724,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       const retentionSelect = screen.getByDisplayValue('3 backups')
       fireEvent.change(retentionSelect, { target: { value: '5' } })
@@ -1781,6 +1755,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Delete backup')).toBeInTheDocument()
@@ -1800,6 +1775,7 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Intelligence')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[syncButtons.length - 1])
@@ -1823,6 +1799,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Intelligence')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[syncButtons.length - 1])
@@ -1842,6 +1819,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Intelligence')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[syncButtons.length - 1])
@@ -1858,6 +1836,7 @@ describe('Settings', () => {
       vi.mocked(platform.intelligence.syncKev).mockRejectedValueOnce(new Error('Server error'))
 
       renderSettings()
+      navigateTo('Intelligence')
 
       const syncButtons = screen.getAllByText('Sync Now')
       fireEvent.click(syncButtons[syncButtons.length - 1])
@@ -1899,10 +1878,10 @@ describe('Settings', () => {
       expect(store.deleteSettingsProfile).toHaveBeenCalledWith('profile-1')
     })
 
-    it('should open CreateProfileDialog when Create New Profile is clicked', () => {
+    it('should open CreateProfileDialog when Create Profile is clicked', () => {
       renderSettings()
 
-      fireEvent.click(screen.getByText('Create New Profile'))
+      fireEvent.click(screen.getByText('Create Profile'))
 
       expect(screen.getByTestId('create-profile-dialog')).toBeInTheDocument()
     })
@@ -1910,7 +1889,7 @@ describe('Settings', () => {
     it('should close CreateProfileDialog when cancel is clicked', () => {
       renderSettings()
 
-      fireEvent.click(screen.getByText('Create New Profile'))
+      fireEvent.click(screen.getByText('Create Profile'))
       fireEvent.click(screen.getByText('Cancel'))
 
       expect(screen.queryByTestId('create-profile-dialog')).not.toBeInTheDocument()
@@ -1923,6 +1902,7 @@ describe('Settings', () => {
       mockStoredApiKey = '12345678-1234-1234-1234-123456789012'
 
       renderSettings()
+      navigateTo('API Configuration')
 
       await waitFor(() => {
         expect(screen.getByText('Delete Key')).toBeInTheDocument()
@@ -1939,6 +1919,7 @@ describe('Settings', () => {
   describe('Data Retention Edge Cases', () => {
     it('should update data retention to Never', () => {
       renderSettings()
+      navigateTo('Database')
 
       const select = screen.getByDisplayValue('30 days')
       fireEvent.change(select, { target: { value: '-1' } })
@@ -1948,6 +1929,7 @@ describe('Settings', () => {
 
     it('should update data retention to 7 days', () => {
       renderSettings()
+      navigateTo('Database')
 
       const select = screen.getByDisplayValue('30 days')
       fireEvent.change(select, { target: { value: '7' } })
@@ -1957,6 +1939,7 @@ describe('Settings', () => {
 
     it('should update data retention to 1 year', () => {
       renderSettings()
+      navigateTo('Database')
 
       const select = screen.getByDisplayValue('30 days')
       fireEvent.change(select, { target: { value: '365' } })
@@ -1974,6 +1957,7 @@ describe('Settings', () => {
 
     it('should render danger variant with correct styling', () => {
       renderSettings()
+      navigateTo('Database')
 
       const resetButtons = screen.getAllByText('Reset Database')
       fireEvent.click(resetButtons[0])
@@ -1985,6 +1969,7 @@ describe('Settings', () => {
 
     it('should render warning variant for rebuild indexes', () => {
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Rebuild Indexes'))
 
@@ -1995,6 +1980,7 @@ describe('Settings', () => {
 
     it('should close dialog when backdrop is clicked', () => {
       renderSettings()
+      navigateTo('Database')
 
       const resetButtons = screen.getAllByText('Reset Database')
       fireEvent.click(resetButtons[0])
@@ -2049,6 +2035,7 @@ describe('Settings', () => {
   describe('formatBytes Edge Cases', () => {
     it('should display 0 B for zero bytes', () => {
       renderSettings()
+      navigateTo('Database')
 
       expect(screen.getByText('0 B')).toBeInTheDocument()
     })
@@ -2056,22 +2043,14 @@ describe('Settings', () => {
 
   describe('Secure Storage Unavailable', () => {
     it('should show unavailable message when secure storage is not available', async () => {
-      vi.doMock('@/lib/storage', () => ({
-        getSecureKeyService: () => ({
-          isAvailable: vi.fn(() => Promise.resolve(false)),
-          getApiKey: vi.fn(() => Promise.resolve(null)),
-          setApiKey: vi.fn(() => Promise.resolve(true)),
-          deleteApiKey: vi.fn(() => Promise.resolve(true)),
-          hasApiKey: vi.fn(() => Promise.resolve(false)),
-        }),
-      }))
-
+      mockIsAvailable = false
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('API Configuration')
 
       await waitFor(() => {
-        expect(screen.getByText('Secure Storage Unavailable')).toBeInTheDocument()
+        expect(screen.getByText('Insecure')).toBeInTheDocument()
         expect(screen.getByText(/Secure storage is not available/)).toBeInTheDocument()
       })
     })
@@ -2080,6 +2059,7 @@ describe('Settings', () => {
   describe('Dialog Cancel Handlers', () => {
     it('should close rebuild dialog and stop loading on cancel', () => {
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Rebuild Indexes'))
       expect(screen.getByText(/This will rebuild all database indexes/)).toBeInTheDocument()
@@ -2107,6 +2087,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Restore backup')).toBeInTheDocument()
@@ -2211,19 +2192,21 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
-      // First enable pruning
       const pruneToggle = screen.getByRole('switch', { name: 'Toggle prune old CVEs' })
       fireEvent.click(pruneToggle)
 
-      // Wait for the prune year dropdown to appear
       await waitFor(() => {
         expect(screen.getByText('Keep CVEs From')).toBeInTheDocument()
       })
 
-      // Change the prune year to 2020 (from PRUNE_YEAR_OPTIONS)
-      const pruneYearSelect = document.querySelector('#prune-year') as HTMLSelectElement
-      fireEvent.change(pruneYearSelect, { target: { value: '2020' } })
+      const allSelects = screen.getAllByRole('combobox')
+      const pruneYearSelect = allSelects.find((s) => {
+        const options = Array.from(s.querySelectorAll('option'))
+        return options.some((o) => o.value === '2024')
+      })
+      fireEvent.change(pruneYearSelect as Element, { target: { value: '2020' } })
 
       await waitFor(() => {
         expect(platform.database.updateStorageConfig).toHaveBeenCalledWith(
@@ -2239,18 +2222,16 @@ describe('Settings', () => {
       const platform = getPlatform()
 
       renderSettings()
+      navigateTo('Database')
 
-      // Cache size dropdown is visible by default (cache is enabled in defaults)
-      const cacheSizeSelect = document.querySelector('#cache-size') as HTMLSelectElement
-      if (cacheSizeSelect) {
-        fireEvent.change(cacheSizeSelect, { target: { value: '256' } })
+      const cacheSizeSelect = screen.getByDisplayValue('64 MB')
+      fireEvent.change(cacheSizeSelect, { target: { value: '256' } })
 
-        await waitFor(() => {
-          expect(platform.database.updatePerformanceConfig).toHaveBeenCalledWith(
-            expect.objectContaining({ cacheSizeMB: 256 }),
-          )
-        })
-      }
+      await waitFor(() => {
+        expect(platform.database.updatePerformanceConfig).toHaveBeenCalledWith(
+          expect.objectContaining({ cacheSizeMB: 256 }),
+        )
+      })
     })
   })
 
@@ -2267,8 +2248,7 @@ describe('Settings', () => {
 
       renderSettings()
 
-      // Open create dialog and click Create
-      fireEvent.click(screen.getByText('Create New Profile'))
+      fireEvent.click(screen.getByText('Create Profile'))
       fireEvent.click(screen.getByText('Create'))
 
       expect(global.alert).toHaveBeenCalledWith('Profile name already exists')
@@ -2317,6 +2297,7 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('API Configuration')
 
       const input = await screen.findByPlaceholderText(/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/)
       fireEvent.change(input, { target: { value: '12345678-1234-1234-1234-123456789012' } })
@@ -2333,6 +2314,7 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('API Configuration')
 
       const input = await screen.findByPlaceholderText(/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/)
       fireEvent.change(input, { target: { value: '12345678-1234-1234-1234-123456789012' } })
@@ -2349,6 +2331,7 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('API Configuration')
 
       await waitFor(() => {
         expect(screen.getByText('Delete Key')).toBeInTheDocument()
@@ -2367,6 +2350,7 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('API Configuration')
 
       await waitFor(() => {
         expect(screen.getByText('Delete Key')).toBeInTheDocument()
@@ -2388,8 +2372,10 @@ describe('Settings', () => {
       vi.mocked(platform.backup.createBackup).mockRejectedValueOnce(new Error('Disk full'))
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
-      fireEvent.click(screen.getByText('Create Backup'))
+      const createButtons = screen.getAllByText('Create Backup')
+      fireEvent.click(createButtons[createButtons.length - 1])
 
       await waitFor(() => {
         expect(screen.getByText('Failed to create backup')).toBeInTheDocument()
@@ -2410,6 +2396,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Restore backup')).toBeInTheDocument()
@@ -2435,6 +2422,7 @@ describe('Settings', () => {
       vi.mocked(platform.backup.restoreBackup).mockRejectedValueOnce(new Error('IO error'))
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Restore backup')).toBeInTheDocument()
@@ -2460,6 +2448,7 @@ describe('Settings', () => {
       vi.mocked(platform.backup.deleteBackup).mockRejectedValueOnce(new Error('File in use'))
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Delete backup')).toBeInTheDocument()
@@ -2483,6 +2472,7 @@ describe('Settings', () => {
       vi.mocked(platform.backup.verifyBackup).mockRejectedValueOnce(new Error('Hash mismatch'))
 
       renderSettings()
+      navigateTo('Backup & Recovery')
 
       await waitFor(() => {
         expect(screen.getByLabelText('Verify backup integrity')).toBeInTheDocument()
@@ -2490,7 +2480,6 @@ describe('Settings', () => {
 
       fireEvent.click(screen.getByLabelText('Verify backup integrity'))
 
-      // Verify should not crash - the error is silently caught
       await waitFor(() => {
         expect(platform.backup.verifyBackup).toHaveBeenCalledWith('backup-1')
       })
@@ -2506,11 +2495,13 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Database')
 
       fireEvent.click(screen.getByText('Rebuild Indexes'))
       const confirmButtons = screen.getAllByText('Rebuild Indexes')
       fireEvent.click(confirmButtons[confirmButtons.length - 1])
 
+      navigateTo('API Configuration')
       await waitFor(() => {
         expect(screen.getByText('Permission denied for index operation')).toBeInTheDocument()
       })
@@ -2526,6 +2517,7 @@ describe('Settings', () => {
       })
 
       renderSettings()
+      navigateTo('Database')
 
       const resetButtons = screen.getAllByText('Reset Database')
       fireEvent.click(resetButtons[0])
@@ -2544,6 +2536,7 @@ describe('Settings', () => {
       vi.mocked(platform.database.updateSyncConfig).mockRejectedValueOnce(new Error('Config locked'))
 
       renderSettings()
+      navigateTo('Database')
 
       const syncSelect = screen.getByDisplayValue('Weekly')
       fireEvent.change(syncSelect, { target: { value: 'daily' } })
@@ -2560,6 +2553,7 @@ describe('Settings', () => {
       vi.mocked(platform.database.updateStorageConfig).mockRejectedValueOnce(new Error('Write error'))
 
       renderSettings()
+      navigateTo('Database')
 
       const sizeSelect = screen.getByDisplayValue('2 GB')
       fireEvent.change(sizeSelect, { target: { value: '1024' } })
@@ -2576,6 +2570,7 @@ describe('Settings', () => {
       vi.mocked(platform.database.updatePerformanceConfig).mockRejectedValueOnce(new Error('Config error'))
 
       renderSettings()
+      navigateTo('Database')
 
       const limitSelect = screen.getByDisplayValue('100 results')
       fireEvent.change(limitSelect, { target: { value: '200' } })
@@ -2601,8 +2596,8 @@ describe('Settings', () => {
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
 
       renderSettings()
+      navigateTo('API Configuration')
 
-      // Should not crash - the error is caught and loading finishes
       await waitFor(() => {
         expect(screen.getByText('API Configuration')).toBeInTheDocument()
       })
@@ -2616,10 +2611,10 @@ describe('Settings', () => {
 
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
       renderSettings()
+      navigateTo('Database')
 
-      // Should render without crashing
       await waitFor(() => {
-        expect(screen.getByText('Database Management')).toBeInTheDocument()
+        expect(screen.getByText('Database Overview')).toBeInTheDocument()
       })
     })
 
@@ -2645,9 +2640,10 @@ describe('Settings', () => {
 
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
       renderSettings()
+      navigateTo('Database')
 
       await waitFor(() => {
-        expect(screen.getByText('Database Management')).toBeInTheDocument()
+        expect(screen.getByText('Database Overview')).toBeInTheDocument()
       })
     })
 
@@ -2659,9 +2655,10 @@ describe('Settings', () => {
 
       vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
       renderSettings()
+      navigateTo('Database')
 
       await waitFor(() => {
-        expect(screen.getByText('Performance Tuning')).toBeInTheDocument()
+        expect(screen.getByText('Performance')).toBeInTheDocument()
       })
     })
   })

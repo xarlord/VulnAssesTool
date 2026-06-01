@@ -172,6 +172,86 @@ vi.mock('lucide-react', () => {
   return mod
 })
 
+// Mock Radix Select as native <select> for test interaction
+vi.mock('@/components/ui/select', () => {
+  const Select = ({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value: string
+    onValueChange: (v: string) => void
+    children: React.ReactNode
+  }) => (
+    <select value={value} onChange={(e) => onValueChange(e.target.value)}>
+      {children}
+    </select>
+  )
+  const SelectTrigger = ({ children }: { children: React.ReactNode; className?: string }) => <>{children}</>
+  const SelectValue = () => null
+  const SelectContent = ({ children }: { children: React.ReactNode }) => <>{children}</>
+  const SelectItem = ({ value, children }: { value: string; children: React.ReactNode; className?: string }) => (
+    <option value={value}>{children}</option>
+  )
+  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem }
+})
+
+// Mock Radix Tabs as native HTML tabs for test interaction
+
+vi.mock('@/components/ui/tabs', () => {
+  let tabsValue = ''
+
+  let tabsOnChange = (_v: string) => {}
+
+  const Tabs = ({
+    value,
+    onValueChange,
+    children,
+    ...props
+  }: {
+    value: string
+    onValueChange: (v: string) => void
+    children: React.ReactNode
+    className?: string
+  }) => {
+    tabsValue = value // eslint-disable-line react-hooks/globals
+    tabsOnChange = onValueChange // eslint-disable-line react-hooks/globals
+    return <div {...props}>{children}</div>
+  }
+
+  const TabsList = ({ children, ...props }: { children: React.ReactNode; className?: string }) => (
+    <div role="tablist" {...props}>
+      {children}
+    </div>
+  )
+
+  const TabsTrigger = ({
+    value,
+    children,
+    ...props
+  }: {
+    value: string
+    children: React.ReactNode
+    className?: string
+  }) => (
+    <button role="tab" aria-selected={tabsValue === value} onClick={() => tabsOnChange(value)} {...props}>
+      {children}
+    </button>
+  )
+
+  const TabsContent = ({
+    value,
+    children,
+    ...props
+  }: {
+    value: string
+    children: React.ReactNode
+    className?: string
+  }) => (tabsValue === value ? <div {...props}>{children}</div> : null)
+
+  return { Tabs, TabsList, TabsTrigger, TabsContent }
+})
+
 // Mock ContainerScanDialog (always rendered by ProjectDetail)
 vi.mock('@/components/ContainerScanDialog', () => ({
   ContainerScanDialog: ({ open, onClose }: { open: boolean; onClose: () => void; projectId: string }) =>
@@ -261,7 +341,7 @@ vi.mock('@/components/FilterPresets', () => ({
 
 // Mock HealthDashboard
 vi.mock('@/components/HealthDashboard', () => ({
-  HealthDashboard: () => <div data-testid="health-dashboard" />,
+  HealthDashboard: () => <div data-testid="health-dashboard">Component Health Dashboard</div>,
 }))
 
 // Mock RemediationQueue
@@ -522,7 +602,7 @@ describe('ProjectDetail', () => {
         </MemoryRouter>,
       )
 
-      expect(screen.getByText('Project Not Found')).toBeInTheDocument()
+      expect(screen.getByText('Not Found')).toBeInTheDocument()
       expect(screen.getByText('Project not found')).toBeInTheDocument()
       expect(screen.getByText("The project you're looking for doesn't exist")).toBeInTheDocument()
     })
@@ -586,7 +666,7 @@ describe('ProjectDetail', () => {
     it('should show Scan button', () => {
       renderProjectDetail()
 
-      expect(screen.getByText('Scan for Vulnerabilities')).toBeInTheDocument()
+      expect(screen.getByText('Scan')).toBeInTheDocument()
     })
 
     it('should show Delete button', () => {
@@ -625,7 +705,7 @@ describe('ProjectDetail', () => {
       const projectNoComponents = createMockProject({ components: [] })
       renderProjectDetail(projectNoComponents)
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       expect(scanButton).toBeDisabled()
     })
   })
@@ -637,7 +717,7 @@ describe('ProjectDetail', () => {
       // The statistics cards are in the Overview tab which is default
       // Use getAllByText since "Components" appears in both tabs and statistics
       expect(screen.getAllByText('Components').length).toBeGreaterThan(0)
-      expect(screen.getByText('2')).toBeInTheDocument()
+      expect(screen.getAllByText('2').length).toBeGreaterThan(0)
     })
 
     it('should display critical vulnerability count', () => {
@@ -658,7 +738,7 @@ describe('ProjectDetail', () => {
     it('should display total vulnerabilities', () => {
       renderProjectDetail()
 
-      expect(screen.getByText('Total Vulns')).toBeInTheDocument()
+      expect(screen.getByText('Total Vulnerabilities')).toBeInTheDocument()
       expect(screen.getAllByText('5').length).toBeGreaterThan(0)
     })
   })
@@ -906,7 +986,7 @@ describe('ProjectDetail', () => {
   describe('Components Section', () => {
     // Helper to click on Components tab
     const clickComponentsTab = () => {
-      const componentsTab = screen.getByRole('tab', { name: 'Components' })
+      const componentsTab = screen.getByRole('tab', { name: /Components/ })
       fireEvent.click(componentsTab)
     }
 
@@ -1051,7 +1131,7 @@ describe('ProjectDetail', () => {
 
   describe('Component Management - TC-CM Scenarios', () => {
     const clickComponentsTab = () => {
-      const componentsTab = screen.getByRole('tab', { name: 'Components' })
+      const componentsTab = screen.getByRole('tab', { name: /Components/ })
       fireEvent.click(componentsTab)
     }
 
@@ -1288,17 +1368,17 @@ describe('ProjectDetail', () => {
       renderProjectDetail()
 
       // Go to components tab and set a filter
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
       const searchInput = screen.getByPlaceholderText('Search components...')
       fireEvent.change(searchInput, { target: { value: 'lodash' } })
       expect(screen.getByText('lodash')).toBeInTheDocument()
 
       // Switch to vulnerabilities tab
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
       expect(screen.getByText('Vulnerabilities (2)')).toBeInTheDocument()
 
       // Switch back to components - filter should be maintained
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
       expect(screen.getByText('lodash')).toBeInTheDocument()
       expect(searchInput).toHaveValue('lodash')
     })
@@ -1307,7 +1387,7 @@ describe('ProjectDetail', () => {
   describe('Vulnerabilities Section', () => {
     // Helper to click on Vulnerabilities tab
     const clickVulnerabilitiesTab = () => {
-      const vulnerabilitiesTab = screen.getByRole('tab', { name: 'Vulnerabilities' })
+      const vulnerabilitiesTab = screen.getByRole('tab', { name: /Vulnerabilities/ })
       fireEvent.click(vulnerabilitiesTab)
     }
 
@@ -1357,8 +1437,7 @@ describe('ProjectDetail', () => {
       renderProjectDetail()
       clickVulnerabilitiesTab()
 
-      const severityFilter = screen.getByDisplayValue('All Severities')
-      fireEvent.change(severityFilter, { target: { value: 'critical' } })
+      fireEvent.click(screen.getByText(/^Critical \(\d+\)$/))
 
       expect(screen.getByText('CVE-2021-23337')).toBeInTheDocument()
     })
@@ -1367,8 +1446,7 @@ describe('ProjectDetail', () => {
       renderProjectDetail()
       clickVulnerabilitiesTab()
 
-      const severityFilter = screen.getByDisplayValue('All Severities')
-      fireEvent.change(severityFilter, { target: { value: 'low' } })
+      fireEvent.click(screen.getByText(/^Low \(\d+\)$/))
 
       expect(screen.getByText('No vulnerabilities match the current filters')).toBeInTheDocument()
     })
@@ -1414,7 +1492,7 @@ describe('ProjectDetail', () => {
 
   describe('Vulnerability Filtering - TC-VM Scenarios', () => {
     const clickVulnerabilitiesTab = () => {
-      const vulnerabilitiesTab = screen.getByRole('tab', { name: 'Vulnerabilities' })
+      const vulnerabilitiesTab = screen.getByRole('tab', { name: /Vulnerabilities/ })
       fireEvent.click(vulnerabilitiesTab)
     }
 
@@ -1422,15 +1500,13 @@ describe('ProjectDetail', () => {
       renderProjectDetail()
       clickVulnerabilitiesTab()
 
-      const severityFilter = screen.getByDisplayValue('All Severities')
-
       // Filter to critical only
-      fireEvent.change(severityFilter, { target: { value: 'critical' } })
+      fireEvent.click(screen.getByText(/^Critical \(\d+\)$/))
       expect(screen.getByText('CVE-2021-23337')).toBeInTheDocument()
       expect(screen.queryByText('CVE-2022-12345')).not.toBeInTheDocument()
 
       // Filter to high only
-      fireEvent.change(severityFilter, { target: { value: 'high' } })
+      fireEvent.click(screen.getByText(/^High \(\d+\)$/))
       expect(screen.getByText('CVE-2022-12345')).toBeInTheDocument()
       expect(screen.queryByText('CVE-2021-23337')).not.toBeInTheDocument()
     })
@@ -1440,7 +1516,7 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // Click Advanced Filters button
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
+      const advancedFiltersButton = screen.getByText('Advanced')
       fireEvent.click(advancedFiltersButton)
 
       // CVSS range slider mock should be visible
@@ -1455,7 +1531,7 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // Click Advanced Filters button
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
+      const advancedFiltersButton = screen.getByText('Advanced')
       fireEvent.click(advancedFiltersButton)
 
       // Find source filter
@@ -1468,7 +1544,7 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // Click Advanced Filters button
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
+      const advancedFiltersButton = screen.getByText('Advanced')
       fireEvent.click(advancedFiltersButton)
 
       // Find reference tags filter
@@ -1481,11 +1557,10 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // Apply severity filter first
-      const severityFilter = screen.getByDisplayValue('All Severities')
-      fireEvent.change(severityFilter, { target: { value: 'critical' } })
+      fireEvent.click(screen.getByText(/^Critical \(\d+\)$/))
 
       // Open advanced filters
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
+      const advancedFiltersButton = screen.getByText('Advanced')
       fireEvent.click(advancedFiltersButton)
 
       // Advanced filters should be visible
@@ -1515,15 +1590,14 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // Set a severity filter
-      const severityFilter = screen.getByDisplayValue('All Severities')
-      fireEvent.change(severityFilter, { target: { value: 'critical' } })
+      fireEvent.click(screen.getByText(/^Critical \(\d+\)$/))
 
       // Set advanced filters
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
+      const advancedFiltersButton = screen.getByText('Advanced')
       fireEvent.click(advancedFiltersButton)
 
       // Now clear the severity filter
-      fireEvent.change(severityFilter, { target: { value: 'all' } })
+      fireEvent.click(screen.getByText(/^All \(\d+\)$/))
 
       // Should show both vulnerabilities again
       expect(screen.getByText('CVE-2021-23337')).toBeInTheDocument()
@@ -1562,8 +1636,7 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // Set a filter that excludes all vulnerabilities (low when only critical/high exist)
-      const severityFilter = screen.getByDisplayValue('All Severities')
-      fireEvent.change(severityFilter, { target: { value: 'low' } })
+      fireEvent.click(screen.getByText(/^Low \(\d+\)$/))
 
       expect(screen.getByText('No vulnerabilities match the current filters')).toBeInTheDocument()
       expect(screen.getByText('Clear all filters')).toBeInTheDocument()
@@ -1578,7 +1651,7 @@ describe('ProjectDetail', () => {
       expect(screen.queryByText('Reference Tags')).not.toBeInTheDocument()
 
       // Click to show advanced filters
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
+      const advancedFiltersButton = screen.getByText('Advanced')
       fireEvent.click(advancedFiltersButton)
 
       // Advanced filters should now be visible
@@ -1651,7 +1724,7 @@ describe('ProjectDetail', () => {
       const projectNoComponents = createMockProject({ components: [] })
       renderProjectDetail(projectNoComponents)
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       expect(scanButton).toBeDisabled()
     })
 
@@ -1662,11 +1735,11 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail()
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       fireEvent.click(scanButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Scanning/)).toBeInTheDocument()
+        expect(screen.getByText(/Initializing/)).toBeInTheDocument()
       })
     })
 
@@ -1686,7 +1759,7 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail()
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       fireEvent.click(scanButton)
 
       await waitFor(
@@ -1703,14 +1776,14 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail()
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       fireEvent.click(scanButton)
 
       // Wait for the scan to complete (error case)
       // The button should become enabled again after the error
       await waitFor(
         () => {
-          const button = screen.queryByText('Scan for Vulnerabilities')
+          const button = screen.queryByText('Scan')
           expect(button).not.toBeDisabled()
         },
         { timeout: 10000 },
@@ -1754,7 +1827,7 @@ describe('ProjectDetail', () => {
         </MemoryRouter>,
       )
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       fireEvent.click(scanButton)
 
       // Wait for the scan to complete
@@ -1798,7 +1871,7 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail()
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       fireEvent.click(scanButton)
 
       await waitFor(
@@ -1814,7 +1887,7 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail()
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       fireEvent.click(scanButton)
 
       await waitFor(
@@ -1829,7 +1902,7 @@ describe('ProjectDetail', () => {
       const projectNoComponents = createMockProject({ components: [] })
       renderProjectDetail(projectNoComponents)
 
-      const scanButton = screen.getByText('Scan for Vulnerabilities')
+      const scanButton = screen.getByText('Scan')
       fireEvent.click(scanButton)
 
       // Button should be disabled, so the handler won't even be called
@@ -2152,7 +2225,7 @@ describe('ProjectDetail', () => {
   describe('Vulnerability Detail Modal', () => {
     // Helper to click on Vulnerabilities tab
     const clickVulnerabilitiesTab = () => {
-      const vulnerabilitiesTab = screen.getByRole('tab', { name: 'Vulnerabilities' })
+      const vulnerabilitiesTab = screen.getByRole('tab', { name: /Vulnerabilities/ })
       fireEvent.click(vulnerabilitiesTab)
     }
 
@@ -2198,7 +2271,7 @@ describe('ProjectDetail', () => {
   describe('Edge Cases', () => {
     // Helper to click on Components tab
     const clickComponentsTab = () => {
-      const componentsTab = screen.getByRole('tab', { name: 'Components' })
+      const componentsTab = screen.getByRole('tab', { name: /Components/ })
       fireEvent.click(componentsTab)
     }
 
@@ -2251,7 +2324,7 @@ describe('ProjectDetail', () => {
   describe('Copy CVE ID Functionality', () => {
     // Helper to click on Vulnerabilities tab
     const clickVulnerabilitiesTab = () => {
-      const vulnerabilitiesTab = screen.getByRole('tab', { name: 'Vulnerabilities' })
+      const vulnerabilitiesTab = screen.getByRole('tab', { name: /Vulnerabilities/ })
       fireEvent.click(vulnerabilitiesTab)
     }
 
@@ -2386,7 +2459,7 @@ describe('ProjectDetail', () => {
 
   describe('Health Tab', () => {
     const clickHealthTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Health' }))
+      fireEvent.click(screen.getByRole('tab', { name: /^Health$/ }))
     }
 
     it('should render Health Dashboard component', () => {
@@ -2429,11 +2502,11 @@ describe('ProjectDetail', () => {
       expect(screen.getByTestId('vuln-detail-modal')).toBeInTheDocument()
     })
 
-    it('should navigate to home when back arrow button is clicked', () => {
+    it('should navigate to home when Projects breadcrumb is clicked', () => {
       renderProjectDetail()
 
-      const backButton = screen.getByLabelText('back')
-      fireEvent.click(backButton)
+      const projectsBreadcrumb = screen.getByRole('button', { name: 'Projects' })
+      fireEvent.click(projectsBreadcrumb)
 
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
@@ -2470,7 +2543,7 @@ describe('ProjectDetail', () => {
     it('should navigate to FPF page when False Positive Filter is clicked', () => {
       renderProjectDetail()
 
-      fireEvent.click(screen.getByText('False Positive Filter'))
+      fireEvent.click(screen.getByText('FPF'))
 
       expect(mockNavigate).toHaveBeenCalledWith('/project/test-project-id/fpf')
     })
@@ -2478,7 +2551,7 @@ describe('ProjectDetail', () => {
 
   describe('Component Vulnerability Popup', () => {
     const clickComponentsTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
     }
 
     it('should open component popup when component is clicked', async () => {
@@ -2519,14 +2592,14 @@ describe('ProjectDetail', () => {
 
   describe('Component License Filter', () => {
     const clickComponentsTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
     }
 
     it('should show license filter when components have licenses', () => {
       renderProjectDetail()
       clickComponentsTab()
 
-      const licenseFilter = screen.getByLabelText('Filter by license')
+      const licenseFilter = screen.getByDisplayValue('All Licenses')
       expect(licenseFilter).toBeInTheDocument()
     })
 
@@ -2544,14 +2617,14 @@ describe('ProjectDetail', () => {
 
   describe('Advanced Filters Clear', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should clear advanced filters when Clear Advanced Filters is clicked', () => {
       renderProjectDetail()
       clickVulnerabilitiesTab()
 
-      fireEvent.click(screen.getByText('Advanced Filters'))
+      fireEvent.click(screen.getByText('Advanced'))
 
       expect(screen.getByText('Clear Advanced Filters')).toBeInTheDocument()
 
@@ -2565,7 +2638,7 @@ describe('ProjectDetail', () => {
       renderProjectDetail()
       clickVulnerabilitiesTab()
 
-      fireEvent.click(screen.getByText('Advanced Filters'))
+      fireEvent.click(screen.getByText('Advanced'))
 
       expect(screen.getByTestId('cvss-range-slider')).toBeInTheDocument()
     })
@@ -2648,7 +2721,7 @@ describe('ProjectDetail', () => {
 
   describe('Component CPE Indicators', () => {
     const clickComponentsTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
     }
 
     it('should show CPE Verified badge when component has cpe and no missing flag', () => {
@@ -2715,7 +2788,7 @@ describe('ProjectDetail', () => {
 
   describe('Vulnerability Patch Info Display', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should display patch availability for vulnerabilities with patchInfo', () => {
@@ -2809,7 +2882,7 @@ describe('ProjectDetail', () => {
 
   describe('Vulnerability Description Display', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should display vulnerability source', () => {
@@ -2823,7 +2896,7 @@ describe('ProjectDetail', () => {
 
   describe('Component Sort', () => {
     const clickComponentsTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
     }
 
     it('should sort components by type', () => {
@@ -2866,7 +2939,7 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail(projectWithExisting)
 
-      fireEvent.click(screen.getByText('Scan for Vulnerabilities'))
+      fireEvent.click(screen.getByText('Scan'))
 
       await waitFor(
         () => {
@@ -2891,7 +2964,7 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail()
 
-      fireEvent.click(screen.getByText('Scan for Vulnerabilities'))
+      fireEvent.click(screen.getByText('Scan'))
 
       await waitFor(
         () => {
@@ -2944,7 +3017,7 @@ describe('ProjectDetail', () => {
 
   describe('Component Popup Interaction Callbacks', () => {
     const clickComponentsTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
     }
 
     it('should close popup and open vuln detail when View Vuln is clicked', async () => {
@@ -2985,15 +3058,14 @@ describe('ProjectDetail', () => {
 
   describe('Vulnerability Clear All Filters', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should clear patchAvailabilityFilter when Clear all filters is clicked', () => {
       renderProjectDetail()
       clickVulnerabilitiesTab()
 
-      const severityFilter = screen.getByDisplayValue('All Severities')
-      fireEvent.change(severityFilter, { target: { value: 'low' } })
+      fireEvent.click(screen.getByText(/^Low \(\d+\)$/))
 
       expect(screen.getByText('No vulnerabilities match the current filters')).toBeInTheDocument()
       expect(screen.getByText('Clear all filters')).toBeInTheDocument()
@@ -3007,7 +3079,7 @@ describe('ProjectDetail', () => {
 
   describe('Vulnerability with sources array', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should render multi-source label when vuln has sources array', () => {
@@ -3068,38 +3140,38 @@ describe('ProjectDetail', () => {
     it('should switch back to overview tab from components tab', () => {
       renderProjectDetail()
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
       expect(screen.getByText('Components (2)')).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+      fireEvent.click(screen.getByRole('tab', { name: /^Overview$/ }))
       expect(screen.getAllByText('Components').length).toBeGreaterThan(0)
-      expect(screen.getByText('Total Vulns')).toBeInTheDocument()
+      expect(screen.getByText('Total Vulnerabilities')).toBeInTheDocument()
     })
 
     it('should switch back to overview tab from vulnerabilities tab', () => {
       renderProjectDetail()
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
       expect(screen.getByText('Vulnerabilities (2)')).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
-      expect(screen.getByText('Total Vulns')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('tab', { name: /^Overview$/ }))
+      expect(screen.getByText('Total Vulnerabilities')).toBeInTheDocument()
     })
 
     it('should switch back to overview tab from health tab', () => {
       renderProjectDetail()
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Health' }))
+      fireEvent.click(screen.getByRole('tab', { name: /^Health$/ }))
       expect(screen.getByTestId('health-dashboard')).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
-      expect(screen.getByText('Total Vulns')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('tab', { name: /^Overview$/ }))
+      expect(screen.getByText('Total Vulnerabilities')).toBeInTheDocument()
     })
   })
 
   describe('Filter Presets CRUD', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     beforeEach(() => {
@@ -3145,7 +3217,7 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // First narrow to critical only
-      fireEvent.change(screen.getByDisplayValue('All Severities'), { target: { value: 'critical' } })
+      fireEvent.click(screen.getByText(/^Critical \(\d+\)$/))
       expect(screen.queryByText('CVE-2022-12345')).not.toBeInTheDocument()
 
       // Load preset with multiple severities -> resets to 'all'
@@ -3286,7 +3358,7 @@ describe('ProjectDetail', () => {
 
   describe('Vulnerability SBOM Filename Display (lines 552-563)', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should display SBOM filename when vulnerability affects a component with sbomFileId', () => {
@@ -3368,7 +3440,7 @@ describe('ProjectDetail', () => {
 
   describe('Component Source Badge from SBOM', () => {
     const clickComponentsTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Components' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Components/ }))
     }
 
     it('should show source badge when component has sbomFileId', () => {
@@ -3415,7 +3487,7 @@ describe('ProjectDetail', () => {
 
       renderProjectDetail()
 
-      fireEvent.click(screen.getByText('Scan for Vulnerabilities'))
+      fireEvent.click(screen.getByText('Scan'))
 
       await waitFor(
         () => {
@@ -3486,7 +3558,7 @@ describe('ProjectDetail', () => {
 
   describe('Copy Vulnerability ID Error Path', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should show error toast when clipboard write fails', async () => {
@@ -3526,7 +3598,7 @@ describe('ProjectDetail', () => {
 
   describe('Advanced Filters Active Indicator', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     beforeEach(() => {
@@ -3547,7 +3619,7 @@ describe('ProjectDetail', () => {
       clickVulnerabilitiesTab()
 
       // Open advanced filters panel
-      fireEvent.click(screen.getByText('Advanced Filters'))
+      fireEvent.click(screen.getByText('Advanced'))
 
       // Load preset that sets source filter
       fireEvent.click(screen.getByTestId('load-preset-btn'))
@@ -3558,7 +3630,7 @@ describe('ProjectDetail', () => {
 
   describe('Vulnerability with Risk Score and Aliases', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     it('should render risk score badge when vulnerability has riskScore', () => {
@@ -3634,7 +3706,7 @@ describe('ProjectDetail', () => {
 
   describe('getCurrentFilters Coverage', () => {
     const clickVulnerabilitiesTab = () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Vulnerabilities' }))
+      fireEvent.click(screen.getByRole('tab', { name: /Vulnerabilities/ }))
     }
 
     beforeEach(() => {

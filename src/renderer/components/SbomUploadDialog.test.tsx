@@ -151,7 +151,7 @@ describe('SbomUploadDialog', () => {
     it('should render close button', () => {
       renderDialog(true)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       expect(closeButton).toBeInTheDocument()
     })
   })
@@ -161,7 +161,7 @@ describe('SbomUploadDialog', () => {
       const user = userEvent.setup()
       renderDialog(true)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       await user.click(closeButton)
 
       expect(mockOnClose).toHaveBeenCalled()
@@ -171,7 +171,7 @@ describe('SbomUploadDialog', () => {
       const user = userEvent.setup()
       renderDialog(true)
 
-      const backdrop = screen.getByText('Upload SBOM').parentElement?.querySelector('.bg-black\\/50')
+      const backdrop = document.querySelector('.bg-black\\/80')
       if (backdrop) {
         await user.click(backdrop)
         expect(mockOnClose).toHaveBeenCalled()
@@ -747,7 +747,7 @@ describe('SbomUploadDialog', () => {
       await user.upload(fileInput, file)
       await screen.findByText('Upload Successful', {}, { timeout: 10000 })
       expect(screen.getByTestId('cpe-match-dialog')).toBeInTheDocument()
-      await user.click(screen.getByTestId('cpe-close-btn'))
+      fireEvent.click(screen.getByTestId('cpe-close-btn'))
       expect(screen.queryByTestId('cpe-match-dialog')).not.toBeInTheDocument()
     })
 
@@ -783,7 +783,7 @@ describe('SbomUploadDialog', () => {
       const file = createMockFile('{"bomFormat": "CycloneDX"}', 'bom.json')
       await user.upload(fileInput, file)
       await screen.findByText('Upload Successful', {}, { timeout: 10000 })
-      await user.click(screen.getByTestId('cpe-confirm-btn'))
+      fireEvent.click(screen.getByTestId('cpe-confirm-btn'))
       expect(screen.queryByTestId('cpe-match-dialog')).not.toBeInTheDocument()
     })
   })

@@ -89,7 +89,7 @@ describe('ExportDialog', () => {
       render(<ExportDialog open={true} onClose={vi.fn()} project={mockProject} />)
 
       const csvButton = screen.getByText('CSV').closest('button')
-      expect(csvButton?.className).toContain('border-primary')
+      expect(csvButton?.className).toContain('bg-primary')
     })
 
     it('should change format when clicking format buttons', async () => {
@@ -279,8 +279,8 @@ describe('ExportDialog', () => {
       const csvButton = screen.getByText('CSV').closest('button')
       const jsonButton = screen.getByText('JSON').closest('button')
 
-      expect(csvButton?.className).toContain('border-primary')
-      expect(jsonButton?.className).not.toContain('border-primary')
+      expect(csvButton?.className).toContain('bg-primary')
+      expect(jsonButton?.className).not.toContain('bg-primary')
     })
 
     it('should update format selection on click', async () => {
@@ -291,10 +291,10 @@ describe('ExportDialog', () => {
       await user.click(jsonButton)
 
       const jsonButtonElement = jsonButton.closest('button')
-      expect(jsonButtonElement?.className).toContain('border-primary')
+      expect(jsonButtonElement?.className).toContain('bg-primary')
 
       const csvButton = screen.getByText('CSV').closest('button')
-      expect(csvButton?.className).not.toContain('border-primary')
+      expect(csvButton?.className).not.toContain('bg-primary')
     })
   })
 
@@ -303,7 +303,7 @@ describe('ExportDialog', () => {
       render(<ExportDialog open={true} onClose={vi.fn()} project={mockProject} />)
 
       const vulnButton = screen.getByText('Vulnerabilities Only').closest('button')
-      expect(vulnButton?.className).toContain('border-primary')
+      expect(vulnButton?.className).toContain('bg-primary')
     })
 
     it('should update data type selection on click', async () => {
@@ -314,7 +314,7 @@ describe('ExportDialog', () => {
       await user.click(componentsButton)
 
       const componentsButtonElement = componentsButton.closest('button')
-      expect(componentsButtonElement?.className).toContain('border-primary')
+      expect(componentsButtonElement?.className).toContain('bg-primary')
     })
   })
 
@@ -325,7 +325,7 @@ describe('ExportDialog', () => {
 
       render(<ExportDialog open={true} onClose={onClose} project={mockProject} />)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       await user.click(closeButton)
 
       expect(onClose).toHaveBeenCalled()
@@ -337,9 +337,7 @@ describe('ExportDialog', () => {
 
       render(<ExportDialog open={true} onClose={onClose} project={mockProject} />)
 
-      const backdrop = screen
-        .getByText(/choose the export format/i)
-        .parentElement?.parentElement?.querySelector('.fixed.inset-0.bg-black\\/50')
+      const backdrop = document.querySelector('.bg-black\\/80')
       if (backdrop) {
         await user.click(backdrop)
         expect(onClose).toHaveBeenCalled()
