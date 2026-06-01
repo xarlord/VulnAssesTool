@@ -1,8 +1,3 @@
-/**
- * Executive Dashboard Component
- * Main dashboard page for high-level visibility
- */
-
 import { useState, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProjects, useStore } from '@/store/useStore'
@@ -12,6 +7,11 @@ import {
   buildExecutiveReport,
   downloadExecutiveReport,
 } from '@/lib/analytics'
+import { AppHeader } from '@/components/layout/AppHeader'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Download, Loader2, Shield, CheckCircle, Activity, BarChart, TrendingUp, AlertTriangle } from 'lucide-react'
+
 const RiskGauge = lazy(() => import('./widgets/RiskGauge').then((m) => ({ default: m.RiskGauge })))
 const ProjectHealthComparison = lazy(() =>
   import('./widgets/ProjectHealthComparison').then((m) => ({ default: m.ProjectHealthComparison })),
@@ -23,25 +23,28 @@ const TeamProductivity = lazy(() => import('./widgets/TeamProductivity').then((m
 const ComplianceStatus = lazy(() => import('./widgets/ComplianceStatus').then((m) => ({ default: m.ComplianceStatus })))
 const ActionItems = lazy(() => import('./widgets/ActionItems').then((m) => ({ default: m.ActionItems })))
 const DashboardConfig = lazy(() => import('./widgets/DashboardConfig').then((m) => ({ default: m.DashboardConfig })))
-import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+
+const STATUS_STYLES: Record<string, string> = {
+  critical: 'bg-red-100 text-red-700',
+  warning: 'bg-amber-100 text-amber-700',
+  excellent: 'bg-emerald-100 text-emerald-700',
+}
 
 export function ExecutiveDashboard() {
   const navigate = useNavigate()
   const projects = useProjects()
 
   const [dateRange, setDateRange] = useState({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
+    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
     end: new Date(),
   })
   const [projectScope, setProjectScope] = useState<'all' | 'selected'>('all')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Filter projects based on date range and scope
   const filteredProjects = useMemo(() => {
     let filtered = projects
 
-    // Filter by date range (projects updated within range)
     filtered = filtered.filter((p) => {
       const updateDate = new Date(p.updatedAt)
       return updateDate >= dateRange.start && updateDate <= dateRange.end
@@ -50,27 +53,21 @@ export function ExecutiveDashboard() {
     return filtered
   }, [projects, dateRange, projectScope])
 
-  // Calculate metrics
   const metrics = useMemo(() => {
     return calculateExecutiveMetrics(filteredProjects)
   }, [filteredProjects])
 
-  // Generate executive summary
   const summary = useMemo(() => {
     return generateExecutiveSummary(metrics, filteredProjects)
   }, [metrics, filteredProjects])
 
-  // Handle refresh
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true)
-    // Trigger Zustand store re-hydration by accessing fresh state
-    // This causes useMemo to recalculate with current store data
     const currentProjects = useStore.getState().projects
     useStore.setState({ projects: [...currentProjects] })
     setIsRefreshing(false)
   }, [])
 
-  // Handle export report
   const handleExportReport = useCallback(() => {
     setIsExporting(true)
     try {
@@ -83,7 +80,6 @@ export function ExecutiveDashboard() {
     }
   }, [summary, metrics, filteredProjects])
 
-  // Handle project click
   const handleProjectClick = useCallback(
     (projectId: string) => {
       navigate(`/project/${projectId}`)
@@ -92,82 +88,56 @@ export function ExecutiveDashboard() {
   )
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="rounded-md hover:bg-secondary px-3 py-1.5 text-sm font-medium flex items-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Dashboard
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Executive Dashboard</h1>
-                <p className="text-sm text-muted-foreground">High-level security overview and compliance metrics</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
-                <DashboardConfig
-                  dateRange={dateRange}
-                  projectScope={projectScope}
-                  projects={filteredProjects}
-                  onDateRangeChange={setDateRange}
-                  onProjectScopeChange={setProjectScope}
-                  onExportReport={handleExportReport}
-                  onRefresh={handleRefresh}
-                  isRefreshing={isRefreshing}
-                />
-              </Suspense>
-              <button
-                onClick={handleExportReport}
-                disabled={isExporting || filteredProjects.length === 0}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                Export Report
-              </button>
-            </div>
+    <div className="flex flex-col h-full bg-background">
+      <AppHeader
+        title="Executive Dashboard"
+        actions={
+          <div className="flex items-center gap-2">
+            <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
+              <DashboardConfig
+                dateRange={dateRange}
+                projectScope={projectScope}
+                projects={filteredProjects}
+                onDateRangeChange={setDateRange}
+                onProjectScopeChange={setProjectScope}
+                onExportReport={handleExportReport}
+                onRefresh={handleRefresh}
+                isRefreshing={isRefreshing}
+              />
+            </Suspense>
+            <Button onClick={handleExportReport} disabled={isExporting || filteredProjects.length === 0} size="sm">
+              {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Export Report
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Executive Summary Banner */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
+      <div className="border-b bg-gradient-to-r from-slate-50 to-blue-50/50">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold text-foreground">Executive Summary</h2>
-            <div
-              className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                summary.overallStatus === 'critical'
-                  ? 'bg-red-100 text-red-700'
-                  : summary.overallStatus === 'warning'
-                    ? 'bg-yellow-100 text-yellow-700'
-                    : summary.overallStatus === 'excellent'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-blue-100 text-blue-700'
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${
+                STATUS_STYLES[summary.overallStatus] ?? 'bg-blue-100 text-blue-700'
               }`}
             >
-              Status: {summary.overallStatus.toUpperCase()}
-            </div>
+              {summary.overallStatus}
+            </span>
           </div>
           <p className="text-sm text-muted-foreground">{summary.headline}</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
             {summary.keyPoints.slice(0, 4).map((point, index) => (
-              <div key={index} className="text-xs text-muted-foreground">
-                • {point}
+              <div key={index} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <span className="mt-0.5 shrink-0">&#x2022;</span>
+                <span>{point}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Dashboard Grid */}
-      <div className="container mx-auto px-4 py-6">
+      <div className="flex-1 overflow-auto p-6">
         {filteredProjects.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[400px] text-center">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -180,12 +150,9 @@ export function ExecutiveDashboard() {
                 : 'No projects match the selected date range. Adjust the filters or add new projects.'}
             </p>
             {projects.length === 0 && (
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
+              <Button onClick={() => navigate('/dashboard')} variant="outline">
                 Go to Dashboard
-              </button>
+              </Button>
             )}
           </div>
         ) : (
@@ -196,34 +163,82 @@ export function ExecutiveDashboard() {
               </div>
             }
           >
-            <div className="grid grid-cols-9 gap-4 auto-rows-min">
-              {/* Row 1 */}
-              <div className="col-span-3 row-span-4">
-                <RiskGauge metrics={metrics.overall} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <ComplianceStatus compliance={metrics.compliance} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <TeamProductivity productivity={metrics.productivity} />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Card className="md:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Shield className="h-4 w-4 text-blue-600" />
+                    Risk Overview
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <RiskGauge metrics={metrics.overall} />
+                </CardContent>
+              </Card>
 
-              {/* Row 2 */}
-              <div className="col-span-6 row-span-4">
-                <ProjectHealthComparison projectMetrics={metrics.byProject} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <VulnerabilityTrendChart trends={metrics.trends} />
-              </div>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CheckCircle className="h-4 w-4 text-blue-600" />
+                    Compliance Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ComplianceStatus compliance={metrics.compliance} />
+                </CardContent>
+              </Card>
 
-              {/* Row 3 */}
-              <div className="col-span-9 row-span-4">
-                <ActionItems
-                  recommendations={summary.topRecommendations}
-                  topRisks={summary.topRisks}
-                  onProjectClick={handleProjectClick}
-                />
-              </div>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Activity className="h-4 w-4 text-blue-600" />
+                    Team Productivity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TeamProductivity productivity={metrics.productivity} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BarChart className="h-4 w-4 text-blue-600" />
+                    Project Health
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ProjectHealthComparison projectMetrics={metrics.byProject} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <TrendingUp className="h-4 w-4 text-blue-600" />
+                    Vulnerability Trends
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <VulnerabilityTrendChart trends={metrics.trends} />
+                </CardContent>
+              </Card>
+
+              <Card className="md:col-span-2 lg:col-span-3">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <AlertTriangle className="h-4 w-4 text-blue-600" />
+                    Action Items
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ActionItems
+                    recommendations={summary.topRecommendations}
+                    topRisks={summary.topRisks}
+                    onProjectClick={handleProjectClick}
+                  />
+                </CardContent>
+              </Card>
             </div>
           </Suspense>
         )}

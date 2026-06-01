@@ -1,7 +1,6 @@
 import React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft,
   Shield,
   Upload,
   FileText,
@@ -39,6 +38,14 @@ import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
 import { getSecureKeyService } from '@/lib/storage'
 import { enrichVulnerabilities } from '@/lib/services/intelligence/enrichVulnerabilities'
 import type { Vulnerability, FilterPreset, ComponentHealth, ProjectHealthSummary, Component } from '@@/types'
+import { AppHeader } from '@/components/layout/AppHeader'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 type TabValue = 'overview' | 'components' | 'vulnerabilities' | 'health'
 
@@ -72,15 +79,13 @@ export function ProjectDetail() {
   const [copiedVulnId, setCopiedVulnId] = React.useState<string | null>(null)
   const isRefreshing = (projectId != null && refreshingProjectIds.has(projectId)) || isRefreshingVuln
 
-  // Component vulnerabilities popup state
   const [selectedComponent, setSelectedComponent] = React.useState<Component | null>(null)
   const [showComponentVulnPopup, setShowComponentVulnPopup] = React.useState(false)
 
-  // Advanced filter states
   const [cvssRange, setCvssRange] = React.useState<[number, number]>([0, 10])
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([])
   const [referenceTagFilter, setReferenceTagFilter] = React.useState<string[]>([])
-  const [expandedVulns, setExpandedVulns] = React.useState<Set<string>>(new Set()) // Filter presets with localStorage persistence
+  const [expandedVulns, setExpandedVulns] = React.useState<Set<string>>(new Set())
   const [filterPresets, setFilterPresets] = React.useState<FilterPreset[]>(() => {
     try {
       const saved = localStorage.getItem(`vuln-filter-presets-${projectId}`)
@@ -91,7 +96,6 @@ export function ProjectDetail() {
   })
   const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false)
 
-  // Persist filter presets to localStorage when they change
   React.useEffect(() => {
     try {
       localStorage.setItem(`vuln-filter-presets-${projectId}`, JSON.stringify(filterPresets))
@@ -100,10 +104,8 @@ export function ProjectDetail() {
     }
   }, [filterPresets, projectId])
 
-  // Helper function to apply all filters
   const applyAdvancedFilters = (vulns: Vulnerability[]): Vulnerability[] => {
     return vulns.filter((vuln) => {
-      // CVSS score range filter
       if (vuln.cvssScore) {
         const [min, max] = cvssRange
         if (vuln.cvssScore < min || vuln.cvssScore > max) {
@@ -111,12 +113,10 @@ export function ProjectDetail() {
         }
       }
 
-      // Source filter
       if (sourceFilter.length > 0 && !sourceFilter.includes(vuln.source)) {
         return false
       }
 
-      // Reference tag filter
       if (referenceTagFilter.length > 0) {
         const vulnTags = new Set((vuln.references ?? []).flatMap((ref) => (ref.tags ?? []).map((t) => t.toLowerCase())))
         if (!referenceTagFilter.some((tag) => vulnTags.has(tag.toLowerCase()))) {
@@ -128,7 +128,6 @@ export function ProjectDetail() {
     })
   }
 
-  // Save filter preset
   const handleSavePreset = (name: string, filters: FilterPreset['filters']) => {
     const newPreset: FilterPreset = {
       id: Date.now().toString(),
@@ -139,14 +138,12 @@ export function ProjectDetail() {
     toast.success('Preset Saved', `Filter preset "${name}" has been saved.`)
   }
 
-  // Load filter preset
   const handleLoadPreset = (presetId: string) => {
     const preset = filterPresets.find((p) => p.id === presetId)
     if (!preset) return
 
     const { filters } = preset
 
-    // Apply filters to state
     if (filters.severity) {
       setSeverityFilter(filters.severity.length === 1 ? filters.severity[0] : 'all')
     }
@@ -162,13 +159,11 @@ export function ProjectDetail() {
     toast.success('Preset Loaded', `Filter preset "${preset.name}" has been applied.`)
   }
 
-  // Delete filter preset
   const handleDeletePreset = (presetId: string) => {
     setFilterPresets(filterPresets.filter((p) => p.id !== presetId))
     toast.success('Preset Deleted', 'Filter preset has been deleted.')
   }
 
-  // Get current filters for saving
   const getCurrentFilters = (): FilterPreset['filters'] => {
     const filters: FilterPreset['filters'] = {}
 
@@ -187,14 +182,12 @@ export function ProjectDetail() {
     return filters
   }
 
-  // Component filtering state
   const [componentSearch, setComponentSearch] = React.useState('')
   const [componentTypeFilter, setComponentTypeFilter] = React.useState<'all' | Component['type']>('all')
   const [componentVulnFilter, setComponentVulnFilter] = React.useState<'all' | 'vulnerable' | 'safe'>('all')
   const [componentLicenseFilter, setComponentLicenseFilter] = React.useState<string>('all')
   const [componentSort, setComponentSort] = React.useState<'name' | 'version' | 'type'>('name')
 
-  // Handle copy vulnerability ID
   const handleCopyVulnId = async (vulnId: string) => {
     try {
       await navigator.clipboard.writeText(vulnId)
@@ -207,13 +200,11 @@ export function ProjectDetail() {
     }
   }
 
-  // Handle component click to show vulnerabilities popup
   const handleComponentClick = (component: Component) => {
     setSelectedComponent(component)
     setShowComponentVulnPopup(true)
   }
 
-  // Get vulnerabilities for a specific component
   const getVulnerabilitiesForComponent = (componentId: string): Vulnerability[] => {
     return project?.vulnerabilities.filter((v) => v.affectedComponents.includes(componentId)) || []
   }
@@ -223,15 +214,12 @@ export function ProjectDetail() {
     description: string
   }>({ name: '', description: '' })
 
-  // Find project from store - prioritize currentProject from store for better reactivity
-  // When updateProject is called, currentProject is updated directly in the store
   const project = React.useMemo(() => {
     return currentProject?.id === projectId
       ? currentProject
       : projects.find((p) => p.id === projectId) || currentProject
   }, [currentProject, projects, projectId])
 
-  // Extract unique licenses from components for filter dropdown
   const uniqueLicenses = React.useMemo(() => {
     const licenseSet = new Set<string>()
     const components = project?.components || []
@@ -247,8 +235,6 @@ export function ProjectDetail() {
     }
   }, [project, projectId, setCurrentProject])
 
-  // Hydrate scan results from server when component mounts
-  // (vulnerabilities/components are stripped from localStorage by partialize)
   React.useEffect(() => {
     if (!projectId) return
     const needsHydration =
@@ -267,32 +253,21 @@ export function ProjectDetail() {
   if (!project) {
     return (
       <div className="flex min-h-screen flex-col">
-        <header className="border-b border-border bg-background px-6 py-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <h1 className="text-xl font-bold">Project Not Found</h1>
-          </div>
-        </header>
-        <main className="flex-1 p-6">
-          <div className="mx-auto max-w-7xl">
-            <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-12">
-              <Shield className="mb-4 h-16 w-16 text-muted-foreground" />
+        <AppHeader
+          title="Project Not Found"
+          breadcrumbs={[{ label: 'Projects', path: '/dashboard' }, { label: 'Not Found' }]}
+        />
+        <main className="flex flex-1 items-center justify-center p-6">
+          <Card className="max-w-md text-center">
+            <CardContent className="pt-6">
+              <Shield className="mx-auto mb-4 h-16 w-16 text-muted-foreground" />
               <h3 className="text-lg font-medium">Project not found</h3>
-              <p className="text-muted-foreground">The project you're looking for doesn't exist</p>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
+              <p className="mt-1 text-muted-foreground">The project you&apos;re looking for doesn&apos;t exist</p>
+              <Button className="mt-4" onClick={() => navigate('/dashboard')}>
                 Back to Dashboard
-              </button>
-            </div>
-          </div>
+              </Button>
+            </CardContent>
+          </Card>
         </main>
       </div>
     )
@@ -467,7 +442,6 @@ export function ProjectDetail() {
   }
 
   const handleRefreshVulnData = async () => {
-    // API key is now fetched from secure storage, not from settings
     const secureKeyService = getSecureKeyService()
     const apiKey = await secureKeyService.getApiKey('nvd')
     if (!apiKey) {
@@ -485,7 +459,6 @@ export function ProjectDetail() {
       })
 
       if (result.success) {
-        // Update the project with new vulnerabilities
         updateProject(project.id, {
           vulnerabilities: result.vulnerabilities,
           lastVulnDataRefresh: new Date(),
@@ -513,19 +486,12 @@ export function ProjectDetail() {
     const sbomFile = project.sbomFiles.find((f) => f.id === sbomFileId)
     if (!sbomFile) return
 
-    // Find components that belong to this SBOM file
     const componentsToRemove = project.components.filter((c) => c.sbomFileId === sbomFileId)
     const componentIdsToRemove = new Set(componentsToRemove.map((c) => c.id))
 
-    // Remove the SBOM file from the project
     const updatedSbomFiles = project.sbomFiles.filter((f) => f.id !== sbomFileId)
-
-    // Remove components that came from this SBOM file
-    // Keep components that either have no sbomFileId (legacy data) or belong to other SBOMs
     const updatedComponents = project.components.filter((c) => c.sbomFileId !== sbomFileId)
 
-    // Update vulnerabilities: remove affectedComponents references for removed components
-    // If a vulnerability no longer affects any components, remove it entirely
     const updatedVulnerabilities = project.vulnerabilities
       .map((vuln) => ({
         ...vuln,
@@ -533,7 +499,6 @@ export function ProjectDetail() {
       }))
       .filter((vuln) => vuln.affectedComponents.length > 0)
 
-    // Calculate new statistics from remaining vulnerabilities
     const stats = {
       totalVulnerabilities: updatedVulnerabilities.length,
       criticalCount: updatedVulnerabilities.filter((v) => v.severity === 'critical').length,
@@ -542,7 +507,6 @@ export function ProjectDetail() {
       lowCount: updatedVulnerabilities.filter((v) => v.severity === 'low').length,
     }
 
-    // Calculate vulnerable components from remaining vulnerabilities
     const vulnerableComponentIds = new Set(updatedVulnerabilities.flatMap((v) => v.affectedComponents))
 
     updateProject(project.id, {
@@ -574,14 +538,12 @@ export function ProjectDetail() {
     }).format(new Date(date))
   }
 
-  // Helper function to get SBOM filename from sbomFileId
   const getSbomFilename = (sbomFileId: string | undefined): string | null => {
     if (!sbomFileId) return null
     const sbomFile = project.sbomFiles.find((f) => f.id === sbomFileId)
     return sbomFile ? sbomFile.filename : null
   }
 
-  // Helper function to get SBOM filenames for a vulnerability based on affected components
   const getSbomFilenamesForVulnerability = (vuln: Vulnerability): string[] => {
     const sbomIds = new Set<string>()
     for (const componentId of vuln.affectedComponents) {
@@ -595,1078 +557,1045 @@ export function ProjectDetail() {
       .filter((name): name is string => name !== null)
   }
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'overview':
-        return (
-          <div className="mx-auto max-w-7xl mt-6 space-y-6">
-            <h2 className="text-lg font-semibold">Overview</h2>
-            {/* Statistics Cards */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-lg border border-border bg-card p-6">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Shield className="h-4 w-4" />
-                  <span className="text-sm">Components</span>
-                </div>
-                <div className="mt-2 text-3xl font-bold">{project.statistics.totalComponents}</div>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-6">
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span className="text-sm">Critical</span>
-                </div>
-                <div className="mt-2 text-3xl font-bold text-destructive">{project.statistics.criticalCount}</div>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-6">
-                <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span className="text-sm">High</span>
-                </div>
-                <div className="mt-2 text-3xl font-bold text-orange-700 dark:text-orange-400">
-                  {project.statistics.highCount}
-                </div>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-6">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span className="text-sm">Total Vulns</span>
-                </div>
-                <div className="mt-2 text-3xl font-bold">{project.statistics.totalVulnerabilities}</div>
-              </div>
-            </div>
-
-            {/* SBOM Files Section */}
-            <div className="rounded-lg border border-border bg-card">
-              <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="font-semibold">SBOM Files</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowContainerScanDialog(true)}
-                    className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
-                  >
-                    <Container className="h-4 w-4" />
-                    Scan Container
-                  </button>
-                  <button
-                    onClick={() => setShowUploadDialog(true)}
-                    className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
-                  >
-                    <Upload className="h-4 w-4" />
-                    Upload SBOM
-                  </button>
-                </div>
-              </div>
-              <div className="p-4">
-                {project.sbomFiles.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <FileText className="mb-3 h-12 w-12 text-muted-foreground" />
-                    <p className="text-muted-foreground">No SBOM files uploaded yet</p>
-                    <p className="text-sm text-muted-foreground">Upload a CycloneDX or SPDX file to get started</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {project.sbomFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        className="flex items-center justify-between rounded-md border border-border bg-background p-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-muted-foreground" />
-                          <div>
-                            <div className="font-medium">{file.filename}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {file.format} • {file.componentCount} components
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveSbom(file.id)}
-                          className="text-sm text-muted-foreground hover:text-destructive"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Metadata */}
-            <div className="rounded-lg border border-border bg-card p-4">
-              <h2 className="mb-4 font-semibold">Project Information</h2>
-              <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-                <div>
-                  <div className="text-muted-foreground">Created</div>
-                  <div className="font-medium">{formatDate(project.createdAt)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Last Updated</div>
-                  <div className="font-medium">{formatDate(project.updatedAt)}</div>
-                </div>
-                {project.lastScanAt && (
-                  <div>
-                    <div className="text-muted-foreground">Last Scan</div>
-                    <div className="font-medium">{formatDate(project.lastScanAt)}</div>
-                  </div>
-                )}
-                <div>
-                  <div className="text-muted-foreground">Vulnerable Components</div>
-                  <div className="font-medium">{project.statistics.vulnerableComponents}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      case 'components':
-        return (
-          <div className="mx-auto max-w-7xl mt-6 space-y-4">
-            <h2 className="text-lg font-semibold">Components</h2>
-            <div className="rounded-lg border border-border bg-card">
-              <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="font-semibold">Components ({new Set(project.components.map((c) => c.id)).size})</h2>
-                {project.components.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <input
-                      type="text"
-                      placeholder="Search components..."
-                      aria-label="Search components"
-                      value={componentSearch}
-                      onChange={(e) => setComponentSearch(e.target.value)}
-                      className="w-48 rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    <select
-                      value={componentTypeFilter}
-                      onChange={(e) => setComponentTypeFilter(e.target.value as 'all' | Component['type'])}
-                      aria-label="Filter by component type"
-                      className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="all">All Types</option>
-                      <option value="library">Libraries</option>
-                      <option value="framework">Frameworks</option>
-                      <option value="application">Applications</option>
-                      <option value="container">Containers</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <select
-                      value={componentVulnFilter}
-                      onChange={(e) => setComponentVulnFilter(e.target.value as 'all' | 'vulnerable' | 'safe')}
-                      aria-label="Filter by vulnerability status"
-                      className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="all">All</option>
-                      <option value="vulnerable">Has Vulnerabilities</option>
-                      <option value="safe">No Vulnerabilities</option>
-                    </select>
-                    {uniqueLicenses.length > 0 && (
-                      <select
-                        value={componentLicenseFilter}
-                        onChange={(e) => setComponentLicenseFilter(e.target.value)}
-                        aria-label="Filter by license"
-                        className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="all">All Licenses</option>
-                        {uniqueLicenses.map((license) => (
-                          <option key={license} value={license}>
-                            {license}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <select
-                      value={componentSort}
-                      onChange={(e) => setComponentSort(e.target.value as 'name' | 'version' | 'type')}
-                      aria-label="Sort components by"
-                      className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="name">Sort: Name</option>
-                      <option value="version">Sort: Version</option>
-                      <option value="type">Sort: Type</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-              <div className="p-4">
-                {project.components.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <Shield className="mb-3 h-12 w-12 text-muted-foreground" />
-                    <p className="text-muted-foreground">No components found</p>
-                    <p className="text-sm text-muted-foreground">Upload an SBOM file to view components</p>
-                  </div>
-                ) : (
-                  (() => {
-                    // Deduplicate components by ID first to ensure each unique component is shown only once
-                    // This handles cases where the same component might appear from multiple SBOMs
-                    const uniqueComponents = project.components.reduce(
-                      (acc, component) => {
-                        if (!acc.find((c) => c.id === component.id)) {
-                          acc.push(component)
-                        }
-                        return acc
-                      },
-                      [] as typeof project.components,
-                    )
-
-                    // Filter and sort components
-                    let filtered = uniqueComponents.filter((component) => {
-                      const matchesSearch =
-                        !componentSearch ||
-                        component.name.toLowerCase().includes(componentSearch.toLowerCase()) ||
-                        component.version.toLowerCase().includes(componentSearch.toLowerCase())
-
-                      const matchesType = componentTypeFilter === 'all' || component.type === componentTypeFilter
-
-                      // Check if component has vulnerabilities by looking at project.vulnerabilities
-                      // This is more reliable than component.vulnerabilities which may not be synchronized
-                      const componentVulns = project.vulnerabilities.filter((v) =>
-                        v.affectedComponents.includes(component.id),
-                      )
-                      const hasVulnerabilities = componentVulns.length > 0
-
-                      const matchesVuln =
-                        componentVulnFilter === 'all' ||
-                        (componentVulnFilter === 'vulnerable' && hasVulnerabilities) ||
-                        (componentVulnFilter === 'safe' && !hasVulnerabilities)
-
-                      const matchesLicense =
-                        componentLicenseFilter === 'all' || component.licenses.includes(componentLicenseFilter)
-
-                      return matchesSearch && matchesType && matchesVuln && matchesLicense
-                    })
-
-                    // Sort components
-                    filtered = [...filtered].sort((a, b) => {
-                      if (componentSort === 'name') {
-                        return a.name.localeCompare(b.name)
-                      } else if (componentSort === 'version') {
-                        return a.version.localeCompare(b.version)
-                      } else {
-                        return a.type.localeCompare(b.type)
-                      }
-                    })
-
-                    const displayComponents = filtered
-
-                    return (
-                      <>
-                        {displayComponents.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-8 text-center">
-                            <Shield className="mb-3 h-12 w-12 text-muted-foreground" />
-                            <p className="text-muted-foreground">No components match your filters</p>
-                            <button
-                              onClick={() => {
-                                setComponentSearch('')
-                                setComponentTypeFilter('all')
-                                setComponentVulnFilter('all')
-                                setComponentLicenseFilter('all')
-                              }}
-                              className="mt-2 text-sm text-primary hover:underline"
-                            >
-                              Clear filters
-                            </button>
-                          </div>
-                        ) : (
-                          <VirtualList
-                            items={displayComponents}
-                            itemKey="id"
-                            renderItem={(component) => {
-                              const sbomFilename = getSbomFilename(component.sbomFileId)
-                              const componentVulns = getVulnerabilitiesForComponent(component.id)
-                              return (
-                                <div
-                                  key={component.id}
-                                  onClick={() => handleComponentClick(component)}
-                                  className="flex items-center justify-between rounded-md border border-border bg-background p-3 hover:bg-muted/50 transition-colors cursor-pointer"
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault()
-                                      handleComponentClick(component)
-                                    }
-                                  }}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <Shield
-                                      className={`h-5 w-5 ${
-                                        componentVulns.length > 0 ? 'text-destructive' : 'text-muted-foreground'
-                                      }`}
-                                    />
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium">{component.name}</span>
-                                        {sbomFilename && (
-                                          <span className="inline-flex items-center rounded-md bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-600 border border-blue-500/20">
-                                            Source: {sbomFilename}
-                                          </span>
-                                        )}
-                                        {/* CPE Status Indicator */}
-                                        {component.cpe && !component.hasMissingCpe ? (
-                                          <span
-                                            className="inline-flex items-center rounded-md bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 border border-green-500/20"
-                                            title={`CPE: ${component.cpe}`}
-                                          >
-                                            CPE Verified
-                                          </span>
-                                        ) : component.suggestedCpes && component.suggestedCpes.length > 0 ? (
-                                          <span
-                                            className="inline-flex items-center rounded-md bg-yellow-500/10 px-2 py-0.5 text-xs font-medium text-yellow-600 border border-yellow-500/20"
-                                            title={`${component.suggestedCpes.length} suggested CPEs available`}
-                                          >
-                                            CPE Estimated
-                                          </span>
-                                        ) : component.hasMissingCpe ? (
-                                          <span
-                                            className="inline-flex items-center rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-600 border border-red-500/20"
-                                            title="No CPE available - vulnerability matching may be less accurate"
-                                          >
-                                            No CPE
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                                        <span>{component.version}</span>
-                                        <span>•</span>
-                                        <span className="capitalize">{component.type}</span>
-                                        {component.purl && (
-                                          <>
-                                            <span>•</span>
-                                            <span className="font-mono text-xs">{component.purl}</span>
-                                          </>
-                                        )}
-                                        {componentVulns.length > 0 && (
-                                          <span className="text-destructive font-medium">
-                                            • {componentVulns.length} vulnerability
-                                            {componentVulns.length > 1 ? 's' : ''}
-                                          </span>
-                                        )}
-                                        {component.licenses.length > 0 && (
-                                          <>
-                                            <span>•</span>
-                                            <span>{component.licenses.join(', ')}</span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            }}
-                            defaultItemHeight={80}
-                            height="600px"
-                            className="border-0"
-                          />
-                        )}
-                      </>
-                    )
-                  })()
-                )}
-              </div>
-            </div>
-          </div>
-        )
-
-      case 'vulnerabilities':
-        return (
-          <div className="mx-auto max-w-7xl mt-6 space-y-4">
-            <h2 className="text-lg font-semibold">Vulnerabilities</h2>
-            <div className="rounded-lg border border-border bg-card">
-              <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="font-semibold">Vulnerabilities ({project.vulnerabilities.length})</h2>
-                {project.vulnerabilities.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <FilterPresets
-                      presets={filterPresets}
-                      currentFilters={getCurrentFilters()}
-                      onSavePreset={handleSavePreset}
-                      onLoadPreset={handleLoadPreset}
-                      onDeletePreset={handleDeletePreset}
-                    />
-                    <button
-                      onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                      className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
-                    >
-                      <Filter className="h-4 w-4" />
-                      Advanced Filters
-                      {showAdvancedFilters ? <CheckCircle2 className="h-4 w-4" /> : null}
-                    </button>
-                    <select
-                      value={severityFilter}
-                      onChange={(e) => setSeverityFilter(e.target.value as 'all' | Vulnerability['severity'])}
-                      className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="all">All Severities</option>
-                      <option value="critical">Critical</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {/* Advanced Filters Panel */}
-              {showAdvancedFilters && (
-                <div className="border-b border-border bg-muted/30 p-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <CvssRangeSlider value={cvssRange} onChange={setCvssRange} />
-                    <MultiSelectFilter
-                      label="Source"
-                      options={[
-                        { value: 'nvd', label: 'NVD' },
-                        { value: 'osv', label: 'OSV' },
-                        { value: 'both', label: 'Both' },
-                      ]}
-                      selected={sourceFilter}
-                      onChange={setSourceFilter}
-                    />
-                    <MultiSelectFilter
-                      label="Reference Tags"
-                      options={[
-                        { value: 'exploit', label: 'Exploit' },
-                        { value: 'patch', label: 'Patch Available' },
-                        { value: 'vendor advisory', label: 'Vendor Advisory' },
-                        { value: 'third party advisory', label: 'Third Party Advisory' },
-                        { value: 'mitigation', label: 'Mitigation' },
-                        { value: 'release notes', label: 'Release Notes' },
-                      ]}
-                      selected={referenceTagFilter}
-                      onChange={setReferenceTagFilter}
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {(sourceFilter.length > 0 ||
-                        referenceTagFilter.length > 0 ||
-                        cvssRange[0] !== 0 ||
-                        cvssRange[1] !== 10) && <span>Advanced filters active</span>}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setCvssRange([0, 10])
-                        setSourceFilter([])
-                        setReferenceTagFilter([])
-                      }}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Clear Advanced Filters
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="p-4">
-                {project.vulnerabilities.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <AlertTriangle className="mb-3 h-12 w-12 text-muted-foreground" />
-                    <p className="text-muted-foreground">No vulnerabilities found</p>
-                    <p className="text-sm text-muted-foreground">
-                      Run a vulnerability scan to check for security issues
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {(() => {
-                      // Filter by exact severity (not minimum severity)
-                      let filteredVulns =
-                        severityFilter === 'all'
-                          ? project.vulnerabilities
-                          : project.vulnerabilities.filter((v) => v.severity === severityFilter)
-                      // Apply advanced filters
-                      filteredVulns = applyAdvancedFilters(filteredVulns)
-                      const sortedVulns = sortBySeverity(filteredVulns)
-
-                      // Group by severity
-                      const groupedVulns = {
-                        critical: sortedVulns.filter((v) => v.severity === 'critical'),
-                        high: sortedVulns.filter((v) => v.severity === 'high'),
-                        medium: sortedVulns.filter((v) => v.severity === 'medium'),
-                        low: sortedVulns.filter((v) => v.severity === 'low'),
-                      }
-
-                      const severityConfig = {
-                        critical: {
-                          label: 'Critical',
-                          color: 'text-destructive',
-                          bgColor: 'bg-destructive/10',
-                          borderColor: 'border-destructive/30',
-                        },
-                        high: {
-                          label: 'High',
-                          color: 'text-orange-700 dark:text-orange-400',
-                          bgColor: 'bg-orange-500/10',
-                          borderColor: 'border-orange-500/30',
-                        },
-                        medium: {
-                          label: 'Medium',
-                          color: 'text-amber-700 dark:text-amber-400',
-                          bgColor: 'bg-yellow-600/10',
-                          borderColor: 'border-yellow-600/30',
-                        },
-                        low: {
-                          label: 'Low',
-                          color: 'text-blue-700 dark:text-blue-400',
-                          bgColor: 'bg-blue-500/10',
-                          borderColor: 'border-blue-500/30',
-                        },
-                      }
-
-                      return sortedVulns.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-center">
-                          <Filter className="mb-3 h-12 w-12 text-muted-foreground" />
-                          <p className="text-muted-foreground">No vulnerabilities match the current filters</p>
-                          <p className="text-sm text-muted-foreground">Try adjusting your filter settings</p>
-                          <button
-                            onClick={() => {
-                              setSeverityFilter('all')
-                              setCvssRange([0, 10])
-                              setSourceFilter([])
-                              setReferenceTagFilter([])
-                            }}
-                            className="mt-2 text-sm text-primary hover:underline"
-                          >
-                            Clear all filters
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          {Object.entries(groupedVulns)
-                            .filter(([_, vulns]) => vulns.length > 0)
-                            .map(([severity, vulns]) => {
-                              const config = severityConfig[severity as keyof typeof severityConfig]
-                              return (
-                                <div
-                                  key={severity}
-                                  className={`rounded-lg border ${config.borderColor} ${config.bgColor}`}
-                                >
-                                  {/* Severity Header */}
-                                  <div
-                                    className={`flex items-center justify-between border-b ${config.borderColor} bg-background px-4 py-3`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <AlertTriangle className={`h-5 w-5 ${config.color}`} />
-                                      <h3 className={`font-semibold ${config.color}`}>{config.label}</h3>
-                                    </div>
-                                    <span className={`text-sm font-medium ${config.color}`}>
-                                      {vulns.length} {vulns.length === 1 ? 'vulnerability' : 'vulnerabilities'}
-                                    </span>
-                                  </div>
-
-                                  {/* Vulnerabilities in this severity group */}
-                                  <VirtualList
-                                    items={vulns}
-                                    itemKey="id"
-                                    renderItem={(vuln) => {
-                                      const { primaryId, aliases } = formatVulnerabilityId(vuln)
-                                      const sbomFilenames = getSbomFilenamesForVulnerability(vuln)
-                                      const isExpanded = expandedVulns.has(vuln.id)
-                                      const hasDetails =
-                                        (vuln.cwes?.length ?? 0) > 0 || (vuln.references?.length ?? 0) > 0
-                                      const refTags = new Set(
-                                        (vuln.references ?? []).flatMap((ref) =>
-                                          (ref.tags ?? []).map((t) => t.toLowerCase()),
-                                        ),
-                                      )
-                                      const hasExploitRef = refTags.has('exploit')
-                                      const hasPatchRef = refTags.has('patch') || refTags.has('vendor advisory')
-                                      const hasMitigationRef = refTags.has('mitigation')
-                                      return (
-                                        <>
-                                          <div className="bg-background hover:bg-muted/50 transition-colors">
-                                            <div className="flex flex-col md:flex-row md:items-center justify-between p-3 gap-2">
-                                              <div className="flex items-start md:items-center gap-3 min-w-0 flex-1">
-                                                <button
-                                                  onClick={() => {
-                                                    setExpandedVulns((prev) => {
-                                                      const next = new Set(prev)
-                                                      if (next.has(vuln.id)) {
-                                                        next.delete(vuln.id)
-                                                      } else {
-                                                        next.add(vuln.id)
-                                                      }
-                                                      return next
-                                                    })
-                                                  }}
-                                                  className="shrink-0 mt-0.5 md:mt-0"
-                                                  aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
-                                                >
-                                                  {isExpanded ? (
-                                                    <ChevronDown className={`h-4 w-4 ${config.color}`} />
-                                                  ) : (
-                                                    <ChevronRight className={`h-4 w-4 ${config.color}`} />
-                                                  )}
-                                                </button>
-                                                <div className="min-w-0 flex-1">
-                                                  <div className="font-medium flex flex-wrap items-center gap-1.5 md:gap-2">
-                                                    {primaryId}
-                                                    <KevBadge
-                                                      isKev={vuln.isKev ?? false}
-                                                      knownRansomwareUse={vuln.kevDetails?.knownRansomwareUse}
-                                                      compact
-                                                    />
-                                                    {vuln.riskScore !== undefined && (
-                                                      <RiskScoreBadge
-                                                        isKev={vuln.isKev ?? false}
-                                                        epssPercentile={vuln.epssPercentile ?? null}
-                                                        severity={
-                                                          vuln.severity.toUpperCase() as
-                                                            | 'CRITICAL'
-                                                            | 'HIGH'
-                                                            | 'MEDIUM'
-                                                            | 'LOW'
-                                                            | 'NONE'
-                                                        }
-                                                      />
-                                                    )}
-                                                    {vuln.cwes?.map((cwe) => (
-                                                      <span
-                                                        key={cwe}
-                                                        className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
-                                                      >
-                                                        {cwe}
-                                                      </span>
-                                                    ))}
-                                                    {hasExploitRef && (
-                                                      <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900/40 dark:text-red-300">
-                                                        Exploit
-                                                      </span>
-                                                    )}
-                                                    {hasPatchRef && (
-                                                      <span className="inline-flex items-center rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                                                        Patch
-                                                      </span>
-                                                    )}
-                                                    {hasMitigationRef && (
-                                                      <span className="inline-flex items-center rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-medium text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300">
-                                                        Mitigation
-                                                      </span>
-                                                    )}
-                                                    {aliases.length > 0 && (
-                                                      <span className="text-xs text-muted-foreground font-normal truncate max-w-[120px] md:max-w-none">
-                                                        (aka: {aliases.slice(0, 2).join(', ')}
-                                                        {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                  <div className="text-sm text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
-                                                    <span className="whitespace-nowrap">
-                                                      {vuln.sources
-                                                        ? vuln.sources.map((s) => s.toUpperCase()).join(' + ')
-                                                        : vuln.source.toUpperCase()}
-                                                    </span>
-                                                    {vuln.cvssScore && (
-                                                      <span className="whitespace-nowrap">CVSS: {vuln.cvssScore}</span>
-                                                    )}
-                                                    {sbomFilenames.length > 0 && (
-                                                      <span className="whitespace-nowrap hidden sm:inline">
-                                                        From: {sbomFilenames.slice(0, 1).join(', ')}
-                                                        {sbomFilenames.length > 1
-                                                          ? ` +${sbomFilenames.length - 1}`
-                                                          : ''}
-                                                      </span>
-                                                    )}
-                                                    {vuln.affectedComponents.length > 0 && (
-                                                      <span className="whitespace-nowrap hidden sm:inline">
-                                                        {vuln.affectedComponents.length} component
-                                                        {vuln.affectedComponents.length > 1 ? 's' : ''}
-                                                      </span>
-                                                    )}
-                                                    {(vuln.references?.length ?? 0) > 0 && (
-                                                      <span className="whitespace-nowrap">
-                                                        {vuln.references?.length} ref
-                                                        {(vuln.references?.length ?? 0) > 1 ? 's' : ''}
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                </div>
-                                              </div>
-                                              <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                                                <button
-                                                  onClick={() => handleCopyVulnId(primaryId)}
-                                                  className="flex items-center gap-1 rounded border border-border bg-secondary px-2 py-1 text-xs font-medium hover:bg-secondary/80 transition-colors"
-                                                  aria-label={`Copy ${primaryId} to clipboard`}
-                                                >
-                                                  <Copy className="h-3.5 w-3.5" />
-                                                  <span className="hidden sm:inline">
-                                                    {copiedVulnId === primaryId ? 'Copied' : 'Copy'}
-                                                  </span>
-                                                </button>
-                                                <button
-                                                  onClick={() => {
-                                                    setSelectedVulnerability(vuln)
-                                                    setShowVulnDetail(true)
-                                                  }}
-                                                  className="text-sm text-primary hover:underline whitespace-nowrap"
-                                                >
-                                                  View Details
-                                                </button>
-                                              </div>
-                                            </div>
-                                            {isExpanded && hasDetails && (
-                                              <div className="border-t border-border px-4 pb-3 pt-2 ml-7 md:ml-11 space-y-2">
-                                                {vuln.cwes && vuln.cwes.length > 0 && (
-                                                  <div className="flex flex-wrap items-center gap-1.5">
-                                                    <span className="text-xs font-medium text-muted-foreground">
-                                                      CWE:
-                                                    </span>
-                                                    {vuln.cwes.map((cwe) => (
-                                                      <a
-                                                        key={cwe}
-                                                        href={`https://cwe.mitre.org/data/definitions/${cwe.replace('CWE-', '')}.html`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
-                                                      >
-                                                        {cwe}
-                                                        <ExternalLink className="h-2.5 w-2.5" />
-                                                      </a>
-                                                    ))}
-                                                  </div>
-                                                )}
-                                                {vuln.references && vuln.references.length > 0 && (
-                                                  <div>
-                                                    <span className="text-xs font-medium text-muted-foreground">
-                                                      References:
-                                                    </span>
-                                                    <div className="mt-1 space-y-1">
-                                                      {vuln.references.slice(0, 5).map((ref, idx) => {
-                                                        const tagColors = (ref.tags ?? []).map((t) => {
-                                                          const lower = t.toLowerCase()
-                                                          if (lower === 'exploit')
-                                                            return 'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
-                                                          if (lower === 'patch')
-                                                            return 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
-                                                          if (lower === 'vendor advisory')
-                                                            return 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
-                                                          if (lower === 'mitigation')
-                                                            return 'text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20'
-                                                          if (lower === 'third party advisory')
-                                                            return 'text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
-                                                          return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40'
-                                                        })
-                                                        return (
-                                                          <div key={idx} className="flex items-start gap-1.5 text-xs">
-                                                            <a
-                                                              href={ref.url}
-                                                              target="_blank"
-                                                              rel="noopener noreferrer"
-                                                              className="text-primary hover:underline truncate max-w-[400px]"
-                                                            >
-                                                              {ref.url.length > 80
-                                                                ? ref.url.substring(0, 80) + '...'
-                                                                : ref.url}
-                                                            </a>
-                                                            {ref.tags && ref.tags.length > 0 && (
-                                                              <div className="flex gap-1 shrink-0 flex-wrap">
-                                                                {ref.tags.map((tag, tagIdx) => (
-                                                                  <span
-                                                                    key={tagIdx}
-                                                                    className={`rounded px-1 py-0.5 text-[9px] font-medium ${tagColors[tagIdx] ?? tagColors[0] ?? ''}`}
-                                                                  >
-                                                                    {tag}
-                                                                  </span>
-                                                                ))}
-                                                              </div>
-                                                            )}
-                                                          </div>
-                                                        )
-                                                      })}
-                                                      {vuln.references.length > 5 && (
-                                                        <span className="text-xs text-muted-foreground">
-                                                          +{vuln.references.length - 5} more references
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                        </>
-                                      )
-                                    }}
-                                    defaultItemHeight={100}
-                                    height={vulns.length < 7 ? vulns.length * 100 : 400}
-                                    className="divide-y divide-border border-0"
-                                  />
-                                </div>
-                              )
-                            })}
-                        </>
-                      )
-                    })()}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )
-
-      case 'health':
-        // Calculate health scores for all components
-        const componentHealths: ComponentHealth[] = project.components.map((component) => {
-          const componentVulns = project.vulnerabilities.filter((v) => v.affectedComponents.includes(component.id))
-          return calculateComponentHealth(component, componentVulns)
-        })
-
-        // Calculate trends for components (in a real app, you'd fetch historical data)
-        const componentHealthsWithTrends = componentHealths.map((health) => ({
-          ...health,
-          trend: calculateTrend(health.score, health.previousScore),
-        }))
-
-        // Calculate project health summary
-        const projectHealth: ProjectHealthSummary = calculateProjectHealth(componentHealthsWithTrends)
-
-        return (
-          <div className="mx-auto max-w-7xl mt-6 space-y-6">
-            <h2 className="text-lg font-semibold">Component Health Dashboard</h2>
-
-            {/* Health Dashboard */}
-            <HealthDashboard
-              projectHealth={projectHealth}
-              componentHealths={componentHealthsWithTrends}
-              components={project.components}
-            />
-
-            {/* Remediation Queue */}
-            <div>
-              <h3 className="mb-4 text-lg font-semibold">Remediation Queue</h3>
-              <RemediationQueue
-                componentHealths={componentHealthsWithTrends}
-                components={project.components}
-                vulnerabilities={project.vulnerabilities}
-                onViewComponent={handleComponentClick}
-                onViewVulnerability={(vuln) => {
-                  setSelectedVulnerability(vuln)
-                  setShowVulnDetail(true)
-                }}
-              />
-            </div>
-          </div>
-        )
-
-      default:
-        return null
-    }
-  }
-
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-xl font-bold">{project.name}</h1>
-                <button onClick={handleEditProject} className="text-sm text-muted-foreground hover:text-foreground">
-                  Edit
-                </button>
-              </div>
-              <div className="mt-1 flex items-center gap-3">
-                {project.description && <p className="text-sm text-muted-foreground">{project.description}</p>}
-                <StalenessIndicator
-                  lastRefresh={project.lastVulnDataRefresh}
-                  settings={settings}
-                  onRefresh={handleRefreshVulnData}
-                  isRefreshing={isRefreshing}
-                  compact
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
+      <AppHeader
+        title={project.name}
+        breadcrumbs={[{ label: 'Projects', path: '/dashboard' }, { label: project.name }]}
+        actions={
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setShowUploadDialog(true)}>
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              Upload
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowContainerScanDialog(true)}>
+              <Container className="mr-1.5 h-3.5 w-3.5" />
+              Container
+            </Button>
             {isScanning ? (
-              <div className="flex flex-col gap-1">
-                <button
-                  disabled
-                  className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground opacity-75"
-                >
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Scanning {scanProgress}%
-                </button>
-                {scanPhase && (
-                  <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
-                    <p className="text-xs text-muted-foreground truncate max-w-xs">{scanPhase}</p>
-                    {scanLog.length > 0 && (
-                      <div className="mt-1 space-y-0.5">
-                        {scanLog.slice(-3).map((line, idx) => (
-                          <p key={idx} className="text-xs text-muted-foreground/70 truncate">
-                            {line}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <Button size="sm" disabled>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                {scanProgress}%
+              </Button>
             ) : (
-              <button
-                onClick={handleScan}
-                disabled={project.components.length === 0}
-                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Search className="h-4 w-4" />
-                Scan for Vulnerabilities
-              </button>
+              <Button size="sm" onClick={handleScan} disabled={project.components.length === 0}>
+                <Search className="mr-1.5 h-3.5 w-3.5" />
+                Scan
+              </Button>
             )}
-            <button
-              onClick={() => setShowExportDialog(true)}
-              className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
-            >
-              <Download className="h-4 w-4" />
+            <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
               Export
-            </button>
-            <button
-              onClick={() => navigate(`/project/${projectId}/fpf`)}
-              className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
-            >
-              <Shield className="h-4 w-4" />
-              False Positive Filter
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/project/${projectId}/fpf`)}>
+              <Shield className="mr-1.5 h-3.5 w-3.5" />
+              FPF
+            </Button>
+            <div className="mx-1 h-5 w-px bg-border" />
+            <Button variant="ghost" size="sm" onClick={handleEditProject}>
+              Edit
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleDeleteProject}
-              className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+              className="text-destructive hover:text-destructive"
             >
               Delete
-            </button>
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="border-b border-border px-6 py-2">
+        <div className="mx-auto flex max-w-7xl items-center gap-4">
+          {project.description && <p className="text-sm text-muted-foreground truncate">{project.description}</p>}
+          <div className="ml-auto flex items-center">
+            <StalenessIndicator
+              lastRefresh={project.lastVulnDataRefresh}
+              settings={settings}
+              onRefresh={handleRefreshVulnData}
+              isRefreshing={isRefreshing}
+              compact
+            />
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="flex-1 p-6">
-        <div className="mx-auto max-w-7xl">
-          {/* Tab Navigation */}
-          <div className="border-b border-border">
-            <nav className="flex gap-4" role="tablist">
-              <button
-                role="tab"
-                aria-selected={activeTab === 'overview'}
-                onClick={() => setActiveTab('overview')}
-                className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'overview'
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Overview
-              </button>
-              <button
-                role="tab"
-                aria-selected={activeTab === 'components'}
-                onClick={() => setActiveTab('components')}
-                className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'components'
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Components
-              </button>
-              <button
-                role="tab"
-                aria-selected={activeTab === 'vulnerabilities'}
-                onClick={() => setActiveTab('vulnerabilities')}
-                className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'vulnerabilities'
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Vulnerabilities
-              </button>
-              <button
-                role="tab"
-                aria-selected={activeTab === 'health'}
-                onClick={() => setActiveTab('health')}
-                className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'health'
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Health
-              </button>
-            </nav>
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        {renderTabContent()}
-      </main>
-
-      {/* Edit Project Dialog */}
-      {showEditDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setShowEditDialog(false)} aria-hidden="true" />
-          <div className="relative z-50 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
-            <h2 className="mb-4 text-lg font-semibold">Edit Project</h2>
-            <form onSubmit={handleSaveProject} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="edit-name" className="text-sm font-medium">
-                  Project Name
-                </label>
-                <input
-                  id="edit-name"
-                  type="text"
-                  value={editingProject.name}
-                  onChange={(e) => setEditingProject({ ...editingProject, name: e.target.value })}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  autoFocus
-                />
+      {isScanning && (
+        <div className="border-b border-border bg-blue-50/50 px-6 py-3">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-blue-900">{scanPhase}</span>
+              <Badge variant="secondary">{scanProgress}%</Badge>
+            </div>
+            <Progress value={scanProgress} className="h-1.5" />
+            {scanLog.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {scanLog.slice(-3).map((line, idx) => (
+                  <p key={idx} className="text-xs text-muted-foreground/70 truncate">
+                    {line}
+                  </p>
+                ))}
               </div>
-              <div className="space-y-2">
-                <label htmlFor="edit-description" className="text-sm font-medium">
-                  Description
-                </label>
-                <textarea
-                  id="edit-description"
-                  value={editingProject.description}
-                  onChange={(e) => setEditingProject({ ...editingProject, description: e.target.value })}
-                  rows={3}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
-              </div>
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowEditDialog(false)}
-                  className="rounded-md border border-border bg-secondary px-4 py-2 text-sm hover:bg-secondary/80"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}
 
-      {/* SBOM Upload Dialog */}
+      <main className="flex-1 p-6">
+        <div className="mx-auto max-w-7xl">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="components">
+                Components
+                <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">
+                  {new Set(project.components.map((c) => c.id)).size}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="vulnerabilities">
+                Vulnerabilities
+                <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">
+                  {project.vulnerabilities.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="health">Health</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="mt-6 space-y-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Components
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{project.statistics.totalComponents}</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-red-200">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2 text-destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      Critical
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-destructive">{project.statistics.criticalCount}</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-orange-200">
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2 text-orange-700">
+                      <AlertTriangle className="h-4 w-4" />
+                      High
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-orange-700">{project.statistics.highCount}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      Total Vulnerabilities
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{project.statistics.totalVulnerabilities}</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                  <CardTitle>SBOM Files</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setShowContainerScanDialog(true)}>
+                      <Container className="mr-1.5 h-3.5 w-3.5" />
+                      Scan Container
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setShowUploadDialog(true)}>
+                      <Upload className="mr-1.5 h-3.5 w-3.5" />
+                      Upload SBOM
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {project.sbomFiles.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <FileText className="mb-3 h-12 w-12 text-muted-foreground" />
+                      <p className="text-muted-foreground">No SBOM files uploaded yet</p>
+                      <p className="text-sm text-muted-foreground">Upload a CycloneDX or SPDX file to get started</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {project.sbomFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between rounded-lg border border-border bg-background p-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-muted-foreground" />
+                            <div>
+                              <div className="font-medium">{file.filename}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {file.format} &bull; {file.componentCount} components
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveSbom(file.id)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Project Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+                    <div>
+                      <div className="text-muted-foreground">Created</div>
+                      <div className="font-medium">{formatDate(project.createdAt)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Last Updated</div>
+                      <div className="font-medium">{formatDate(project.updatedAt)}</div>
+                    </div>
+                    {project.lastScanAt && (
+                      <div>
+                        <div className="text-muted-foreground">Last Scan</div>
+                        <div className="font-medium">{formatDate(project.lastScanAt)}</div>
+                      </div>
+                    )}
+                    <div>
+                      <div className="text-muted-foreground">Vulnerable Components</div>
+                      <div className="font-medium">{project.statistics.vulnerableComponents}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="components" className="mt-6">
+              <Card>
+                <CardHeader className="space-y-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Components ({new Set(project.components.map((c) => c.id)).size})</CardTitle>
+                  </div>
+                  {project.components.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        type="text"
+                        placeholder="Search components..."
+                        aria-label="Search components"
+                        value={componentSearch}
+                        onChange={(e) => setComponentSearch(e.target.value)}
+                        className="w-56"
+                      />
+                      <Select
+                        value={componentTypeFilter}
+                        onValueChange={(v) => setComponentTypeFilter(v as 'all' | Component['type'])}
+                      >
+                        <SelectTrigger className="w-[130px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Types</SelectItem>
+                          <SelectItem value="library">Libraries</SelectItem>
+                          <SelectItem value="framework">Frameworks</SelectItem>
+                          <SelectItem value="application">Applications</SelectItem>
+                          <SelectItem value="container">Containers</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={componentVulnFilter}
+                        onValueChange={(v) => setComponentVulnFilter(v as 'all' | 'vulnerable' | 'safe')}
+                      >
+                        <SelectTrigger className="w-[160px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="vulnerable">Has Vulnerabilities</SelectItem>
+                          <SelectItem value="safe">No Vulnerabilities</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {uniqueLicenses.length > 0 && (
+                        <Select value={componentLicenseFilter} onValueChange={setComponentLicenseFilter}>
+                          <SelectTrigger className="w-[150px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Licenses</SelectItem>
+                            {uniqueLicenses.map((license) => (
+                              <SelectItem key={license} value={license}>
+                                {license}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Select
+                        value={componentSort}
+                        onValueChange={(v) => setComponentSort(v as 'name' | 'version' | 'type')}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="name">Sort: Name</SelectItem>
+                          <SelectItem value="version">Sort: Version</SelectItem>
+                          <SelectItem value="type">Sort: Type</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {project.components.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <Shield className="mb-3 h-12 w-12 text-muted-foreground" />
+                      <p className="text-muted-foreground">No components found</p>
+                      <p className="text-sm text-muted-foreground">Upload an SBOM file to view components</p>
+                    </div>
+                  ) : (
+                    (() => {
+                      const uniqueComponents = project.components.reduce(
+                        (acc, component) => {
+                          if (!acc.find((c) => c.id === component.id)) {
+                            acc.push(component)
+                          }
+                          return acc
+                        },
+                        [] as typeof project.components,
+                      )
+
+                      let filtered = uniqueComponents.filter((component) => {
+                        const matchesSearch =
+                          !componentSearch ||
+                          component.name.toLowerCase().includes(componentSearch.toLowerCase()) ||
+                          component.version.toLowerCase().includes(componentSearch.toLowerCase())
+
+                        const matchesType = componentTypeFilter === 'all' || component.type === componentTypeFilter
+
+                        const componentVulns = project.vulnerabilities.filter((v) =>
+                          v.affectedComponents.includes(component.id),
+                        )
+                        const hasVulnerabilities = componentVulns.length > 0
+
+                        const matchesVuln =
+                          componentVulnFilter === 'all' ||
+                          (componentVulnFilter === 'vulnerable' && hasVulnerabilities) ||
+                          (componentVulnFilter === 'safe' && !hasVulnerabilities)
+
+                        const matchesLicense =
+                          componentLicenseFilter === 'all' || component.licenses.includes(componentLicenseFilter)
+
+                        return matchesSearch && matchesType && matchesVuln && matchesLicense
+                      })
+
+                      filtered = [...filtered].sort((a, b) => {
+                        if (componentSort === 'name') {
+                          return a.name.localeCompare(b.name)
+                        } else if (componentSort === 'version') {
+                          return a.version.localeCompare(b.version)
+                        } else {
+                          return a.type.localeCompare(b.type)
+                        }
+                      })
+
+                      const displayComponents = filtered
+
+                      return (
+                        <>
+                          {displayComponents.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-center">
+                              <Shield className="mb-3 h-12 w-12 text-muted-foreground" />
+                              <p className="text-muted-foreground">No components match your filters</p>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                onClick={() => {
+                                  setComponentSearch('')
+                                  setComponentTypeFilter('all')
+                                  setComponentVulnFilter('all')
+                                  setComponentLicenseFilter('all')
+                                }}
+                              >
+                                Clear filters
+                              </Button>
+                            </div>
+                          ) : (
+                            <VirtualList
+                              items={displayComponents}
+                              itemKey="id"
+                              renderItem={(component) => {
+                                const sbomFilename = getSbomFilename(component.sbomFileId)
+                                const componentVulns = getVulnerabilitiesForComponent(component.id)
+                                return (
+                                  <div
+                                    key={component.id}
+                                    onClick={() => handleComponentClick(component)}
+                                    className="flex cursor-pointer items-center justify-between rounded-lg border border-border bg-background p-3 transition-colors hover:bg-muted/50"
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault()
+                                        handleComponentClick(component)
+                                      }
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Shield
+                                        className={`h-5 w-5 ${
+                                          componentVulns.length > 0 ? 'text-destructive' : 'text-muted-foreground'
+                                        }`}
+                                      />
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium">{component.name}</span>
+                                          {sbomFilename && (
+                                            <Badge variant="secondary" className="text-[10px]">
+                                              Source: {sbomFilename}
+                                            </Badge>
+                                          )}
+                                          {component.cpe && !component.hasMissingCpe ? (
+                                            <Badge className="bg-green-500/10 text-green-700 border-green-500/20 text-[10px]">
+                                              CPE Verified
+                                            </Badge>
+                                          ) : component.suggestedCpes && component.suggestedCpes.length > 0 ? (
+                                            <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 text-[10px]">
+                                              CPE Estimated
+                                            </Badge>
+                                          ) : component.hasMissingCpe ? (
+                                            <Badge className="bg-red-500/10 text-red-700 border-red-500/20 text-[10px]">
+                                              No CPE
+                                            </Badge>
+                                          ) : null}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                                          <span>{component.version}</span>
+                                          <span>&bull;</span>
+                                          <span className="capitalize">{component.type}</span>
+                                          {component.purl && (
+                                            <>
+                                              <span>&bull;</span>
+                                              <span className="font-mono text-xs">{component.purl}</span>
+                                            </>
+                                          )}
+                                          {componentVulns.length > 0 && (
+                                            <span className="font-medium text-destructive">
+                                              &bull; {componentVulns.length} vulnerability
+                                              {componentVulns.length > 1 ? 's' : ''}
+                                            </span>
+                                          )}
+                                          {component.licenses.length > 0 && (
+                                            <>
+                                              <span>&bull;</span>
+                                              <span>{component.licenses.join(', ')}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              }}
+                              defaultItemHeight={80}
+                              height="600px"
+                              className="border-0"
+                            />
+                          )}
+                        </>
+                      )
+                    })()
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="vulnerabilities" className="mt-6 space-y-4">
+              <Card>
+                <CardHeader className="space-y-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Vulnerabilities ({project.vulnerabilities.length})</CardTitle>
+                    {project.vulnerabilities.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <FilterPresets
+                          presets={filterPresets}
+                          currentFilters={getCurrentFilters()}
+                          onSavePreset={handleSavePreset}
+                          onLoadPreset={handleLoadPreset}
+                          onDeletePreset={handleDeletePreset}
+                        />
+                        <Button
+                          variant={showAdvancedFilters ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                        >
+                          <Filter className="mr-1.5 h-3.5 w-3.5" />
+                          Advanced
+                          {showAdvancedFilters && <CheckCircle2 className="ml-1.5 h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {project.vulnerabilities.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      {(['all', 'critical', 'high', 'medium', 'low'] as const).map((sev) => {
+                        const isActive = severityFilter === sev
+                        const count =
+                          sev === 'all'
+                            ? project.vulnerabilities.length
+                            : project.vulnerabilities.filter((v) => v.severity === sev).length
+                        return (
+                          <Badge
+                            key={sev}
+                            variant={isActive ? 'default' : 'outline'}
+                            className={`cursor-pointer select-none ${
+                              isActive && sev === 'critical'
+                                ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
+                                : isActive && sev === 'high'
+                                  ? 'bg-orange-600 hover:bg-orange-700 text-white border-orange-600'
+                                  : isActive && sev === 'medium'
+                                    ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600'
+                                    : isActive && sev === 'low'
+                                      ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                                      : ''
+                            }`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSeverityFilter(sev)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                setSeverityFilter(sev)
+                              }
+                            }}
+                          >
+                            {sev === 'all' ? 'All' : sev.charAt(0).toUpperCase() + sev.slice(1)} ({count})
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  )}
+                </CardHeader>
+
+                {showAdvancedFilters && (
+                  <div className="border-b border-border bg-muted/30 p-6">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <CvssRangeSlider value={cvssRange} onChange={setCvssRange} />
+                      <MultiSelectFilter
+                        label="Source"
+                        options={[
+                          { value: 'nvd', label: 'NVD' },
+                          { value: 'osv', label: 'OSV' },
+                          { value: 'both', label: 'Both' },
+                        ]}
+                        selected={sourceFilter}
+                        onChange={setSourceFilter}
+                      />
+                      <MultiSelectFilter
+                        label="Reference Tags"
+                        options={[
+                          { value: 'exploit', label: 'Exploit' },
+                          { value: 'patch', label: 'Patch Available' },
+                          { value: 'vendor advisory', label: 'Vendor Advisory' },
+                          { value: 'third party advisory', label: 'Third Party Advisory' },
+                          { value: 'mitigation', label: 'Mitigation' },
+                          { value: 'release notes', label: 'Release Notes' },
+                        ]}
+                        selected={referenceTagFilter}
+                        onChange={setReferenceTagFilter}
+                      />
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        {(sourceFilter.length > 0 ||
+                          referenceTagFilter.length > 0 ||
+                          cvssRange[0] !== 0 ||
+                          cvssRange[1] !== 10) && <span>Advanced filters active</span>}
+                      </span>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => {
+                          setCvssRange([0, 10])
+                          setSourceFilter([])
+                          setReferenceTagFilter([])
+                        }}
+                      >
+                        Clear Advanced Filters
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <CardContent>
+                  {project.vulnerabilities.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <AlertTriangle className="mb-3 h-12 w-12 text-muted-foreground" />
+                      <p className="text-muted-foreground">No vulnerabilities found</p>
+                      <p className="text-sm text-muted-foreground">
+                        Run a vulnerability scan to check for security issues
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {(() => {
+                        let filteredVulns =
+                          severityFilter === 'all'
+                            ? project.vulnerabilities
+                            : project.vulnerabilities.filter((v) => v.severity === severityFilter)
+                        filteredVulns = applyAdvancedFilters(filteredVulns)
+                        const sortedVulns = sortBySeverity(filteredVulns)
+
+                        const groupedVulns = {
+                          critical: sortedVulns.filter((v) => v.severity === 'critical'),
+                          high: sortedVulns.filter((v) => v.severity === 'high'),
+                          medium: sortedVulns.filter((v) => v.severity === 'medium'),
+                          low: sortedVulns.filter((v) => v.severity === 'low'),
+                        }
+
+                        const severityConfig = {
+                          critical: {
+                            label: 'Critical',
+                            color: 'text-destructive',
+                            bgColor: 'bg-destructive/10',
+                            borderColor: 'border-destructive/30',
+                          },
+                          high: {
+                            label: 'High',
+                            color: 'text-orange-700 dark:text-orange-400',
+                            bgColor: 'bg-orange-500/10',
+                            borderColor: 'border-orange-500/30',
+                          },
+                          medium: {
+                            label: 'Medium',
+                            color: 'text-amber-700 dark:text-amber-400',
+                            bgColor: 'bg-yellow-600/10',
+                            borderColor: 'border-yellow-600/30',
+                          },
+                          low: {
+                            label: 'Low',
+                            color: 'text-blue-700 dark:text-blue-400',
+                            bgColor: 'bg-blue-500/10',
+                            borderColor: 'border-blue-500/30',
+                          },
+                        }
+
+                        return sortedVulns.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-8 text-center">
+                            <Filter className="mb-3 h-12 w-12 text-muted-foreground" />
+                            <p className="text-muted-foreground">No vulnerabilities match the current filters</p>
+                            <p className="text-sm text-muted-foreground">Try adjusting your filter settings</p>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={() => {
+                                setSeverityFilter('all')
+                                setCvssRange([0, 10])
+                                setSourceFilter([])
+                                setReferenceTagFilter([])
+                              }}
+                            >
+                              Clear all filters
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            {Object.entries(groupedVulns)
+                              .filter(([, vulns]) => vulns.length > 0)
+                              .map(([severity, vulns]) => {
+                                const config = severityConfig[severity as keyof typeof severityConfig]
+                                return (
+                                  <div
+                                    key={severity}
+                                    className={`rounded-lg border ${config.borderColor} ${config.bgColor}`}
+                                  >
+                                    <div
+                                      className={`flex items-center justify-between border-b ${config.borderColor} bg-background px-4 py-3`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <AlertTriangle className={`h-5 w-5 ${config.color}`} />
+                                        <h3 className={`font-semibold ${config.color}`}>{config.label}</h3>
+                                      </div>
+                                      <Badge variant="outline" className={config.color}>
+                                        {vulns.length} {vulns.length === 1 ? 'vulnerability' : 'vulnerabilities'}
+                                      </Badge>
+                                    </div>
+
+                                    <VirtualList
+                                      items={vulns}
+                                      itemKey="id"
+                                      renderItem={(vuln) => {
+                                        const { primaryId, aliases } = formatVulnerabilityId(vuln)
+                                        const sbomFilenames = getSbomFilenamesForVulnerability(vuln)
+                                        const isExpanded = expandedVulns.has(vuln.id)
+                                        const hasDetails =
+                                          (vuln.cwes?.length ?? 0) > 0 || (vuln.references?.length ?? 0) > 0
+                                        const refTags = new Set(
+                                          (vuln.references ?? []).flatMap((ref) =>
+                                            (ref.tags ?? []).map((t) => t.toLowerCase()),
+                                          ),
+                                        )
+                                        const hasExploitRef = refTags.has('exploit')
+                                        const hasPatchRef = refTags.has('patch') || refTags.has('vendor advisory')
+                                        const hasMitigationRef = refTags.has('mitigation')
+                                        return (
+                                          <>
+                                            <div className="bg-background transition-colors hover:bg-muted/50">
+                                              <div className="flex flex-col gap-2 p-3 md:flex-row md:items-center md:justify-between">
+                                                <div className="flex min-w-0 flex-1 items-start gap-3 md:items-center">
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 shrink-0"
+                                                    onClick={() => {
+                                                      setExpandedVulns((prev) => {
+                                                        const next = new Set(prev)
+                                                        if (next.has(vuln.id)) {
+                                                          next.delete(vuln.id)
+                                                        } else {
+                                                          next.add(vuln.id)
+                                                        }
+                                                        return next
+                                                      })
+                                                    }}
+                                                    aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                                                  >
+                                                    {isExpanded ? (
+                                                      <ChevronDown className={`h-4 w-4 ${config.color}`} />
+                                                    ) : (
+                                                      <ChevronRight className={`h-4 w-4 ${config.color}`} />
+                                                    )}
+                                                  </Button>
+                                                  <div className="min-w-0 flex-1">
+                                                    <div className="flex flex-wrap items-center gap-1.5 font-medium md:gap-2">
+                                                      {primaryId}
+                                                      <KevBadge
+                                                        isKev={vuln.isKev ?? false}
+                                                        knownRansomwareUse={vuln.kevDetails?.knownRansomwareUse}
+                                                        compact
+                                                      />
+                                                      {vuln.riskScore !== undefined && (
+                                                        <RiskScoreBadge
+                                                          isKev={vuln.isKev ?? false}
+                                                          epssPercentile={vuln.epssPercentile ?? null}
+                                                          severity={
+                                                            vuln.severity.toUpperCase() as
+                                                              | 'CRITICAL'
+                                                              | 'HIGH'
+                                                              | 'MEDIUM'
+                                                              | 'LOW'
+                                                              | 'NONE'
+                                                          }
+                                                        />
+                                                      )}
+                                                      {vuln.cwes?.map((cwe) => (
+                                                        <Badge
+                                                          key={cwe}
+                                                          className="bg-blue-100 text-blue-800 text-[10px] dark:bg-blue-900/40 dark:text-blue-300"
+                                                        >
+                                                          {cwe}
+                                                        </Badge>
+                                                      ))}
+                                                      {hasExploitRef && (
+                                                        <Badge className="bg-red-100 text-red-800 text-[10px] dark:bg-red-900/40 dark:text-red-300">
+                                                          Exploit
+                                                        </Badge>
+                                                      )}
+                                                      {hasPatchRef && (
+                                                        <Badge className="bg-green-100 text-green-800 text-[10px] dark:bg-green-900/40 dark:text-green-300">
+                                                          Patch
+                                                        </Badge>
+                                                      )}
+                                                      {hasMitigationRef && (
+                                                        <Badge className="bg-cyan-100 text-cyan-800 text-[10px] dark:bg-cyan-900/40 dark:text-cyan-300">
+                                                          Mitigation
+                                                        </Badge>
+                                                      )}
+                                                      {aliases.length > 0 && (
+                                                        <span className="max-w-[120px] truncate text-xs font-normal text-muted-foreground md:max-w-none">
+                                                          (aka: {aliases.slice(0, 2).join(', ')}
+                                                          {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+                                                      <span className="whitespace-nowrap">
+                                                        {vuln.sources
+                                                          ? vuln.sources.map((s) => s.toUpperCase()).join(' + ')
+                                                          : vuln.source.toUpperCase()}
+                                                      </span>
+                                                      {vuln.cvssScore && (
+                                                        <span className="whitespace-nowrap">
+                                                          CVSS: {vuln.cvssScore}
+                                                        </span>
+                                                      )}
+                                                      {sbomFilenames.length > 0 && (
+                                                        <span className="hidden whitespace-nowrap sm:inline">
+                                                          From: {sbomFilenames.slice(0, 1).join(', ')}
+                                                          {sbomFilenames.length > 1
+                                                            ? ` +${sbomFilenames.length - 1}`
+                                                            : ''}
+                                                        </span>
+                                                      )}
+                                                      {vuln.affectedComponents.length > 0 && (
+                                                        <span className="hidden whitespace-nowrap sm:inline">
+                                                          {vuln.affectedComponents.length} component
+                                                          {vuln.affectedComponents.length > 1 ? 's' : ''}
+                                                        </span>
+                                                      )}
+                                                      {(vuln.references?.length ?? 0) > 0 && (
+                                                        <span className="whitespace-nowrap">
+                                                          {vuln.references?.length} ref
+                                                          {(vuln.references?.length ?? 0) > 1 ? 's' : ''}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-2 self-end md:self-center">
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleCopyVulnId(primaryId)}
+                                                    aria-label={`Copy ${primaryId} to clipboard`}
+                                                  >
+                                                    <Copy className="mr-1 h-3.5 w-3.5" />
+                                                    <span className="hidden sm:inline">
+                                                      {copiedVulnId === primaryId ? 'Copied' : 'Copy'}
+                                                    </span>
+                                                  </Button>
+                                                  <Button
+                                                    variant="link"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                      setSelectedVulnerability(vuln)
+                                                      setShowVulnDetail(true)
+                                                    }}
+                                                    className="whitespace-nowrap"
+                                                  >
+                                                    View Details
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                              {isExpanded && hasDetails && (
+                                                <div className="ml-7 space-y-2 border-t border-border px-4 pb-3 pt-2 md:ml-11">
+                                                  {vuln.cwes && vuln.cwes.length > 0 && (
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                      <span className="text-xs font-medium text-muted-foreground">
+                                                        CWE:
+                                                      </span>
+                                                      {vuln.cwes.map((cwe) => (
+                                                        <a
+                                                          key={cwe}
+                                                          href={`https://cwe.mitre.org/data/definitions/${cwe.replace('CWE-', '')}.html`}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
+                                                        >
+                                                          {cwe}
+                                                          <ExternalLink className="h-2.5 w-2.5" />
+                                                        </a>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                  {vuln.references && vuln.references.length > 0 && (
+                                                    <div>
+                                                      <span className="text-xs font-medium text-muted-foreground">
+                                                        References:
+                                                      </span>
+                                                      <div className="mt-1 space-y-1">
+                                                        {vuln.references.slice(0, 5).map((ref, idx) => {
+                                                          const tagColors = (ref.tags ?? []).map((t) => {
+                                                            const lower = t.toLowerCase()
+                                                            if (lower === 'exploit')
+                                                              return 'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
+                                                            if (lower === 'patch')
+                                                              return 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                                                            if (lower === 'vendor advisory')
+                                                              return 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                                                            if (lower === 'mitigation')
+                                                              return 'text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20'
+                                                            if (lower === 'third party advisory')
+                                                              return 'text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
+                                                            return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40'
+                                                          })
+                                                          return (
+                                                            <div key={idx} className="flex items-start gap-1.5 text-xs">
+                                                              <a
+                                                                href={ref.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="max-w-[400px] truncate text-primary hover:underline"
+                                                              >
+                                                                {ref.url.length > 80
+                                                                  ? ref.url.substring(0, 80) + '...'
+                                                                  : ref.url}
+                                                              </a>
+                                                              {ref.tags && ref.tags.length > 0 && (
+                                                                <div className="flex shrink-0 flex-wrap gap-1">
+                                                                  {ref.tags.map((tag, tagIdx) => (
+                                                                    <span
+                                                                      key={tagIdx}
+                                                                      className={`rounded px-1 py-0.5 text-[9px] font-medium ${tagColors[tagIdx] ?? tagColors[0] ?? ''}`}
+                                                                    >
+                                                                      {tag}
+                                                                    </span>
+                                                                  ))}
+                                                                </div>
+                                                              )}
+                                                            </div>
+                                                          )
+                                                        })}
+                                                        {vuln.references.length > 5 && (
+                                                          <span className="text-xs text-muted-foreground">
+                                                            +{vuln.references.length - 5} more references
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </>
+                                        )
+                                      }}
+                                      defaultItemHeight={100}
+                                      height={vulns.length < 7 ? vulns.length * 100 : 400}
+                                      className="divide-y divide-border border-0"
+                                    />
+                                  </div>
+                                )
+                              })}
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="health" className="mt-6 space-y-6">
+              {(() => {
+                const componentHealths: ComponentHealth[] = project.components.map((component) => {
+                  const componentVulns = project.vulnerabilities.filter((v) =>
+                    v.affectedComponents.includes(component.id),
+                  )
+                  return calculateComponentHealth(component, componentVulns)
+                })
+
+                const componentHealthsWithTrends = componentHealths.map((health) => ({
+                  ...health,
+                  trend: calculateTrend(health.score, health.previousScore),
+                }))
+
+                const projectHealth: ProjectHealthSummary = calculateProjectHealth(componentHealthsWithTrends)
+
+                return (
+                  <>
+                    <HealthDashboard
+                      projectHealth={projectHealth}
+                      componentHealths={componentHealthsWithTrends}
+                      components={project.components}
+                    />
+
+                    <div>
+                      <h3 className="mb-4 text-lg font-semibold">Remediation Queue</h3>
+                      <RemediationQueue
+                        componentHealths={componentHealthsWithTrends}
+                        components={project.components}
+                        vulnerabilities={project.vulnerabilities}
+                        onViewComponent={handleComponentClick}
+                        onViewVulnerability={(vuln) => {
+                          setSelectedVulnerability(vuln)
+                          setShowVulnDetail(true)
+                        }}
+                      />
+                    </div>
+                  </>
+                )
+              })()}
+            </TabsContent>
+          </Tabs>
+        </div>
+      </main>
+
+      {showEditDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setShowEditDialog(false)} aria-hidden="true" />
+          <Card className="relative z-50 w-full max-w-md">
+            <CardHeader>
+              <CardTitle>Edit Project</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSaveProject} className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="edit-name" className="text-sm font-medium">
+                    Project Name
+                  </label>
+                  <Input
+                    id="edit-name"
+                    value={editingProject.name}
+                    onChange={(e) => setEditingProject({ ...editingProject, name: e.target.value })}
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="edit-description" className="text-sm font-medium">
+                    Description
+                  </label>
+                  <textarea
+                    id="edit-description"
+                    value={editingProject.description}
+                    onChange={(e) => setEditingProject({ ...editingProject, description: e.target.value })}
+                    rows={3}
+                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">Save Changes</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <SbomUploadDialog open={showUploadDialog} onClose={() => setShowUploadDialog(false)} projectId={projectId} />
 
-      {/* Container Scan Dialog */}
       <ContainerScanDialog
         open={showContainerScanDialog}
         onClose={() => setShowContainerScanDialog(false)}
         projectId={projectId}
       />
 
-      {/* Vulnerability Detail Modal */}
       {selectedVulnerability && (
         <VulnerabilityDetailModal
           vulnerability={selectedVulnerability}
@@ -1678,10 +1607,8 @@ export function ProjectDetail() {
         />
       )}
 
-      {/* Export Dialog */}
       <ExportDialog open={showExportDialog} onClose={() => setShowExportDialog(false)} project={project} />
 
-      {/* Component Vulnerabilities Popup */}
       {selectedComponent && (
         <ComponentVulnerabilitiesPopup
           component={selectedComponent}

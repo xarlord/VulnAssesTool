@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Check,
   AlertCircle,
-  ArrowLeft,
 } from 'lucide-react'
 import { getPlatform } from '@/lib/platform'
 import { useProjects } from '@/store/useStore'
@@ -26,9 +25,14 @@ import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
+import { AppHeader } from '@/components/layout/AppHeader'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { CveResult, NvdSearchRequest } from '@@/types'
 
-// Type definitions for Electron API
 type NvdSearchType = 'cve-id' | 'cpe' | 'text'
 
 interface DeltaSyncProgress {
@@ -88,14 +92,12 @@ export function Search() {
   const [selectedCveId, setSelectedCveId] = useState<string | null>(null)
   const [showCveModal, setShowCveModal] = useState(false)
 
-  // Sync state
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<DeltaSyncProgress | null>(null)
   const [syncResult, setSyncResult] = useState<DeltaSyncResult | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [nvdStats, setNvdStats] = useState<NvdDetailedStats | null>(null)
 
-  // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(query)
@@ -104,12 +106,10 @@ export function Search() {
     return () => clearTimeout(timer)
   }, [query])
 
-  // Build search index for project search
   const searchIndexData = useMemo(() => {
     return buildSearchIndex(projects)
   }, [projects])
 
-  // Perform project search
   const searchResults = useMemo(() => {
     if (searchMode !== 'projects' || !isValidSearchQuery(debouncedQuery)) {
       return []
@@ -117,27 +117,22 @@ export function Search() {
     return searchIndex(searchIndexData, debouncedQuery)
   }, [searchIndexData, debouncedQuery, searchMode])
 
-  // Group project results
   const groupedResults = useMemo(() => {
     return groupSearchResults(searchResults)
   }, [searchResults])
 
-  // Get counts
   const counts = useMemo(() => {
     return getSearchResultCounts(searchResults)
   }, [searchResults])
 
-  // Get suggestions
   const suggestions = useMemo(() => {
     return getSearchSuggestions(searchIndexData, debouncedQuery, 5)
   }, [searchIndexData, debouncedQuery])
 
-  // Check FTS availability on mount
   useEffect(() => {
     const checkFtsAvailability = async () => {
       const available = await isFtsAvailable()
       setFtsAvailable(available)
-      // Set default search type based on availability
       if (available) {
         setNvdSearchMode('fts')
       }
@@ -145,7 +140,6 @@ export function Search() {
     checkFtsAvailability()
   }, [])
 
-  // Setup sync progress listeners
   useEffect(() => {
     if (!getPlatform()?.database) return
 
@@ -158,7 +152,6 @@ export function Search() {
       setSyncResult(result)
       setIsSyncing(false)
       setSyncProgress(null)
-      // Refresh stats after sync
       fetchNvdStats()
     })
 
@@ -175,7 +168,6 @@ export function Search() {
     }
   }, [])
 
-  // Fetch NVD stats
   const fetchNvdStats = useCallback(async () => {
     if (!getPlatform()?.database?.getDetailedStats) return
     try {
@@ -188,14 +180,12 @@ export function Search() {
     }
   }, [])
 
-  // Fetch stats when switching to NVD mode
   useEffect(() => {
     if (searchMode === 'nvd') {
       fetchNvdStats()
     }
   }, [searchMode, fetchNvdStats])
 
-  // Start sync
   const handleStartSync = async () => {
     if (!getPlatform()?.database?.startDeltaSync) return
 
@@ -226,7 +216,6 @@ export function Search() {
     }
   }
 
-  // Cancel sync
   const handleCancelSync = async () => {
     if (!getPlatform()?.database?.cancelSync) return
     await getPlatform().database.cancelSync()
@@ -234,7 +223,6 @@ export function Search() {
     setSyncProgress(null)
   }
 
-  // Format time remaining
   const formatTimeRemaining = (ms: number): string => {
     if (ms <= 0) return ''
     const seconds = Math.floor(ms / 1000)
@@ -244,7 +232,6 @@ export function Search() {
     return `${minutes}m ${remainingSeconds}s remaining`
   }
 
-  // NVD Database search using IPC
   useEffect(() => {
     const performNvdSearch = async () => {
       if (searchMode === 'nvd' && debouncedQuery && isValidSearchQuery(debouncedQuery)) {
@@ -252,7 +239,6 @@ export function Search() {
         setNvdError('')
 
         try {
-          // Check if Electron API is available
           if (!getPlatform()?.database) {
             setNvdError('Database API not available. Please make sure you are running in Electron.')
             setNvdResults([])
@@ -260,17 +246,12 @@ export function Search() {
             return
           }
 
-          // Detect search type based on query format
           let searchType: NvdSearchType = 'text'
           const trimmedQuery = debouncedQuery.trim()
 
-          // CVE ID format: CVE-YYYY-NNNNN (complete CVE ID only - requires 4-7 digits after the year)
-          // Partial CVE IDs (like CVE-2024-123) should be treated as text searches
           if (/^CVE-\d{4}-\d{4,7}$/i.test(trimmedQuery)) {
             searchType = 'cve-id'
-          }
-          // CPE format starts with cpe:
-          else if (trimmedQuery.toLowerCase().startsWith('cpe:')) {
+          } else if (trimmedQuery.toLowerCase().startsWith('cpe:')) {
             searchType = 'cpe'
           }
 
@@ -298,7 +279,6 @@ export function Search() {
           setNvdLoading(false)
         }
       } else {
-        // Clear results when not in NVD mode or query is empty
         setNvdError('')
         setNvdResults([])
         setNvdLoading(false)
@@ -308,7 +288,6 @@ export function Search() {
     performNvdSearch()
   }, [debouncedQuery, searchMode])
 
-  // Handle navigation to result
   const handleResultClick = (result: (typeof searchResults)[0]) => {
     if (result.type === 'project') {
       navigate(`/project/${result.projectId}`)
@@ -317,7 +296,6 @@ export function Search() {
     }
   }
 
-  // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -337,7 +315,6 @@ export function Search() {
     }
   }
 
-  // Clear search
   const handleClear = () => {
     setQuery('')
     setSelectedIndex(-1)
@@ -347,208 +324,183 @@ export function Search() {
     setSyncError(null)
   }
 
-  // Handle NVD result click
   const handleNvdResultClick = (cveId: string) => {
     setSelectedCveId(cveId)
     setShowCveModal(true)
   }
 
-  // Close CVE modal
   const handleCloseCveModal = () => {
     setShowCveModal(false)
     setSelectedCveId(null)
+  }
+
+  const handleTabChange = (value: string) => {
+    const mode = value as SearchMode
+    setSearchMode(mode)
+    setSelectedIndex(-1)
+    setNvdError('')
+    if (mode === 'projects') {
+      setNvdResults([])
+    }
   }
 
   const ResultIcon = ({ type, severity }: { type: string; severity?: string }) => {
     if (type === 'vulnerability' || severity) {
       let colorClass = 'text-muted-foreground'
       if (severity === 'critical' || severity === 'CRITICAL') colorClass = 'text-destructive'
-      else if (severity === 'high' || severity === 'HIGH') colorClass = 'text-orange-700 dark:text-orange-400'
-      else if (severity === 'medium' || severity === 'MEDIUM') colorClass = 'text-amber-700 dark:text-amber-400'
-      else if (severity === 'low' || severity === 'LOW') colorClass = 'text-blue-700 dark:text-blue-400'
+      else if (severity === 'high' || severity === 'HIGH') colorClass = 'text-orange-600'
+      else if (severity === 'medium' || severity === 'MEDIUM') colorClass = 'text-amber-600'
+      else if (severity === 'low' || severity === 'LOW') colorClass = 'text-blue-600'
 
-      return <AlertTriangle className={`h-5 w-5 ${colorClass}`} />
+      return <AlertTriangle className={`h-4 w-4 ${colorClass}`} />
     }
     switch (type) {
       case 'project':
-        return <Shield className="h-5 w-5 text-primary" />
+        return <Shield className="h-4 w-4 text-primary" />
       case 'component':
-        return <Package className="h-5 w-5 text-blue-500" />
+        return <Package className="h-4 w-4 text-blue-500" />
       default:
         return null
     }
   }
 
-  const getSeverityColor = (severity: string) => {
+  const getSeverityBadgeClasses = (severity: string): string => {
     const s = severity?.toLowerCase()
     switch (s) {
       case 'critical':
-        return 'text-destructive'
+        return 'bg-red-100 text-red-800 border-red-200 hover:bg-red-100'
       case 'high':
-        return 'text-orange-700 dark:text-orange-400'
+        return 'bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-100'
       case 'medium':
-        return 'text-amber-700 dark:text-amber-400'
+        return 'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100'
       case 'low':
-        return 'text-blue-700 dark:text-blue-400'
+        return 'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-100'
       default:
-        return 'text-muted-foreground'
+        return 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-100'
     }
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-4xl flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold">Search</h1>
-            <p className="text-sm text-muted-foreground">Search across all projects, components, and vulnerabilities</p>
-          </div>
-        </div>
-      </header>
+    <div className="flex flex-col h-full">
+      <AppHeader title="Search" />
 
-      {/* Main Content */}
-      <main className="flex-1 p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
-          {/* Search Mode Toggle */}
-          <div className="flex gap-2 rounded-lg border border-border bg-muted/50 p-1">
-            <button
-              onClick={() => {
-                setSearchMode('projects')
-                setNvdResults([])
-                setSelectedIndex(-1)
-                setNvdError('')
-              }}
-              className={`flex items-center gap-2 rounded-md px-4 py-2 min-h-[44px] text-sm font-medium transition-colors ${
-                searchMode === 'projects'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Shield className="h-4 w-4" />
-              Project Search
-            </button>
-            <button
-              onClick={() => {
-                setSearchMode('nvd')
-                setSelectedIndex(-1)
-                setNvdError('')
-              }}
-              className={`flex items-center gap-2 rounded-md px-4 py-2 min-h-[44px] text-sm font-medium transition-colors ${
-                searchMode === 'nvd'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Database className="h-4 w-4" />
-              NVD Database
-              {ftsAvailable && (
-                <span className="ml-1 rounded bg-green-500/10 px-1.5 py-0.5 text-xs text-green-600">FTS Enabled</span>
-              )}
-            </button>
-          </div>
+      <div className="flex-1 overflow-auto">
+        <div className="mx-auto max-w-4xl p-6 space-y-6">
+          <Tabs value={searchMode} onValueChange={handleTabChange}>
+            <TabsList className="w-full sm:w-auto">
+              <TabsTrigger value="projects" className="gap-2 px-4">
+                <Shield className="h-4 w-4" />
+                Project Search
+              </TabsTrigger>
+              <TabsTrigger value="nvd" className="gap-2 px-4">
+                <Database className="h-4 w-4" />
+                NVD Database
+                {ftsAvailable && (
+                  <Badge variant="secondary" className="ml-1 bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0">
+                    FTS
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-          {/* Sync Button - Only show in NVD mode */}
           {searchMode === 'nvd' && (
-            <div className="flex items-center gap-3">
-              {/* Stats Display */}
-              {nvdStats && !isSyncing && (
-                <div className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{nvdStats.totalCves.toLocaleString()}</span> CVEs in
-                  database
-                  {nvdStats.lastSuccessfulSync && (
-                    <span className="ml-2">
-                      • Last sync: {new Date(nvdStats.lastSuccessfulSync).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Sync Button */}
-              {isSyncing && syncProgress ? (
-                <button
-                  onClick={handleCancelSync}
-                  className="flex items-center gap-2 rounded-lg border-2 border-orange-400 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100 transition-all"
-                >
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <div className="flex flex-col items-start">
-                    <span className="text-xs">
-                      {syncProgress.phase === 'checking' && 'Checking for updates...'}
-                      {syncProgress.phase === 'fetching' && `Fetching: ${syncProgress.cvesFetched} CVEs`}
-                      {syncProgress.phase === 'importing' && `Importing: ${syncProgress.cvesProcessed} CVEs`}
-                    </span>
-                    {syncProgress.phase === 'checking' ? (
-                      <div className="w-24 h-1 bg-orange-200 rounded overflow-hidden mt-1">
-                        <div className="h-full bg-orange-600 animate-pulse" style={{ width: '100%' }} />
-                      </div>
-                    ) : (
-                      <span className="text-xs font-bold">
-                        {syncProgress.percentage > 0 ? `${Math.round(syncProgress.percentage)}%` : '...'}
-                        {syncProgress.estimatedTimeRemainingMs > 0 &&
-                          ` - ${formatTimeRemaining(syncProgress.estimatedTimeRemainingMs)}`}
+            <Card className="bg-card">
+              <CardContent className="flex flex-wrap items-center gap-3 p-3">
+                {nvdStats && !isSyncing && (
+                  <div className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">{nvdStats.totalCves.toLocaleString()}</span> CVEs in
+                    database
+                    {nvdStats.lastSuccessfulSync && (
+                      <span className="ml-2 text-xs">
+                        &middot; Last sync: {new Date(nvdStats.lastSuccessfulSync).toLocaleDateString()}
                       </span>
                     )}
                   </div>
-                  <X className="h-4 w-4 ml-2" />
-                </button>
-              ) : syncResult && !syncError ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 rounded-lg border border-green-400 bg-green-50 px-3 py-1.5 text-sm text-green-700">
-                    <Check className="h-4 w-4" />
-                    <span>Synced {syncResult.cvesAdded + syncResult.cvesUpdated} CVEs</span>
+                )}
+
+                {isSyncing && syncProgress ? (
+                  <div className="flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-1.5">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-orange-600" />
+                    <div className="flex flex-col text-xs text-orange-800">
+                      <span>
+                        {syncProgress.phase === 'checking' && 'Checking for updates...'}
+                        {syncProgress.phase === 'fetching' && `Fetching: ${syncProgress.cvesFetched} CVEs`}
+                        {syncProgress.phase === 'importing' && `Importing: ${syncProgress.cvesProcessed} CVEs`}
+                      </span>
+                      {syncProgress.phase === 'checking' ? (
+                        <div className="mt-1 h-1 w-20 overflow-hidden rounded bg-orange-200">
+                          <div className="h-full w-full animate-pulse bg-orange-600" />
+                        </div>
+                      ) : (
+                        <span className="font-semibold">
+                          {syncProgress.percentage > 0 ? `${Math.round(syncProgress.percentage)}%` : '...'}
+                          {syncProgress.estimatedTimeRemainingMs > 0 &&
+                            ` - ${formatTimeRemaining(syncProgress.estimatedTimeRemainingMs)}`}
+                        </span>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="icon" className="ml-1 h-6 w-6" onClick={handleCancelSync}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setSyncResult(null)
-                      handleStartSync()
-                    }}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Sync Again
-                  </button>
-                </div>
-              ) : syncError ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 rounded-lg border border-red-400 bg-red-50 px-3 py-1.5 text-sm text-red-700">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>{syncError}</span>
+                ) : syncResult && !syncError ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="gap-1 border-emerald-300 bg-emerald-50 text-emerald-700">
+                      <Check className="h-3 w-3" />
+                      Synced {syncResult.cvesAdded + syncResult.cvesUpdated} CVEs
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSyncResult(null)
+                        handleStartSync()
+                      }}
+                      className="gap-1.5"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Sync Again
+                    </Button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setSyncError(null)
-                      handleStartSync()
-                    }}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                ) : syncError ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="gap-1 border-red-300 bg-red-50 text-red-700">
+                      <AlertCircle className="h-3 w-3" />
+                      {syncError}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSyncError(null)
+                        handleStartSync()
+                      }}
+                      className="gap-1.5"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Retry
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    data-testid="nvd-sync-button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStartSync}
+                    className="gap-1.5"
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    Retry
-                  </button>
-                </div>
-              ) : (
-                <button
-                  data-testid="nvd-sync-button"
-                  onClick={handleStartSync}
-                  className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Sync NVD Data
-                </button>
-              )}
-            </div>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Sync NVD Data
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           )}
 
-          {/* Search Input */}
           <div className="relative">
-            <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <SearchIcon className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               type="text"
               data-testid="nvd-search-input"
               value={query}
@@ -560,129 +512,143 @@ export function Search() {
               placeholder={
                 searchMode === 'projects'
                   ? 'Search projects, components, vulnerabilities...'
-                  : 'Search NVD database by CVE ID (CVE-YYYY-NNNN) or CPE text...'
+                  : 'Search NVD by CVE ID (CVE-YYYY-NNNN) or CPE text...'
               }
-              className="w-full rounded-lg border border-border bg-background pl-12 pr-12 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-ring"
+              className="h-11 pl-10 pr-10 text-base"
               autoFocus
             />
             {query && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={handleClear}
                 aria-label="Clear search"
-                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7"
               >
-                <X className="h-5 w-5" />
-              </button>
+                <X className="h-4 w-4" />
+              </Button>
             )}
           </div>
 
-          {/* Suggestions - only for project search */}
           {searchMode === 'projects' &&
             query &&
             isValidSearchQuery(debouncedQuery) &&
             suggestions.length > 0 &&
             searchResults.length === 0 && (
-              <div className="rounded-lg border border-border bg-card p-4">
-                <div className="text-sm text-muted-foreground mb-2">Suggestions</div>
-                <div className="space-y-1">
-                  {suggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setQuery(suggestion)}
-                      className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted transition-colors"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <Card>
+                <CardContent className="p-2">
+                  <p className="px-3 pt-2 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Suggestions
+                  </p>
+                  <div className="space-y-0.5">
+                    {suggestions.map((suggestion, index) => (
+                      <Button
+                        key={index}
+                        variant="ghost"
+                        className="w-full justify-start text-sm font-normal h-8 px-3"
+                        onClick={() => setQuery(suggestion)}
+                      >
+                        {suggestion}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
-          {/* Results */}
           {debouncedQuery && isValidSearchQuery(debouncedQuery) ? (
             <>
               {searchMode === 'projects' &&
                 (searchResults.length > 0 ? (
                   <div className="space-y-6">
-                    {/* Result Counts */}
-                    <div className="text-sm text-muted-foreground">
-                      Found {counts.total} result{counts.total !== 1 ? 's' : ''} ({counts.projects} projects,{' '}
-                      {counts.components} components, {counts.vulnerabilities} vulnerabilities)
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Found <span className="font-semibold text-foreground">{counts.total}</span> result
+                      {counts.total !== 1 ? 's' : ''} &middot; {counts.projects} projects, {counts.components}{' '}
+                      components, {counts.vulnerabilities} vulnerabilities
+                    </p>
 
-                    {/* Projects Section */}
                     {groupedResults.projects.length > 0 && (
                       <div>
-                        <h2 className="mb-3 text-lg font-semibold">Projects</h2>
+                        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Projects
+                        </h3>
                         <div className="space-y-2">
                           {groupedResults.projects.map((result) => (
-                            <div
+                            <Card
                               key={result.id}
-                              onClick={() => handleResultClick(result)}
-                              className={`flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-4 hover:bg-muted/50 transition-colors ${
+                              className={`cursor-pointer transition-colors hover:bg-accent/50 ${
                                 selectedIndex === searchResults.indexOf(result) ? 'ring-2 ring-ring' : ''
                               }`}
+                              onClick={() => handleResultClick(result)}
                             >
-                              <ResultIcon type={result.type} />
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium">{result.title}</div>
-                                <div className="mt-1 text-sm text-muted-foreground line-clamp-1">
-                                  {result.description}
+                              <CardContent className="flex items-start gap-3 p-4">
+                                <ResultIcon type={result.type} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium leading-tight">{result.title}</p>
+                                  <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+                                    {result.description}
+                                  </p>
                                 </div>
-                              </div>
-                            </div>
+                              </CardContent>
+                            </Card>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Components Section */}
                     {groupedResults.components.length > 0 && (
                       <div>
-                        <h2 className="mb-3 text-lg font-semibold">Components</h2>
+                        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Components
+                        </h3>
                         <div className="space-y-2">
                           {groupedResults.components.map((result) => (
-                            <div
+                            <Card
                               key={result.id}
-                              onClick={() => handleResultClick(result)}
-                              className={`flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-4 hover:bg-muted/50 transition-colors ${
+                              className={`cursor-pointer transition-colors hover:bg-accent/50 ${
                                 selectedIndex === searchResults.indexOf(result) ? 'ring-2 ring-ring' : ''
                               }`}
+                              onClick={() => handleResultClick(result)}
                             >
-                              <ResultIcon type={result.type} />
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium">{result.title}</div>
-                                <div className="mt-1 text-sm text-muted-foreground">{result.description}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">in {result.projectName}</div>
-                              </div>
-                            </div>
+                              <CardContent className="flex items-start gap-3 p-4">
+                                <ResultIcon type={result.type} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium leading-tight">{result.title}</p>
+                                  <p className="mt-1 text-sm text-muted-foreground">{result.description}</p>
+                                  <p className="mt-0.5 text-xs text-muted-foreground/70">in {result.projectName}</p>
+                                </div>
+                              </CardContent>
+                            </Card>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Vulnerabilities Section */}
                     {groupedResults.vulnerabilities.length > 0 && (
                       <div>
-                        <h2 className="mb-3 text-lg font-semibold">Vulnerabilities</h2>
+                        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Vulnerabilities
+                        </h3>
                         <div className="space-y-2">
                           {groupedResults.vulnerabilities.map((result) => (
-                            <div
+                            <Card
                               key={result.id}
-                              onClick={() => handleResultClick(result)}
-                              className={`flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-4 hover:bg-muted/50 transition-colors ${
+                              className={`cursor-pointer transition-colors hover:bg-accent/50 ${
                                 selectedIndex === searchResults.indexOf(result) ? 'ring-2 ring-ring' : ''
                               }`}
+                              onClick={() => handleResultClick(result)}
                             >
-                              <ResultIcon type={result.type} />
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium">{result.title}</div>
-                                <div className="mt-1 text-sm text-muted-foreground line-clamp-2">
-                                  {result.description}
+                              <CardContent className="flex items-start gap-3 p-4">
+                                <ResultIcon type={result.type} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium leading-tight">{result.title}</p>
+                                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                                    {result.description}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-muted-foreground/70">in {result.projectName}</p>
                                 </div>
-                                <div className="mt-1 text-xs text-muted-foreground">in {result.projectName}</div>
-                              </div>
-                            </div>
+                              </CardContent>
+                            </Card>
                           ))}
                         </div>
                       </div>
@@ -693,14 +659,14 @@ export function Search() {
                     icon={SearchIcon}
                     title="No results found"
                     description={`No matches found for "${debouncedQuery}" in your projects`}
-                    action={{
-                      label: 'Clear search',
-                      onClick: handleClear,
-                    }}
+                    action={
+                      <Button variant="outline" onClick={handleClear}>
+                        Clear search
+                      </Button>
+                    }
                   />
                 ))}
 
-              {/* NVD Results */}
               {searchMode === 'nvd' && (
                 <>
                   {nvdError ? (
@@ -708,13 +674,14 @@ export function Search() {
                       icon={Database}
                       title="NVD Database Search"
                       description={nvdError}
-                      action={{
-                        label: 'Switch to Project Search',
-                        onClick: () => setSearchMode('projects'),
-                      }}
+                      action={
+                        <Button variant="outline" onClick={() => setSearchMode('projects')}>
+                          Switch to Project Search
+                        </Button>
+                      }
                     />
                   ) : nvdLoading ? (
-                    <div className="flex items-center justify-center py-12">
+                    <div className="flex items-center justify-center py-16">
                       <div className="text-center">
                         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
                         <p className="mt-4 text-sm text-muted-foreground">Searching NVD database...</p>
@@ -722,53 +689,54 @@ export function Search() {
                     </div>
                   ) : nvdResults.length > 0 ? (
                     <div className="space-y-4">
-                      <div className="text-sm text-muted-foreground">
-                        Found {nvdResults.length} result{nvdResults.length !== 1 ? 's' : ''} in NVD database
-                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Found <span className="font-semibold text-foreground">{nvdResults.length}</span> result
+                        {nvdResults.length !== 1 ? 's' : ''} in NVD database
+                      </p>
                       <VirtualList
                         items={nvdResults}
                         itemKey="id"
                         renderItem={(vuln) => (
-                          <div
+                          <Card
                             data-testid="nvd-result"
+                            className="cursor-pointer transition-colors hover:bg-accent/50"
                             onClick={() => handleNvdResultClick(vuln.cveId)}
-                            className={`rounded-lg border border-border bg-card p-4 hover:bg-muted/50 transition-colors cursor-pointer`}
                           >
-                            <div className="flex items-start gap-3">
-                              <ResultIcon type="vulnerability" severity={vuln.severity} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium">{vuln.id}</span>
-                                  {vuln.cvssScore && (
-                                    <span
-                                      className={`text-xs rounded px-1.5 py-0.5 font-medium ${getSeverityColor(vuln.severity)}`}
-                                    >
-                                      CVSS {vuln.cvssScore.toFixed(1)}
-                                    </span>
+                            <CardContent className="p-4">
+                              <div className="flex items-start gap-3">
+                                <ResultIcon type="vulnerability" severity={vuln.severity} />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium">{vuln.id}</span>
+                                    {vuln.cvssScore && (
+                                      <Badge variant="outline" className="font-mono text-xs">
+                                        CVSS {vuln.cvssScore.toFixed(1)}
+                                      </Badge>
+                                    )}
+                                    <Badge variant="outline" className={getSeverityBadgeClasses(vuln.severity)}>
+                                      {vuln.severity || 'UNKNOWN'}
+                                    </Badge>
+                                  </div>
+                                  {vuln.description && (
+                                    <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                                      {vuln.description}
+                                    </p>
                                   )}
-                                  <span
-                                    className={`text-xs uppercase rounded px-1.5 py-0.5 font-medium ${getSeverityColor(vuln.severity)}`}
-                                  >
-                                    {vuln.severity || 'UNKNOWN'}
-                                  </span>
+                                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                    {vuln.publishedAt && (
+                                      <span>Published: {new Date(vuln.publishedAt).toLocaleDateString()}</span>
+                                    )}
+                                    {vuln.source && <span>Source: {vuln.source}</span>}
+                                  </div>
+                                  <p className="mt-2 text-xs text-primary">Click to view details</p>
                                 </div>
-                                {vuln.description && (
-                                  <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{vuln.description}</p>
-                                )}
-                                <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                                  {vuln.publishedAt && (
-                                    <span>Published: {new Date(vuln.publishedAt).toLocaleDateString()}</span>
-                                  )}
-                                  {vuln.source && <span>Source: {vuln.source}</span>}
-                                </div>
-                                <div className="mt-2 text-xs text-blue-500">Click to view details</div>
                               </div>
-                            </div>
-                          </div>
+                            </CardContent>
+                          </Card>
                         )}
                         defaultItemHeight={150}
                         height="600px"
-                        className="space-y-3 border-0"
+                        className="space-y-2"
                       />
                     </div>
                   ) : (
@@ -776,10 +744,11 @@ export function Search() {
                       icon={Database}
                       title="Search NVD Database"
                       description="Search the NVD database by CVE ID (e.g., CVE-2024-1234) or keywords. Results appear from your local database."
-                      action={{
-                        label: 'Switch to Project Search',
-                        onClick: () => setSearchMode('projects'),
-                      }}
+                      action={
+                        <Button variant="outline" onClick={() => setSearchMode('projects')}>
+                          Switch to Project Search
+                        </Button>
+                      }
                     />
                   )}
                 </>
@@ -797,36 +766,36 @@ export function Search() {
             />
           )}
 
-          {/* Search Tips */}
           {!debouncedQuery && (
-            <div className="rounded-lg border border-border bg-muted/30 p-4">
-              <h3 className="mb-2 font-medium">
-                {searchMode === 'projects' ? 'Project Search Tips' : 'NVD Database Search Tips'}
-              </h3>
-              <ul className="space-y-1 text-sm text-muted-foreground">
-                {searchMode === 'projects' ? (
-                  <>
-                    <li>• Search is case-insensitive</li>
-                    <li>• Matches project names, component names, vulnerability IDs, and descriptions</li>
-                    <li>• Use arrow keys to navigate results</li>
-                    <li>• Press Enter to open selected result</li>
-                    <li>• Press Escape to clear search</li>
-                  </>
-                ) : (
-                  <>
-                    <li>• Search by CVE ID: CVE-2024-1234</li>
-                    <li>• Search by CPE text: cpe:2.3:a:vendor:product:*</li>
-                    <li>• Search by component name: apache, nginx, openssl</li>
-                    <li>• Results come from your local NVD database (offline)</li>
-                  </>
-                )}
-              </ul>
-            </div>
+            <Card className="bg-muted/30">
+              <CardContent className="p-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {searchMode === 'projects' ? 'Search Tips' : 'NVD Search Tips'}
+                </h3>
+                <ul className="space-y-1 text-sm text-muted-foreground">
+                  {searchMode === 'projects' ? (
+                    <>
+                      <li>&middot; Search is case-insensitive</li>
+                      <li>&middot; Matches project names, component names, vulnerability IDs, and descriptions</li>
+                      <li>&middot; Use arrow keys to navigate results</li>
+                      <li>&middot; Press Enter to open selected result</li>
+                      <li>&middot; Press Escape to clear search</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>&middot; Search by CVE ID: CVE-2024-1234</li>
+                      <li>&middot; Search by CPE text: cpe:2.3:a:vendor:product:*</li>
+                      <li>&middot; Search by component name: apache, nginx, openssl</li>
+                      <li>&middot; Results come from your local NVD database (offline)</li>
+                    </>
+                  )}
+                </ul>
+              </CardContent>
+            </Card>
           )}
         </div>
-      </main>
+      </div>
 
-      {/* CVE Detail Modal */}
       {selectedCveId && <NvdCveDetailModal cveId={selectedCveId} open={showCveModal} onClose={handleCloseCveModal} />}
     </div>
   )

@@ -1,4 +1,3 @@
-import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Shield,
@@ -13,6 +12,8 @@ import {
   BookOpen,
 } from 'lucide-react'
 import { AppLogo } from '@/components/AppLogo'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 
 const WORKFLOW_STEPS = [
   {
@@ -70,123 +71,127 @@ export function HomePage() {
   const navigate = useNavigate()
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
           <AppLogo size="md" showText={true} />
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 flex items-center gap-2"
-            >
-              Go to Dashboard
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
+          <Button variant="default" size="default" onClick={() => navigate('/dashboard')} className="gap-2">
+            Go to Dashboard
+            <ArrowRight className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
       <main className="flex-1">
-        <section className="px-6 py-16 text-center border-b border-border">
-          <div className="mx-auto max-w-3xl">
-            <AppLogo size="lg" showText={false} className="justify-center mb-6" />
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">D-Fence</h1>
-            <p className="mt-4 text-lg text-muted-foreground max-w-xl mx-auto">
+        <section className="relative overflow-hidden px-6 pb-20 pt-24">
+          <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-primary/[0.02] to-transparent" />
+          <div className="relative mx-auto max-w-3xl text-center">
+            <div className="mb-8 flex justify-center">
+              <div className="rounded-2xl bg-primary/10 p-4">
+                <AppLogo size="lg" showText={false} />
+              </div>
+            </div>
+            <h1 className="text-5xl font-bold tracking-tight text-foreground sm:text-6xl">D-Fence</h1>
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
               Vulnerability assessment made simple. Scan SBOMs against NVD, KEV, and EPSS databases. Generate VEX
               documents, attack graphs, and CVSS reports.
             </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-4">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="rounded-lg bg-primary px-6 py-3 text-primary-foreground font-medium hover:bg-primary/90 flex items-center gap-2"
-              >
+            <div className="mt-10 flex flex-wrap justify-center gap-4">
+              <Button size="lg" onClick={() => navigate('/dashboard')} className="gap-2">
                 <Plus className="h-5 w-5" />
                 Get Started
-              </button>
-              <button
-                onClick={() => navigate('/search')}
-                className="rounded-lg border border-border bg-background px-6 py-3 font-medium hover:bg-muted flex items-center gap-2"
-              >
+              </Button>
+              <Button variant="outline" size="lg" onClick={() => navigate('/search')} className="gap-2">
                 <Search className="h-5 w-5" />
                 Search CVEs
-              </button>
+              </Button>
             </div>
           </div>
         </section>
 
-        <section className="px-6 py-12">
-          <div className="mx-auto max-w-5xl">
-            <h2 className="text-2xl font-bold text-center mb-2">How to Use D-Fence</h2>
-            <p className="text-center text-muted-foreground mb-8">
-              Follow these steps to assess your software for vulnerabilities
-            </p>
+        <section className="px-6 pb-20">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-12 text-center">
+              <h2 className="text-3xl font-bold tracking-tight">How It Works</h2>
+              <p className="mt-3 text-muted-foreground">Four steps to assess your software for vulnerabilities</p>
+            </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {WORKFLOW_STEPS.map((step, index) => (
-                <button
-                  key={step.title}
-                  onClick={() => navigate(step.route)}
-                  className="group text-left rounded-lg border border-border bg-card p-6 hover:border-primary/50 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold">
-                      {index + 1}
-                    </div>
-                    <step.icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <h3 className="font-semibold mb-2">{step.title}</h3>
-                  <p className="text-sm text-muted-foreground mb-3">{step.description}</p>
-                  <span className="text-xs text-primary font-medium flex items-center gap-1 group-hover:gap-2 transition-all">
-                    {step.action}
-                    <ChevronRight className="h-3 w-3" />
-                  </span>
+                <button key={step.title} type="button" onClick={() => navigate(step.route)} className="group text-left">
+                  <Card className="h-full transition-all duration-200 hover:border-primary/40 hover:shadow-md">
+                    <CardHeader>
+                      <div className="mb-2 flex items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+                          {index + 1}
+                        </span>
+                        <step.icon className="h-5 w-5 text-primary" />
+                      </div>
+                      <CardTitle className="text-base">{step.title}</CardTitle>
+                      <CardDescription className="min-h-[3rem]">{step.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <span className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-all group-hover:gap-2">
+                        {step.action}
+                        <ChevronRight className="h-4 w-4" />
+                      </span>
+                    </CardContent>
+                  </Card>
                 </button>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="px-6 py-12 bg-muted/30 border-t border-border">
-          <div className="mx-auto max-w-4xl">
-            <h2 className="text-2xl font-bold text-center mb-8">Tips &amp; Tricks</h2>
+        <section className="border-t border-border bg-muted/30 px-6 py-20">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-12 text-center">
+              <h2 className="text-3xl font-bold tracking-tight">Tips &amp; Tricks</h2>
+              <p className="mt-3 text-muted-foreground">Get the most out of D-Fence with these helpful pointers</p>
+            </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {TIPS.map((tip) => (
-                <div key={tip.title} className="rounded-lg border border-border bg-card p-6">
-                  <tip.icon className="h-6 w-6 text-primary mb-3" />
-                  <h3 className="font-semibold mb-2">{tip.title}</h3>
-                  <p className="text-sm text-muted-foreground">{tip.description}</p>
-                </div>
+                <Card key={tip.title} className="transition-shadow duration-200 hover:shadow-md">
+                  <CardHeader>
+                    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                      <tip.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <CardTitle className="mt-3 text-base">{tip.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription className="leading-relaxed">{tip.description}</CardDescription>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="px-6 py-12 text-center border-t border-border">
-          <div className="mx-auto max-w-2xl">
-            <h2 className="text-2xl font-bold mb-4">Ready to Secure Your Software?</h2>
-            <p className="text-muted-foreground mb-6">
+        <section className="border-t border-border px-6 py-20">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <Shield className="h-7 w-7 text-primary" />
+            </div>
+            <h2 className="text-3xl font-bold tracking-tight">Ready to Secure Your Software?</h2>
+            <p className="mt-4 text-muted-foreground">
               Start by creating a project and importing your SBOM to discover known vulnerabilities.
             </p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="rounded-lg bg-primary px-6 py-3 text-primary-foreground font-medium hover:bg-primary/90 flex items-center gap-2"
-              >
+            <div className="mt-8 flex flex-wrap justify-center gap-4">
+              <Button size="lg" onClick={() => navigate('/dashboard')} className="gap-2">
                 <FileText className="h-5 w-5" />
                 Open Dashboard
-              </button>
-              <button
-                onClick={() => navigate('/settings')}
-                className="rounded-lg border border-border bg-background px-6 py-3 font-medium hover:bg-muted"
-              >
+              </Button>
+              <Button variant="outline" size="lg" onClick={() => navigate('/settings')}>
                 Configure Settings
-              </button>
+              </Button>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-border px-6 py-4 text-center text-sm text-muted-foreground">
-        D-Fence v2.0.0 &mdash; Vulnerability Assessment Tool
+      <footer className="border-t border-border px-6 py-5">
+        <div className="mx-auto max-w-6xl text-center text-sm text-muted-foreground">
+          D-Fence v2.0.0 &mdash; Vulnerability Assessment Tool
+        </div>
       </footer>
     </div>
   )

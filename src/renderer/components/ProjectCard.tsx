@@ -3,6 +3,9 @@ import { Shield, AlertTriangle, Calendar, Trash2, RefreshCw, Filter } from 'luci
 import { useSettings, useRefreshingProjectIds } from '@/store/useStore'
 import { StalenessBadge } from './StalenessIndicator'
 import { formatTimeUntilRefresh, getNextRefreshTime } from '@/lib/refresh'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import type { Project } from '@@/types'
 
 interface ProjectCardProps {
@@ -17,6 +20,7 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
   const settings = useSettings()
   const refreshingProjectIds = useRefreshingProjectIds()
   const isRefreshing = refreshingProjectIds.has(project.id)
+
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
@@ -25,10 +29,11 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
     }).format(new Date(date))
   }
 
-  const getSeverityColor = (count: number) => {
-    if (count === 0) return 'text-muted-foreground'
-    return 'text-destructive'
-  }
+  const totalVulns = project.statistics.totalVulnerabilities
+  const criticalPct = totalVulns > 0 ? (project.statistics.criticalCount / totalVulns) * 100 : 0
+  const highPct = totalVulns > 0 ? (project.statistics.highCount / totalVulns) * 100 : 0
+  const mediumPct = totalVulns > 0 ? (project.statistics.mediumCount / totalVulns) * 100 : 0
+  const lowPct = totalVulns > 0 ? (project.statistics.lowCount / totalVulns) * 100 : 0
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -45,122 +50,133 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
   }
 
   return (
-    <div
-      className="group flex cursor-pointer items-center justify-between rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    <Card
+      className="group cursor-pointer transition-all hover:shadow-md hover:border-primary/20 focus-within:ring-2 focus-within:ring-ring"
       onClick={() => onView(project)}
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
       aria-label={`View project ${project.name}`}
     >
-      <div className="flex-1">
-        <div className="flex items-center gap-3">
-          <Shield className="h-5 w-5 text-primary" />
-          <div className="flex-1">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-medium">{project.name}</h3>
+              <CardTitle className="truncate text-base">{project.name}</CardTitle>
               <StalenessBadge lastRefresh={project.lastVulnDataRefresh} settings={settings} />
             </div>
-            {project.description && <p className="text-sm text-muted-foreground line-clamp-1">{project.description}</p>}
+            {project.description && (
+              <p className="mt-1 truncate text-sm text-muted-foreground">{project.description}</p>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            {onRefresh && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRefresh(project.id)
+                }}
+                disabled={isRefreshing}
+                aria-label="Refresh vulnerability data"
+                className="h-8 w-8"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
+            )}
+            {onFpf && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onFpf(project.id)
+                }}
+                title="False Positive Filter"
+                className="h-8 px-2"
+              >
+                <Filter className="mr-1 h-3.5 w-3.5" />
+                FPF
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleDeleteClick}
+              aria-label="Delete project"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
+      </CardHeader>
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
-          {/* Components count */}
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Shield className="h-3.5 w-3.5" />
+      <CardContent className="space-y-3">
+        {totalVulns > 0 && (
+          <div className="space-y-2">
+            <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+              {criticalPct > 0 && <div className="bg-red-500 transition-all" style={{ width: `${criticalPct}%` }} />}
+              {highPct > 0 && <div className="bg-orange-500 transition-all" style={{ width: `${highPct}%` }} />}
+              {mediumPct > 0 && <div className="bg-amber-500 transition-all" style={{ width: `${mediumPct}%` }} />}
+              {lowPct > 0 && <div className="bg-green-500 transition-all" style={{ width: `${lowPct}%` }} />}
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {project.statistics.criticalCount > 0 && (
+                <Badge variant="destructive" className="text-xs">
+                  {project.statistics.criticalCount} Critical
+                </Badge>
+              )}
+              {project.statistics.highCount > 0 && (
+                <Badge
+                  variant="outline"
+                  className="border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-400 text-xs"
+                >
+                  {project.statistics.highCount} High
+                </Badge>
+              )}
+              {project.statistics.mediumCount > 0 && (
+                <Badge
+                  variant="outline"
+                  className="border-yellow-300 bg-yellow-50 text-amber-700 dark:border-yellow-700 dark:bg-yellow-950 dark:text-amber-400 text-xs"
+                >
+                  {project.statistics.mediumCount} Medium
+                </Badge>
+              )}
+              {project.statistics.lowCount > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {project.statistics.lowCount} Low
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <Shield className="h-3 w-3" />
             <span>{project.statistics.totalComponents} components</span>
           </div>
-
-          {/* Vulnerabilities count */}
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <AlertTriangle className={`h-3.5 w-3.5 ${getSeverityColor(project.statistics.criticalCount)}`} />
-            <span>{project.statistics.totalVulnerabilities} vulnerabilities</span>
+          <div className="flex items-center gap-1">
+            <AlertTriangle className={`h-3 w-3 ${project.statistics.criticalCount > 0 ? 'text-destructive' : ''}`} />
+            <span>{totalVulns} vulnerabilities</span>
           </div>
-
-          {/* Last updated */}
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Calendar className="h-3.5 w-3.5" />
-            <span>Updated {formatDate(project.updatedAt)}</span>
+          <div className="flex items-center gap-1">
+            <Calendar className="h-3 w-3" />
+            <span>{formatDate(project.updatedAt)}</span>
           </div>
-
-          {/* Next refresh time (if auto-refresh enabled) */}
           {settings.autoRefresh && project.lastVulnDataRefresh && (
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <RefreshCw className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-1">
+              <RefreshCw className="h-3 w-3" />
               <span>{formatTimeUntilRefresh(getNextRefreshTime(project, settings.autoRefreshInterval))}</span>
             </div>
           )}
         </div>
-
-        {/* Severity badges */}
-        {project.statistics.totalVulnerabilities > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {project.statistics.criticalCount > 0 && (
-              <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-                {project.statistics.criticalCount} Critical
-              </span>
-            )}
-            {project.statistics.highCount > 0 && (
-              <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-700 dark:text-orange-400">
-                {project.statistics.highCount} High
-              </span>
-            )}
-            {project.statistics.mediumCount > 0 && (
-              <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-                {project.statistics.mediumCount} Medium
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onView(project)
-          }}
-          className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
-        >
-          View
-        </button>
-        {onFpf && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onFpf(project.id)
-            }}
-            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 flex items-center gap-1.5"
-            title="False Positive Filter"
-          >
-            <Filter className="h-3.5 w-3.5" />
-            FPF
-          </button>
-        )}
-        {onRefresh && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onRefresh(project.id)
-            }}
-            disabled={isRefreshing}
-            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Refresh vulnerability data"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-        )}
-        <button
-          onClick={handleDeleteClick}
-          className="rounded-md border border-border bg-secondary p-1.5 text-destructive hover:bg-destructive/10"
-          aria-label="Delete project"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 })
 export { ProjectCard }

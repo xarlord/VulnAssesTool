@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Shield, Filter, Settings, AlertTriangle } from 'lucide-react'
+import { Shield, Filter, Settings, AlertTriangle } from 'lucide-react'
 import { useProjects } from '@/store/useStore'
 import { FilterDashboard } from '@/components/FPF/FilterDashboard'
 import { FilteredItemsReview } from '@/components/FPF/FilteredItemsReview'
@@ -12,6 +12,11 @@ import { toast } from '@/components/Toaster'
 import type { SystemConfig, FilterBatchResult, FilterResult, MissFilterDetectionConfig } from '@@/types/fpf'
 import type { Vulnerability, Component } from '@@/types'
 import { FalsePositiveFilter } from '@/lib/services/fpf/falsePositiveFilter'
+import { AppHeader } from '@/components/layout/AppHeader'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 
 type TabType = 'dashboard' | 'review' | 'config' | 'missfilter'
 
@@ -297,151 +302,135 @@ export function FalsePositiveFilterPage() {
     [handleFlagForReview],
   )
 
-  const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <Shield className="w-4 h-4" /> },
-    { id: 'review', label: 'Review Filtered', icon: <Filter className="w-4 h-4" /> },
-    { id: 'config', label: 'Configuration', icon: <Settings className="w-4 h-4" /> },
-    {
-      id: 'missfilter',
-      label: 'Miss-Filter Detection',
-      icon: <AlertTriangle className="w-4 h-4" />,
-    },
+  const breadcrumbs = [
+    { label: 'Projects', path: '/dashboard' },
+    { label: 'Project', path: projectId ? `/project/${projectId}` : undefined },
+    { label: 'False Positive Filter' },
   ]
 
   if (!project) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-4xl mx-auto">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </button>
-
-          <div className="text-center py-12">
-            <Shield className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-            <h1 className="text-2xl font-semibold mb-2">No Project Selected</h1>
-            <p className="text-muted-foreground mb-4">
-              Select a project from the dashboard to use the False Positive Filter.
-            </p>
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              Go to Dashboard
-            </button>
-          </div>
+      <div className="flex flex-col min-h-full">
+        <AppHeader title="False Positive Filter" breadcrumbs={[{ label: 'Projects', path: '/dashboard' }]} />
+        <div className="flex-1 flex items-center justify-center p-6">
+          <Card className="max-w-md w-full">
+            <CardHeader className="text-center">
+              <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50">
+                <Shield className="h-7 w-7 text-blue-600" />
+              </div>
+              <CardTitle className="text-xl">No Project Selected</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Select a project from the dashboard to use the False Positive Filter.
+              </p>
+              <Button onClick={() => navigate('/dashboard')}>Go to Dashboard</Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate(`/project/${projectId}`)}
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back to Project</span>
-              </button>
-              <div className="h-6 w-px bg-border" />
-              <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-primary" />
-                <h1 className="text-lg font-semibold">False Positive Filter</h1>
-              </div>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Project: <span className="font-medium text-foreground">{project.name}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="flex flex-col min-h-full">
+      <AppHeader
+        title="False Positive Filter"
+        breadcrumbs={breadcrumbs}
+        actions={
+          <Badge variant="secondary" className="text-xs font-normal">
+            {project.name}
+          </Badge>
+        }
+      />
 
-      <div className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-6">
-          <nav className="flex gap-1" role="tablist">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted'
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabType)}>
+            <div className="flex items-center justify-between mb-6">
+              <TabsList>
+                <TabsTrigger value="dashboard" className="gap-1.5">
+                  <Shield className="h-3.5 w-3.5" />
+                  Dashboard
+                </TabsTrigger>
+                <TabsTrigger value="review" className="gap-1.5">
+                  <Filter className="h-3.5 w-3.5" />
+                  Review Filtered
+                </TabsTrigger>
+                <TabsTrigger value="config" className="gap-1.5">
+                  <Settings className="h-3.5 w-3.5" />
+                  Configuration
+                </TabsTrigger>
+                <TabsTrigger value="missfilter" className="gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Miss-Filter
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="dashboard">
+              <FilterDashboard
+                config={config}
+                filterResult={filterResult}
+                isFiltering={isFiltering}
+                onRunFilter={handleRunFilter}
+                onConfigure={() => setActiveTab('config')}
+                onExportReport={handleExportReport}
+              />
+            </TabsContent>
+
+            <TabsContent value="review">
+              {filterResult ? (
+                <FilteredItemsReview
+                  items={reviewItems}
+                  onUndo={handleUndo}
+                  onLlmAnalysis={handleLlmUnavailable}
+                  onExport={handleExportItems}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-16">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                      <Filter className="h-7 w-7 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-1">No Filter Results</h3>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      Run the filter from the Dashboard to see results here.
+                    </p>
+                    <Button variant="outline" onClick={() => setActiveTab('dashboard')}>
+                      Go to Dashboard
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="config">
+              <ConfigWizard
+                initialConfig={config}
+                onSave={handleConfigSave}
+                onCancel={() => setActiveTab('dashboard')}
+              />
+            </TabsContent>
+
+            <TabsContent value="missfilter">
+              <MissFilterPanel
+                items={missFilterItems}
+                config={missFilterConfig}
+                onConfigChange={handleMissFilterConfigChange}
+                onFlag={handleMissFlag}
+                onUnflag={handleMissFlag}
+                onLlmAnalysis={handleLlmUnavailable}
+                filterResult={filterResult}
+                confidenceThreshold={missFilterConfig.lowConfidenceThreshold}
+                onThresholdChange={handleThresholdChange}
+                onFlagForReview={handleFlagForReview}
+                onLLMAnalysis={handleLlmUnavailable}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
-
-      <main className="max-w-7xl mx-auto px-6 py-6">
-        {activeTab === 'dashboard' && (
-          <FilterDashboard
-            config={config}
-            filterResult={filterResult}
-            isFiltering={isFiltering}
-            onRunFilter={handleRunFilter}
-            onConfigure={() => setActiveTab('config')}
-            onExportReport={handleExportReport}
-          />
-        )}
-
-        {activeTab === 'review' && filterResult && (
-          <FilteredItemsReview
-            items={reviewItems}
-            onUndo={handleUndo}
-            onLlmAnalysis={handleLlmUnavailable}
-            onExport={handleExportItems}
-          />
-        )}
-
-        {activeTab === 'review' && !filterResult && (
-          <div className="text-center py-12">
-            <Filter className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Filter Results</h3>
-            <p className="text-muted-foreground mb-4">Run the filter to see results here.</p>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              Go to Dashboard
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'config' && (
-          <ConfigWizard initialConfig={config} onSave={handleConfigSave} onCancel={() => setActiveTab('dashboard')} />
-        )}
-
-        {activeTab === 'missfilter' && (
-          <MissFilterPanel
-            items={missFilterItems}
-            config={missFilterConfig}
-            onConfigChange={handleMissFilterConfigChange}
-            onFlag={handleMissFlag}
-            onUnflag={handleMissFlag}
-            onLlmAnalysis={handleLlmUnavailable}
-            filterResult={filterResult}
-            confidenceThreshold={missFilterConfig.lowConfidenceThreshold}
-            onThresholdChange={handleThresholdChange}
-            onFlagForReview={handleFlagForReview}
-            onLLMAnalysis={handleLlmUnavailable}
-          />
-        )}
-      </main>
     </div>
   )
 }

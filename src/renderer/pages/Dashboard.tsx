@@ -1,7 +1,7 @@
 import React, { useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore, useProjects, useSettings } from '@/store/useStore'
-import { Shield, Plus, Upload, Download, Search, BarChart3, FileText } from 'lucide-react'
+import { Shield, Plus, Upload, Download, Search, BarChart3, FileText, AlertTriangle } from 'lucide-react'
 import { CreateProjectDialog } from '@/components/CreateProjectDialog'
 import { SbomUploadDialog } from '@/components/SbomUploadDialog'
 import { SbomGeneratorDialog } from '@/components/SbomGeneratorDialog'
@@ -11,7 +11,9 @@ import { NotificationCenter } from '@/components/NotificationCenter'
 import { useMenuActionListener } from '@/components/MenuActionListener'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
 import { refreshVulnerabilityData } from '@/lib/refresh'
-import { AppLogo } from '@/components/AppLogo'
+import { AppHeader } from '@/components/layout/AppHeader'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import type { Project } from '@@/types'
 
 export function Dashboard() {
@@ -25,11 +27,9 @@ export function Dashboard() {
   const [showExportDialog, setShowExportDialog] = React.useState(false)
   const [showSbomGeneratorDialog, setShowSbomGeneratorDialog] = React.useState(false)
 
-  // Bulk selection state
   const [selectedProjectIds, setSelectedProjectIds] = React.useState<Set<string>>(new Set())
   const [isBulkMode, setIsBulkMode] = React.useState(false)
 
-  // Handle manual refresh of vulnerability data
   const handleRefreshVulnData = async (projectId: string) => {
     try {
       const project = projects.find((p) => p.id === projectId)
@@ -43,7 +43,6 @@ export function Dashboard() {
       })
 
       if (result.success) {
-        // Update the project with new vulnerabilities and last refresh timestamp
         updateProject(projectId, {
           vulnerabilities: result.vulnerabilities,
           lastVulnDataRefresh: new Date(),
@@ -57,7 +56,6 @@ export function Dashboard() {
           },
         })
 
-        // Dispatch event for other listeners
         window.dispatchEvent(
           new CustomEvent('vuln-data-refreshed', {
             detail: { projectId, timestamp: new Date(), result },
@@ -69,11 +67,9 @@ export function Dashboard() {
     }
   }
 
-  // Listen for vulnerability data refresh events
   useEffect(() => {
     const handleRefreshEvent = (e: CustomEvent) => {
       const { projectId, timestamp } = e.detail
-      // Could trigger a toast notification here
       console.log(`Project ${projectId} vulnerability data refreshed at ${timestamp}`)
     }
 
@@ -84,12 +80,10 @@ export function Dashboard() {
     }
   }, [])
 
-  // Listen for menu action events
   useMenuActionListener('menu-open-create-project', () => setShowCreateDialog(true))
   useMenuActionListener('menu-open-upload-sbom', () => setShowUploadDialog(true))
   useMenuActionListener('menu-open-sbom-generator', () => setShowSbomGeneratorDialog(true))
 
-  // Listen for export menu action with projects data
   useEffect(() => {
     const handleExportMenu = (_e: CustomEvent) => {
       setShowExportDialog(true)
@@ -102,7 +96,6 @@ export function Dashboard() {
     }
   }, [])
 
-  // Calculate aggregate statistics across all projects
   const statistics = useMemo(() => {
     return projects.reduce(
       (acc, project) => {
@@ -128,7 +121,6 @@ export function Dashboard() {
     )
   }, [projects])
 
-  // Sort projects by last updated
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   }, [projects])
@@ -145,7 +137,6 @@ export function Dashboard() {
     deleteProject(projectId)
   }
 
-  // Bulk action handlers
   const handleToggleBulkMode = () => {
     setIsBulkMode(!isBulkMode)
     setSelectedProjectIds(new Set())
@@ -187,173 +178,158 @@ export function Dashboard() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
-          <AppLogo size="md" showText={true} />
-          <div className="flex items-center gap-3">
+      <AppHeader
+        title="Dashboard"
+        actions={
+          <div className="flex items-center gap-1.5">
             <OfflineIndicator compact />
-            <button
-              onClick={() => navigate('/search')}
-              data-testid="nav-search"
-              className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 flex items-center gap-2"
-            >
-              <Search className="h-4 w-4" />
-              Search
-            </button>
             <NotificationCenter />
-            <button
-              onClick={() => navigate('/settings')}
-              data-tour="settings-link"
-              className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
+            <div className="mx-1 h-6 w-px bg-border" />
+            <Button variant="ghost" size="icon" onClick={() => navigate('/search')} data-testid="nav-search">
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/executive')} disabled={projects.length === 0}>
+              <BarChart3 className="mr-1.5 h-4 w-4" />
+              Executive
+            </Button>
+            <div className="mx-1 h-6 w-px bg-border" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowExportDialog(true)}
+              disabled={projects.length === 0}
             >
-              Settings
-            </button>
+              <Download className="mr-1.5 h-4 w-4" />
+              Export
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowSbomGeneratorDialog(true)}>
+              <FileText className="mr-1.5 h-4 w-4" />
+              Generate SBOM
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowUploadDialog(true)}
+              disabled={projects.length === 0}
+              data-tour="import-sbom-button"
+            >
+              <Upload className="mr-1.5 h-4 w-4" />
+              Import
+            </Button>
+            <Button size="sm" onClick={() => setShowCreateDialog(true)} data-tour="new-project-button">
+              <Plus className="mr-1.5 h-4 w-4" />
+              New Project
+            </Button>
           </div>
-        </div>
-      </header>
+        }
+      />
 
-      {/* Main Content */}
       <main className="flex-1 p-6" data-tour="dashboard">
         <div className="mx-auto max-w-7xl">
-          {/* Quick Actions */}
-          <div className="mb-8 flex flex-wrap gap-4">
-            <button
-              onClick={() => setShowCreateDialog(true)}
-              data-tour="new-project-button"
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="h-5 w-5" />
-              New Project
-            </button>
-            <button
-              onClick={() => setShowUploadDialog(true)}
-              data-tour="import-sbom-button"
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 hover:bg-muted"
-              disabled={projects.length === 0}
-            >
-              <Upload className="h-5 w-5" />
-              Import SBOM
-            </button>
-            <button
-              onClick={() => setShowSbomGeneratorDialog(true)}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 hover:bg-muted"
-            >
-              <FileText className="h-5 w-5" />
-              Generate SBOM from Excel
-            </button>
-            <button
-              onClick={() => setShowExportDialog(true)}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 hover:bg-muted"
-              disabled={projects.length === 0}
-            >
-              <Download className="h-5 w-5" />
-              Export All
-            </button>
-            <button
-              onClick={() => navigate('/executive')}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 hover:bg-muted"
-              disabled={projects.length === 0}
-            >
-              <BarChart3 className="h-5 w-5" />
-              Executive Dashboard
-            </button>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Projects</CardTitle>
+                <Shield className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{statistics.totalProjects}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-destructive">Critical</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-destructive">{statistics.criticalCount}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400">High</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-700 dark:text-orange-400">{statistics.highCount}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Vulnerabilities</CardTitle>
+                <Shield className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{statistics.totalVulnerabilities}</div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Statistics */}
-          <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="text-sm text-muted-foreground">Projects</div>
-              <div className="mt-2 text-3xl font-bold">{statistics.totalProjects}</div>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="text-sm text-destructive">Critical</div>
-              <div className="mt-2 text-3xl font-bold text-destructive">{statistics.criticalCount}</div>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="text-sm text-orange-700 dark:text-orange-400">High</div>
-              <div className="mt-2 text-3xl font-bold text-orange-700 dark:text-orange-400">{statistics.highCount}</div>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="text-sm text-muted-foreground">Total Vulnerabilities</div>
-              <div className="mt-2 text-3xl font-bold">{statistics.totalVulnerabilities}</div>
-            </div>
-          </div>
-
-          {/* Projects List */}
           <div>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Recent Projects {projects.length > 0 && `(${projects.length})`}</h2>
+              <h2 className="text-lg font-semibold">Recent Projects {projects.length > 0 && `(${projects.length})`}</h2>
               {projects.length > 0 && (
-                <button
-                  onClick={handleToggleBulkMode}
-                  className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    isBulkMode
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border bg-secondary hover:bg-secondary/80'
-                  }`}
-                >
+                <Button variant={isBulkMode ? 'default' : 'outline'} size="sm" onClick={handleToggleBulkMode}>
                   {isBulkMode ? 'Exit Selection' : 'Select Projects'}
-                </button>
+                </Button>
               )}
             </div>
 
-            {/* Bulk Actions Bar */}
             {isBulkMode && selectedProjectIds.size > 0 && (
-              <div className="mb-4 flex items-center justify-between rounded-lg border border-border bg-muted/50 px-4 py-3">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-medium">
-                    {selectedProjectIds.size} project{selectedProjectIds.size !== 1 ? 's' : ''} selected
-                  </span>
-                  <button
-                    onClick={handleClearSelection}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    Clear selection
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleBulkAction('export')}
-                    className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
-                  >
-                    <Download className="h-4 w-4" />
-                    Export
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Delete ${selectedProjectIds.size} selected projects?`)) {
-                        handleBulkAction('delete')
-                      }
-                    }}
-                    className="flex items-center gap-2 rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
+              <Card className="mb-4">
+                <CardContent className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-medium">
+                      {selectedProjectIds.size} project
+                      {selectedProjectIds.size !== 1 ? 's' : ''} selected
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+                      Clear selection
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleBulkAction('export')}>
+                      <Download className="mr-1.5 h-4 w-4" />
+                      Export
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm(`Delete ${selectedProjectIds.size} selected projects?`)) {
+                          handleBulkAction('delete')
+                        }
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {projects.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-12">
-                <Shield className="mb-4 h-16 w-16 text-muted-foreground" />
-                <h3 className="text-lg font-medium">No projects yet</h3>
-                <p className="text-center text-muted-foreground">
-                  Create a new project to get started with vulnerability assessment
-                </p>
-                <button
-                  onClick={() => setShowCreateDialog(true)}
-                  className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                >
-                  Create Your First Project
-                </button>
-              </div>
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <Shield className="mb-4 h-12 w-12 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold">No projects yet</h3>
+                  <p className="mb-4 text-center text-sm text-muted-foreground">
+                    Create a new project to get started with vulnerability assessment
+                  </p>
+                  <Button onClick={() => setShowCreateDialog(true)}>
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    Create Your First Project
+                  </Button>
+                </CardContent>
+              </Card>
             ) : (
               <>
-                {/* Select All Checkbox */}
                 {isBulkMode && (
-                  <div className="mb-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                  <div className="mb-3">
+                    <label className="flex cursor-pointer items-center gap-2">
                       <input
                         type="checkbox"
                         checked={selectedProjectIds.size === projects.length && projects.length > 0}
@@ -374,12 +350,11 @@ export function Dashboard() {
                   </div>
                 )}
 
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {sortedProjects.map((project) => (
                     <div key={project.id} className="relative">
-                      {/* Selection Checkbox */}
                       {isBulkMode && (
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10">
+                        <div className="absolute left-3 top-3 z-10">
                           <input
                             type="checkbox"
                             checked={selectedProjectIds.has(project.id)}
@@ -388,7 +363,7 @@ export function Dashboard() {
                           />
                         </div>
                       )}
-                      <div className={isBulkMode ? 'pl-12' : ''}>
+                      <div className={isBulkMode ? 'pl-8' : ''}>
                         <ProjectCard
                           key={project.id}
                           project={project}
@@ -407,16 +382,9 @@ export function Dashboard() {
         </div>
       </main>
 
-      {/* Create Project Dialog */}
       <CreateProjectDialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} />
-
-      {/* SBOM Upload Dialog */}
       <SbomUploadDialog open={showUploadDialog} onClose={() => setShowUploadDialog(false)} />
-
-      {/* SBOM Generator Dialog */}
       <SbomGeneratorDialog open={showSbomGeneratorDialog} onClose={() => setShowSbomGeneratorDialog(false)} />
-
-      {/* Export Dialog */}
       <ExportDialog open={showExportDialog} onClose={() => setShowExportDialog(false)} projects={projects} />
     </div>
   )
