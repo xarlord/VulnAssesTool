@@ -1,8 +1,17 @@
 import { useState } from 'react'
-import { X, Download, FileSpreadsheet, FileJson, FileText } from 'lucide-react'
+import { Download, FileSpreadsheet, FileJson, FileText } from 'lucide-react'
 import { exportProjectData, exportAllProjects } from '@/lib/export'
 import type { ExportFormat, ExportDataType } from '@/lib/export/types'
 import type { Project } from '@@/types'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 interface ExportDialogProps {
   open: boolean
@@ -16,14 +25,11 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('csv')
   const [selectedDataType, setSelectedDataType] = useState<ExportDataType>('vulnerabilities')
 
-  if (!open) return null
-
   const isAllProjects = !!projects && !project
 
   const handleExport = async () => {
     setIsExporting(true)
     try {
-      // Small delay to allow UI to update
       await new Promise((resolve) => setTimeout(resolve, 0))
 
       if (isAllProjects && projects) {
@@ -32,8 +38,7 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
         exportProjectData(project, selectedFormat, selectedDataType)
       }
 
-      // Close dialog after export completes
-      onClose()
+      handleCancel()
     } catch (error) {
       console.error('Export failed:', error)
       setIsExporting(false)
@@ -76,37 +81,19 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
       ]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={handleCancel} aria-hidden="true" />
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) handleCancel()
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Export Data</DialogTitle>
+          <DialogDescription>Choose the export format and data type for your report.</DialogDescription>
+        </DialogHeader>
 
-      {/* Dialog */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dialog-title"
-        className="relative z-50 w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg"
-      >
-        {/* Close Button */}
-        <button
-          onClick={handleCancel}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Close dialog"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
-        {/* Header */}
-        <div className="mb-6">
-          <h2 id="dialog-title" className="text-lg font-semibold">
-            Export Data
-          </h2>
-          <p className="text-sm text-muted-foreground">Choose the export format and data type for your report.</p>
-        </div>
-
-        {/* Content */}
         <div className="space-y-6">
-          {/* Format Selection */}
           <div className="space-y-3">
             <label className="text-sm font-medium">Export Format</label>
             <div className="grid grid-cols-3 gap-3">
@@ -114,16 +101,15 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
                 const Icon = format.icon
                 const isSelected = selectedFormat === format.value
                 return (
-                  <button
+                  <Button
                     key={format.value}
+                    variant={isSelected ? 'default' : 'outline'}
                     onClick={() => setSelectedFormat(format.value)}
-                    className={`flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-colors ${
-                      isSelected ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'
-                    }`}
+                    className={`flex flex-col items-center gap-2 h-auto py-3 ${isSelected ? '' : 'text-foreground'}`}
                   >
                     <Icon className="h-6 w-6" />
                     <span className="text-sm font-medium">{format.label}</span>
-                  </button>
+                  </Button>
                 )
               })}
             </div>
@@ -132,27 +118,22 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
             </p>
           </div>
 
-          {/* Data Type Selection */}
           <div className="space-y-3">
             <label className="text-sm font-medium">Data Type</label>
             <div className="space-y-2">
               {dataTypes.map((dataType) => (
-                <button
+                <Button
                   key={dataType.value}
+                  variant={selectedDataType === dataType.value ? 'default' : 'outline'}
                   onClick={() => setSelectedDataType(dataType.value)}
-                  className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                    selectedDataType === dataType.value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border hover:bg-accent'
-                  }`}
+                  className={`w-full justify-start h-auto py-3 ${selectedDataType === dataType.value ? '' : 'text-foreground'}`}
                 >
                   <span className="text-sm font-medium">{dataType.label}</span>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
 
-          {/* Preview */}
           <div className="rounded-lg bg-muted p-3">
             <div className="flex items-center gap-2 text-sm">
               <Download className="h-4 w-4 text-muted-foreground" />
@@ -166,24 +147,15 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            onClick={handleCancel}
-            disabled={isExporting}
-            className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none"
-          >
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel} disabled={isExporting}>
             Cancel
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={isExporting}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none"
-          >
+          </Button>
+          <Button onClick={handleExport} disabled={isExporting}>
             {isExporting ? 'Exporting...' : 'Export'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
