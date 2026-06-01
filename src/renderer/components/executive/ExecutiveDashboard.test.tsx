@@ -244,19 +244,18 @@ describe('ExecutiveDashboard', () => {
       expect(screen.getByText('Executive Dashboard')).toBeInTheDocument()
     })
 
-    it('should render the subtitle text', () => {
+    it('should render the header via AppHeader with the title in an h1', () => {
       renderDashboard()
 
-      expect(screen.getByText('High-level security overview and compliance metrics')).toBeInTheDocument()
+      const header = screen.getByRole('banner')
+      expect(header).toBeInTheDocument()
+      expect(header).toHaveTextContent('Executive Dashboard')
     })
 
-    it('should render a back button that navigates to /dashboard', () => {
+    it('should not render a back button (sidebar handles navigation)', () => {
       renderDashboard()
 
-      const backButton = screen.getByText('Back to Dashboard')
-      fireEvent.click(backButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
+      expect(screen.queryByText('Back to Dashboard')).not.toBeInTheDocument()
     })
 
     it('should render the Export Report button', () => {
@@ -328,7 +327,7 @@ describe('ExecutiveDashboard', () => {
     it('should display the overall status badge', async () => {
       renderDashboard([createMockProject()])
 
-      expect(await screen.findByText(/Status: GOOD/)).toBeInTheDocument()
+      expect(await screen.findByText('good')).toBeInTheDocument()
     })
 
     it('should display key points from the summary', async () => {
@@ -341,21 +340,21 @@ describe('ExecutiveDashboard', () => {
       mockGenerateSummary.mockReturnValue(createMockSummary({ overallStatus: 'critical' }))
       renderDashboard([createMockProject()])
 
-      expect(await screen.findByText(/Status: CRITICAL/)).toBeInTheDocument()
+      expect(await screen.findByText('critical')).toBeInTheDocument()
     })
 
     it('should display warning status badge when status is warning', async () => {
       mockGenerateSummary.mockReturnValue(createMockSummary({ overallStatus: 'warning' }))
       renderDashboard([createMockProject()])
 
-      expect(await screen.findByText(/Status: WARNING/)).toBeInTheDocument()
+      expect(await screen.findByText('warning')).toBeInTheDocument()
     })
 
     it('should display excellent status badge when status is excellent', async () => {
       mockGenerateSummary.mockReturnValue(createMockSummary({ overallStatus: 'excellent' }))
       renderDashboard([createMockProject()])
 
-      expect(await screen.findByText(/Status: EXCELLENT/)).toBeInTheDocument()
+      expect(await screen.findByText('excellent')).toBeInTheDocument()
     })
   })
 

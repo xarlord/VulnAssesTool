@@ -107,6 +107,7 @@ vi.mock('lucide-react', async () => {
     'Plus',
     'Upload',
     'Download',
+    'BarChart',
     'BarChart3',
     'TrendingUp',
     'TrendingDown',
