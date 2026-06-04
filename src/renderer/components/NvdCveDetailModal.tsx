@@ -81,6 +81,9 @@ interface CveFullDetails {
   references: ReferenceFull[]
   referenceTags: string[]
   cvssMetrics?: CvssMetric[]
+  isKev: boolean
+  epssScore?: number
+  epssPercentile?: number
 }
 
 interface NvdCveDetailModalProps {
@@ -879,7 +882,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                     className={`overflow-hidden transition-all duration-300 ease-in-out ${cweExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}
                   >
                     <div className="border-t border-border p-4">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="space-y-2">
                         {cve.cweReferences.map((cwe) => {
                           const cweNum = cwe.cweId.match(/\d+/)?.[0] || ''
                           return (
@@ -888,10 +891,11 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                               href={`https://cwe.mitre.org/data/definitions/${cweNum}.html`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-muted hover:border-muted-foreground/30 transition-colors"
+                              className="flex items-start gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-muted hover:border-muted-foreground/30 transition-colors"
                             >
-                              <span className="font-medium text-foreground">{cwe.cweId}</span>
-                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="font-medium text-foreground shrink-0">{cwe.cweId}</span>
+                              {cwe.description && <span className="text-muted-foreground">— {cwe.description}</span>}
+                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                             </a>
                           )
                         })}

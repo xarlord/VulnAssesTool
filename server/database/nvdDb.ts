@@ -38,6 +38,9 @@ interface CveRow {
   cvss_v2_severity: string | null
   cvss_score_legacy: number | null
   cvss_vector_legacy: string | null
+  is_kev: number | null
+  epss_score: number | null
+  epss_percentile: number | null
 }
 
 export class NvdDatabase {
@@ -753,6 +756,10 @@ export class NvdDatabase {
       referenceTags: Array.from(referenceTags),
       // Multiple CVSS metrics from different sources
       cvssMetrics: cvssMetrics.length > 0 ? cvssMetrics : undefined,
+      // Intelligence fields from DB (avoiding N+1 separate API calls)
+      isKev: result.is_kev === 1,
+      epssScore: result.epss_score ?? undefined,
+      epssPercentile: result.epss_percentile ?? undefined,
     }
   }
 

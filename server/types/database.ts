@@ -145,6 +145,10 @@ export interface CveFullDetails {
   referenceTags: string[]
   // Multiple CVSS metrics from different sources
   cvssMetrics?: CvssMetric[]
+  // Intelligence fields from DB (avoiding N+1 separate API calls)
+  isKev: boolean
+  epssScore?: number
+  epssPercentile?: number
 }
 
 /**

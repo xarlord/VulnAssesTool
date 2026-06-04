@@ -65,6 +65,7 @@ const mockCveData = {
     },
   ],
   referenceTags: ['Vendor Advisory', 'Patch'],
+  isKev: false,
 }
 
 // Mock clipboard
@@ -691,6 +692,7 @@ describe('NvdCveDetailModal', () => {
         cvssV30Vector: 'CVSS:3.0/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H',
         cvssV30Severity: 'HIGH',
         referenceTags: [] as string[],
+        isKev: false,
       }
       vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
         success: true,
@@ -722,6 +724,7 @@ describe('NvdCveDetailModal', () => {
         cvssV2Vector: 'CVSS:2.0/AV:N/AC:L/Au:N/C:C/I:C/A:C',
         cvssV2Severity: 'HIGH',
         referenceTags: [] as string[],
+        isKev: false,
       }
       vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
         success: true,
