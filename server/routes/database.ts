@@ -13,6 +13,7 @@ import { importNvdData, getAvailableNvdYears } from '../database/nvd/index.js'
 import { downloadAndImportNVDData, getAvailableYears } from '../database/nvdDownloader.js'
 import { searchCVEsFTS, getFTSStats } from '../database/ftsMigration.js'
 import { CacheManager } from '../services/CacheManager.js'
+import { QueryCache } from '../database/performance/queryCache.js'
 import { createApiKeyStorage } from '../services/storage/index.js'
 import type {
   Severity,
@@ -29,6 +30,27 @@ const router = Router()
 
 const syncState = {
   isSyncing: false,
+}
+
+/**
+ * Short-TTL cache for `/search` responses. Repeated identical searches
+ * (pagination, re-opening the same query) skip the FTS lookup and the CWE/
+ * reference/tag enrichment. Explicitly cleared on reset, rebuild, delta-sync
+ * completion, and full-sync kickoff; the 60s TTL bounds staleness from the
+ * background bulk-import and auto-sync paths that finish out of band.
+ */
+interface SearchResponsePayload {
+  results: CveResult[]
+  total: number
+}
+
+const searchResponseCache = new QueryCache<SearchResponsePayload>({
+  maxSize: 200,
+  ttlMs: 60_000,
+})
+
+function invalidateSearchResponseCache(): void {
+  searchResponseCache.clear()
 }
 
 function normalizeDisplaySeverity(severity: string | null | undefined): string {
@@ -66,6 +88,26 @@ router.post('/search', async (req, res) => {
     let total = 0
 
     const sanitizedQuery = sanitizeSqlInput(validatedRequest.query)
+
+    const responseLimit = validatedRequest.limit || 100
+    const responseOffset = validatedRequest.offset || 0
+    const cacheKey = QueryCache.generateKey('search', {
+      type: validatedRequest.type,
+      query: sanitizedQuery,
+      limit: responseLimit,
+      offset: responseOffset,
+    })
+    const cachedResponse = searchResponseCache.get(cacheKey)
+    if (cachedResponse) {
+      res.json({
+        success: true,
+        results: cachedResponse.results,
+        total: cachedResponse.total,
+        limit: responseLimit,
+        offset: responseOffset,
+      })
+      return
+    }
 
     switch (validatedRequest.type) {
       case 'cve-id': {
@@ -163,12 +205,14 @@ router.post('/search', async (req, res) => {
       }
     }
 
+    searchResponseCache.set(cacheKey, { results: mappedResults, total })
+
     res.json({
       success: true,
       results: mappedResults,
       total,
-      limit: validatedRequest.limit || 100,
-      offset: validatedRequest.offset || 0,
+      limit: responseLimit,
+      offset: responseOffset,
     })
   } catch (error) {
     console.error('Search error:', error)
@@ -398,6 +442,7 @@ router.post('/sync/start', async (req, res) => {
     }
 
     syncState.isSyncing = true
+    invalidateSearchResponseCache()
 
     const years = validatedRequest?.years || getAvailableNvdYears(2021, 2026)
 
@@ -510,6 +555,7 @@ router.post('/sync/delta', async (req, res) => {
     })
 
     syncState.isSyncing = false
+    invalidateSearchResponseCache()
 
     broadcast('nvd:sync-complete', { type: 'delta-sync', result })
 
@@ -750,6 +796,7 @@ router.post('/reset', async (_req, res) => {
       db.exec('DELETE FROM cwe_references')
       db.exec('DELETE FROM cvss_metrics')
     }
+    invalidateSearchResponseCache()
     res.json({ success: true })
   } catch (error) {
     res.json({
@@ -793,6 +840,7 @@ router.post('/rebuild', async (_req, res) => {
         console.log('FTS rebuild skipped:', ftsError)
       }
     }
+    invalidateSearchResponseCache()
     res.json({ success: true })
   } catch (error) {
     res.json({

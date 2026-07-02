@@ -53,5 +53,9 @@ export default defineConfig({
         trace: 'on',
       },
     },
+    {
+      name: 'a11y',
+      testMatch: /a11y\/.*\.spec\.ts$/,
+    },
   ],
 })

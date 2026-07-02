@@ -83,16 +83,25 @@ const toastStyles = {
 export function Toaster() {
   const { toasts, removeToast } = useToastStore()
 
-  if (toasts.length === 0) return null
-
+  // Always render the container so it acts as a persistent live region:
+  // screen readers announce toasts as they are added. Errors/warnings use
+  // role="alert" (assertive); success/info use role="status" (polite).
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+    <div
+      className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2"
+      role="region"
+      aria-label="Notifications"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       {toasts.map((toast) => {
         const Icon = toastIcons[toast.type]
+        const isUrgent = toast.type === 'error' || toast.type === 'warning'
 
         return (
           <div
             key={toast.id}
+            role={isUrgent ? 'alert' : 'status'}
             className={`flex w-full max-w-md items-start gap-3 rounded-lg border p-4 shadow-lg animate-in slide-in-from-right-full ${toastStyles[toast.type]}`}
           >
             <Icon className="h-5 w-5 shrink-0 mt-0.5" />

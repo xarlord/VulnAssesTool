@@ -9,6 +9,7 @@
  */
 
 import express from 'express'
+import compression from 'compression'
 import cors from 'cors'
 import helmet from 'helmet'
 import { createServer } from 'node:http'
@@ -25,6 +26,7 @@ import { intelligenceRoutes } from './routes/intelligence.js'
 import { backupRoutes } from './routes/backup.js'
 import { containerRoutes } from './routes/container.js'
 import { projectRouter } from './routes/projects.js'
+import { sbomRoutes } from './routes/sbom.js'
 import { defaultLimiter } from './middleware/rateLimit.js'
 
 const currentFilename = fileURLToPath(import.meta.url)
@@ -43,6 +45,9 @@ function createApp(): express.Express {
   const app = express()
 
   app.use(helmet())
+  // gzip/deflate responses — search results, project payloads, and SBOM JSON
+  // are large and compress well over the wire.
+  app.use(compression())
   app.use(
     cors({
       origin: isDev() ? 'http://localhost:3000' : undefined,
@@ -80,6 +85,7 @@ function createApp(): express.Express {
   app.use('/api/backup', defaultLimiter, backupRoutes)
   app.use('/api/container', defaultLimiter, containerRoutes)
   app.use('/api/projects', defaultLimiter, projectRouter)
+  app.use('/api/sbom', defaultLimiter, sbomRoutes)
 
   // 3. SPA fallback — must be LAST. Serves index.html for all
   //    non-API, non-static GET requests (client-side routing).
