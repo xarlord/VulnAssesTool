@@ -23,23 +23,27 @@ export const CvssScoreGauge = React.memo(function CvssScoreGauge({
   const radarData = getRadarChartData(breakdown)
   const scoreColor = getSeverityColorHex(breakdown.severity)
 
+  const ariaLabel = `Radar chart of CVSS metrics. Base score ${breakdown.scores.baseScore} out of 10, ${breakdown.severity} severity.`
+
   return (
     <div className="flex flex-col items-center">
-      <ResponsiveContainer width={size} height={size}>
-        <RadarChart data={radarData}>
-          <PolarGrid stroke="#e5e7eb" />
-          <PolarAngleAxis dataKey="metric" tick={{ fill: '#6b7280', fontSize: 10 }} className="text-xs" />
-          <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fill: '#9ca3af', fontSize: 8 }} tickCount={3} />
-          <Radar
-            name="CVSS Metrics"
-            dataKey="value"
-            stroke={scoreColor}
-            fill={scoreColor}
-            fillOpacity={0.3}
-            strokeWidth={2}
-          />
-        </RadarChart>
-      </ResponsiveContainer>
+      <div role="img" aria-label={ariaLabel}>
+        <ResponsiveContainer width={size} height={size}>
+          <RadarChart data={radarData}>
+            <PolarGrid stroke="#e5e7eb" />
+            <PolarAngleAxis dataKey="metric" tick={{ fill: '#6b7280', fontSize: 10 }} className="text-xs" />
+            <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fill: '#9ca3af', fontSize: 8 }} tickCount={3} />
+            <Radar
+              name="CVSS Metrics"
+              dataKey="value"
+              stroke={scoreColor}
+              fill={scoreColor}
+              fillOpacity={0.3}
+              strokeWidth={2}
+            />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
       {showLabel && (
         <div className="mt-2 text-center">
           {/* Main CVSS Score - Made more prominent */}

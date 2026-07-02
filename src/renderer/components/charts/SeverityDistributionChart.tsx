@@ -105,37 +105,43 @@ export const SeverityDistributionChart = React.memo(function SeverityDistributio
     )
   }
 
+  const ariaLabel = `Donut chart of vulnerability severity distribution across ${total} vulnerabilit${
+    total === 1 ? 'y' : 'ies'
+  }. ${distribution.map((item) => `${item.name}: ${item.value}`).join(', ')}.`
+
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <PieChart>
-        <Pie
-          data={distribution}
-          cx="50%"
-          cy="50%"
-          labelLine={false}
-          label={CustomLabel}
-          outerRadius={80}
-          innerRadius={50}
-          paddingAngle={2}
-          dataKey="value"
-        >
-          {distribution.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.color} />
-          ))}
-        </Pie>
-        <Tooltip content={<CustomTooltip />} />
-        {showLegend && (
-          <Legend
-            verticalAlign="bottom"
-            height={36}
-            formatter={(value, entry: any) => (
-              <span className="text-sm text-gray-700">
-                {value}: {entry.payload.value}
-              </span>
-            )}
-          />
-        )}
-      </PieChart>
-    </ResponsiveContainer>
+    <div role="img" aria-label={ariaLabel}>
+      <ResponsiveContainer width="100%" height={height}>
+        <PieChart>
+          <Pie
+            data={distribution}
+            cx="50%"
+            cy="50%"
+            labelLine={false}
+            label={CustomLabel}
+            outerRadius={80}
+            innerRadius={50}
+            paddingAngle={2}
+            dataKey="value"
+          >
+            {distribution.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+          {showLegend && (
+            <Legend
+              verticalAlign="bottom"
+              height={36}
+              formatter={(value, entry: any) => (
+                <span className="text-sm text-gray-700">
+                  {value}: {entry.payload.value}
+                </span>
+              )}
+            />
+          )}
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
   )
 })

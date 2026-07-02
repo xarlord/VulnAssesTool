@@ -131,6 +131,14 @@ describe('SeverityDistributionChart', () => {
       expect(screen.queryByTestId('pie-chart')).not.toBeInTheDocument()
     })
 
+    it('exposes the chart as a labelled image summarizing the distribution', () => {
+      render(<SeverityDistributionChart vulnerabilities={createMockVulnerabilities()} />)
+
+      const label = screen.getByRole('img').getAttribute('aria-label') ?? ''
+      expect(label).toMatch(/severity distribution/i)
+      expect(label).toMatch(/Critical: \d/)
+    })
+
     it('should render legend when showLegend is true', () => {
       const vulnerabilities = createMockVulnerabilities()
       render(<SeverityDistributionChart vulnerabilities={vulnerabilities} showLegend={true} />)

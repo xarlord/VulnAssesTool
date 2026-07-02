@@ -19,8 +19,12 @@ export function HealthDistributionChart({ distribution }: HealthDistributionChar
     return <div className="flex h-64 items-center justify-center text-muted-foreground">No health data available</div>
   }
 
+  const ariaLabel = `Component health distribution donut chart. ${chartData
+    .map((item) => `${item.name}: ${item.value}`)
+    .join(', ')}.`
+
   return (
-    <div className="h-64" style={{ minHeight: '256px', minWidth: '300px' }}>
+    <div className="h-64" style={{ minHeight: '256px', minWidth: '300px' }} role="img" aria-label={ariaLabel}>
       <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={256}>
         <PieChart>
           <Pie

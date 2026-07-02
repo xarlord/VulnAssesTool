@@ -78,35 +78,42 @@ export const CvssHistogram = React.memo(function CvssHistogram({
     return null
   }
 
+  const ariaLabel =
+    data.length === 0
+      ? 'Area chart of CVSS score distribution. No scored vulnerabilities.'
+      : `Area chart of CVSS score distribution. ${data.map((bin) => `${bin.range}: ${bin.count}`).join(', ')}.`
+
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-        <defs>
-          <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#ea580c" stopOpacity={0.8} />
-            <stop offset="95%" stopColor="#ea580c" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis
-          dataKey="range"
-          tick={{ fill: '#6b7280', fontSize: 12 }}
-          stroke="#9ca3af"
-          label={{
-            value: 'CVSS Score',
-            position: 'insideBottom',
-            offset: -5,
-            style: { fontSize: 12, fill: '#6b7280' },
-          }}
-        />
-        <YAxis
-          tick={{ fill: '#6b7280', fontSize: 12 }}
-          stroke="#9ca3af"
-          label={{ value: 'Count', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#6b7280' } }}
-        />
-        <Tooltip content={<CustomTooltip />} />
-        <Area type="monotone" dataKey="count" stroke="#ea580c" fillOpacity={1} fill="url(#colorCount)" />
-      </AreaChart>
-    </ResponsiveContainer>
+    <div role="img" aria-label={ariaLabel}>
+      <ResponsiveContainer width="100%" height={height}>
+        <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#ea580c" stopOpacity={0.8} />
+              <stop offset="95%" stopColor="#ea580c" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis
+            dataKey="range"
+            tick={{ fill: '#6b7280', fontSize: 12 }}
+            stroke="#9ca3af"
+            label={{
+              value: 'CVSS Score',
+              position: 'insideBottom',
+              offset: -5,
+              style: { fontSize: 12, fill: '#6b7280' },
+            }}
+          />
+          <YAxis
+            tick={{ fill: '#6b7280', fontSize: 12 }}
+            stroke="#9ca3af"
+            label={{ value: 'Count', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#6b7280' } }}
+          />
+          <Tooltip content={<CustomTooltip />} />
+          <Area type="monotone" dataKey="count" stroke="#ea580c" fillOpacity={1} fill="url(#colorCount)" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   )
 })
