@@ -67,6 +67,8 @@ export interface ComponentCsvRow {
   version: string
   type: string
   licenses: string
+  /** Offline license-compliance verdict, e.g. "allowed" or "review (strong-copyleft)". */
+  licenseRisk: string
   purl: string
   vulnerabilityCount: number
   patchAvailable: string
