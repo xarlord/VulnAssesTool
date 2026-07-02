@@ -83,6 +83,7 @@ vi.mock('lucide-react', async () => {
     'Trash2',
     'RotateCcw',
     'Shield',
+    'Scale',
     'ChevronDown',
     'ChevronUp',
     'ExternalLink',

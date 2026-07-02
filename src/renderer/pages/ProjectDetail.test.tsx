@@ -123,6 +123,7 @@ vi.mock('lucide-react', () => {
     'Trash2',
     'RotateCcw',
     'Shield',
+    'Scale',
     'ChevronDown',
     'ChevronUp',
     'ChevronRight',
@@ -164,6 +165,7 @@ vi.mock('lucide-react', () => {
     'Mail',
     'Heart',
     'Container',
+    'Binary',
   ]
   const mod: Record<string, unknown> = {}
   for (const name of icons) {
@@ -179,6 +181,17 @@ vi.mock('@/components/ContainerScanDialog', () => ({
       <div data-testid="container-scan-dialog">
         Container Scan Dialog
         <button onClick={onClose}>Close Container Scan</button>
+      </div>
+    ) : null,
+}))
+
+// Mock BinarySbomDialog (always rendered by ProjectDetail)
+vi.mock('@/components/BinarySbomDialog', () => ({
+  BinarySbomDialog: ({ open, onClose }: { open: boolean; onClose: () => void; projectId: string }) =>
+    open ? (
+      <div data-testid="binary-sbom-dialog">
+        Binary SBOM Dialog
+        <button onClick={onClose}>Close Binary SBOM</button>
       </div>
     ) : null,
 }))
@@ -634,10 +647,11 @@ describe('ProjectDetail', () => {
     it('should display component count', () => {
       renderProjectDetail()
 
-      // The statistics cards are in the Overview tab which is default
-      // Use getAllByText since "Components" appears in both tabs and statistics
+      // The statistics cards are in the Overview tab which is default.
+      // Use getAllByText since "Components" appears in both tabs and statistics,
+      // and the count "2" also appears in the license-compliance summary.
       expect(screen.getAllByText('Components').length).toBeGreaterThan(0)
-      expect(screen.getByText('2')).toBeInTheDocument()
+      expect(screen.getAllByText('2').length).toBeGreaterThan(0)
     })
 
     it('should display critical vulnerability count', () => {

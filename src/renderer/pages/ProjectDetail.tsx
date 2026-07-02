@@ -13,6 +13,7 @@ import {
   Copy,
   CheckCircle2,
   Container,
+  Binary,
   ChevronDown,
   ChevronRight,
   ExternalLink,
@@ -21,12 +22,14 @@ import { useStore } from '@/store/useStore'
 import { toast } from '@/components/Toaster'
 import { SbomUploadDialog } from '@/components/SbomUploadDialog'
 import { ContainerScanDialog } from '@/components/ContainerScanDialog'
+import { BinarySbomDialog } from '@/components/BinarySbomDialog'
 import { ExportDialog } from '@/components/ExportDialog'
 import { VulnerabilityDetailModal } from '@/components/VulnerabilityDetailModal'
 import { ComponentVulnerabilitiesPopup } from '@/components/ComponentVulnerabilitiesPopup'
 import { StalenessIndicator } from '@/components/StalenessIndicator'
 import { FilterPresets, CvssRangeSlider, MultiSelectFilter } from '@/components/FilterPresets'
 import { HealthDashboard } from '@/components/HealthDashboard'
+import { LicenseComplianceCard } from '@/components/LicenseComplianceCard'
 import { RemediationQueue } from '@/components/RemediationQueue'
 import { VirtualList } from '@/components/VirtualList'
 import { KevBadge } from '@/components/vulnerabilities/KevBadge'
@@ -59,6 +62,7 @@ export function ProjectDetail() {
   const [showEditDialog, setShowEditDialog] = React.useState(false)
   const [showUploadDialog, setShowUploadDialog] = React.useState(false)
   const [showContainerScanDialog, setShowContainerScanDialog] = React.useState(false)
+  const [showBinarySbomDialog, setShowBinarySbomDialog] = React.useState(false)
   const [showExportDialog, setShowExportDialog] = React.useState(false)
   const [selectedVulnerability, setSelectedVulnerability] = React.useState<Vulnerability | null>(null)
   const [showVulnDetail, setShowVulnDetail] = React.useState(false)
@@ -635,6 +639,9 @@ export function ProjectDetail() {
               </div>
             </div>
 
+            {/* License Compliance (offline) */}
+            <LicenseComplianceCard components={project.components} />
+
             {/* SBOM Files Section */}
             <div className="rounded-lg border border-border bg-card">
               <div className="flex items-center justify-between border-b border-border p-4">
@@ -646,6 +653,13 @@ export function ProjectDetail() {
                   >
                     <Container className="h-4 w-4" />
                     Scan Container
+                  </button>
+                  <button
+                    onClick={() => setShowBinarySbomDialog(true)}
+                    className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
+                  >
+                    <Binary className="h-4 w-4" />
+                    Generate from Binary
                   </button>
                   <button
                     onClick={() => setShowUploadDialog(true)}
@@ -1663,6 +1677,13 @@ export function ProjectDetail() {
       <ContainerScanDialog
         open={showContainerScanDialog}
         onClose={() => setShowContainerScanDialog(false)}
+        projectId={projectId}
+      />
+
+      {/* Binary SBOM Dialog */}
+      <BinarySbomDialog
+        open={showBinarySbomDialog}
+        onClose={() => setShowBinarySbomDialog(false)}
         projectId={projectId}
       />
 
