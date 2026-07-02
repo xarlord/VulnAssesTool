@@ -325,7 +325,8 @@ describe('ExportDialog', () => {
 
       render(<ExportDialog open={true} onClose={onClose} project={mockProject} />)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      // Radix Dialog renders a close button with the accessible name "Close".
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       await user.click(closeButton)
 
       expect(onClose).toHaveBeenCalled()

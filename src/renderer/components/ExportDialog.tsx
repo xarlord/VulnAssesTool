@@ -1,6 +1,14 @@
 import { useState } from 'react'
-import { X, Download, FileSpreadsheet, FileJson, FileText } from 'lucide-react'
+import { Download, FileSpreadsheet, FileJson, FileText } from 'lucide-react'
 import { exportProjectData, exportAllProjects } from '@/lib/export'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import type { ExportFormat, ExportDataType } from '@/lib/export/types'
 import type { Project } from '@@/types'
 
@@ -15,8 +23,6 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
   const [isExporting, setIsExporting] = useState(false)
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('csv')
   const [selectedDataType, setSelectedDataType] = useState<ExportDataType>('vulnerabilities')
-
-  if (!open) return null
 
   const isAllProjects = !!projects && !project
 
@@ -76,33 +82,18 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
       ]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={handleCancel} aria-hidden="true" />
-
-      {/* Dialog */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dialog-title"
-        className="relative z-50 w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg"
-      >
-        {/* Close Button */}
-        <button
-          onClick={handleCancel}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Close dialog"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
-        {/* Header */}
-        <div className="mb-6">
-          <h2 id="dialog-title" className="text-lg font-semibold">
-            Export Data
-          </h2>
-          <p className="text-sm text-muted-foreground">Choose the export format and data type for your report.</p>
-        </div>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // Radix fires this for Escape, overlay click, and the close button.
+        if (!next) handleCancel()
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Export Data</DialogTitle>
+          <DialogDescription>Choose the export format and data type for your report.</DialogDescription>
+        </DialogHeader>
 
         {/* Content */}
         <div className="space-y-6">
@@ -117,6 +108,7 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
                   <button
                     key={format.value}
                     onClick={() => setSelectedFormat(format.value)}
+                    aria-pressed={isSelected}
                     className={`flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-colors ${
                       isSelected ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'
                     }`}
@@ -140,6 +132,7 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
                 <button
                   key={dataType.value}
                   onClick={() => setSelectedDataType(dataType.value)}
+                  aria-pressed={selectedDataType === dataType.value}
                   className={`w-full rounded-lg border p-3 text-left transition-colors ${
                     selectedDataType === dataType.value
                       ? 'border-primary bg-primary/10 text-primary'
@@ -166,8 +159,7 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-6 flex justify-end gap-3">
+        <DialogFooter>
           <button
             onClick={handleCancel}
             disabled={isExporting}
@@ -182,8 +174,8 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
           >
             {isExporting ? 'Exporting...' : 'Export'}
           </button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
