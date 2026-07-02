@@ -109,11 +109,9 @@ export default defineConfig([
     files: [
       '*.config.{ts,js,mjs,cjs}',
       'vite.config.ts',
-      'vite.config.electron.ts',
       'vitest.config.ts',
       'playwright.config.ts',
       'playwright.e2e.config.ts',
-      'watchdog.config.ts',
       'eslint.config.js',
       'commitlint.config.js',
       'postcss.config.js',

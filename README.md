@@ -9,7 +9,7 @@
 
 ## Overview
 
-VulnAssesTool is an Electron-based desktop application that helps security teams and developers analyze Software Bill of Materials (SBOM) for vulnerabilities. It supports multiple SBOM formats (CycloneDX, SPDX) and provides comprehensive vulnerability assessment capabilities with advanced threat intelligence integration.
+VulnAssesTool is a web application (Express backend + React frontend) that helps security teams and developers analyze Software Bill of Materials (SBOM) for vulnerabilities. It supports multiple SBOM formats (CycloneDX, SPDX) and provides comprehensive vulnerability assessment capabilities with advanced threat intelligence integration.
 
 ## Screenshots
 
@@ -20,6 +20,10 @@ Visual test captures and UI review screenshots are available in `docs/ui-reviews
 ### Core Functionality
 
 - **SBOM Import**: Upload and parse CycloneDX (JSON & XML) and SPDX format SBOM files
+- **SBOM Generation from Binaries**: Generate a CycloneDX SBOM from a compiled artifact/archive or a
+  container image using [Syft](https://github.com/anchore/syft), then import it like any other SBOM.
+  Requires the Syft CLI to be available (set `SYFT_PATH`, let the server provision a pinned copy, or
+  install Syft on `PATH`).
 - **Vulnerability Scanning**: Automatic vulnerability lookups from NVD and OSV databases
 - **Project Management**: Organize SBOMs into projects with tracking and statistics
 - **Component Analysis**: View detailed component information including licenses and dependencies
@@ -245,28 +249,14 @@ VulnAssesTool includes a comprehensive local CVE database with full historical d
 
 - **CSV Export**: Export vulnerability and component data to CSV
 - **JSON Export**: Full project data export in machine-readable format
-- **PDF Reports**: Generate formatted security assessment reports (via Electron printToPDF)
+- **PDF Reports**: Generate formatted security assessment reports (via jsPDF)
 - **ISO 21434 PDF**: Automotive-grade false positive analysis reports with full compliance formatting
 - **Audit Log Export**: Export audit trail in CSV, JSON, or PDF format
 - **VEX Export**: Generate CycloneDX VEX 1.5 documents
 
 ## Installation
 
-### Download Pre-built Binaries
-
-Download the latest release for your platform from the [Releases](https://github.com/xarlord/d-fence-vulnerability-assesment-tool/releases) page:
-
-| Platform | Format    | File                              |
-| -------- | --------- | --------------------------------- |
-| Windows  | Installer | `VulnAssesTool-Setup-2.0.0.exe`   |
-| Windows  | Portable  | `VulnAssesTool-2.0.0-win.zip`     |
-| macOS    | DMG       | `VulnAssesTool-2.0.0.dmg`         |
-| macOS    | ZIP       | `VulnAssesTool-2.0.0-mac.zip`     |
-| Linux    | AppImage  | `VulnAssesTool-2.0.0.AppImage`    |
-| Linux    | DEB       | `vulnassesstool_2.0.0_amd64.deb`  |
-| Linux    | RPM       | `vulnassesstool-2.0.0.x86_64.rpm` |
-
-### Prerequisites (Development)
+### Prerequisites
 
 - Node.js 18+
 - npm or yarn
@@ -281,30 +271,24 @@ cd vuln-assess-tool
 # Install dependencies
 npm install
 
-# Start development server
+# Start server + client together (Express API + Vite dev server)
 npm run dev
 
 # Run tests
 npm test
-
-# Build for production
-npm run build
 ```
 
-### Production Build from Source
+### Production Build & Run
+
+The production build is served single-origin: the Express server hosts the built
+client, the REST API (`/api`), and the WebSocket channel on one port.
 
 ```bash
-# Build the application
-npm run build
+# Build client and server
+npm run build:all
 
-# Package for current platform
-npm run dist
-
-# Package for specific platforms
-npm run dist:win     # Windows
-npm run dist:mac     # macOS
-npm run dist:linux   # Linux
-npm run dist:all     # All platforms
+# Start the server (serves the app on http://localhost:3001 by default; override with PORT)
+npm start
 ```
 
 ## Usage
@@ -422,13 +406,13 @@ npm run dist:all     # All platforms
 
 ```
 vuln-assess-tool/
-├── electron/                # Electron main process
-│   ├── main.ts              # App entry point (IPC handlers, window management)
-│   ├── preload.ts           # Preload script (bridge to renderer)
-│   ├── database/            # SQLite, NVD, OSV, FTS, bulk import
+├── server/                  # Express backend (Node)
+│   ├── index.ts             # App entry point (Express app, /api routers, WebSocket)
+│   ├── routes/              # REST routers: database, intelligence, storage, backup, container, projects
+│   ├── database/            # SQLite (better-sqlite3), NVD, OSV, FTS, bulk import, request validation
 │   ├── services/            # Backup, cache, intelligence (KEV/EPSS), container scanning
-│   ├── main/storage/        # Secure key storage (DPAPI/Keychain)
-│   └── types/               # Shared electron types
+│   ├── middleware/          # Auth, rate limiting
+│   └── types/               # Server-side types
 ├── src/
 │   ├── renderer/            # React application
 │   │   ├── components/      # UI components (ui/, cvss/, charts/, etc.)
@@ -447,11 +431,9 @@ vuln-assess-tool/
 │   │   │   ├── settings/    # Profiles, import/export
 │   │   │   └── tour/        # Onboarding tour steps
 │   │   └── store/           # Zustand state management
-│   ├── shared/              # Shared types and constants
-│   └── main/                # Legacy (types only)
-├── orchestrator/            # Watchdog autonomous testing system
-├── scripts/                 # Build, dev, and utility scripts
-├── build/                   # Electron-builder resources (icons, entitlements)
+│   └── shared/              # Shared types and constants (used by client and server)
+├── cli/                     # Command-line interface (shares parse/export logic)
+├── scripts/                 # Dev, seed, and NVD data utility scripts
 ├── e2e/                     # Playwright E2E tests
 ├── tests/                   # BDD and integration tests
 └── docs/                    # Documentation and screenshots
@@ -459,8 +441,13 @@ vuln-assess-tool/
 
 ### Available Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
+- `npm run dev` - Start server + client together (concurrently)
+- `npm run dev:server` - Start only the Express backend (tsx watch)
+- `npm run dev:client` - Start only the Vite client
+- `npm run build` - Build the client for production (Vite)
+- `npm run build:server` - Compile the server (tsc)
+- `npm run build:all` - Build client and server
+- `npm start` - Run the built server (`dist/server/index.js`)
 - `npm run build:analyze` - Build with bundle analysis
 - `npm run lint` - Run ESLint
 - `npm test` - Run test suite
@@ -468,48 +455,12 @@ vuln-assess-tool/
 - `npm run test:ui` - Run tests with Vitest UI
 - `npm run test:e2e` - Run Playwright E2E tests
 - `npm run test:bdd` - Run BDD tests
-- `npm run dist` - Build and package for current platform
-- `npm run dist:all` - Build and package for all platforms
-- `npm run watchdog` - Run autonomous testing with auto-fix
-
-### Watchdog Orchestrator (Autonomous Testing)
-
-Watchdog is a self-healing testing system that verifies the application works correctly after updates:
-
-```bash
-# Run full verification with AI auto-fix
-npm run watchdog
-
-# Run specific phase only
-npm run watchdog:phase build
-
-# Report errors without auto-fixing
-npm run watchdog:no-fix
-```
-
-**Verification Phases:**
-
-1. **Build** - TypeScript compilation & Vite bundling
-2. **Startup** - Electron main process initialization
-3. **Render** - React UI renders without errors
-4. **Functional** - Smoke tests for core features
-
-**Features:**
-
-- Real-time error interception from terminal, Vite, Electron, React
-- AI-powered auto-fix using GLM API
-- Session persistence and recovery
-- Comprehensive markdown & JSON reports
-
-**Requires:** `GLM_API_KEY` environment variable for AI auto-fix functionality.
-
-See [docs/WATCHDOG_QUICK_REFERENCE.md](docs/WATCHDOG_QUICK_REFERENCE.md) for details.
 
 ### Tech Stack
 
-- **Framework**: React 19 with TypeScript
-- **Build Tool**: Vite
-- **Desktop**: Electron 40
+- **Frontend**: React 19 with TypeScript
+- **Backend**: Express (Node) with a REST API under `/api` + WebSocket
+- **Build Tool**: Vite (client), tsc (server)
 - **State Management**: Zustand
 - **Styling**: Tailwind CSS
 - **Database**: better-sqlite3 + sql.js (WASM)
@@ -646,13 +597,11 @@ See [docs/WATCHDOG_QUICK_REFERENCE.md](docs/WATCHDOG_QUICK_REFERENCE.md) for det
 - Visual Consistency Audit (9/10 score)
 - Documentation Updates
 
-#### Phase 5: Autonomous Testing (Watchdog) ✅
+#### Phase 5: Autonomous Testing (Watchdog) — removed
 
-- Multi-phase verification system (build, startup, render, functional)
-- Real-time error interception from all sources
-- AI-powered auto-fix using GLM API (glm-5)
-- Session state persistence and recovery
-- Comprehensive report generation
+> The Electron-era Watchdog orchestrator was removed during the Electron → Express
+> migration. Verification now runs via the standard `npm run lint` / `test` / `build:all`
+> / `test:e2e` commands. This entry is kept for historical context only.
 
 #### Phase 6: Feature Completion ✅
 

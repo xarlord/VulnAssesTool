@@ -74,6 +74,41 @@ export async function apiPost<T>(urlPath: string, body?: unknown): Promise<T> {
   return request<T>('POST', urlPath, body)
 }
 
+/**
+ * POST multipart/form-data (e.g. file uploads). The browser sets the
+ * Content-Type (with boundary) automatically, so it must not be set here.
+ */
+export async function apiPostForm<T>(urlPath: string, formData: FormData): Promise<T> {
+  const headers: Record<string, string> = {}
+  const token = getStoredToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${BASE_URL}${urlPath}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    let error: string
+    try {
+      const parsed = JSON.parse(text)
+      error = parsed.error || `HTTP ${response.status}`
+    } catch {
+      error = `HTTP ${response.status}: ${text || response.statusText}`
+    }
+    if (response.status === 401 || response.status === 403) {
+      clearAuthToken()
+    }
+    throw new Error(error)
+  }
+
+  return response.json() as Promise<T>
+}
+
 export async function apiPut<T>(urlPath: string, body?: unknown): Promise<T> {
   return request<T>('PUT', urlPath, body)
 }

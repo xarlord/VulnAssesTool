@@ -5,6 +5,10 @@ import type {
   BackupAPI,
   IntelligenceAPI,
   ContainerPlatformAPI,
+  SbomGenerationAPI,
+  SbomGenerateResult,
+  SbomEngineStatus,
+  SbomGenerateProgress,
   UpdaterPlatformAPI,
 } from './types'
 import type {
@@ -64,7 +68,7 @@ import type {
   ExtractPackagesResponse,
   StartBulkDownloadRequest,
 } from '@@/types/ipc'
-import { apiGet, apiPost, apiPut, setAuthToken } from './httpClient'
+import { apiGet, apiPost, apiPut, apiPostForm, setAuthToken } from './httpClient'
 import { wsClient } from './wsClient'
 
 const noopCleanup = () => {}
@@ -195,6 +199,23 @@ function createServerContainer(): ContainerPlatformAPI {
   }
 }
 
+function createServerSbom(): SbomGenerationAPI {
+  return {
+    getEngineStatus: () => apiGet<SbomEngineStatus>('/sbom/engine-status'),
+    generateFromFile: (file: File) => {
+      const form = new FormData()
+      form.append('artifact', file)
+      return apiPostForm<SbomGenerateResult>('/sbom/generate', form)
+    },
+    generateFromImage: (imageRef: string) => apiPost<SbomGenerateResult>('/sbom/generate', { imageRef }),
+    onGenerateProgress: (cb) => {
+      const handler = (data: unknown) => cb(data as SbomGenerateProgress)
+      wsClient.on('sbom-generate-progress', handler)
+      return noopCleanup
+    },
+  }
+}
+
 function createServerUpdater(): UpdaterPlatformAPI {
   return {
     onUpdateAvailable: () => noopCleanup,
@@ -273,6 +294,7 @@ export async function createServerAdapter(): Promise<PlatformAPI> {
     backup: createServerBackup(),
     intelligence: createServerIntelligence(),
     container: createServerContainer(),
+    sbom: createServerSbom(),
     updater: createServerUpdater(),
   }
 }

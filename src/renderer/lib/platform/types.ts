@@ -83,6 +83,7 @@ export interface PlatformAPI {
   backup: BackupAPI
   intelligence: IntelligenceAPI
   container: ContainerPlatformAPI
+  sbom: SbomGenerationAPI
   updater: UpdaterPlatformAPI
 }
 
@@ -191,6 +192,44 @@ export interface ContainerPlatformAPI {
     layerDigests: string[]
   }): Promise<ExtractPackagesResponse>
   onScanProgress(callback: (progress: ContainerScanProgress) => void): () => void
+}
+
+// ---------------------------------------------------------------------------
+// SBOM Generation API (binary/image -> CycloneDX via Syft)
+// ---------------------------------------------------------------------------
+
+export interface SbomGenerateProgress {
+  phase: string
+  message: string
+}
+
+export interface SbomEngineStatus {
+  success: boolean
+  available: boolean
+  version?: string
+  path: string
+  error?: string
+}
+
+export interface SbomGenerateResult {
+  success: boolean
+  cyclonedxJson?: string
+  meta?: {
+    engine: string
+    source: 'file' | 'image'
+    filename?: string
+    imageRef?: string
+    byteLength: number
+  }
+  error?: string
+  code?: string
+}
+
+export interface SbomGenerationAPI {
+  getEngineStatus(): Promise<SbomEngineStatus>
+  generateFromFile(file: File): Promise<SbomGenerateResult>
+  generateFromImage(imageRef: string): Promise<SbomGenerateResult>
+  onGenerateProgress(callback: (progress: SbomGenerateProgress) => void): () => void
 }
 
 // ---------------------------------------------------------------------------

@@ -706,6 +706,12 @@ export class DbSeedingService {
     yearsRemaining: number[]
     lastError?: string
   }): void {
+    // Background sync is fire-and-forget and can outlive the DB connection
+    // (e.g. after shutdown or in tests). Writing to a closed connection throws
+    // an unhandled rejection, so skip persistence once the connection is gone.
+    if (!this.db.open) {
+      return
+    }
     this.db
       .prepare(
         `

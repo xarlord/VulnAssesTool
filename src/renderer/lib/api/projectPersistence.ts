@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiDelete } from '../platform/httpClient'
+import type { ProjectStatistics } from '../../../shared/types'
 
 interface ProjectPersistData {
   id: string
@@ -9,7 +10,7 @@ interface ProjectPersistData {
   dependencyGraph?: unknown
   lastScanAt?: string
   updatedAt?: string
-  statistics?: Record<string, unknown>
+  statistics?: ProjectStatistics
 }
 
 export async function saveProjectToServer(data: ProjectPersistData): Promise<void> {

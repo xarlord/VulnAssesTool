@@ -231,7 +231,7 @@ export const useStore = create<AppState>()(
             dependencyGraph: updated.dependencyGraph,
             lastScanAt: updated.lastScanAt?.toString(),
             updatedAt: updated.updatedAt?.toString(),
-            statistics: updated.statistics as Record<string, unknown> | undefined,
+            statistics: updated.statistics,
           }).catch((err) => {
             console.error('[Store] Failed to persist project to server:', err)
           })
@@ -256,7 +256,7 @@ export const useStore = create<AppState>()(
             dependencyGraph: (data.dependencyGraph as Project['dependencyGraph']) || existing.dependencyGraph,
             lastScanAt: data.lastScanAt ? new Date(data.lastScanAt) : existing.lastScanAt,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : existing.updatedAt,
-            statistics: (data.statistics as Project['statistics']) || existing.statistics,
+            statistics: data.statistics || existing.statistics,
           }
           set((state) => ({
             projects: state.projects.map((p) => (p.id === projectId ? merged : p)),

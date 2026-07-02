@@ -17,18 +17,23 @@
 
 ## Project Overview
 
-VulnAssesTool — Electron + React + TypeScript desktop application for vulnerability assessment.
+VulnAssesTool — Express + React + TypeScript web application for vulnerability assessment.
 Scans SBOMs/components against NVD, KEV, EPSS databases. Generates VEX documents, attack graphs,
-and CVSS reports.
+and CVSS reports. (Migrated from Electron to a client/server architecture — see commit `acd0518`.)
 
 ## Tech Stack
 
-- **Main process:** Electron (`electron/`, `tsconfig.main.json`)
-- **Renderer:** React + Vite (`src/renderer/`, `tsconfig.app.json`)
-- **Shared types:** `src/shared/` (consumed by both)
-- **Orchestrator:** CLI phase-runner (`orchestrator/`, `tsconfig.orchestrator.json`)
-- **Tests:** Vitest (`vitest.config.ts`) + Playwright E2E (`playwright.e2e.config.ts`)
-- **Build:** `npm run build` (compiles all 4 tsconfigs)
+- **Server (backend):** Express + better-sqlite3 (`server/`, entry `server/index.ts`, `tsconfig.server.json`).
+  Exposes a REST API under `/api/*` (routers in `server/routes/`) plus a WebSocket channel.
+- **SBOM-from-binary:** `/api/sbom` (`server/routes/sbom.ts`) shells out to the **Syft** CLI
+  (`server/services/SyftService.ts`, pinned + checksum-verified in `syftProvision.ts`) to turn an
+  uploaded artifact or image ref into CycloneDX JSON, which the client feeds through the existing
+  `parseCycloneDX` importer. Syft is an external tool (env `SYFT_PATH`, a provisioned copy, or PATH).
+- **Client (renderer):** React + Vite (`src/renderer/`, `tsconfig.app.json`)
+- **Shared types:** `src/shared/` (consumed by both client and server)
+- **CLI:** `cli/` (shares SBOM parse/export logic with the renderer)
+- **Tests:** Vitest (`vitest.config.ts`, `tsconfig.spec.json`) + Playwright E2E (`playwright.config.ts`)
+- **Build:** `npm run build` (Vite → client) + `npm run build:server` (tsc → server); `npm run build:all` for both
 
 ## Coding Standards
 
@@ -53,7 +58,7 @@ and CVSS reports.
 Run after every change:
 
 1. `npx eslint .` — must be 0 errors
-2. `npm run build` — all 4 tsconfigs compile
+2. `npm run build:all` — client (Vite) and server (`tsconfig.server.json`) both compile
 3. `npm run test` — Vitest unit tests pass
 4. `npm run test:e2e` — Playwright E2E smoke tests
 
@@ -66,17 +71,16 @@ Run after every change:
 | Domain types           | `src/shared/types.ts` (`Vulnerability`, `CveResult`, `Component`, `Project`, `ScanResult`) |
 | CVSS metrics           | `src/shared/types/cvss.ts`                                                                 |
 | FPF types              | `src/shared/types/fpf.ts`                                                                  |
-| IPC request/response   | `src/shared/types/ipc.ts` + `electron/types/database.ts`                                   |
+| API request/response   | `src/shared/types/ipc.ts` (shared client/server contract)                                  |
 | Database API contract  | `src/renderer/lib/platform/types.ts`                                                       |
 | Recharts custom render | recharts exports (`TooltipProps`, `LabelProps`, `PieLabelRenderProps`)                     |
 | sql.js types           | `@types/sql.js` (`SqlJsStatic`, `Database`)                                                |
-| electron-updater       | `electron-updater` exports (`AppUpdater`, `UpdateInfo`, `ProgressInfo`)                    |
+| better-sqlite3 types   | `@types/better-sqlite3` (`Database`, `Statement`)                                          |
 
 ### Patterns
 
-- Error classes: extend `Error` with parameter properties (see `electron/database/ipcRequestValidator.ts:13`)
-- IPC validation: `request: unknown` + type-guard narrowing
-- Window augmentation: `src/renderer/global.d.ts` (not `as unknown as`)
+- Error classes: extend `Error` with parameter properties (see `server/database/ipcRequestValidator.ts:13`)
+- Request validation: `request: unknown` + type-guard narrowing (server routes and IPC validator)
 - Lazy pages: `lazy(() => import('./X').then(m => ({ default: m.X })))`
 
 ## Active Remediation Plan
@@ -108,5 +112,15 @@ See `coding-guide-fixed.md` for full details. Current status:
 
 ## Pre-existing Issues
 
-- 32 test failures in renderer/database UI components (unrelated to style-guide work)
-- `tsconfig.app.json` strict checks surface ~6 type errors in tests (tracked in PR 5)
+- **Flaky perf test:** `dbSeedingService.test.ts` › `checkFirstRun › should detect has_full_data`
+  inserts 200,000 rows one-by-one under a 60s test timeout. It passes on an idle machine but can
+  exceed 60s under load. Timing only — the code path (synchronous `checkFirstRun`) is correct.
+  Fix options: raise the per-test timeout or batch the insert.
+
+### Fixed (2026-07-01 hardening)
+
+- Unhandled rejection in `dbSeedingService.saveBackgroundSyncState` (write to closed DB) — now
+  guarded with `if (!this.db.open) return`.
+- 4 `tsconfig.app.json` type errors — resolved (incl. a real bug: `VulnerabilityDetailModal`
+  compared the boolean `knownRansomwareUse` to the string `'Known'`, so the RANSOMWARE badge
+  never rendered). App type-check is now 0 errors.
