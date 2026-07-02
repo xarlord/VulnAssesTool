@@ -114,6 +114,22 @@ describe('DependencyGraph', () => {
       expect(screen.getByText('Upload an SBOM to view the dependency graph')).toBeInTheDocument()
     })
 
+    it('provides a labelled image and a screen-reader list as a text alternative', () => {
+      const components = [
+        createMockComponent({ id: 'c1', name: 'alpha', vulnerabilities: [] }),
+        createMockComponent({ id: 'c2', name: 'beta', vulnerabilities: ['CVE-2024-0001'] }),
+      ]
+      render(<DependencyGraph components={components} vulnerabilities={[]} />)
+
+      const label = screen.getByRole('img').getAttribute('aria-label') ?? ''
+      expect(label).toMatch(/2 components/i)
+      expect(label).toMatch(/1 with known vulnerabilities/i)
+
+      // The sr-only list names each component.
+      expect(screen.getByText(/alpha/)).toBeInTheDocument()
+      expect(screen.getByText(/beta/)).toBeInTheDocument()
+    })
+
     it('should render graph container when components exist', () => {
       const components = [createMockComponent()]
       render(<DependencyGraph components={components} vulnerabilities={[]} />)

@@ -213,13 +213,32 @@ export function DependencyGraph({
     )
   }
 
+  const vulnerableCount = components.filter((component) => component.vulnerabilities.length > 0).length
+  const graphSummary = `Dependency graph of ${components.length} component${
+    components.length === 1 ? '' : 's'
+  }; ${vulnerableCount} with known vulnerabilities.`
+
   return (
     <div
       className={cn('relative rounded-lg border border-gray-200 bg-white', className)}
       style={{ height: typeof height === 'number' ? `${height}px` : height }}
     >
-      {/* Graph container */}
-      <div ref={containerRef} className="h-full w-full" />
+      {/* Graph container — canvas is opaque to assistive tech, so it is
+          labelled as an image and paired with the sr-only list below. */}
+      <div ref={containerRef} className="h-full w-full" role="img" aria-label={graphSummary} />
+
+      {/* Text alternative: the graph's nodes as a screen-reader-only list. */}
+      <div className="sr-only">
+        <h4>Dependency graph components</h4>
+        <ul>
+          {components.map((component) => (
+            <li key={component.id}>
+              {component.name} {component.version} — {component.vulnerabilities.length} known{' '}
+              {component.vulnerabilities.length === 1 ? 'vulnerability' : 'vulnerabilities'}
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {/* Zoom controls */}
       {showControls && (
