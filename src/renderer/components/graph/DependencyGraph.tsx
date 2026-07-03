@@ -5,7 +5,7 @@
  * Shows component dependencies with severity-based color coding
  */
 
-import React, { useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EventObject } from 'cytoscape'
 import { cn } from '@/lib/utils'
@@ -190,6 +190,74 @@ export function DependencyGraph({
     }
   }, [])
 
+  // Keyboard navigation: the canvas is opaque to keyboard/AT, so the node list
+  // below doubles as a listbox that lets keyboard users move between components
+  // (arrow keys) and open a component's details (Enter) — the tap-on-node
+  // equivalent. The active option is kept in sync with the canvas via panning.
+  const [activeNodeIndex, setActiveNodeIndex] = useState(0)
+
+  // Pan the canvas to the active node so sighted keyboard users can see it.
+  const centerNode = useCallback((nodeId: string) => {
+    const cy = cyRef.current
+    if (!cy) return
+    const node = cy.getElementById(nodeId)
+    if (node.length > 0) {
+      cy.center(node)
+    }
+  }, [])
+
+  const moveActiveNode = useCallback(
+    (index: number) => {
+      const clamped = Math.max(0, Math.min(index, components.length - 1))
+      setActiveNodeIndex(clamped)
+      const target = components[clamped]
+      if (target) centerNode(target.id)
+    },
+    [components, centerNode],
+  )
+
+  const activateNode = useCallback(
+    (index: number) => {
+      moveActiveNode(index)
+      const target = components[index]
+      if (target && onNodeClick) onNodeClick(target)
+    },
+    [components, moveActiveNode, onNodeClick],
+  )
+
+  const handleListKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLUListElement>) => {
+      switch (event.key) {
+        case 'ArrowDown':
+        case 'ArrowRight':
+          event.preventDefault()
+          moveActiveNode(activeNodeIndex + 1)
+          break
+        case 'ArrowUp':
+        case 'ArrowLeft':
+          event.preventDefault()
+          moveActiveNode(activeNodeIndex - 1)
+          break
+        case 'Home':
+          event.preventDefault()
+          moveActiveNode(0)
+          break
+        case 'End':
+          event.preventDefault()
+          moveActiveNode(components.length - 1)
+          break
+        case 'Enter':
+        case ' ':
+          event.preventDefault()
+          activateNode(activeNodeIndex)
+          break
+        default:
+          break
+      }
+    },
+    [activeNodeIndex, components.length, moveActiveNode, activateNode],
+  )
+
   // Handle empty state
   if (components.length === 0) {
     return (
@@ -218,6 +286,9 @@ export function DependencyGraph({
     components.length === 1 ? '' : 's'
   }; ${vulnerableCount} with known vulnerabilities.`
 
+  // Clamp for rendering in case the component set shrank below the active index.
+  const activeIndex = Math.min(activeNodeIndex, components.length - 1)
+
   return (
     <div
       className={cn('relative rounded-lg border border-gray-200 bg-white', className)}
@@ -227,18 +298,34 @@ export function DependencyGraph({
           labelled as an image and paired with the sr-only list below. */}
       <div ref={containerRef} className="h-full w-full" role="img" aria-label={graphSummary} />
 
-      {/* Text alternative: the graph's nodes as a screen-reader-only list. */}
-      <div className="sr-only">
-        <h4>Dependency graph components</h4>
-        <ul>
-          {components.map((component) => (
-            <li key={component.id}>
-              {component.name} {component.version} — {component.vulnerabilities.length} known{' '}
-              {component.vulnerabilities.length === 1 ? 'vulnerability' : 'vulnerabilities'}
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* Text alternative + keyboard interface: the graph's nodes as a listbox.
+          Visually hidden until focused, then shown as an overlay so keyboard
+          users can see which component is active. */}
+      <ul
+        role="listbox"
+        aria-label={`${graphSummary} Use the arrow keys to move between components and Enter to open a component's details.`}
+        tabIndex={0}
+        aria-activedescendant={components[activeIndex] ? `graph-node-${components[activeIndex].id}` : undefined}
+        onKeyDown={handleListKeyDown}
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-20 focus:max-h-[85%] focus:w-72 focus:overflow-auto focus:rounded-md focus:border focus:border-gray-200 focus:bg-white focus:p-2 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        {components.map((component, index) => (
+          <li
+            key={component.id}
+            id={`graph-node-${component.id}`}
+            role="option"
+            aria-selected={index === activeIndex}
+            onClick={() => activateNode(index)}
+            className={cn(
+              'cursor-pointer rounded px-2 py-1 text-sm text-gray-700',
+              index === activeIndex && 'bg-blue-100 text-blue-900',
+            )}
+          >
+            {component.name} {component.version} — {component.vulnerabilities.length} known{' '}
+            {component.vulnerabilities.length === 1 ? 'vulnerability' : 'vulnerabilities'}
+          </li>
+        ))}
+      </ul>
 
       {/* Zoom controls */}
       {showControls && (

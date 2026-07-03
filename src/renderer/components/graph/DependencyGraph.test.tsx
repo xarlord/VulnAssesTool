@@ -327,6 +327,60 @@ describe('DependencyGraph', () => {
     })
   })
 
+  describe('Keyboard navigation', () => {
+    const twoComponents = () => [
+      createMockComponent({ id: 'c1', name: 'alpha', version: '1.0.0', vulnerabilities: [] }),
+      createMockComponent({ id: 'c2', name: 'beta', version: '2.0.0', vulnerabilities: ['CVE-2024-0001'] }),
+    ]
+
+    it('exposes graph nodes as a keyboard-navigable listbox with one option per component', () => {
+      render(<DependencyGraph components={twoComponents()} vulnerabilities={[]} />)
+
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+      const options = screen.getAllByRole('option')
+      expect(options).toHaveLength(2)
+      // First option is active by default so arrow keys have a starting point.
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+      expect(options[1]).toHaveAttribute('aria-selected', 'false')
+    })
+
+    it('moves the active node with ArrowDown / ArrowUp', () => {
+      render(<DependencyGraph components={twoComponents()} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' })
+      let options = screen.getAllByRole('option')
+      expect(options[1]).toHaveAttribute('aria-selected', 'true')
+      expect(listbox).toHaveAttribute('aria-activedescendant', options[1].id)
+
+      fireEvent.keyDown(listbox, { key: 'ArrowUp' })
+      options = screen.getAllByRole('option')
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('opens the active node details when Enter is pressed', () => {
+      const onNodeClick = vi.fn()
+      const components = twoComponents()
+      render(<DependencyGraph components={components} vulnerabilities={[]} onNodeClick={onNodeClick} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' })
+      fireEvent.keyDown(listbox, { key: 'Enter' })
+
+      expect(onNodeClick).toHaveBeenCalledWith(components[1])
+    })
+
+    it('opens a node`s details when its option is clicked (keyboard-equivalent of a canvas tap)', () => {
+      const onNodeClick = vi.fn()
+      const components = twoComponents()
+      render(<DependencyGraph components={components} vulnerabilities={[]} onNodeClick={onNodeClick} />)
+
+      fireEvent.click(screen.getAllByRole('option')[0])
+
+      expect(onNodeClick).toHaveBeenCalledWith(components[0])
+    })
+  })
+
   describe('Path Highlighting', () => {
     it('should highlight nodes in the given path', () => {
       const components = [
