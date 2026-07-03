@@ -11,7 +11,6 @@
  * - Support for multiple sheets
  */
 
-import * as XLSX from 'xlsx'
 import type { Component } from '@@/types'
 
 /**
@@ -113,6 +112,10 @@ export interface ComponentWithCPEEstimation extends Component {
  */
 export async function parseExcel(buffer: ArrayBuffer, sheetName?: string): Promise<ExcelRow[]> {
   try {
+    // Loaded on demand: xlsx (~330 kB) is only needed when a user generates an
+    // SBOM from an Excel file, so keep it out of the Dashboard page bundle.
+    const XLSX = await import('xlsx')
+
     // Read the workbook
     const workbook = XLSX.read(buffer, { type: 'array' })
 

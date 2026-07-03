@@ -47,12 +47,14 @@ export default defineConfig({
     outDir: 'dist/renderer',
     rollupOptions: {
       output: {
+        // Only libraries that are reached through a *static* import graph are
+        // pinned to a named vendor chunk (better long-term caching). jspdf and
+        // xlsx are now loaded exclusively via dynamic import() at their export /
+        // SBOM-generation call sites, so they are left for Vite to auto-split —
+        // pinning them here would force the chunk into the eager graph.
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-cytoscape': ['cytoscape'],
-          'vendor-recharts': ['recharts'],
-          'vendor-pdf': ['jspdf', 'jspdf-autotable'],
-          'vendor-xlsx': ['xlsx'],
         },
       },
     },

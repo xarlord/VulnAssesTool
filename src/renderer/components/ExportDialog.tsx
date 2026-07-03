@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Download, FileSpreadsheet, FileJson, FileText } from 'lucide-react'
-import { exportProjectData, exportAllProjects } from '@/lib/export'
 import {
   Dialog,
   DialogContent,
@@ -31,6 +30,11 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
     try {
       // Small delay to allow UI to update
       await new Promise((resolve) => setTimeout(resolve, 0))
+
+      // Loaded on demand so the export subsystem (and its heavy jsPDF/autoTable
+      // dependency) stays out of the Dashboard/ProjectDetail page bundles and is
+      // only fetched when the user actually runs an export.
+      const { exportProjectData, exportAllProjects } = await import('@/lib/export')
 
       if (isAllProjects && projects) {
         exportAllProjects(projects, selectedFormat)

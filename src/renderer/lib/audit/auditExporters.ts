@@ -6,7 +6,6 @@
 import type { AuditEvent, AuditExportOptions, AuditExportFormat } from './types'
 import { downloadCsv, sanitizeFilename } from '../export/csv'
 import { downloadJson } from '../export/json'
-import { downloadPdf } from '../export/pdf'
 import { useAuditStore } from './auditStore'
 
 /**
@@ -48,6 +47,9 @@ export async function exportAuditLogs(options: AuditExportOptions): Promise<void
     downloadJson(json, `${filename}.json`)
   } else if (format === 'pdf') {
     const pdfDoc = await exportAuditToPdf(events, result.totalCount)
+    // Loaded on demand: keeps the pdf module (and jsPDF) off the eagerly-loaded
+    // audit barrel, which is imported cross-cuttingly for audit logging.
+    const { downloadPdf } = await import('../export/pdf')
     downloadPdf(pdfDoc, `${filename}.pdf`)
   }
 }
