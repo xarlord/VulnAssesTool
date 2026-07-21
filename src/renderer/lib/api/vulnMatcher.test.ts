@@ -172,6 +172,36 @@ describe('matchVulnerabilitiesForComponent', () => {
     expect(result[0].id).toBe('CVE-2024-1001')
   })
 
+  it('tags CPE matches as cpe-exact in matchQuality', async () => {
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: mockNvdVulns.map(createMockCveResult),
+      totalResults: mockNvdVulns.length,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(mockComponent)
+
+    expect(result[0].matchQuality?.['comp-1']).toBe('cpe-exact')
+  })
+
+  it('tags name-only matches for a component with neither CPE nor suggested CPEs', async () => {
+    // A gap component (no CPE, no purl, no suggested CPEs) can only be matched by product name,
+    // which is the dominant false-positive source — it must be tagged so the UI can hide it.
+    const nameOnly: Component = { ...mockComponent, cpe: undefined, purl: undefined, suggestedCpes: undefined }
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: mockNvdVulns.map(createMockCveResult),
+      totalResults: mockNvdVulns.length,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(nameOnly)
+
+    expect(result.length).toBeGreaterThan(0)
+    expect(result[0].matchQuality?.[nameOnly.id]).toBe('name-only')
+  })
+
   it('should return empty array when no vulnerabilities found', async () => {
     vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
     vi.mocked(queryByPurls).mockResolvedValue(new Map())
