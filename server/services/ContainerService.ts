@@ -26,6 +26,17 @@ interface CommandResult {
 }
 
 /**
+ * A real image layer recovered from the `docker save` tarball, used to build
+ * the scan's layer breakdown. Digest matches the `layerDigest` stamped on
+ * packages, so per-layer attribution lines up.
+ */
+interface ScannedLayer {
+  digest: string
+  size: number
+  mediaType: string
+}
+
+/**
  * Parsed image config from `docker image inspect`
  */
 interface ImageConfig {
@@ -273,8 +284,13 @@ export class ContainerService {
     runtime: ContainerRuntime,
     layerDigests: string[],
     onProgress?: (phase: string) => void,
-  ): Promise<ContainerPackage[]> {
+  ): Promise<{ packages: ContainerPackage[]; layers: ScannedLayer[] }> {
     const allPackages: ContainerPackage[] = []
+    // Layers recovered from the saved image, in filesystem order. Digest here
+    // matches the layerDigest stamped on packages below, so the scan route can
+    // attribute packages to layers reliably (unlike the multi-arch manifest
+    // list, whose per-platform entries aren't filesystem layers at all).
+    const scannedLayers: ScannedLayer[] = []
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'vat-container-'))
 
     try {
@@ -329,11 +345,26 @@ export class ContainerService {
         onProgress?.(`Scanning layer ${layerIndex + 1}/${layerFiles.length}...`)
 
         const layerDigest = this.getLayerDigestFromPath(layerFile)
+        let layerSize = 0
+        try {
+          layerSize = fs.statSync(layerPath).size
+        } catch {
+          // Non-fatal: size is display-only.
+        }
+        scannedLayers.push({
+          digest: layerDigest,
+          size: layerSize,
+          mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip',
+        })
+
         const layerDir = path.join(tmpDir, `layer-${layerIndex}`)
         await fs.promises.mkdir(layerDir, { recursive: true })
 
         try {
-          await this.extractTar(layerPath, layerDir)
+          // Tolerate tar's non-zero exit: a Linux rootfs is full of symlinks/
+          // hardlinks that Windows tar can't create, but the regular files we
+          // read (the package databases) still extract fine.
+          await this.extractTar(layerPath, layerDir, { tolerateErrors: true })
           const packages = await this.scanLayerForPackages(layerDir, layerDigest)
           allPackages.push(...packages)
         } catch (err) {
@@ -351,25 +382,46 @@ export class ContainerService {
       }
     }
 
-    return allPackages
+    return { packages: allPackages, layers: scannedLayers }
   }
 
   /**
-   * Extract a tar file to a directory
+   * Extract a tar file to a directory.
+   *
+   * @param options.tolerateErrors - When true, a non-zero tar exit is logged
+   *   and swallowed instead of throwing. Container layers are Linux rootfs
+   *   tarballs full of symlinks/hardlinks (busybox applets, shared libs) that
+   *   GNU tar on Windows can't create without privilege, so it exits non-zero
+   *   even though every regular file — including the package databases we read
+   *   — extracted successfully. The outer image tarball (blobs + JSON, no
+   *   links) is extracted strictly so a genuine corruption still surfaces.
    */
-  private async extractTar(tarPath: string, destDir: string): Promise<void> {
-    // Use the `tar` command if available, otherwise skip
-    // On Windows, tar is available by default since Windows 10 1803
-    const tarArgs: [string, string[]] =
-      process.platform === 'win32' ? ['tar', ['-xf', tarPath, '-C', destDir]] : ['tar', ['-xf', tarPath, '-C', destDir]]
-
+  private async extractTar(tarPath: string, destDir: string, options?: { tolerateErrors?: boolean }): Promise<void> {
+    // Extract from within destDir using a path relative to it. Passing an
+    // absolute "C:\..." path to tar on Windows makes it misparse the drive
+    // letter as a remote host ("tar: Cannot connect to C: resolve failed");
+    // a relative archive name + cwd avoids that for both GNU tar and bsdtar.
+    // (tar is available by default on Windows 10 1803+.)
+    const relTar = path.relative(destDir, tarPath) || path.basename(tarPath)
     try {
-      await execFileAsync(tarArgs[0], tarArgs[1], {
-        timeout: 60_000,
+      await execFileAsync('tar', ['-xf', relTar], {
+        cwd: destDir,
+        timeout: 120_000,
         windowsHide: true,
+        // A rootfs layer produces a lot of stderr (one line per uncreatable
+        // link); keep the buffer generous so tar isn't killed mid-extraction.
+        maxBuffer: 64 * 1024 * 1024,
       })
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
+      if (options?.tolerateErrors) {
+        console.warn(
+          `[ContainerService] tar reported errors extracting ${path.basename(tarPath)} (continuing): ${
+            message.split('\n')[0]
+          }`,
+        )
+        return
+      }
       throw new Error(`Failed to extract tar: ${message}`)
     }
   }

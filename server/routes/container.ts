@@ -164,18 +164,15 @@ router.post('/scan', async (req, res) => {
     })
     const inspectConfig = await containerService.inspectImage(request.imageRef, request.runtime)
 
-    const maxLayers = request.maxLayers || 100
-    const layersToProcess = manifest.layers.slice(0, maxLayers)
-
     broadcast('scan-progress', {
       phase: 'extract',
-      message: `Extracting packages from ${layersToProcess.length} layers...`,
+      message: 'Extracting packages from image layers...',
     })
 
-    const packages = await containerService.extractPackages(
+    const { packages, layers: scannedLayers } = await containerService.extractPackages(
       request.imageRef,
       request.runtime,
-      layersToProcess.map((l) => l.digest),
+      [],
       (phase) => {
         broadcast('scan-progress', { phase: 'extract', message: phase })
       },
@@ -183,7 +180,12 @@ router.post('/scan', async (req, res) => {
 
     const image = parseImageRef(request.imageRef)
 
-    const layers = layersToProcess.map((layer) => ({
+    // Build the layer breakdown from the layers actually recovered from the
+    // saved image (real filesystem layers) rather than from the manifest: a
+    // multi-arch image's manifest is a *list of per-platform manifests*, not
+    // layers, so using it showed e.g. "16 layers" for single-layer alpine and
+    // attributed zero packages to each (digests never matched).
+    const layers = scannedLayers.map((layer) => ({
       digest: layer.digest,
       size: layer.size,
       mediaType: layer.mediaType,
@@ -211,8 +213,8 @@ router.post('/scan', async (req, res) => {
         layers,
         packages: consolidatedPackages,
         stats: {
-          totalLayers: manifest.layers.length,
-          processedLayers: layersToProcess.length,
+          totalLayers: scannedLayers.length,
+          processedLayers: scannedLayers.length,
           totalPackages: packages.length,
           uniquePackages: consolidatedPackages.length,
           scanTimeMs: Date.now() - startTime,
@@ -233,7 +235,7 @@ router.post('/scan', async (req, res) => {
 router.post('/extract', async (req, res) => {
   try {
     const request = req.body as ExtractPackagesRequest
-    const packages = await containerService.extractPackages(
+    const { packages } = await containerService.extractPackages(
       request.imageRef,
       request.runtime,
       request.layerDigests,

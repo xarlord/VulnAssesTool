@@ -206,6 +206,13 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
     updateProject(targetProject.id, {
       components: [...existingComponents, ...uniqueComponents],
       updatedAt: new Date(),
+      statistics: {
+        ...targetProject.statistics,
+        // Reflect the imported packages in the project totals so the Overview
+        // count updates (otherwise the import looks like a no-op even though
+        // the components appear in the Components tab).
+        totalComponents: existingComponents.length + uniqueComponents.length,
+      },
     })
 
     handleClose()
