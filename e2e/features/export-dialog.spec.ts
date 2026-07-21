@@ -110,12 +110,12 @@ test.describe('Export Dialog', () => {
       await createProjectOnly(page, 'Format Select Test')
       await openExportDialog(page)
 
-      const pdfOption = page.locator('text=PDF')
-      if ((await pdfOption.count()) > 0) {
-        await pdfOption.first().click()
+      const pdfButton = page.getByRole('button', { name: /PDF/i })
+      if ((await pdfButton.count()) > 0) {
+        await pdfButton.first().click()
         await page.waitForTimeout(E2E_UI_DELAY)
 
-        await expect(pdfOption.first()).toHaveClass(/selected|active|checked/)
+        await expect(pdfButton.first()).toHaveAttribute('aria-pressed', 'true')
       }
     })
 

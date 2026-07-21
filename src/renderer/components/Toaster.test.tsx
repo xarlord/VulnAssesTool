@@ -14,9 +14,13 @@ describe('Toaster', () => {
   })
 
   describe('Rendering', () => {
-    it('should not render when no toasts', () => {
-      const { container } = render(<Toaster />)
-      expect(container.firstChild).toBe(null)
+    it('renders a persistent, empty live region when there are no toasts', () => {
+      // The container is always present so screen readers can announce toasts
+      // as they arrive (aria-live); it just holds no notifications yet.
+      render(<Toaster />)
+      expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
     it('should render toast container when toasts exist', () => {
