@@ -221,7 +221,7 @@ export const useStore = create<AppState>()(
             state.currentProject?.id === id ? { ...state.currentProject, ...updates } : state.currentProject,
         }))
         const updated = get().projects.find((p) => p.id === id)
-        if (updated && (updates.vulnerabilities || updates.components)) {
+        if (updated && (updates.vulnerabilities || updates.components || updates.allowedLicenses)) {
           saveProjectToServer({
             id: updated.id,
             name: updated.name,
@@ -232,6 +232,7 @@ export const useStore = create<AppState>()(
             lastScanAt: updated.lastScanAt?.toString(),
             updatedAt: updated.updatedAt?.toString(),
             statistics: updated.statistics,
+            allowedLicenses: updated.allowedLicenses,
           }).catch((err) => {
             console.error('[Store] Failed to persist project to server:', err)
           })
@@ -257,6 +258,7 @@ export const useStore = create<AppState>()(
             lastScanAt: data.lastScanAt ? new Date(data.lastScanAt) : existing.lastScanAt,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : existing.updatedAt,
             statistics: data.statistics || existing.statistics,
+            allowedLicenses: (data.allowedLicenses as string[]) || existing.allowedLicenses,
           }
           set((state) => ({
             projects: state.projects.map((p) => (p.id === projectId ? merged : p)),

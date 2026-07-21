@@ -31,6 +31,7 @@ interface ProjectData {
   lastScanAt?: string
   updatedAt?: string
   statistics?: Record<string, unknown>
+  allowedLicenses?: string[]
 }
 
 projectRouter.post('/', (req: Request, res: Response) => {

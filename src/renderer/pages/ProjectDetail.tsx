@@ -271,7 +271,7 @@ export function ProjectDetail() {
   if (!project) {
     return (
       <div className="flex min-h-screen flex-col">
-        <header className="border-b border-border bg-background px-6 py-4">
+        <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/dashboard')}
@@ -640,7 +640,15 @@ export function ProjectDetail() {
             </div>
 
             {/* License Compliance (offline) */}
-            <LicenseComplianceCard components={project.components} />
+            <LicenseComplianceCard
+              components={project.components}
+              allowedLicenses={project.allowedLicenses}
+              onAllowLicenses={(licenseIds) => {
+                const current = project.allowedLicenses ?? []
+                const merged = Array.from(new Set([...current, ...licenseIds]))
+                updateProject(project.id, { allowedLicenses: merged, updatedAt: new Date() })
+              }}
+            />
 
             {/* SBOM Files Section */}
             <div className="rounded-lg border border-border bg-card">
@@ -949,6 +957,29 @@ export function ProjectDetail() {
                                             <span className="font-mono text-xs">{component.purl}</span>
                                           </>
                                         )}
+                                        {/* Show the actual CPE used for matching so accuracy can be assessed */}
+                                        {component.cpe ? (
+                                          <>
+                                            <span>•</span>
+                                            <span
+                                              className="font-mono text-xs text-green-600"
+                                              title="Matched CPE used for vulnerability scanning"
+                                            >
+                                              {component.cpe}
+                                            </span>
+                                          </>
+                                        ) : component.suggestedCpes && component.suggestedCpes.length > 0 ? (
+                                          <>
+                                            <span>•</span>
+                                            <span
+                                              className="font-mono text-xs text-yellow-600"
+                                              title={`Estimated CPE (${component.suggestedCpes[0]?.confidence} confidence); ${component.suggestedCpes.length} suggestion(s)`}
+                                            >
+                                              {component.suggestedCpes[0]?.cpe} (est.{' '}
+                                              {component.suggestedCpes[0]?.confidence})
+                                            </span>
+                                          </>
+                                        ) : null}
                                         {componentVulns.length > 0 && (
                                           <span className="text-destructive font-medium">
                                             • {componentVulns.length} vulnerability
@@ -1468,8 +1499,8 @@ export function ProjectDetail() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
+      <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/dashboard')}
@@ -1497,7 +1528,7 @@ export function ProjectDetail() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isScanning ? (
               <div className="flex flex-col gap-1">
                 <button
@@ -1561,7 +1592,7 @@ export function ProjectDetail() {
         <div className="mx-auto max-w-7xl">
           {/* Tab Navigation */}
           <div className="border-b border-border">
-            <nav className="flex gap-4" role="tablist">
+            <nav className="flex gap-4 overflow-x-auto" role="tablist">
               <button
                 role="tab"
                 aria-selected={activeTab === 'overview'}

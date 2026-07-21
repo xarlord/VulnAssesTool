@@ -11,6 +11,7 @@ interface ProjectPersistData {
   lastScanAt?: string
   updatedAt?: string
   statistics?: ProjectStatistics
+  allowedLicenses?: string[]
 }
 
 export async function saveProjectToServer(data: ProjectPersistData): Promise<void> {

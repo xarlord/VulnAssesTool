@@ -98,6 +98,9 @@ export interface Project {
   vulnerabilities: Vulnerability[]
   statistics: ProjectStatistics
   dependencyGraph?: DependencyGraph
+  /** SPDX license ids the user has approved for this project — the license
+   * compliance scanner treats these as 'allowed', overriding category rules. */
+  allowedLicenses?: string[]
 }
 
 export interface SbomFile {
