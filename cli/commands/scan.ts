@@ -7,8 +7,9 @@ import type { Vulnerability, Component } from '../../src/shared/types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 import { parseCycloneDX } from '../../src/renderer/lib/parsers/cyclonedx.js'
-import { parseSPDX } from '../../src/renderer/lib/parsers/spdx.js'
+import { parseSpdx } from '../../src/renderer/lib/parsers/spdx.js'
 import { getHybridScanner } from '../../src/renderer/lib/database/hybridScanner.js'
+import type { ScannerInstance } from '../../src/renderer/lib/database/hybridScanner.js'
 
 export interface ScanCommandOptions {
   sbomPath: string
@@ -196,7 +197,11 @@ export function generateSummary(vulnerabilities: Vulnerability[]): ScanSummary {
 /**
  * Main scan command function
  */
-export async function scanCommand(sbomPath: string, options: ScanCommandOptions): Promise<ScanResult> {
+export async function scanCommand(
+  sbomPath: string,
+  options: ScanCommandOptions,
+  scanner: ScannerInstance = getHybridScanner(),
+): Promise<ScanResult> {
   const startTime = Date.now()
 
   try {
@@ -234,18 +239,18 @@ export async function scanCommand(sbomPath: string, options: ScanCommandOptions)
       }
     }
 
-    // Parse SBOM
+    // Parse SBOM. The parsers are async and infer json/xml from the filename
+    // extension, so pass a synthetic name matching the determined format.
     let components: Component[] = []
-    let parseWarnings: string[] = []
+    const parseWarnings: string[] = []
+    const parserFilename = format.includes('xml') ? 'sbom.xml' : 'sbom.json'
 
     if (format.includes('cyclonedx')) {
-      const parseResult = parseCycloneDX(content)
+      const parseResult = await parseCycloneDX(content, parserFilename)
       components = parseResult.components
-      parseWarnings = parseResult.warnings ?? []
     } else if (format.includes('spdx')) {
-      const parseResult = parseSPDX(content)
+      const parseResult = await parseSpdx(content, parserFilename)
       components = parseResult.components
-      parseWarnings = parseResult.warnings ?? []
     } else {
       return {
         success: false,
@@ -259,8 +264,7 @@ export async function scanCommand(sbomPath: string, options: ScanCommandOptions)
       }
     }
 
-    // Get scanner and scan components
-    const scanner = getHybridScanner()
+    // Scan each component with the provided scanner (defaults to the stub).
     const allVulnerabilities: Vulnerability[] = []
 
     for (const component of components) {

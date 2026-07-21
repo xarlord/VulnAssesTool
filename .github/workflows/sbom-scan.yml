@@ -1,0 +1,98 @@
+# SBOM vulnerability scan using the vulnshield CLI.
+#
+# Builds the CLI, scans an SBOM against the local NVD database, uploads results
+# to GitHub code scanning (SARIF) and publishes a JUnit report. Adjust SBOM_PATH
+# to point at your project's SBOM, and provision the NVD database (see the
+# "Provision NVD database" step — the DB is large and environment-specific).
+name: SBOM Vulnerability Scan
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Mondays 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write # required for github/codeql-action/upload-sarif
+
+jobs:
+  sbom-scan:
+    runs-on: ubuntu-latest
+    env:
+      # config.ts reads DATA_DIR to locate <DATA_DIR>/nvd-data.db.
+      DATA_DIR: ${{ github.workspace }}/.nvd-data
+      SBOM_PATH: e2e/fixtures/sbom-with-vulns.json # <- replace with your SBOM
+      FAIL_ON: high
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build:cli
+
+      # The scanner requires a synced NVD SQLite database, which is large, so it
+      # is cached between runs. On a cache miss you must populate
+      # $DATA_DIR/nvd-data.db (e.g. by running the app's database sync — see
+      # docs/DATABASE_SETUP.md). Scanning without a populated DB exits with code 2.
+      # The DB is large and updates over time. A stable key restores the cached
+      # copy on every run; bump the "-v1" suffix (or clear the cache) to force a
+      # refresh after re-syncing. restore-keys lets older entries be reused.
+      - name: Provision NVD database (cache)
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DATA_DIR }}
+          key: nvd-data-v1
+          restore-keys: nvd-data-
+
+      - name: Verify NVD database is present
+        run: |
+          if [ ! -f "$DATA_DIR/nvd-data.db" ]; then
+            echo "::warning::No NVD database at $DATA_DIR/nvd-data.db — populate it before scanning (docs/DATABASE_SETUP.md)."
+          fi
+
+      # Capture the CLI exit code explicitly so we can distinguish "findings
+      # found" (1) from an execution error (2) or bad input (3). Never let the
+      # step itself fail here — the SARIF upload must run regardless.
+      - name: Scan SBOM (SARIF)
+        id: scan
+        run: |
+          set +e
+          node dist/cli/index.js scan "$SBOM_PATH" --format sarif --output results.sarif --fail-on "$FAIL_ON"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF to code scanning
+        if: always() && hashFiles('results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
+      - name: Generate JUnit report
+        if: always()
+        continue-on-error: true
+        run: node dist/cli/index.js scan "$SBOM_PATH" --format junit --output junit.xml
+
+      - name: Publish JUnit report artifact
+        if: always() && hashFiles('junit.xml') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-junit
+          path: junit.xml
+
+      - name: Fail on scan error
+        if: steps.scan.outputs.code == '2' || steps.scan.outputs.code == '3'
+        run: |
+          echo "::error::vulnshield scan failed to execute (exit ${{ steps.scan.outputs.code }}) — see logs (e.g. missing NVD database)."
+          exit 1
+
+      - name: Enforce vulnerability gate
+        if: steps.scan.outputs.code == '1'
+        run: |
+          echo "::error::SBOM scan found vulnerabilities at or above '${FAIL_ON}'."
+          exit 1

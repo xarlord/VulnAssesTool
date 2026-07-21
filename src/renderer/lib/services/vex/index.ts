@@ -19,3 +19,11 @@ export {
   type VexGeneratorOptions,
   type VexGenerationResult,
 } from './vexGenerator'
+
+export {
+  parseVexDocument,
+  applyVexSuppression,
+  type ParsedVexStatement,
+  type ParsedVex,
+  type VexSuppressionResult,
+} from './vexParser'
