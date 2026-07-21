@@ -181,20 +181,28 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
   const handleImport = useCallback(() => {
     if (!scanResult || !targetProject) return
 
-    // Convert scanned packages to project components
-    const newComponents: Component[] = scanResult.packages.map((pkg, index) => ({
-      id: `container-${Date.now()}-${index}`,
-      name: pkg.name,
-      version: pkg.version,
-      type: 'container' as const,
-      purl: pkg.purl,
-      cpe: pkg.cpe,
-      description: `${pkg.manager} package: ${pkg.name}`,
-      licenses: [],
-      vulnerabilities: [],
-      dependencies: [],
-      sbomFileId: undefined,
-    }))
+    // Convert scanned packages to project components. Container scanning builds Component objects
+    // directly (it does not go through parseCycloneDX), so coverage/provenance must be set here too:
+    // a package-manager package with a real version is 'identified', otherwise a 'gap'.
+    const newComponents: Component[] = scanResult.packages.map((pkg, index) => {
+      const hasVersion = !!pkg.version && pkg.version !== 'unknown'
+      return {
+        id: `container-${Date.now()}-${index}`,
+        name: pkg.name,
+        version: hasVersion ? pkg.version : '',
+        type: 'container' as const,
+        purl: pkg.purl,
+        cpe: pkg.cpe,
+        hasMissingCpe: !pkg.cpe,
+        description: `${pkg.manager} package: ${pkg.name}`,
+        licenses: [],
+        coverage: hasVersion ? ('identified' as const) : ('gap' as const),
+        provenanceSources: [pkg.manager],
+        vulnerabilities: [],
+        dependencies: [],
+        sbomFileId: undefined,
+      }
+    })
 
     // Filter out duplicates
     const existingComponents = targetProject.components
