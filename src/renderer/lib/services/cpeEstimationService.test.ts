@@ -168,6 +168,47 @@ describe('CPEEstimationService', () => {
       expect(knownMatch?.matchScore).toBe(90)
     })
 
+    it('surfaces version-mismatched product CPEs as selectable partials when NVD has no exact version', async () => {
+      const { suggestCPEs } = await import('../utils/cpeUtils')
+      vi.mocked(suggestCPEs).mockReturnValueOnce([]) // no heuristic mapping (e.g. jasper)
+
+      // NVD has jasper 2.0.1 / 2.0.12 / 1.900.13 / version-agnostic — but no exact "2.0".
+      const externalFn = vi.fn().mockResolvedValue(
+        [
+          'cpe:2.3:a:jasper_project:jasper:2.0.1:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:2.0.12:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:1.900.13:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:*:*:*:*:*:*:*:*',
+        ].map((cpe) => ({
+          cpe,
+          vendor: 'jasper_project',
+          product: 'jasper',
+          confidence: 'high' as const,
+          matchScore: 90,
+        })),
+      )
+
+      const service = new CPEEstimationService({ includeLowConfidence: true, externalSearchFn: externalFn })
+      const result = await service.estimateCPEs('jasper', '2.0')
+
+      // Each distinct version is offered (deduped by full CPE, not just product),
+      // so the user can pick the closest one instead of one being silently chosen.
+      expect(result.map((r) => r.cpe)).toEqual(
+        expect.arrayContaining([
+          'cpe:2.3:a:jasper_project:jasper:2.0.1:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:2.0.12:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:1.900.13:*:*:*:*:*:*:*',
+        ]),
+      )
+      // No exact "2.0" CPE exists, so nothing may be auto-selected (>= 80) — the
+      // matches must be shown for the user to choose from.
+      expect(result.every((r) => r.matchScore < 80)).toBe(true)
+      // Same-family versions (2.0.x) rank above the unrelated 1.900.x.
+      const v2Score = result.find((r) => r.cpe.includes(':2.0.1:'))?.matchScore ?? 0
+      const v1900Score = result.find((r) => r.cpe.includes(':1.900.13:'))?.matchScore ?? 0
+      expect(v2Score).toBeGreaterThan(v1900Score)
+    })
+
     it('gracefully handles external search failure', async () => {
       const { suggestCPEs } = await import('../utils/cpeUtils')
       vi.mocked(suggestCPEs).mockReturnValueOnce([])

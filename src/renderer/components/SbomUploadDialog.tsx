@@ -20,6 +20,24 @@ type FileFormat = 'cyclonedx' | 'spdx' | 'unknown'
 // File size limit: 50MB to prevent DoS attacks
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB in bytes
 
+// Cap total CPE-estimation time. Estimation only pre-fills CPEs (the scan does
+// its own CPE/name matching), so it must never block the upload indefinitely
+// when the local NVD database is slow.
+const CPE_ESTIMATION_BUDGET_MS = 20000
+
+// Resolve to the promise's value, or null if it does not settle within `ms`.
+async function raceWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 // Format file size for display
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 Bytes'
@@ -44,7 +62,9 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
     needsConfirmation: number
     noMatchFound: number
   } | null>(null)
-  const [ambiguousComponents, setAmbiguousComponents] = useState<AmbiguousComponent[]>([])
+  // Every component that has at least one suggested CPE — the user can review
+  // and override ANY of these (not just ambiguous ones) before importing.
+  const [reviewableComponents, setReviewableComponents] = useState<AmbiguousComponent[]>([])
   const [showCpeMatchDialog, setShowCpeMatchDialog] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -55,7 +75,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
     setError('')
     setParsedData(null)
     setCpeEstimationStats(null)
-    setAmbiguousComponents([])
+    setReviewableComponents([])
     setShowCpeMatchDialog(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -152,11 +172,27 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
         result = await parseSpdx(content, file.name)
       }
 
-      // Run CPE estimation for components missing CPEs
+      // Run CPE estimation for components missing CPEs, bounded by a time budget
+      // so a slow local NVD database can't leave the dialog spinning forever.
       setStep('estimating-cpe')
-      const cpeResult = await estimateCpesForComponents(result.components, {
-        externalSearchFn: createCpeDatabaseSearchFn(),
-      })
+      const cpeResult = await raceWithTimeout(
+        estimateCpesForComponents(result.components, {
+          externalSearchFn: createCpeDatabaseSearchFn(),
+        }),
+        CPE_ESTIMATION_BUDGET_MS,
+      )
+
+      if (!cpeResult) {
+        // Budget exceeded — proceed with the parsed components as-is so the user
+        // is never stuck; CPEs are resolved later during the scan.
+        setParsedData({
+          components: result.components,
+          vulnerabilities: result.vulnerabilities || [],
+          format: result.metadata.format,
+        })
+        setStep('success')
+        return
+      }
 
       // Store estimation stats for display
       setCpeEstimationStats({
@@ -165,10 +201,9 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
         noMatchFound: cpeResult.summary.noMatchFound,
       })
 
-      // Store ambiguous components if user confirmation is needed
-      if (cpeResult.ambiguousComponents.length > 0) {
-        setAmbiguousComponents(cpeResult.ambiguousComponents)
-      }
+      // Track the full reviewable set (all components with any suggestion) so the
+      // user can override before import; ambiguous count drives auto-open below.
+      setReviewableComponents(cpeResult.reviewableComponents)
 
       setParsedData({
         components: cpeResult.components,
@@ -278,7 +313,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
       components: updatedComponents,
     })
     setShowCpeMatchDialog(false)
-    setAmbiguousComponents([])
+    setReviewableComponents([])
 
     // Update stats to reflect user selections
     const selectedCount = selections.size
@@ -455,12 +490,12 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                       </div>
                     )}
                   </div>
-                  {ambiguousComponents.length > 0 && (
+                  {reviewableComponents.length > 0 && (
                     <button
                       onClick={() => setShowCpeMatchDialog(true)}
                       className="mt-2 text-xs text-primary hover:underline"
                     >
-                      Review {ambiguousComponents.length} component(s) with ambiguous CPE matches
+                      Review / edit CPE matches for {reviewableComponents.length} component(s)
                     </button>
                   )}
                 </div>
@@ -505,6 +540,14 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
               >
                 Upload Different File
               </button>
+              {reviewableComponents.length > 0 && (
+                <button
+                  onClick={() => setShowCpeMatchDialog(true)}
+                  className="rounded-md border border-primary bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+                >
+                  Review CPE matches
+                </button>
+              )}
               <button
                 onClick={handleConfirm}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -521,7 +564,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
         open={showCpeMatchDialog}
         onClose={() => setShowCpeMatchDialog(false)}
         onConfirm={handleCpeConfirm}
-        ambiguousComponents={ambiguousComponents.map((ac) => ({
+        ambiguousComponents={reviewableComponents.map((ac) => ({
           id: ac.componentId,
           name: ac.componentName,
           version: ac.componentVersion,

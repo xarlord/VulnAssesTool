@@ -14,6 +14,7 @@ vi.mock('@/lib/services/cpeEstimationPipeline', () => ({
     Promise.resolve({
       components,
       ambiguousComponents: [],
+      reviewableComponents: [],
       summary: { autoSelected: 0, needsConfirmation: 0, noMatchFound: 0 },
     }),
   ),
@@ -640,6 +641,7 @@ describe('SbomUploadDialog', () => {
       estimateCpesMock.mockResolvedValue({
         components: [{ id: 'c1', name: 'comp', version: '1.0', type: 'library', licenses: [], purl: '', cpe: '' }],
         ambiguousComponents: [],
+        reviewableComponents: [],
         summary: { autoSelected: 5, needsConfirmation: 2, noMatchFound: 1 },
       })
       renderDialog(true, 'test-project-id')
@@ -672,6 +674,7 @@ describe('SbomUploadDialog', () => {
       estimateCpesMock.mockResolvedValue({
         components,
         ambiguousComponents: [],
+        reviewableComponents: [],
         summary: { autoSelected: 0, needsConfirmation: 0, noMatchFound: 0 },
       })
       renderDialog(true, 'test-project-id')
@@ -739,6 +742,23 @@ describe('SbomUploadDialog', () => {
             needsUserConfirmation: true,
           },
         ],
+        reviewableComponents: [
+          {
+            componentId: 'c1',
+            componentName: 'comp',
+            componentVersion: '1.0',
+            estimatedCPEs: [
+              {
+                cpe: 'cpe:2.3:a:*:comp:*',
+                vendor: '*',
+                product: 'comp',
+                confidence: 'medium',
+                matchScore: 50,
+              },
+            ],
+            needsUserConfirmation: true,
+          },
+        ],
         summary: { autoSelected: 0, needsConfirmation: 1, noMatchFound: 0 },
       })
       renderDialog(true, 'test-project-id')
@@ -760,6 +780,23 @@ describe('SbomUploadDialog', () => {
       estimateCpesMock.mockResolvedValue({
         components: [],
         ambiguousComponents: [
+          {
+            componentId: 'c1',
+            componentName: 'comp',
+            componentVersion: '1.0',
+            estimatedCPEs: [
+              {
+                cpe: 'cpe:2.3:a:*:comp:*',
+                vendor: '*',
+                product: 'comp',
+                confidence: 'medium',
+                matchScore: 50,
+              },
+            ],
+            needsUserConfirmation: true,
+          },
+        ],
+        reviewableComponents: [
           {
             componentId: 'c1',
             componentName: 'comp',

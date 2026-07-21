@@ -146,15 +146,39 @@ export class CPEEstimationService {
           }
         }
 
+        // Add DB-discovered CPEs as selectable suggestions, deduped by the FULL
+        // CPE so distinct versions (e.g. jasper 2.0.1 vs 2.0.12) are each offered.
+        // Score by version so only an EXACT version match is auto-select-eligible
+        // (>= autoSelectThreshold); everything else is surfaced as a lower-confidence
+        // "partial" for the user to pick from — the whole point when NVD has no
+        // exact-version CPE for the component (e.g. component 2.0 vs NVD 2.0.12).
+        const existingCpes = new Set(results.map((r) => r.cpe))
         for (const db of dbResults) {
-          const isDuplicate = results.some(
-            (r) =>
-              r.vendor.toLowerCase() === db.vendor.toLowerCase() &&
-              r.product.toLowerCase() === db.product.toLowerCase(),
-          )
-          if (!isDuplicate) {
-            results.push({ ...db })
+          if (existingCpes.has(db.cpe)) {
+            continue
           }
+          existingCpes.add(db.cpe)
+
+          const dbVersion = extractCpeVersion(db.cpe).toLowerCase()
+          let confidence: 'high' | 'medium' | 'low' = 'low'
+          let matchScore = 45
+          if (dbVersion && dbVersion === normalizedVersion) {
+            confidence = 'high'
+            matchScore = 95
+          } else if (
+            dbVersion &&
+            dbVersion !== '*' &&
+            (dbVersion.startsWith(`${normalizedVersion}.`) || normalizedVersion.startsWith(`${dbVersion}.`))
+          ) {
+            // Same version family, e.g. component 2.0 vs CPE 2.0.12 — strong partial.
+            confidence = 'medium'
+            matchScore = 75
+          } else if (!dbVersion || dbVersion === '*') {
+            // Version-agnostic CPE.
+            confidence = 'medium'
+            matchScore = 65
+          }
+          results.push({ ...db, confidence, matchScore })
         }
       } catch (error) {
         console.warn('[CPEEstimationService] External search failed:', error)

@@ -27,6 +27,10 @@ export interface PipelineResult {
   estimationResults: EstimationResult[]
   /** Components that need user confirmation (ambiguous matches) */
   ambiguousComponents: AmbiguousComponent[]
+  /** All components that have at least one suggested CPE (auto-selected AND
+   * ambiguous) so the user can review/override any match — including near/
+   * version-mismatched matches — before importing. */
+  reviewableComponents: AmbiguousComponent[]
   /** Summary statistics */
   summary: {
     totalProcessed: number
@@ -159,10 +163,23 @@ export class CPEEstimationPipeline {
       noMatchFound: estimationResults.filter((r) => r.estimatedCPEs.length === 0).length,
     }
 
+    // Every component with suggestions is reviewable, so the user can override
+    // even auto-selected matches (and pick a different near-match) pre-import.
+    const reviewableComponents: AmbiguousComponent[] = estimationResults
+      .filter((r) => r.estimatedCPEs.length > 0)
+      .map((r) => ({
+        componentId: r.componentId,
+        componentName: r.componentName,
+        componentVersion: r.componentVersion,
+        estimatedCPEs: r.estimatedCPEs,
+        needsUserConfirmation: r.needsUserConfirmation,
+      }))
+
     return {
       components: updatedComponents,
       estimationResults,
       ambiguousComponents,
+      reviewableComponents,
       summary,
     }
   }
