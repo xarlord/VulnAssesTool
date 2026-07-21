@@ -29,6 +29,8 @@ and CVSS reports. (Migrated from Electron to a client/server architecture — se
   (`server/services/SyftService.ts`, pinned + checksum-verified in `syftProvision.ts`) to turn an
   uploaded artifact or image ref into CycloneDX JSON, which the client feeds through the existing
   `parseCycloneDX` importer. Syft is an external tool (env `SYFT_PATH`, a provisioned copy, or PATH).
+  See `docs/sbom-cataloging-guidelines.md` for per-artifact SBOM/scan playbooks (Android, Yocto,
+  MCU/RTOS, AUTOSAR) — including why images like Android `super.img` must be unpacked before scanning.
 - **Client (renderer):** React + Vite (`src/renderer/`, `tsconfig.app.json`)
 - **Shared types:** `src/shared/` (consumed by both client and server)
 - **CLI:** `cli/` (shares SBOM parse/export logic with the renderer)
