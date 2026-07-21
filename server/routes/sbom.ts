@@ -15,6 +15,7 @@ import * as path from 'node:path'
 import type { Request, Response, NextFunction } from 'express'
 import { SyftService, SyftError } from '../services/SyftService.js'
 import type { SyftSource } from '../services/SyftService.js'
+import { AndroidImageService, AndroidImageError, isAndroidImageDir } from '../services/AndroidImageService.js'
 import { broadcast } from '../websocket.js'
 
 const router = Router()
@@ -54,15 +55,48 @@ router.get('/engine-status', async (_req, res) => {
 router.post('/generate', uploadArtifact, async (req, res) => {
   const file = req.file
   const imageRef = typeof req.body?.imageRef === 'string' ? req.body.imageRef.trim() : ''
+  const localPath = typeof req.body?.localPath === 'string' ? req.body.localPath.trim() : ''
 
   try {
     let source: SyftSource
     if (file) {
       source = { kind: 'file', value: file.path }
+    } else if (localPath) {
+      // Scan a file or directory already on the host by path — no upload, so
+      // multi-GB local artifacts (e.g. Android prebuilt images) are viable.
+      let stat: fs.Stats
+      try {
+        stat = fs.statSync(localPath)
+      } catch {
+        res.json({ success: false, error: `Path not found on server: ${localPath}` })
+        return
+      }
+      // An Android prebuilt-image directory (super.img/boot.img) can't be read
+      // by Syft directly; unpack the sparse/super/EROFS partitions first.
+      if (stat.isDirectory() && isAndroidImageDir(localPath)) {
+        broadcast('sbom-generate-progress', { phase: 'starting', message: 'Detected Android image — unpacking…' })
+        const android = new AndroidImageService()
+        const cyclonedxJson = await android.generateSbom(localPath, (message) => {
+          broadcast('sbom-generate-progress', { phase: 'android-unpack', message })
+        })
+        res.json({
+          success: true,
+          cyclonedxJson,
+          meta: {
+            engine: 'syft+android-unpack',
+            source: 'android-image',
+            imageRef: undefined,
+            filename: undefined,
+            byteLength: cyclonedxJson.length,
+          },
+        })
+        return
+      }
+      source = { kind: stat.isDirectory() ? 'dir' : 'file', value: localPath }
     } else if (imageRef) {
       source = { kind: 'image', value: imageRef }
     } else {
-      res.json({ success: false, error: 'Provide an artifact file or an image reference.' })
+      res.json({ success: false, error: 'Provide an artifact file, a local path, or an image reference.' })
       return
     }
 
@@ -88,7 +122,7 @@ router.post('/generate', uploadArtifact, async (req, res) => {
     res.json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate SBOM',
-      code: error instanceof SyftError ? error.code : undefined,
+      code: error instanceof SyftError || error instanceof AndroidImageError ? error.code : undefined,
     })
   } finally {
     if (file) {

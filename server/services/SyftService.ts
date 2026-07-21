@@ -16,16 +16,17 @@ import { resolveSyftPath } from './syftProvision.js'
 
 const execFileAsync = promisify(execFile)
 
-// Syft can be slow on large images; match the container scan timeout (5 min).
-const COMMAND_TIMEOUT = 300_000
+// Syft can be very slow on large local artifacts (multi-GB prebuilt images), so
+// allow up to 15 min before giving up (the client waits at least as long).
+const COMMAND_TIMEOUT = 900_000
 // SBOMs for large images can be tens of MB.
 const MAX_BUFFER = 100 * 1024 * 1024
 
-export type SyftSourceKind = 'file' | 'image'
+export type SyftSourceKind = 'file' | 'image' | 'dir'
 
 export interface SyftSource {
   kind: SyftSourceKind
-  /** Absolute path (kind: 'file') or image reference (kind: 'image'). */
+  /** Absolute path (kind: 'file' | 'dir') or image reference (kind: 'image'). */
   value: string
 }
 
@@ -86,11 +87,13 @@ export class SyftService {
    * text (validated to be CycloneDX). Throws SyftError on failure.
    */
   async generateSbom(source: SyftSource, onProgress?: SyftProgress): Promise<string> {
-    // `file:` scheme is unambiguous for uploaded artifacts/archives; an image
-    // reference is passed through for Syft's own source detection (registry).
-    const target = source.kind === 'file' ? `file:${source.value}` : source.value
+    // Explicit schemes disambiguate: `file:` for a single artifact/archive,
+    // `dir:` for a directory tree (works with Windows drive letters), and a
+    // bare reference for an image (Syft detects the registry source itself).
+    const target =
+      source.kind === 'image' ? source.value : source.kind === 'dir' ? `dir:${source.value}` : `file:${source.value}`
 
-    onProgress?.('scanning', `Analyzing ${source.kind === 'file' ? 'artifact' : source.value} with Syft...`)
+    onProgress?.('scanning', `Analyzing ${source.kind === 'image' ? source.value : 'source'} with Syft...`)
 
     let stdout: string
     try {

@@ -17,6 +17,10 @@ release/
 coverage/
 *.local
 
+# Python bytecode (scripts/*.py helpers)
+__pycache__/
+*.pyc
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

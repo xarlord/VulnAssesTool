@@ -144,11 +144,29 @@ export async function provisionSyft(): Promise<string> {
   }
   await verifyChecksum(archivePath, expected)
 
-  // Extract just the syft binary. bsdtar (Windows/macOS) and GNU tar both accept -xf.
-  await execFileAsync('tar', ['-xf', archivePath, '-C', dir, binaryName()], {
-    timeout: DOWNLOAD_TIMEOUT,
-    windowsHide: true,
-  })
+  // Extract the syft binary. Windows release assets are .zip, and the `tar` on
+  // PATH there may be GNU tar (e.g. Git Bash) which cannot read zip archives, so
+  // use PowerShell's Expand-Archive. Other platforms use tar for the .tar.gz.
+  // (Run tar from the cache dir with a relative name so an absolute "C:\..." path
+  // isn't misparsed as a remote host.)
+  if (process.platform === 'win32' && archiveName.endsWith('.zip')) {
+    await execFileAsync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${dir}' -Force`,
+      ],
+      { timeout: DOWNLOAD_TIMEOUT, windowsHide: true },
+    )
+  } else {
+    await execFileAsync('tar', ['-xf', archiveName, binaryName()], {
+      cwd: dir,
+      timeout: DOWNLOAD_TIMEOUT,
+      windowsHide: true,
+    })
+  }
   await fs.promises.rm(archivePath, { force: true })
 
   if (!fs.existsSync(cached)) {

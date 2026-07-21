@@ -229,6 +229,9 @@ export interface SbomGenerationAPI {
   getEngineStatus(): Promise<SbomEngineStatus>
   generateFromFile(file: File): Promise<SbomGenerateResult>
   generateFromImage(imageRef: string): Promise<SbomGenerateResult>
+  /** Scan a file OR directory already on the server host by absolute path —
+   * no upload, so it works for multi-GB local artifacts (e.g. prebuilt images). */
+  generateFromPath(localPath: string): Promise<SbomGenerateResult>
   onGenerateProgress(callback: (progress: SbomGenerateProgress) => void): () => void
 }
 

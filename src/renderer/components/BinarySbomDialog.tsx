@@ -13,16 +13,10 @@ import { getPlatform } from '@/lib/platform'
 import { useCurrentProject, useStore } from '@/store/useStore'
 import { parseCycloneDX } from '@/lib/parsers/cyclonedx'
 import { estimateCpesForComponents, createCpeDatabaseSearchFn } from '@/lib/services/cpeEstimationPipeline'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import type { SbomFile, Component, Vulnerability } from '@@/types'
 
-type Mode = 'file' | 'image'
+type Mode = 'file' | 'path' | 'image'
 type Step = 'idle' | 'generating' | 'success' | 'error'
 
 interface ParsedResult {
@@ -47,6 +41,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
   const [step, setStep] = useState<Step>('idle')
   const [error, setError] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [localPath, setLocalPath] = useState('')
   const [imageRef, setImageRef] = useState('')
   const [progress, setProgress] = useState<{ phase: string; message: string } | null>(null)
   const [parsed, setParsed] = useState<ParsedResult | null>(null)
@@ -56,6 +51,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
     setStep('idle')
     setError('')
     setFile(null)
+    setLocalPath('')
     setImageRef('')
     setProgress(null)
     setParsed(null)
@@ -73,6 +69,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
   const handleGenerate = useCallback(async () => {
     if (!targetProject) return
     if (mode === 'file' && !file) return
+    if (mode === 'path' && !localPath.trim()) return
     if (mode === 'image' && !imageRef.trim()) return
 
     setStep('generating')
@@ -92,7 +89,9 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
       const result =
         mode === 'file' && file
           ? await platform.sbom.generateFromFile(file)
-          : await platform.sbom.generateFromImage(imageRef.trim())
+          : mode === 'path'
+            ? await platform.sbom.generateFromPath(localPath.trim())
+            : await platform.sbom.generateFromImage(imageRef.trim())
 
       if (!result.success || !result.cyclonedxJson) {
         throw new Error(result.error || 'SBOM generation failed')
@@ -107,7 +106,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
         components: cpe.components,
         vulnerabilities: parsedResult.vulnerabilities || [],
         formatVersion: parsedResult.metadata.formatVersion,
-        sourceLabel: mode === 'file' && file ? file.name : imageRef.trim(),
+        sourceLabel: mode === 'file' && file ? file.name : mode === 'path' ? localPath.trim() : imageRef.trim(),
       })
       setStep('success')
     } catch (err) {
@@ -119,7 +118,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
         progressRef.current = null
       }
     }
-  }, [mode, file, imageRef, targetProject])
+  }, [mode, file, localPath, imageRef, targetProject])
 
   const handleImport = useCallback(() => {
     if (!parsed || !targetProject) return
@@ -209,15 +208,29 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
               <button
                 onClick={() => setMode('file')}
                 className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                  mode === 'file' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background hover:bg-muted'
+                  mode === 'file'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background hover:bg-muted'
                 }`}
               >
                 Upload artifact
               </button>
               <button
+                onClick={() => setMode('path')}
+                className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                  mode === 'path'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background hover:bg-muted'
+                }`}
+              >
+                Local path
+              </button>
+              <button
                 onClick={() => setMode('image')}
                 className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                  mode === 'image' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background hover:bg-muted'
+                  mode === 'image'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background hover:bg-muted'
                 }`}
               >
                 Container image
@@ -235,6 +248,24 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Executables, libraries, jars, or archives. Syft detects packages and language binaries.
+                </p>
+              </div>
+            ) : mode === 'path' ? (
+              <div>
+                <label className="block text-sm font-medium mb-1">Local file or directory path</label>
+                <input
+                  type="text"
+                  value={localPath}
+                  onChange={(e) => setLocalPath(e.target.value)}
+                  placeholder="e.g., D:\\imx95_projects\\...\\eCockpit_Release_1.1.3_AAOS_prebuilt_image"
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={!targetProject}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Scanned in place on the server host (no upload) — use for large local artifacts and prebuilt image
+                  trees. An Android image folder (with <code>super.img</code>/<code>boot.img</code>) is auto-detected
+                  and unpacked (sparse → super → EROFS/ext4) before scanning; on Windows this runs via WSL2. The path
+                  must exist on the machine running the backend.
                 </p>
               </div>
             ) : (
@@ -263,7 +294,9 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
               </button>
               <button
                 onClick={handleGenerate}
-                disabled={!targetProject || (mode === 'file' ? !file : !imageRef.trim())}
+                disabled={
+                  !targetProject || (mode === 'file' ? !file : mode === 'path' ? !localPath.trim() : !imageRef.trim())
+                }
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Upload className="h-4 w-4" />

@@ -183,14 +183,22 @@ function createServerIntelligence(): IntelligenceAPI {
   }
 }
 
+// Pulling, `docker save`-ing and unpacking a multi-layer image (e.g. nginx on
+// Debian) takes well over the default 30s request deadline, so these endpoints
+// get a generous timeout to avoid a premature client-side abort.
+const CONTAINER_JOB_TIMEOUT_MS = 10 * 60 * 1000
+
 function createServerContainer(): ContainerPlatformAPI {
   return {
     checkRuntime: (runtime: ContainerRuntime) => apiPost<CheckRuntimeResponse>('/container/check-runtime', { runtime }),
-    pullImage: (request: PullImageRequest) => apiPost<PullImageResponse>('/container/pull', request),
+    pullImage: (request: PullImageRequest) =>
+      apiPost<PullImageResponse>('/container/pull', request, { timeoutMs: CONTAINER_JOB_TIMEOUT_MS }),
     getManifest: (request) => apiPost<GetManifestResponse>('/container/manifest', request),
     inspectImage: (request) => apiPost<InspectImageResponse>('/container/inspect', request),
-    scanImage: (request) => apiPost<ScanImageResponse>('/container/scan', request),
-    extractPackages: (request) => apiPost<ExtractPackagesResponse>('/container/extract', request),
+    scanImage: (request) =>
+      apiPost<ScanImageResponse>('/container/scan', request, { timeoutMs: CONTAINER_JOB_TIMEOUT_MS }),
+    extractPackages: (request) =>
+      apiPost<ExtractPackagesResponse>('/container/extract', request, { timeoutMs: CONTAINER_JOB_TIMEOUT_MS }),
     onScanProgress: (cb) => {
       const handler = (data: unknown) => cb(data as ContainerScanProgress)
       wsClient.on('scan-progress', handler)
@@ -198,6 +206,10 @@ function createServerContainer(): ContainerPlatformAPI {
     },
   }
 }
+
+// Syft scans of large images/artifacts run for minutes; don't abort them at
+// the default 30s request deadline.
+const SBOM_JOB_TIMEOUT_MS = 15 * 60 * 1000
 
 function createServerSbom(): SbomGenerationAPI {
   return {
@@ -207,7 +219,10 @@ function createServerSbom(): SbomGenerationAPI {
       form.append('artifact', file)
       return apiPostForm<SbomGenerateResult>('/sbom/generate', form)
     },
-    generateFromImage: (imageRef: string) => apiPost<SbomGenerateResult>('/sbom/generate', { imageRef }),
+    generateFromImage: (imageRef: string) =>
+      apiPost<SbomGenerateResult>('/sbom/generate', { imageRef }, { timeoutMs: SBOM_JOB_TIMEOUT_MS }),
+    generateFromPath: (localPath: string) =>
+      apiPost<SbomGenerateResult>('/sbom/generate', { localPath }, { timeoutMs: SBOM_JOB_TIMEOUT_MS }),
     onGenerateProgress: (cb) => {
       const handler = (data: unknown) => cb(data as SbomGenerateProgress)
       wsClient.on('sbom-generate-progress', handler)
