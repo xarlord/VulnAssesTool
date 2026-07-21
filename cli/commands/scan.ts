@@ -25,6 +25,8 @@ export interface ScanResult {
   success: boolean
   vulnerabilities: Vulnerability[]
   componentsScanned: number
+  /** Components present but not reliably versioned (coverage: 'gap') — their matches are low-confidence. */
+  gapComponents?: number
   scanDuration: number
   format: 'cyclonedx' | 'spdx' | 'sarif' | 'json' | 'junit' | 'console' | 'unknown'
   error?: string
@@ -289,6 +291,7 @@ export async function scanCommand(
       success: true,
       vulnerabilities: filteredVulns,
       componentsScanned: components.length,
+      gapComponents: components.filter((c) => c.coverage === 'gap').length,
       scanDuration: duration,
       format: format.includes('cyclonedx') ? 'cyclonedx' : format.includes('spdx') ? 'spdx' : 'unknown',
       warnings: parseWarnings,

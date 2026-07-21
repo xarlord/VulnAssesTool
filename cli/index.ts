@@ -86,6 +86,7 @@ Options:
       --vex <file>        Suppress findings triaged as not_affected/resolved in a
                           CycloneDX VEX document (JSON)
       --fail-on <sev>     Severity that triggers exit code 1 (default: high)
+      --max-gaps <n>      Exit 1 if more than n components are unversioned "gap" coverage
       --exit-code         (diff) Exit 1 if the SBOMs differ
       --db <path>         Path to an nvd-data.db (default: ~/.vulnassesstool/nvd-data.db)
       --version           Print the version
@@ -147,6 +148,9 @@ async function runScan(sbomPath: string, flags: Record<string, unknown>): Promis
   // filter that silently drops every finding — treat only finite numbers as set.
   const minEpss = Number.isFinite(flags.minEpss) ? (flags.minEpss as number) : undefined
   const onlyKev = flags.checkKev === true || flags.onlyKev === true
+  // Coverage gate: fail when more than N components are unversioned "gap" coverage. Only a finite
+  // number arms the gate (a non-numeric --max-gaps must not silently pass or fail).
+  const maxGaps = Number.isFinite(flags.maxGaps) ? (flags.maxGaps as number) : undefined
   const outputFormat = normFormat(flags.format ?? flags.f, flags.json === true)
 
   // Parse the VEX file (if any) up front so bad input fails fast — exit 3
@@ -179,6 +183,20 @@ async function runScan(sbomPath: string, flags: Record<string, unknown>): Promis
 
     const exitCode = calculateExitCode(gateSet, failThreshold)
 
+    // Coverage reporting + optional gate. Gap components (present but not reliably versioned) yield
+    // only low-confidence name matches, so surface them and let CI fail on too many via --max-gaps.
+    const gapCount = result.gapComponents ?? 0
+    if (gapCount > 0) {
+      process.stderr.write(
+        `Coverage: ${gapCount}/${result.componentsScanned} component(s) are gaps ` +
+          `(present but not reliably versioned) — their matches are low-confidence\n`,
+      )
+    }
+    const gapGateExit = maxGaps !== undefined && gapCount > maxGaps ? 1 : 0
+    if (gapGateExit === 1) {
+      process.stderr.write(`Coverage gate: ${gapCount} gap component(s) exceeds --max-gaps ${maxGaps}\n`)
+    }
+
     const reported = filterVulnerabilities(gateSet, { sbomPath, minSeverity, minEpss, onlyKev })
     const reportedResult: ScanResult = { ...result, vulnerabilities: reported, summary: generateSummary(reported) }
 
@@ -191,7 +209,7 @@ async function runScan(sbomPath: string, flags: Record<string, unknown>): Promis
       process.stdout.write(output + '\n')
     }
 
-    return exitCode
+    return Math.max(exitCode, gapGateExit)
   } catch (error) {
     if (error instanceof DatabaseUnavailableError) {
       process.stderr.write(`Error: ${error.message}\n`)
