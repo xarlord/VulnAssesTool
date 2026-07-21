@@ -851,3 +851,60 @@ describe('Vulnerability Parsing - Severity Coverage', () => {
     expect(result.vulnerabilities[0].references[0].source).toBe('NVD')
   })
 })
+
+describe('parseCycloneDX coverage/provenance', () => {
+  it('reads vat:coverage/source/note properties emitted by the binary catalogers', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'libcrypto',
+          properties: [
+            { name: 'vat:coverage', value: 'gap' },
+            { name: 'vat:source', value: 'elf-inventory,probe' },
+            { name: 'vat:note', value: 'present; version not in binary' },
+          ],
+        },
+      ],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(components[0].coverage).toBe('gap')
+    expect(components[0].provenanceSources).toEqual(['elf-inventory', 'probe'])
+    expect(components[0].coverageNote).toBe('present; version not in binary')
+  })
+
+  it('leaves version empty and derives coverage=gap for a versionless component', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'library', name: 'toybox' }],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    // Not the truthy sentinel 'unknown' — downstream `if (!version)` guards must fire.
+    expect(components[0].version).toBe('')
+    expect(components[0].coverage).toBe('gap')
+  })
+
+  it('derives coverage=identified when a version is present and no property overrides it', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'library', name: 'sqlite', version: '3.44.3' }],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(components[0].coverage).toBe('identified')
+  })
+
+  it('keeps a stable name-unknown id for a purl-less versionless component', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'library', name: 'toybox' }],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    // ID retains the 'unknown' placeholder (VEX affects-refs key off it) even though version is ''.
+    expect(components[0].id).toBe('toybox-unknown')
+  })
+})

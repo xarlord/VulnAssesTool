@@ -300,7 +300,7 @@ function extractComponentsFromXml(bom: CycloneDXBom, components: Component[] = [
  * Preserves semantic versioning patterns (e.g., "1.0.0-beta").
  */
 function sanitizeVersion(version: string): string {
-  if (!version || version === 'unknown') return version
+  if (!version) return version
   return version.replace(/[/\\]/g, '.').replace(/\.{2,}/g, '.')
 }
 
@@ -353,18 +353,24 @@ function xmlPropertiesToPairs(
  */
 function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: string): Component {
   const name = comp.name || 'unknown'
-  const rawVersion = comp.version || 'unknown'
-  const version = sanitizeVersion(rawVersion)
+  // Leave version empty when absent (was the literal 'unknown', which is truthy and defeats
+  // downstream `if (!version)` guards); `coverage` below records the gap instead.
+  const version = sanitizeVersion(comp.version || '')
 
-  // Use PURL as ID if available, otherwise generate from name/version
-  // This ensures vulnerability references (which use PURLs) match component IDs
-  const id = comp.purl || generateComponentId(name, version, parentId)
+  // Use PURL as ID if available, otherwise generate from name/version. Keep the legacy 'unknown'
+  // placeholder in the ID (not in `version`) so purl-less component IDs stay stable across this
+  // change — component IDs feed vulnerability refs and VEX `affects` matching.
+  const id = comp.purl || generateComponentId(name, version || 'unknown', parentId)
 
   // Extract licenses
   const licenses = extractLicenses(comp.licenses)
 
   // Extract hash from purl or external references
   const hash = comp.purl?.split('@')[1] || undefined
+
+  // Coverage: an explicit vat:coverage property wins; otherwise derive from version presence.
+  const derived = coverageFromProperties(comp.properties ?? [])
+  const coverage = derived.coverage ?? (version ? 'identified' : 'gap')
 
   return {
     id,
@@ -377,7 +383,9 @@ function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: st
     licenses,
     description: comp.description,
     hash,
-    ...coverageFromProperties(comp.properties ?? []),
+    coverage,
+    provenanceSources: derived.provenanceSources,
+    coverageNote: derived.coverageNote,
     vulnerabilities: [],
   }
 }
@@ -387,18 +395,20 @@ function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: st
  */
 function mapXmlComponentToComponent(comp: CycloneDXComponent, parentId?: string): Component {
   const name = comp.name || 'unknown'
-  const rawVersion = comp.version || 'unknown'
-  const version = sanitizeVersion(rawVersion)
+  // Leave version empty when absent (see JSON mapper) so gap components are detectable downstream.
+  const version = sanitizeVersion(comp.version || '')
 
-  // Use PURL as ID if available, otherwise generate from name/version
-  // This ensures vulnerability references (which use PURLs) match component IDs
-  const id = comp.purl || generateComponentId(name, version, parentId)
+  // Keep the legacy 'unknown' placeholder in the generated ID (not in `version`) for id stability.
+  const id = comp.purl || generateComponentId(name, version || 'unknown', parentId)
 
   // Extract licenses
   const licenses = extractLicenses(comp.licenses)
 
   // Extract hash from purl or hash array
   const hash = comp.purl?.split('@')[1] || comp.hash?.find((h) => h.alg === 'SHA-256')?.content || undefined
+
+  const derived = coverageFromProperties(xmlPropertiesToPairs(comp.properties))
+  const coverage = derived.coverage ?? (version ? 'identified' : 'gap')
 
   return {
     id,
@@ -411,7 +421,9 @@ function mapXmlComponentToComponent(comp: CycloneDXComponent, parentId?: string)
     licenses,
     description: comp.description,
     hash,
-    ...coverageFromProperties(xmlPropertiesToPairs(comp.properties)),
+    coverage,
+    provenanceSources: derived.provenanceSources,
+    coverageNote: derived.coverageNote,
     vulnerabilities: [],
   }
 }

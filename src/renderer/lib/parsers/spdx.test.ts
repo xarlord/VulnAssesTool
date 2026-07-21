@@ -96,7 +96,10 @@ describe('parseSpdx', () => {
       const result = await parseSpdx(JSON.stringify(spdxWithoutVersion), 'spdx.json')
       const component = result.components[0]
 
-      expect(component.version).toBe('unknown')
+      // A missing version is left empty (not the truthy sentinel 'unknown') and flagged as a
+      // coverage gap, so downstream `if (!version)` guards fire and the UI can mark it for review.
+      expect(component.version).toBe('')
+      expect(component.coverage).toBe('gap')
     })
 
     it('should throw error for invalid JSON', async () => {

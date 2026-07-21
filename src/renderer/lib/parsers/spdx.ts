@@ -164,9 +164,14 @@ function generateComponentId(name: string, version: string): string {
  */
 function mapSpdxPackageToComponent(pkg: SpdxJsonPackage): Component {
   const name = pkg.name || 'unknown'
-  const rawVersion = pkg.versionInfo || 'unknown'
-  const version = rawVersion === 'unknown' ? rawVersion : rawVersion.replace(/[/\\]/g, '.').replace(/\.{2,}/g, '.')
+  // Leave version empty when absent (was the literal 'unknown', which is truthy and defeats
+  // downstream `if (!version)` guards). generateComponentId keeps its own 'unknown' placeholder,
+  // so component IDs stay stable; `coverage` below records the gap. SPDX has no properties bag,
+  // so coverage is derived purely from version presence.
+  const rawVersion = pkg.versionInfo || ''
+  const version = rawVersion ? rawVersion.replace(/[/\\]/g, '.').replace(/\.{2,}/g, '.') : ''
   const id = generateComponentId(name, version)
+  const coverage: Component['coverage'] = version ? 'identified' : 'gap'
 
   // Extract licenses
   const licenses = extractSpdxLicenses(pkg.licenseConcluded, pkg.licenseDeclared)
@@ -194,6 +199,7 @@ function mapSpdxPackageToComponent(pkg: SpdxJsonPackage): Component {
     licenses,
     description: pkg.description,
     hash,
+    coverage,
     vulnerabilities: [],
   }
 }
