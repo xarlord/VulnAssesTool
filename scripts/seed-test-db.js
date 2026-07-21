@@ -282,7 +282,7 @@ async function seedDatabase(dbPath) {
     CREATE TABLE IF NOT EXISTS cpe_matches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       cve_id TEXT NOT NULL,
-      cpe_text TEXT NOT NULL,
+      cpe23_uri TEXT NOT NULL,
       vulnerable INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (cve_id) REFERENCES cves(id) ON DELETE CASCADE
     )
@@ -343,7 +343,7 @@ async function seedDatabase(dbPath) {
     // Insert CPE matches
     for (const cpe of cve.cpe_matches) {
       db.run(
-        `INSERT INTO cpe_matches (cve_id, cpe_text, vulnerable) VALUES (?, ?, ?)`,
+        `INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable) VALUES (?, ?, ?)`,
         [cve.id, cpe.cpe_text, cpe.vulnerable]
       );
     }

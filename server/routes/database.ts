@@ -7,7 +7,7 @@ import {
   validateCpeSearchRequest,
   sanitizeErrorMessage,
 } from '../database/ipcRequestValidator.js'
-import { sanitizeSqlInput, isValidCveId, isValidSearchQuery, escapeLikePattern } from '../database/sqlSanitizer.js'
+import { sanitizeSqlInput, isValidCveId, escapeLikePattern } from '../database/sqlSanitizer.js'
 import { broadcast } from '../websocket.js'
 import { importNvdData, getAvailableNvdYears } from '../database/nvd/index.js'
 import { downloadAndImportNVDData, getAvailableYears } from '../database/nvdDownloader.js'
@@ -134,26 +134,37 @@ router.post('/search', async (req, res) => {
         break
 
       case 'text': {
-        if (!isValidSearchQuery(sanitizedQuery)) {
+        // The text search runs entirely through bound parameters (FTS `MATCH ?`
+        // and `LIKE ?`), so SQL injection is already prevented by parameterization.
+        // The SQL-string sanitizer, by contrast, mangles legitimate package names
+        // ("update-alternatives" -> "-alternatives", "update" -> "") and rejects
+        // names with apostrophes — which silently broke name-based CVE matching.
+        // Use the raw query with only light cleaning here.
+        const term = validatedRequest.query.trim().slice(0, 500)
+        const limit = validatedRequest.limit || 100
+        const offset = validatedRequest.offset || 0
+
+        if (term.length === 0) {
           res.json({
             success: false,
             results: [],
             total: 0,
-            limit: validatedRequest.limit || 100,
-            offset: validatedRequest.offset || 0,
-            error: 'Invalid search query',
+            limit,
+            offset,
+            error: 'Empty search query',
           })
           return
         }
 
         const rawDb = database.getRawDb()
-        const limit = validatedRequest.limit || 100
-        const offset = validatedRequest.offset || 0
 
         if (rawDb) {
           const ftsTable = rawDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get()
           if (ftsTable) {
-            const ftsIds = searchCVEsFTS(rawDb, sanitizedQuery, limit, offset)
+            // Wrap as an FTS5 phrase so special characters (-, :, *, ") are treated
+            // literally and can't trigger an FTS5 syntax error.
+            const ftsQuery = `"${term.replace(/"/g, '""')}"`
+            const ftsIds = searchCVEsFTS(rawDb, ftsQuery, limit, offset)
             const batchDetails = database.getCVEsByIds(ftsIds.map((r) => r.id))
             results = ftsIds
               .map((f) => batchDetails.get(f.id))
@@ -163,7 +174,7 @@ router.post('/search', async (req, res) => {
           }
         }
 
-        results = database.searchCVEsByText(escapeLikePattern(sanitizedQuery), limit, offset)
+        results = database.searchCVEsByText(escapeLikePattern(term), limit, offset)
         total = database.getTotalCVECount()
         break
       }

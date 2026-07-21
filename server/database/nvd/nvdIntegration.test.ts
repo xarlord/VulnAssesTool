@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import Database from 'better-sqlite3'
-import { runMigrations, getSchemaVersion } from '../migrations/v2SchemaMigration.js'
+import { runMigrations, getSchemaVersion, getMigrations } from '../migrations/v2SchemaMigration.js'
 import { createNvdDataImporter, type NvdDataImporter } from './nvdDataImporter.js'
 import { createNvdDeltaSync, type NvdDeltaSync } from './nvdDeltaSync.js'
 import type { NvdCveV2 } from './nvdApiV2Client.js'
@@ -127,7 +127,9 @@ describe('NVD Database Integration Tests', () => {
   describe('Schema Migration', () => {
     it('should apply all migrations successfully', () => {
       const version = getSchemaVersion(db)
-      expect(version).toBe(12) // All 12 migrations applied
+      const migrations = getMigrations()
+      // Head version equals the last defined migration (kept in step as migrations are added).
+      expect(version).toBe(migrations[migrations.length - 1].version)
     })
 
     it('should have all required tables', () => {

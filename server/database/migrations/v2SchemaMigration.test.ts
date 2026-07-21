@@ -97,11 +97,14 @@ describe('Database Schema Migrations', () => {
 
   describe('runMigrations', () => {
     it('should not apply migrations when already at target version', () => {
-      const result = runMigrations(db, 12)
+      // Derive the head version so this stays correct as migrations are added.
+      const migrations = getMigrations()
+      const latest = migrations[migrations.length - 1].version
+      const result = runMigrations(db, latest)
 
       expect(result.success).toBe(true)
       expect(result.migrationsApplied).toBe(0)
-      expect(result.toVersion).toBe(12)
+      expect(result.toVersion).toBe(latest)
     })
 
     it('should apply migrations in order', () => {

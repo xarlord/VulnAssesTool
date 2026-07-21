@@ -65,6 +65,9 @@ const CACHE_NAMESPACE = 'cpe-search'
 export class CPESearch {
   private db: BetterDb
   private cacheManager: CacheManager | null = null
+  // Lazily-detected: the indexed cpe_product column exists only after the v2
+  // schema migration; older / seed databases fall back to a cpe23_uri substring.
+  private cpeProductColumn: boolean | null = null
 
   /**
    * Create a new CPESearch instance
@@ -173,30 +176,51 @@ export class CPESearch {
     return results
   }
 
+  /** Whether the indexed cpe_product column exists (added by the v2 migration). */
+  private hasCpeProductColumn(): boolean {
+    if (this.cpeProductColumn === null) {
+      const cols = this.db.prepare('PRAGMA table_info(cpe_matches)').all() as Array<{ name: string }>
+      this.cpeProductColumn = cols.some((c) => c.name === 'cpe_product')
+    }
+    return this.cpeProductColumn
+  }
+
   /**
-   * Internal implementation of search by product name
+   * Internal implementation of search by product name.
+   *
+   * Precision-first against the indexed `cpe_product` column (exact, then
+   * prefix), falling back to a `cpe23_uri` substring only for recall. A bare
+   * `%product%` over the whole CPE string over-matches (e.g. `%openssl%` also
+   * hits other CPE fields — 278 CVEs vs 261 for the real product), so it is the
+   * last resort. The query is fully parameterized, so the SQL-string sanitizer
+   * isn't needed and would mangle legitimate product names
+   * ("update-alternatives" -> "-alternatives", "update" -> "").
    */
   private async searchByProductNameInternal(productName: string, limit?: number): Promise<CPESearchResult[]> {
-    const sanitizedProduct = sanitizeSqlInput(productName.toLowerCase())
-    if (!sanitizedProduct) {
+    const product = productName.toLowerCase().trim().slice(0, 200)
+    if (!product) {
       return []
     }
 
     const actualLimit = Math.min(limit || DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT)
-    const pattern = `%${escapeLikePattern(sanitizedProduct)}%`
+    const run = (where: string, param: string): Array<{ cpe23_uri: string; vulnerable: number }> =>
+      this.db
+        .prepare(
+          `SELECT DISTINCT cpe23_uri, vulnerable FROM cpe_matches
+           WHERE ${where} AND vulnerable = 1 ORDER BY cpe23_uri LIMIT ?`,
+        )
+        .all(param, actualLimit) as Array<{ cpe23_uri: string; vulnerable: number }>
 
-    const query = `
-      SELECT DISTINCT cpe23_uri, vulnerable
-      FROM cpe_matches
-      WHERE cpe23_uri LIKE ?
-        AND vulnerable = 1
-      ORDER BY cpe23_uri
-      LIMIT ?
-    `
+    if (this.hasCpeProductColumn()) {
+      const exact = run('cpe_product = ?', product)
+      if (exact.length > 0) return this.parseSearchResultsFromObjects(exact)
 
-    const results = this.db.prepare(query).all(pattern, actualLimit) as Array<{ cpe23_uri: string; vulnerable: number }>
+      const prefix = run('cpe_product LIKE ?', `${escapeLikePattern(product)}%`)
+      if (prefix.length > 0) return this.parseSearchResultsFromObjects(prefix)
+    }
 
-    return this.parseSearchResultsFromObjects(results)
+    const fallback = run('cpe23_uri LIKE ?', `%${escapeLikePattern(product)}%`)
+    return this.parseSearchResultsFromObjects(fallback)
   }
 
   /**

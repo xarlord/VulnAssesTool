@@ -53,6 +53,7 @@ export function getMigrations(): Migration[] {
     migration_10_performance_250k(),
     migration_11_kev_catalog(),
     migration_12_epss_columns(),
+    migration_13_cpe_product_index(),
   ]
 }
 
@@ -964,6 +965,38 @@ function migration_12_epss_columns(): Migration {
       db.exec('DROP INDEX IF EXISTS idx_cves_epss_percentile')
       db.exec('DROP INDEX IF EXISTS idx_cves_risk_priority')
       // Note: EPSS columns remain (SQLite doesn't support DROP COLUMN)
+    },
+  }
+}
+
+/**
+ * Migration 13: cpe_product-leading index for product-name CPE search
+ *
+ * The migration 10 indexes all lead with `cpe_vendor`, so a search that only
+ * knows the product (component name) — `WHERE cpe_product = ? AND vulnerable = 1
+ * ORDER BY cpe23_uri` — can't use them and falls back to a full 3M-row scan of
+ * `idx_cpes_v2_uri` (~2s warm, >30s cold). That blows the SBOM upload dialog's
+ * CPE-estimation budget, so the partial-match dialog never opens. This index
+ * leads with `cpe_product` and covers the query (vulnerable filter + cpe23_uri
+ * ordering + selected columns), turning the scan into a seek.
+ */
+function migration_13_cpe_product_index(): Migration {
+  return {
+    version: 13,
+    name: 'cpe_product_index',
+    description: 'Add cpe_product-leading covering index so product-name CPE search seeks instead of full-scanning',
+    up: (db: Database) => {
+      console.log('[Migration 13] Creating cpe_product covering index...')
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_cpe_product_lookup
+        ON cpe_matches(cpe_product, vulnerable, cpe23_uri)
+      `)
+      // Refresh optimizer stats so the planner picks the new index.
+      db.exec('ANALYZE cpe_matches')
+      console.log('[Migration 13] cpe_product covering index created')
+    },
+    down: (db: Database) => {
+      db.exec('DROP INDEX IF EXISTS idx_cpe_product_lookup')
     },
   }
 }
