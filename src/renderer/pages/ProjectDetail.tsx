@@ -45,6 +45,20 @@ import type { Vulnerability, FilterPreset, ComponentHealth, ProjectHealthSummary
 
 type TabValue = 'overview' | 'components' | 'vulnerabilities' | 'health'
 
+// A finding is "name-only" noise when EVERY component it matched was matched only by product name
+// (matchQuality all 'name-only'). undefined matchQuality (legacy scans) counts as trusted/shown.
+function isNameOnlyMatch(vuln: Vulnerability): boolean {
+  const quality = vuln.matchQuality
+  if (!quality) return false
+  const values = Object.values(quality)
+  return values.length > 0 && values.every((c) => c === 'name-only')
+}
+
+// Never auto-hide genuinely dangerous findings, even at low match confidence.
+function isHighRiskVuln(vuln: Vulnerability): boolean {
+  return Boolean(vuln.isKev) || (vuln.epssScore ?? 0) >= 0.5 || vuln.severity === 'critical' || vuln.severity === 'high'
+}
+
 export function ProjectDetail() {
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
@@ -94,6 +108,9 @@ export function ProjectDetail() {
     }
   })
   const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false)
+  // Hide low-confidence (name-only) matches on unversioned/gap components by default — the dominant
+  // noise source. Protected high-risk findings are never hidden (see isHighRiskVuln).
+  const [hideNameOnlyMatches, setHideNameOnlyMatches] = React.useState(true)
 
   // Persist filter presets to localStorage when they change
   React.useEffect(() => {
@@ -107,6 +124,12 @@ export function ProjectDetail() {
   // Helper function to apply all filters
   const applyAdvancedFilters = (vulns: Vulnerability[]): Vulnerability[] => {
     return vulns.filter((vuln) => {
+      // Hide low-confidence name-only matches (default on) — except protected high-risk findings,
+      // which stay visible so an exploited CVE on a gap component is never silently suppressed.
+      if (hideNameOnlyMatches && isNameOnlyMatch(vuln) && !isHighRiskVuln(vuln)) {
+        return false
+      }
+
       // CVSS score range filter
       if (vuln.cvssScore) {
         const [min, max] = cvssRange
@@ -196,6 +219,7 @@ export function ProjectDetail() {
   const [componentTypeFilter, setComponentTypeFilter] = React.useState<'all' | Component['type']>('all')
   const [componentVulnFilter, setComponentVulnFilter] = React.useState<'all' | 'vulnerable' | 'safe'>('all')
   const [componentLicenseFilter, setComponentLicenseFilter] = React.useState<string>('all')
+  const [componentCoverageFilter, setComponentCoverageFilter] = React.useState<'all' | 'identified' | 'gap'>('all')
   const [componentSort, setComponentSort] = React.useState<'name' | 'version' | 'type'>('name')
 
   // Handle copy vulnerability ID
@@ -234,6 +258,22 @@ export function ProjectDetail() {
       ? currentProject
       : projects.find((p) => p.id === projectId) || currentProject
   }, [currentProject, projects, projectId])
+
+  // Count name-only matches so the Vulnerabilities tab never silently drops findings: it shows how
+  // many low-confidence matches the default hide-toggle suppressed and how many high-risk findings
+  // were kept visible despite low confidence. (isNameOnlyMatch/isHighRiskVuln are module-level.)
+  const nameOnlyNoise = React.useMemo(() => {
+    const vulns = project?.vulnerabilities ?? []
+    let hidden = 0
+    let keptHighRisk = 0
+    for (const vuln of vulns) {
+      if (!isNameOnlyMatch(vuln)) continue
+      if (isHighRiskVuln(vuln)) keptHighRisk++
+      else hidden++
+    }
+    const gapComponents = (project?.components ?? []).filter((c) => c.coverage === 'gap').length
+    return { hidden, keptHighRisk, gapComponents }
+  }, [project?.vulnerabilities, project?.components])
 
   // Extract unique licenses from components for filter dropdown
   const uniqueLicenses = React.useMemo(() => {
@@ -781,6 +821,16 @@ export function ProjectDetail() {
                       <option value="vulnerable">Has Vulnerabilities</option>
                       <option value="safe">No Vulnerabilities</option>
                     </select>
+                    <select
+                      value={componentCoverageFilter}
+                      onChange={(e) => setComponentCoverageFilter(e.target.value as 'all' | 'identified' | 'gap')}
+                      aria-label="Filter by coverage"
+                      className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="all">All Coverage</option>
+                      <option value="identified">Identified</option>
+                      <option value="gap">Coverage Gap</option>
+                    </select>
                     {uniqueLicenses.length > 0 && (
                       <select
                         value={componentLicenseFilter}
@@ -854,7 +904,12 @@ export function ProjectDetail() {
                       const matchesLicense =
                         componentLicenseFilter === 'all' || component.licenses.includes(componentLicenseFilter)
 
-                      return matchesSearch && matchesType && matchesVuln && matchesLicense
+                      const matchesCoverage =
+                        componentCoverageFilter === 'all' ||
+                        (componentCoverageFilter === 'gap' && component.coverage === 'gap') ||
+                        (componentCoverageFilter === 'identified' && component.coverage !== 'gap')
+
+                      return matchesSearch && matchesType && matchesVuln && matchesLicense && matchesCoverage
                     })
 
                     // Sort components
@@ -946,11 +1001,35 @@ export function ProjectDetail() {
                                             No CPE
                                           </span>
                                         ) : null}
+                                        {/* Coverage gap: present but not reliably versioned */}
+                                        {component.coverage === 'gap' && (
+                                          <span
+                                            className="inline-flex items-center rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 border border-amber-500/20"
+                                            title={
+                                              component.coverageNote ||
+                                              'Coverage gap: present but not reliably versioned — matches need manual review'
+                                            }
+                                          >
+                                            Coverage Gap
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                                        <span>{component.version}</span>
+                                        <span>
+                                          {component.version && component.version !== 'unknown'
+                                            ? component.version
+                                            : '—'}
+                                        </span>
                                         <span>•</span>
                                         <span className="capitalize">{component.type}</span>
+                                        {component.provenanceSources && component.provenanceSources.length > 0 && (
+                                          <>
+                                            <span>•</span>
+                                            <span className="text-xs" title="How this component was catalogued">
+                                              via {component.provenanceSources.join(', ')}
+                                            </span>
+                                          </>
+                                        )}
                                         {component.purl && (
                                           <>
                                             <span>•</span>
@@ -1036,6 +1115,18 @@ export function ProjectDetail() {
                       Advanced Filters
                       {showAdvancedFilters ? <CheckCircle2 className="h-4 w-4" /> : null}
                     </button>
+                    <label
+                      className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-sm"
+                      title="Hide low-confidence name-only matches on unversioned components (KEV / high-risk findings are always shown)"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={hideNameOnlyMatches}
+                        onChange={(e) => setHideNameOnlyMatches(e.target.checked)}
+                        aria-label="Hide low-confidence name-only matches"
+                      />
+                      Hide low-confidence
+                    </label>
                     <select
                       value={severityFilter}
                       onChange={(e) => setSeverityFilter(e.target.value as 'all' | Vulnerability['severity'])}
@@ -1101,6 +1192,30 @@ export function ProjectDetail() {
                 </div>
               )}
               <div className="p-4">
+                {/* Never let gap components read as "clean": surface what the hide-toggle suppressed. */}
+                {hideNameOnlyMatches && nameOnlyNoise.hidden > 0 && (
+                  <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+                    <span className="font-medium text-amber-700 dark:text-amber-400">
+                      {nameOnlyNoise.gapComponents} component{nameOnlyNoise.gapComponents === 1 ? '' : 's'} with
+                      coverage gaps
+                    </span>{' '}
+                    have {nameOnlyNoise.hidden} low-confidence (name-only) match
+                    {nameOnlyNoise.hidden === 1 ? '' : 'es'} hidden.{' '}
+                    <button
+                      onClick={() => setHideNameOnlyMatches(false)}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Reveal
+                    </button>
+                  </div>
+                )}
+                {hideNameOnlyMatches && nameOnlyNoise.keptHighRisk > 0 && (
+                  <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                    {nameOnlyNoise.keptHighRisk} high-risk finding
+                    {nameOnlyNoise.keptHighRisk === 1 ? '' : 's'} kept visible despite low match confidence (KEV / high
+                    EPSS / critical or high severity).
+                  </div>
+                )}
                 {project.vulnerabilities.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <AlertTriangle className="mb-3 h-12 w-12 text-muted-foreground" />
