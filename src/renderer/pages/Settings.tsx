@@ -779,8 +779,8 @@ export function Settings() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
+      <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <button onClick={() => navigate(-1)} className="text-sm text-muted-foreground hover:text-foreground">
             ← Back
           </button>

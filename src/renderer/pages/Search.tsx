@@ -398,7 +398,7 @@ export function Search() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
+      <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-4xl flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}

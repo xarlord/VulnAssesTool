@@ -98,7 +98,7 @@ export function DependencyGraphPage() {
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-card">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 border-b bg-card">
         <div className="flex items-center gap-4">
           <button
             onClick={handleBack}
@@ -113,7 +113,7 @@ export function DependencyGraphPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <select

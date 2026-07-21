@@ -188,10 +188,10 @@ export function Dashboard() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
+      <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <AppLogo size="md" showText={true} />
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <OfflineIndicator compact />
             <button
               onClick={() => navigate('/search')}
