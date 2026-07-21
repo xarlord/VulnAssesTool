@@ -67,6 +67,7 @@ export function prepareProjectJson(project: Project): string {
       patchedVersions: vuln.patchedVersions || [],
       aliases: vuln.aliases || [],
       patchInfo: vuln.patchInfo || null,
+      matchQuality: vuln.matchQuality || null,
     })),
     components: project.components.map((comp) => ({
       id: comp.id,
@@ -83,6 +84,9 @@ export function prepareProjectJson(project: Project): string {
       dependents: comp.dependents || [],
       vulnerabilities: comp.vulnerabilities,
       patchInfo: comp.patchInfo || null,
+      coverage: comp.coverage || null,
+      provenanceSources: comp.provenanceSources || [],
+      coverageNote: comp.coverageNote || null,
     })),
     sbomFiles: project.sbomFiles.map((file) => ({
       id: file.id,
