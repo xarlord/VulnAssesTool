@@ -48,6 +48,13 @@ interface CycloneDXComponent {
     alg: string
     content: string
   }>
+  properties?: { property?: CycloneDXXmlProperty | CycloneDXXmlProperty[] }
+}
+
+/** A CycloneDX XML `<property name="...">value</property>` as parsed by fast-xml-parser. */
+interface CycloneDXXmlProperty {
+  name?: string
+  '#text'?: string | number
 }
 
 interface CycloneDXJson {
@@ -107,6 +114,7 @@ interface CycloneDXJsonComponent {
   purl?: string
   externalReferences?: { type: string; url: string }[]
   components?: CycloneDXJsonComponent[]
+  properties?: Array<{ name: string; value: string }>
 }
 
 /**
@@ -308,6 +316,39 @@ function generateComponentId(name: string, version: string, parentId?: string): 
 }
 
 /**
+ * Derive extraction-coverage fields from a component's CycloneDX properties (the vat:* namespace the
+ * binary catalogers emit). Accepts already-normalized {name, value} pairs so JSON and XML share it.
+ */
+function coverageFromProperties(pairs: Array<{ name: string; value: string }>): {
+  coverage?: Component['coverage']
+  provenanceSources?: string[]
+  coverageNote?: string
+} {
+  const get = (n: string): string | undefined => pairs.find((p) => p.name === n)?.value
+  const rawCoverage = get('vat:coverage')
+  const coverage = rawCoverage === 'gap' ? 'gap' : rawCoverage === 'identified' ? 'identified' : undefined
+  const source = get('vat:source')
+  const provenanceSources = source
+    ? source
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : undefined
+  return { coverage, provenanceSources, coverageNote: get('vat:note') }
+}
+
+/** Normalize CycloneDX XML `<properties>` (fast-xml-parser shape) to {name, value} pairs. */
+function xmlPropertiesToPairs(
+  properties: { property?: CycloneDXXmlProperty | CycloneDXXmlProperty[] } | undefined,
+): Array<{ name: string; value: string }> {
+  if (!properties?.property) return []
+  const list = Array.isArray(properties.property) ? properties.property : [properties.property]
+  return list
+    .filter((p): p is CycloneDXXmlProperty & { name: string } => typeof p.name === 'string')
+    .map((p) => ({ name: p.name, value: p['#text'] === undefined ? '' : String(p['#text']) }))
+}
+
+/**
  * Map CycloneDX JSON component to internal Component type
  */
 function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: string): Component {
@@ -336,6 +377,7 @@ function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: st
     licenses,
     description: comp.description,
     hash,
+    ...coverageFromProperties(comp.properties ?? []),
     vulnerabilities: [],
   }
 }
@@ -369,6 +411,7 @@ function mapXmlComponentToComponent(comp: CycloneDXComponent, parentId?: string)
     licenses,
     description: comp.description,
     hash,
+    ...coverageFromProperties(xmlPropertiesToPairs(comp.properties)),
     vulnerabilities: [],
   }
 }

@@ -143,7 +143,17 @@ export interface Component {
   sbomFileId?: string // ID of the SBOM file this component was imported from
   suggestedCpes?: CPESuggestion[] // Suggested CPEs for components without a CPE
   hasMissingCpe?: boolean // Flag to indicate if component needs CPE selection
+  // Extraction coverage — how reliably we know WHAT this component is (distinct from
+  // hasMissingCpe, which is about CVE-matching). 'identified' = known name + real version;
+  // 'gap' = present but unversioned / weak evidence (e.g. a stripped RTOS lib). Emitted by the
+  // binary catalogers as the CycloneDX vat:coverage property, else derived from version presence.
+  coverage?: 'identified' | 'gap'
+  provenanceSources?: string[] // vat:source values, e.g. ['syft','probe'] — how it was catalogued
+  coverageNote?: string // vat:note — human-readable reason a component is a gap
 }
+
+/** How a vulnerability was matched to a component, per (vuln, component) edge. */
+export type MatchConfidence = 'cpe-exact' | 'cpe-estimated' | 'name-only'
 
 export interface ComponentPatchInfo {
   hasFixAvailable: boolean
@@ -177,6 +187,9 @@ export interface Vulnerability {
   epssScore?: number // EPSS probability score (0-1)
   epssPercentile?: number // EPSS percentile (0-1)
   riskScore?: number // Composite risk score (0-100)
+  // Match confidence per affected component id. A `name-only` match on an unversioned component is
+  // the dominant noise source, so the UI/CLI can de-emphasize it. undefined (legacy scans) = trusted.
+  matchQuality?: Record<string, MatchConfidence>
 }
 
 /**
