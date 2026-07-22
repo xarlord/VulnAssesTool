@@ -67,7 +67,6 @@ export default defineConfig({
         'src/renderer/lib/export/index.ts',
         'src/renderer/lib/health/index.ts',
         'src/renderer/lib/generators/index.ts',
-        'src/renderer/lib/layout/index.ts',
         'src/renderer/lib/database/performance/index.ts',
         'src/renderer/components/executive/index.ts',
         'src/shared/types/index.ts',

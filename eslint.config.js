@@ -15,8 +15,6 @@ export default defineConfig([
     'src/renderer/components/charts/CvssHistogram.tsx',
     'src/renderer/components/charts/SeverityDistributionChart.tsx',
     'src/renderer/components/charts/VulnerabilityBarChart.tsx',
-    'src/renderer/components/database/UpdateSettings.tsx',
-    'src/renderer/components/database/SyncProgressModal.tsx',
     'src/renderer/components/executive/widgets/ComplianceStatus.tsx',
     'src/renderer/components/executive/widgets/DashboardConfig.tsx',
     'src/renderer/components/executive/widgets/ProjectHealthComparison.tsx',
@@ -86,12 +84,10 @@ export default defineConfig([
       'src/renderer/components/charts/CvssHistogram.tsx',
       'src/renderer/components/charts/SeverityDistributionChart.tsx',
       'src/renderer/components/charts/VulnerabilityBarChart.tsx',
-      'src/renderer/components/database/UpdateSettings.tsx',
       'src/renderer/components/executive/widgets/ComplianceStatus.tsx',
       'src/renderer/components/executive/widgets/DashboardConfig.tsx',
       'src/renderer/components/executive/widgets/ProjectHealthComparison.tsx',
       'src/renderer/components/executive/widgets/VulnerabilityTrendChart.tsx',
-      'src/renderer/components/database/SyncProgressModal.tsx',
     ],
     rules: {
       // Turn off all rules for these files to avoid React Compiler errors
