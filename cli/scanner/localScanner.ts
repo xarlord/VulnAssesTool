@@ -12,7 +12,7 @@
  */
 
 import * as fs from 'fs'
-import type { Vulnerability, VulnerabilityReference, PatchInfo } from '../../src/shared/types.js'
+import type { Vulnerability, VulnerabilityReference, PatchInfo, MatchConfidence } from '../../src/shared/types.js'
 import type {
   ScannerInstance,
   ScanComponentResult,
@@ -108,40 +108,50 @@ function nameTokens(name: string): string[] {
 }
 
 /**
- * Build ordered search terms for a component identifier, mirroring vulnMatcher's
+ * A search tier: the terms to try, plus how confident a match from this tier is. A vendor:product
+ * term is scoped enough to count as cpe-estimated; a bare product/name/token term is name-only
+ * (the dominant noise source), matching the GUI's confidence vocabulary in vulnMatcher.ts.
+ */
+export interface SearchTier {
+  terms: string[]
+  confidence: MatchConfidence
+}
+
+/**
+ * Build ordered search tiers for a component identifier, mirroring vulnMatcher's
  * ladder: explicit CPE -> suggested CPE vendor:product -> full name -> longest token.
  * Each tier is returned separately so scanning can stop at the first tier that hits.
  */
-export function deriveSearchTiers(identifier: string): string[][] {
+export function deriveSearchTiers(identifier: string): SearchTier[] {
   if (identifier.startsWith('cpe:')) {
     // cpe:2.3:part:vendor:product:version:...
     const parts = identifier.split(':')
     const vendor = sanitizeTerm(parts[3])
     const product = sanitizeTerm(parts[4])
-    const tiers: string[][] = []
+    const tiers: SearchTier[] = []
     // Specific tier first; the broad bare-product term is a lower tier reached
     // only if vendor:product finds nothing (avoids cross-vendor over-matching).
-    if (vendor && product) tiers.push([`${vendor}:${product}`])
-    if (product) tiers.push([product])
+    if (vendor && product) tiers.push({ terms: [`${vendor}:${product}`], confidence: 'cpe-estimated' })
+    if (product) tiers.push({ terms: [product], confidence: 'name-only' })
     return tiers
   }
 
   const { name, version } = parseComponentId(identifier)
-  const tiers: string[][] = []
+  const tiers: SearchTier[] = []
 
   const cpeTerms = suggestCPEs(name, version || '0')
     .filter((s) => s.confidence !== 'low')
     .map((s) => sanitizeTerm(`${s.vendor}:${s.product}`))
     .filter(Boolean)
-  if (cpeTerms.length) tiers.push(Array.from(new Set(cpeTerms)))
+  if (cpeTerms.length) tiers.push({ terms: Array.from(new Set(cpeTerms)), confidence: 'cpe-estimated' })
 
   const fullName = sanitizeTerm(name)
-  if (fullName) tiers.push([fullName])
+  if (fullName) tiers.push({ terms: [fullName], confidence: 'name-only' })
 
   const tokens = nameTokens(name)
   if (tokens.length) {
     const longest = tokens.reduce((a, b) => (b.length > a.length ? b : a))
-    if (longest !== fullName) tiers.push([longest])
+    if (longest !== fullName) tiers.push({ terms: [longest], confidence: 'name-only' })
   }
 
   return tiers
@@ -194,16 +204,25 @@ export class LocalScanner implements ScannerInstance {
 
   async scanComponent(identifier: string, _options?: { preferLocal?: boolean }): Promise<ScanComponentResult> {
     const matched = new Map<string, CVEWithDetails>()
+    let hitConfidence: MatchConfidence = 'name-only'
 
     // Walk the tiers; stop at the first tier that produces any match to limit
-    // over-matching from broad name/token searches.
+    // over-matching from broad name/token searches. A vendor:product term keeps the
+    // cpe23_uri match (already scoped); a bare product/name/token uses the precise
+    // cpe_product cascade instead of a blunt substring, cutting cross-product noise.
     for (const tier of deriveSearchTiers(identifier)) {
-      for (const term of tier) {
-        for (const cve of this.db.searchCVEsByCPE(term, SEARCH_LIMIT)) {
+      for (const term of tier.terms) {
+        const cves = term.includes(':')
+          ? this.db.searchCVEsByCPE(term, SEARCH_LIMIT)
+          : this.db.searchCVEsByProduct(term, SEARCH_LIMIT)
+        for (const cve of cves) {
           matched.set(cve.id, cve)
         }
       }
-      if (matched.size > 0) break
+      if (matched.size > 0) {
+        hitConfidence = tier.confidence
+        break
+      }
     }
 
     if (matched.size === 0) {
@@ -218,7 +237,7 @@ export class LocalScanner implements ScannerInstance {
     const vulnerabilities: Vulnerability[] = []
     for (const cve of matched.values()) {
       vulnerabilities.push(
-        cveToVulnerability(cve, identifier, details.get(cve.id), meta.get(cve.id), fixed.get(cve.id)),
+        cveToVulnerability(cve, identifier, details.get(cve.id), meta.get(cve.id), fixed.get(cve.id), hitConfidence),
       )
     }
 
@@ -297,6 +316,7 @@ export function cveToVulnerability(
   detail?: CveDetail,
   meta?: CveMeta,
   fixedVersions?: string[],
+  matchConfidence?: MatchConfidence,
 ): Vulnerability {
   const references: VulnerabilityReference[] = (detail?.references ?? cve.references ?? []).map((ref) => {
     const rawTags = (ref as { tags?: string | string[] }).tags
@@ -334,6 +354,7 @@ export function cveToVulnerability(
     isKev: meta?.isKev ?? false,
     epssScore: meta?.epssScore,
     epssPercentile: meta?.epssPercentile,
+    matchQuality: matchConfidence ? { [identifier]: matchConfidence } : undefined,
   }
 }
 

@@ -12,6 +12,7 @@ import { config } from '../config.js'
 import type { CVE, CPEMatch, Reference, CVEWithDetails, DatabaseMetadata } from './types.js'
 import type { CveFullDetails, CpeMatchFull, CweReference, ReferenceFull, CvssMetric } from '../types/database.js'
 import { runMigrations as runV2Migrations } from './migrations/v2SchemaMigration.js'
+import { escapeLikePattern } from './sqlSanitizer.js'
 
 type BetterDatabase = InstanceType<typeof BetterSqlite3>
 
@@ -45,6 +46,9 @@ export class NvdDatabase {
   private dbPath: string
   // Store bound handler for proper cleanup
   private boundCloseHandler: () => void
+  // Lazily-detected: the indexed cpe_product column exists only after the v2 schema migration;
+  // older / seed databases fall back to a cpe23_uri substring (mirrors CPESearch).
+  private cpeProductColumn: boolean | null = null
 
   constructor(dbPath?: string) {
     this.dbPath = dbPath || config.DB_PATH
@@ -797,6 +801,52 @@ export class NvdDatabase {
     `,
       )
       .all(`%${cpeText}%`, limit, offset) as CVE[]
+
+    const cveIds = rows.map((cve) => cve.id)
+    const batchDetails = this.getCVEsByIds(cveIds)
+    return cveIds.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+  }
+
+  /** Whether the indexed cpe_product column exists (added by the v2 migration). */
+  private hasCpeProductColumn(): boolean {
+    if (!this.db) return false
+    if (this.cpeProductColumn === null) {
+      const cols = this.db.prepare('PRAGMA table_info(cpe_matches)').all() as Array<{ name: string }>
+      this.cpeProductColumn = cols.some((c) => c.name === 'cpe_product')
+    }
+    return this.cpeProductColumn
+  }
+
+  /**
+   * Search CVEs by CPE PRODUCT name, precision-first: exact `cpe_product`, then a prefix match,
+   * then a `cpe23_uri` substring fallback only for recall. This scopes a bare product term to the
+   * CPE product field instead of a blunt `%term%` over the whole URI (which over-matches — e.g.
+   * `%ssl%` also hits unrelated products/vendors). Falls straight to the substring when the
+   * indexed column is absent (older/seed DBs), so recall is never worse than searchCVEsByCPE.
+   */
+  searchCVEsByProduct(product: string, limit = 100, offset = 0): CVEWithDetails[] {
+    if (!this.db) throw new Error('Database not initialized')
+    const db = this.db
+    const term = product.toLowerCase().trim()
+    if (!term) return []
+
+    const runQuery = (clause: string, param: string): CVE[] =>
+      db
+        .prepare(
+          `SELECT DISTINCT c.* FROM cves c
+           INNER JOIN cpe_matches cp ON c.id = cp.cve_id
+           WHERE ${clause} AND cp.vulnerable = 1
+           ORDER BY c.cvss_score DESC
+           LIMIT ? OFFSET ?`,
+        )
+        .all(param, limit, offset) as CVE[]
+
+    let rows: CVE[] = []
+    if (this.hasCpeProductColumn()) {
+      rows = runQuery('cp.cpe_product = ?', term)
+      if (rows.length === 0) rows = runQuery('cp.cpe_product LIKE ?', `${escapeLikePattern(term)}%`)
+    }
+    if (rows.length === 0) rows = runQuery('cp.cpe23_uri LIKE ?', `%${escapeLikePattern(term)}%`)
 
     const cveIds = rows.map((cve) => cve.id)
     const batchDetails = this.getCVEsByIds(cveIds)

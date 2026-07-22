@@ -37,7 +37,16 @@ describe('parseComponentId', () => {
 
 describe('deriveSearchTiers', () => {
   it('derives vendor:product (tier 1) then bare product (tier 2) from a CPE identifier', () => {
-    expect(deriveSearchTiers('cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*')).toEqual([['apache:log4j'], ['log4j']])
+    expect(deriveSearchTiers('cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*')).toEqual([
+      { terms: ['apache:log4j'], confidence: 'cpe-estimated' },
+      { terms: ['log4j'], confidence: 'name-only' },
+    ])
+  })
+
+  it('tags the vendor:product tier cpe-estimated and the bare-product tier name-only', () => {
+    const tiers = deriveSearchTiers('cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*')
+    expect(tiers[0].confidence).toBe('cpe-estimated')
+    expect(tiers[1].confidence).toBe('name-only')
   })
 
   it('yields no tiers for a CPE whose product is a wildcard (would match everything)', () => {
@@ -49,14 +58,14 @@ describe('deriveSearchTiers', () => {
   })
 
   it('includes the (lowercased) package name as a search term for a purl', () => {
-    const flat = deriveSearchTiers('pkg:npm/lodash@4.17.15').flat()
-    expect(flat).toContain('lodash')
+    const terms = deriveSearchTiers('pkg:npm/lodash@4.17.15').flatMap((t) => t.terms)
+    expect(terms).toContain('lodash')
   })
 
   it('lowercases the full name and surfaces a meaningful token from a hyphenated name', () => {
-    const flat = deriveSearchTiers('Log4j-Core@2.14.1').flat()
-    expect(flat).toContain('log4j-core') // full-name tier, lowercased
-    expect(flat).toContain('log4j') // token tier drops the generic "core" suffix
+    const terms = deriveSearchTiers('Log4j-Core@2.14.1').flatMap((t) => t.terms)
+    expect(terms).toContain('log4j-core') // full-name tier, lowercased
+    expect(terms).toContain('log4j') // token tier drops the generic "core" suffix
   })
 
   it('returns no tiers for an empty identifier', () => {
@@ -112,5 +121,15 @@ describe('cveToVulnerability', () => {
     const v = cveToVulnerability(baseCve, 'x@1')
     expect(v.references[0].source).toBe('nvd')
     expect(v.references[0].tags).toEqual(['Patch', 'Vendor Advisory'])
+  })
+
+  it('records match confidence keyed by the component identifier (GUI/CLI parity)', () => {
+    const v = cveToVulnerability(baseCve, 'lodash@4.17.15', undefined, undefined, undefined, 'name-only')
+    expect(v.matchQuality).toEqual({ 'lodash@4.17.15': 'name-only' })
+  })
+
+  it('omits matchQuality when no confidence is supplied', () => {
+    const v = cveToVulnerability(baseCve, 'x@1')
+    expect(v.matchQuality).toBeUndefined()
   })
 })
