@@ -1,17 +1,23 @@
 /**
  * Database Seed Script for E2E Tests
  *
- * This script populates the local NVD database with sample CVE data
- * to ensure E2E tests have data to work with.
+ * Seeds the E2E database THROUGH the built server's own NvdDatabase class, so
+ * the schema (tables, migrations, FTS triggers, indexes) always matches what
+ * the server under test expects. e2e/global-setup.ts builds the server before
+ * calling this, so dist/server is guaranteed to exist and be current.
  *
- * Usage: node scripts/seed-test-db.js [db-path]
+ * The previous implementation hand-rolled a minimal sql.js schema that the
+ * real server could not fully use (no FTS triggers, missing tables), and wrote
+ * it to a path the server never read — E2E silently ran against whatever real
+ * NVD data the developer had synced.
+ *
+ * Usage: node scripts/seed-test-db.js <db-path>   (db-path is REQUIRED so this
+ * script can never accidentally rebuild a developer's real database)
  */
 
-import initSqlJs from 'sql.js';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import os from 'os';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { existsSync, mkdirSync, rmSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,8 +35,8 @@ const SAMPLE_CVES = [
     modified_at: '2023-06-20T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:sample:app:1.0.0:*:*:*:*:*:*:*', vulnerable: 1 },
-      { cpe_text: 'cpe:2.3:a:sample:app:1.0.1:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:sample:app:1.0.0:*:*:*:*:*:*:*', vulnerable: true },
+      { cpe_text: 'cpe:2.3:a:sample:app:1.0.1:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   {
@@ -43,7 +49,7 @@ const SAMPLE_CVES = [
     modified_at: '2023-07-10T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:sample:database:2.0.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:sample:database:2.0.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   {
@@ -56,7 +62,7 @@ const SAMPLE_CVES = [
     modified_at: '2023-08-15T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:sample:webui:1.5.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:sample:webui:1.5.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   {
@@ -80,7 +86,7 @@ const SAMPLE_CVES = [
     modified_at: '2023-11-15T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:haxx:curl:8.3.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:haxx:curl:8.3.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   // CVE-2024 samples
@@ -94,7 +100,7 @@ const SAMPLE_CVES = [
     modified_at: '2024-02-15T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:sample:auth:3.0.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:sample:auth:3.0.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   {
@@ -107,7 +113,7 @@ const SAMPLE_CVES = [
     modified_at: '2024-03-10T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:sample:upload:1.2.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:sample:upload:1.2.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   {
@@ -131,8 +137,8 @@ const SAMPLE_CVES = [
     modified_at: '2024-04-05T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:tukaani:xz:5.6.0:*:*:*:*:*:*:*', vulnerable: 1 },
-      { cpe_text: 'cpe:2.3:a:tukaani:xz:5.6.1:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:tukaani:xz:5.6.0:*:*:*:*:*:*:*', vulnerable: true },
+      { cpe_text: 'cpe:2.3:a:tukaani:xz:5.6.1:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   {
@@ -145,7 +151,7 @@ const SAMPLE_CVES = [
     modified_at: '2024-06-15T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:php:php:8.1.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:php:php:8.1.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   // Common library vulnerabilities
@@ -159,7 +165,7 @@ const SAMPLE_CVES = [
     modified_at: '2023-03-15T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:openssl:openssl:3.0.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:openssl:openssl:3.0.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   {
@@ -184,7 +190,7 @@ const SAMPLE_CVES = [
     modified_at: '2023-05-01T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   // express vulnerability
@@ -198,7 +204,7 @@ const SAMPLE_CVES = [
     modified_at: '2023-01-15T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:expressjs:express:4.18.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:expressjs:express:4.18.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
   // React vulnerability
@@ -212,7 +218,7 @@ const SAMPLE_CVES = [
     modified_at: '2023-06-01T00:00:00Z',
     source: 'NVD',
     cpe_matches: [
-      { cpe_text: 'cpe:2.3:a:meta:react:18.0.0:*:*:*:*:*:*:*', vulnerable: 1 },
+      { cpe_text: 'cpe:2.3:a:meta:react:18.0.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
 ];
@@ -220,189 +226,62 @@ const SAMPLE_CVES = [
 async function seedDatabase(dbPath) {
   console.log('Seeding test database at:', dbPath);
 
-  // Ensure directory exists
+  // Fresh, deterministic fixture: remove any DB left over from a prior run.
+  // On Windows a lingering server process can hold the file (EPERM) — in that
+  // case fall back to upserting into the existing DB, which is idempotent for
+  // this fixed fixture set.
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      rmSync(dbPath + suffix, { force: true });
+    } catch (err) {
+      console.warn(`Could not remove ${dbPath + suffix} (${err.code}); seeding into existing DB`);
+    }
+  }
   const dbDir = path.dirname(dbPath);
   if (!existsSync(dbDir)) {
     mkdirSync(dbDir, { recursive: true });
   }
 
-  // Find WASM file
-  const possiblePaths = [
-    path.join(__dirname, '../node_modules/sql.js/dist/sql-wasm.wasm'),
-    path.join(__dirname, '../dist/sql-wasm.wasm'),
-    path.join(__dirname, '../sql-wasm.wasm'),
-  ];
-
-  let wasmPath = null;
-  for (const testPath of possiblePaths) {
-    if (existsSync(testPath)) {
-      wasmPath = testPath;
-      break;
-    }
+  // Import the BUILT server database class — schema/migrations/FTS triggers
+  // are created by the same code the server runs.
+  const nvdDbModule = path.join(__dirname, '..', 'dist', 'server', 'database', 'nvdDb.js');
+  if (!existsSync(nvdDbModule)) {
+    throw new Error(`Built server not found at ${nvdDbModule} — run "npm run build:server" first`);
   }
+  const { NvdDatabase } = await import(pathToFileURL(nvdDbModule).href);
 
-  if (!wasmPath) {
-    throw new Error('Could not find sql.js WASM file');
-  }
+  const db = new NvdDatabase(dbPath);
+  await db.initialize();
 
-  console.log('Found WASM at:', wasmPath);
-
-  // Initialize sql.js
-  const wasmBuffer = readFileSync(wasmPath);
-  const sqlJs = await initSqlJs({
-    wasmBinary: wasmBuffer.buffer.slice(wasmBuffer.byteOffset, wasmBuffer.byteOffset + wasmBuffer.byteLength)
-  });
-
-  // Load or create database
-  let db;
-  if (existsSync(dbPath)) {
-    const buffer = readFileSync(dbPath);
-    db = new sqlJs.Database(buffer);
-    console.log('Loaded existing database');
-  } else {
-    db = new sqlJs.Database();
-    console.log('Created new database');
-  }
-
-  // Create schema if not exists
-  db.run(`
-    CREATE TABLE IF NOT EXISTS cves (
-      id TEXT PRIMARY KEY,
-      description TEXT NOT NULL,
-      cvss_score REAL,
-      cvss_vector TEXT,
-      severity TEXT CHECK(severity IN ('NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
-      published_at TEXT NOT NULL,
-      modified_at TEXT NOT NULL,
-      source TEXT CHECK(source IN ('NVD', 'OSV')) NOT NULL
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS cpe_matches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cve_id TEXT NOT NULL,
-      cpe23_uri TEXT NOT NULL,
-      vulnerable INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY (cve_id) REFERENCES cves(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS "references" (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cve_id TEXT NOT NULL,
-      url TEXT NOT NULL,
-      source TEXT,
-      tags TEXT,
-      FOREIGN KEY (cve_id) REFERENCES cves(id) ON DELETE CASCADE
-    )
-  `);
-
-  // Create FTS table if not exists (wrapped in try/catch since FTS5 may not be available)
-  try {
-    db.run(`
-      CREATE VIRTUAL TABLE IF NOT EXISTS cves_fts USING fts5(
-        id,
-        description,
-        content='cves',
-        content_rowid='rowid'
-      )
-    `);
-  } catch (ftsError) {
-    console.log('FTS5 not available, skipping FTS table creation');
-  }
-
-  // Create metadata table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS db_metadata (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    )
-  `);
-
-  // Insert sample CVEs
   let inserted = 0;
-  let skipped = 0;
-
   for (const cve of SAMPLE_CVES) {
-    // Check if CVE already exists
-    const existing = db.exec(`SELECT id FROM cves WHERE id = '${cve.id}'`);
-    if (existing.length > 0 && existing[0].values.length > 0) {
-      skipped++;
-      continue;
-    }
-
-    // Insert CVE
-    db.run(
-      `INSERT OR REPLACE INTO cves (id, description, cvss_score, cvss_vector, severity, published_at, modified_at, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [cve.id, cve.description, cve.cvss_score, cve.cvss_vector, cve.severity, cve.published_at, cve.modified_at, cve.source]
-    );
-
-    // Insert CPE matches
-    for (const cpe of cve.cpe_matches) {
-      db.run(
-        `INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable) VALUES (?, ?, ?)`,
-        [cve.id, cpe.cpe_text, cpe.vulnerable]
+    const { cpe_matches: cpeMatches, ...record } = cve;
+    await db.upsertCVE(record);
+    if (cpeMatches.length > 0) {
+      await db.insertCPEMatches(
+        cve.id,
+        cpeMatches.map((m) => ({ cve_id: cve.id, cpe_text: m.cpe_text, vulnerable: m.vulnerable })),
       );
     }
-
-    // Insert into FTS (if table exists)
-    try {
-      db.run(
-        `INSERT INTO cves_fts (id, description) VALUES (?, ?)`,
-        [cve.id, cve.description]
-      );
-    } catch {
-      // FTS table may not exist, ignore
-    }
-
     inserted++;
   }
 
-  // Update metadata
-  const now = new Date().toISOString();
-  db.run(`INSERT OR REPLACE INTO db_metadata (key, value) VALUES ('last_sync', ?)`, [now]);
-  db.run(`INSERT OR REPLACE INTO db_metadata (key, value) VALUES ('schema_version', ?)`, ['9']);
+  await db.close();
 
-  // Save database
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  writeFileSync(dbPath, buffer);
-
-  // Get stats
-  const countResult = db.exec('SELECT COUNT(*) FROM cves');
-  const totalCves = countResult[0]?.values[0]?.[0] || 0;
-
-  console.log(`\n=== Database Seed Complete ===`);
-  console.log(`Total CVEs in database: ${totalCves}`);
-  console.log(`Inserted: ${inserted}`);
-  console.log(`Skipped (already exists): ${skipped}`);
+  console.log('\n=== Database Seed Complete ===');
+  console.log(`Inserted: ${inserted} CVEs`);
   console.log(`Database saved to: ${dbPath}`);
-
-  db.close();
 }
 
-// Get database path from args or use default
 const args = process.argv.slice(2);
-let dbPath;
-
-if (args.length > 0) {
-  dbPath = args[0];
-} else {
-  // Default path in user data directory
-  const isWindows = os.platform() === 'win32';
-  const homeDir = os.homedir();
-
-  if (isWindows) {
-    dbPath = path.join(homeDir, 'AppData', 'Roaming', 'vuln-assess-tool', 'nvd-data.db');
-  } else {
-    dbPath = path.join(homeDir, '.config', 'vuln-assess-tool', 'nvd-data.db');
-  }
+if (args.length === 0) {
+  // A default path once pointed this script at real user data; require the
+  // caller (e2e/global-setup.ts) to be explicit so that can never recur.
+  console.error('Usage: node scripts/seed-test-db.js <db-path>');
+  process.exit(1);
 }
 
-seedDatabase(dbPath).catch(err => {
+seedDatabase(args[0]).catch(err => {
   console.error('Failed to seed database:', err);
   process.exit(1);
 });

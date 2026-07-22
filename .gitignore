@@ -60,6 +60,9 @@ tests/fixtures/nvd-data/*-modified.json
 .env
 .env.*
 !.env.example
+# E2E env is configuration, not secrets — the suite needs it on every machine
+!.env.e2e
 
 # Claude local settings (contains personal tokens)
 .claude/settings.local.json
+.e2e-data/

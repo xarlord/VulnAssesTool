@@ -29,7 +29,10 @@ export default defineConfig({
     command: 'node --env-file=.env.e2e dist/server/index.js',
     port: 3001,
     timeout: 30000,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: a leftover server serves a stale build and holds the seed
+    // DB open. globalSetup kills anything on the port, then this always boots
+    // a fresh server from the current dist against the freshly seeded DB.
+    reuseExistingServer: false,
   },
 
   projects: [

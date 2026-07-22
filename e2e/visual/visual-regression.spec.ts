@@ -65,8 +65,10 @@ test.describe('Visual Regression Tests', () => {
       await page.click('button:has-text("NVD Database")')
       await page.waitForTimeout(E2E_UI_DELAY)
 
-      // Search for a CVE
-      await page.fill('input[placeholder*="CVE ID"]', 'CVE-2024')
+      // Search for a seeded CVE. A full id resolves via the id lookup path;
+      // a bare year prefix like "CVE-2024" only matched real-NVD description
+      // cross-references, which the seeded fixture set intentionally lacks.
+      await page.fill('input[placeholder*="CVE ID"]', 'CVE-2024-3094')
       await page.waitForTimeout(E2E_SEARCH_DELAY)
 
       // Wait for results to appear (database should be seeded)
