@@ -43,7 +43,8 @@ export const FONT_SIZES = {
 
 // Default settings
 export const DEFAULT_SETTINGS = {
-  theme: 'system' as const,
+  // Dark-first: security tooling default. Light and system remain selectable in Settings.
+  theme: 'dark' as const,
   fontSize: 'default' as const,
   dataRetentionDays: 30,
   autoRefresh: false,

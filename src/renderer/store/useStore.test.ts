@@ -128,7 +128,7 @@ describe('useStore', () => {
       const { result } = renderHook(() => useStore())
 
       expect(result.current.settings).toEqual(DEFAULT_SETTINGS)
-      expect(result.current.settings.theme).toBe('system')
+      expect(result.current.settings.theme).toBe('dark')
       expect(result.current.settings.fontSize).toBe('default')
       expect(result.current.settings.dataRetentionDays).toBe(30)
       expect(result.current.settings.autoRefresh).toBe(false)
@@ -1654,13 +1654,14 @@ describe('useStore', () => {
       const mockProject = createMockProject()
 
       act(() => {
-        result.current.updateSettings({ theme: 'dark' })
+        // 'light' differs from the 'dark' default so the reset below provably restores it
+        result.current.updateSettings({ theme: 'light' })
         result.current.addProject(mockProject)
         result.current.setSidebarOpen(false)
         result.current.updateNotificationPreferences({ enabled: false })
       })
 
-      expect(result.current.settings.theme).toBe('dark')
+      expect(result.current.settings.theme).toBe('light')
       expect(result.current.projects).toHaveLength(1)
       expect(result.current.sidebarOpen).toBe(false)
       expect(result.current.notificationPreferences.enabled).toBe(false)
@@ -1669,7 +1670,7 @@ describe('useStore', () => {
         result.current.resetStore()
       })
 
-      expect(result.current.settings.theme).toBe('system')
+      expect(result.current.settings.theme).toBe('dark')
       expect(result.current.settings.fontSize).toBe('default')
       expect(result.current.settings.dataRetentionDays).toBe(30)
       expect(result.current.settings.autoRefresh).toBe(false)
