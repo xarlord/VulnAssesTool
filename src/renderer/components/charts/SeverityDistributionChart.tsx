@@ -3,8 +3,16 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Legend, Tooltip } from 'recha
 import type { Vulnerability } from '@@/types'
 import { SEVERITY_COLORS } from '@@/constants'
 
+/** Severity counts, keyed by severity. Used when the caller already has
+ *  aggregate counts (e.g. the Dashboard, whose persisted projects keep counts
+ *  but not the full vulnerability arrays). */
+export type SeverityCounts = Record<Vulnerability['severity'], number>
+
 interface SeverityDistributionChartProps {
-  vulnerabilities: Vulnerability[]
+  /** Full vulnerability list — counts are derived from it. */
+  vulnerabilities?: Vulnerability[]
+  /** Pre-aggregated counts; takes precedence over `vulnerabilities`. */
+  counts?: SeverityCounts
   height?: number
   showLegend?: boolean
   showLabels?: boolean
@@ -17,11 +25,14 @@ export interface SeverityDistributionItem {
 }
 
 /**
- * Calculate severity distribution from vulnerabilities
+ * Calculate severity distribution from vulnerabilities or pre-aggregated counts.
  * @internal - exported for testing
  */
-export function calculateSeverityDistribution(vulnerabilities: Vulnerability[]): SeverityDistributionItem[] {
-  const counts = {
+export function calculateSeverityDistribution(
+  vulnerabilities: Vulnerability[] = [],
+  precomputed?: SeverityCounts,
+): SeverityDistributionItem[] {
+  const counts = precomputed ?? {
     critical: 0,
     high: 0,
     medium: 0,
@@ -29,8 +40,10 @@ export function calculateSeverityDistribution(vulnerabilities: Vulnerability[]):
     none: 0,
   }
 
-  for (const vuln of vulnerabilities) {
-    counts[vuln.severity]++
+  if (!precomputed) {
+    for (const vuln of vulnerabilities) {
+      counts[vuln.severity]++
+    }
   }
 
   return [
@@ -48,14 +61,15 @@ export function calculateSeverityDistribution(vulnerabilities: Vulnerability[]):
  */
 export const SeverityDistributionChart = React.memo(function SeverityDistributionChart({
   vulnerabilities,
+  counts,
   height = 300,
   showLegend = true,
   showLabels = true,
 }: SeverityDistributionChartProps) {
   // Calculate distribution
   const distribution = React.useMemo(() => {
-    return calculateSeverityDistribution(vulnerabilities)
-  }, [vulnerabilities])
+    return calculateSeverityDistribution(vulnerabilities, counts)
+  }, [vulnerabilities, counts])
 
   const total = distribution.reduce((sum, item) => sum + item.value, 0)
 

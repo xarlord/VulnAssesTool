@@ -4,6 +4,7 @@
  */
 
 import type { Project } from '@@/types'
+import { aggregateProjectStats } from '@/lib/stats/projectAggregates'
 
 export interface ExecutiveMetrics {
   overall: OverallMetrics
@@ -83,15 +84,18 @@ export interface ProductivityMetrics {
  * Calculate overall metrics from all projects
  */
 export function calculateOverallMetrics(projects: Project[]): OverallMetrics {
-  const totalProjects = projects.length
-  const totalComponents = projects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
-  const totalVulnerabilities = projects.reduce((sum, p) => sum + p.statistics.totalVulnerabilities, 0)
-  const criticalCount = projects.reduce((sum, p) => sum + p.statistics.criticalCount, 0)
-  const highCount = projects.reduce((sum, p) => sum + p.statistics.highCount, 0)
-  const mediumCount = projects.reduce((sum, p) => sum + p.statistics.mediumCount, 0)
-  const lowCount = projects.reduce((sum, p) => sum + p.statistics.lowCount, 0)
+  // Shared roll-up so the Dashboard stat row and these metrics never drift.
+  const {
+    totalProjects,
+    totalComponents,
+    totalVulnerabilities,
+    criticalCount,
+    highCount,
+    mediumCount,
+    lowCount,
+    vulnerableComponents,
+  } = aggregateProjectStats(projects)
 
-  const vulnerableComponents = projects.reduce((sum, p) => sum + p.statistics.vulnerableComponents, 0)
   const vulnerableComponentPercentage = totalComponents > 0 ? (vulnerableComponents / totalComponents) * 100 : 0
 
   // Calculate weighted health score

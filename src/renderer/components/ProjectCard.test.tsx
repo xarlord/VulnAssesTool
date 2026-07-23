@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { ProjectCard } from './ProjectCard'
 import type { Project } from '@@/types'
 
@@ -226,48 +226,43 @@ describe('ProjectCard', () => {
       expect(deleteButton).toBeInTheDocument()
     })
 
-    it('should call confirm when delete button is clicked', () => {
-      global.confirm = vi.fn(() => true)
-
+    it('should open a confirmation dialog when delete button is clicked', async () => {
       renderCard()
 
-      const deleteButton = screen.getByRole('button', { name: 'Delete project' })
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
 
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
+      // Native confirm() replaced by an accessible ConfirmDialog.
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('Delete project')).toBeInTheDocument()
     })
 
-    it('should call onDelete when confirm is accepted', () => {
-      global.confirm = vi.fn(() => true)
-
+    it('should call onDelete when deletion is confirmed', async () => {
       const project = createMockProject()
       renderCard(project)
 
-      const deleteButton = screen.getByRole('button', { name: 'Delete project' })
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
       expect(mockOnDelete).toHaveBeenCalledWith('test-project-id')
     })
 
-    it('should not call onDelete when confirm is cancelled', () => {
-      global.confirm = vi.fn(() => false)
-
+    it('should not call onDelete when deletion is cancelled', async () => {
       renderCard()
 
-      const deleteButton = screen.getByRole('button', { name: /delete project/i })
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: /delete project/i }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
       expect(mockOnDelete).not.toHaveBeenCalled()
     })
 
     it('should stop propagation on delete button click', () => {
-      global.confirm = vi.fn(() => false)
-
       renderCard()
 
-      const deleteButton = screen.getByRole('button', { name: 'Delete project' })
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
 
+      // Opening the confirm dialog must not also trigger the card's onView.
       expect(mockOnView).not.toHaveBeenCalled()
     })
   })

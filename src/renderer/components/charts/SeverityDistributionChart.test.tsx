@@ -302,6 +302,23 @@ describe('SeverityDistributionChart', () => {
         expect(distribution).toEqual([])
       })
 
+      it('should use precomputed counts when provided (Dashboard aggregate path)', () => {
+        // Why: the Dashboard drives this chart off aggregate statistics counts,
+        // not a vulnerability array (persisted projects keep counts, not vulns).
+        const distribution = calculateSeverityDistribution(undefined, {
+          critical: 3,
+          high: 2,
+          medium: 0,
+          low: 1,
+          none: 0,
+        })
+        expect(distribution.map((d) => [d.name, d.value])).toEqual([
+          ['Critical', 3],
+          ['High', 2],
+          ['Low', 1],
+        ])
+      })
+
       it('should include "none" severity when present', () => {
         const vulnerabilities: Vulnerability[] = [
           {
