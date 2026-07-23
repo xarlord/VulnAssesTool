@@ -236,7 +236,9 @@ test.describe('Search Page', () => {
       await input.fill('openssl')
       await page.waitForTimeout(E2E_UI_DELAY * 4)
 
-      const searchStates = page.locator('text=/Searching|Loading|No results|empty/i, [data-testid="nvd-result"]')
+      const searchStates = page
+        .getByText(/Searching|Loading|No results|empty/i)
+        .or(page.locator('[data-testid="nvd-result"]'))
       await expect(searchStates.first()).toBeVisible({ timeout: 10000 })
     })
 
