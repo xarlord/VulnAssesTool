@@ -1,5 +1,6 @@
 import React from 'react'
-import { X, AlertTriangle, Shield, ExternalLink, Copy, Check } from 'lucide-react'
+import { AlertTriangle, Shield, ExternalLink, Copy, Check } from 'lucide-react'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import type { Component, Vulnerability } from '@@/types'
 import { VirtualList } from './VirtualList'
 import { toast } from './Toaster'
@@ -90,30 +91,10 @@ export function ComponentVulnerabilitiesPopup({
     }
   }
 
-  // Handle escape key
-  React.useEffect(() => {
-    if (!open) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, onClose])
-
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-
-      {/* Popup */}
-      <div
-        className="relative z-50 w-full max-w-2xl rounded-lg border border-border bg-card shadow-lg max-h-[85vh] overflow-hidden flex flex-col"
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-0 overflow-hidden bg-card p-0"
         data-testid="vulnerabilities-popup"
       >
         {/* Header */}
@@ -124,8 +105,8 @@ export function ComponentVulnerabilitiesPopup({
                 <Shield className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-foreground truncate">{component.name}</h2>
-                <p className="text-sm text-muted-foreground">
+                <DialogTitle className="truncate">{component.name}</DialogTitle>
+                <DialogDescription>
                   {component.version}
                   <span className="mx-2">-</span>
                   <span className="capitalize">{component.type}</span>
@@ -135,17 +116,10 @@ export function ComponentVulnerabilitiesPopup({
                       <span className="font-mono text-xs">{component.purl}</span>
                     </>
                   )}
-                </p>
+                </DialogDescription>
               </div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-sm p-1 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
-            aria-label="Close popup"
-          >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </button>
         </div>
 
         {/* Severity Summary */}
@@ -296,7 +270,7 @@ export function ComponentVulnerabilitiesPopup({
             Close
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
