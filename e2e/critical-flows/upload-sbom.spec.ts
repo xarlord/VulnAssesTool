@@ -79,7 +79,7 @@ test.describe('SBOM Upload Flow', () => {
         .isVisible()
         .catch(() => false)
     ) {
-      await page.getByRole('button', { name: 'Close dialog' }).click()
+      await page.getByRole('button', { name: 'Close' }).click()
       await page.waitForTimeout(500)
     }
 

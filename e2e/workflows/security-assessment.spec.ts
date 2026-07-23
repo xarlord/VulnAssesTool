@@ -43,7 +43,7 @@ test.describe('Security Assessment Workflow', () => {
     test('should access executive dashboard', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.locator('h1:has-text("Executive Dashboard")')).toBeVisible()
+      await expect(page.locator('h1:has-text("Reports")')).toBeVisible()
     })
   })
 
@@ -393,7 +393,7 @@ test.describe('Security Assessment Workflow', () => {
       // Step 5: View executive dashboard
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.locator('h1:has-text("Executive Dashboard")')).toBeVisible()
+      await expect(page.locator('h1:has-text("Reports")')).toBeVisible()
     })
 
     test('should navigate assessment with search', async ({ page }) => {
@@ -442,7 +442,7 @@ test.describe('Security Assessment Workflow', () => {
       // View executive dashboard
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.locator('h1:has-text("Executive Dashboard")')).toBeVisible()
+      await expect(page.locator('h1:has-text("Reports")')).toBeVisible()
 
       // Should show multiple projects
       const projectCount = page.locator('text=/Assessment Project/i')

@@ -182,17 +182,11 @@ test.describe('False Positive Filter', () => {
     const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
     await navigateToFPF(page, projectId)
 
-    // Click "Back to Project" link
-    const backButton = page.getByRole('button', { name: /back to project/i })
-    if (await backButton.isVisible().catch(() => false)) {
-      await backButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+    // Click the sidebar "Overview" link to navigate back to the project
+    await page.getByRole('link', { name: 'Overview' }).click()
+    await page.waitForTimeout(E2E_UI_DELAY)
 
-      // Should be back on project detail page
-      const projectHeading = page.getByRole('heading', { name: new RegExp(projectName, 'i') })
-      if (await projectHeading.isVisible().catch(() => false)) {
-        await expect(projectHeading).toBeVisible()
-      }
-    }
+    // Should be back on project detail page
+    await expect(page.getByRole('heading', { name: new RegExp(projectName, 'i') })).toBeVisible()
   })
 })

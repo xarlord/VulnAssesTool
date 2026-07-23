@@ -11,7 +11,7 @@ test.describe('Executive Dashboard', () => {
     test('should display executive dashboard header', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible({
+      await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible({
         timeout: E2E_SELECTOR_TIMEOUT,
       })
     })
@@ -25,7 +25,7 @@ test.describe('Executive Dashboard', () => {
     test('should show back to dashboard button', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.locator('button:has-text("Back")')).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
     })
 
     test('should display date range filter', async ({ page }) => {
@@ -249,7 +249,7 @@ test.describe('Executive Dashboard', () => {
     test('should navigate back to main dashboard', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      await page.locator('button:has-text("Back")').click()
+      await page.getByRole('link', { name: 'Dashboard' }).click()
       await page.waitForTimeout(E2E_UI_DELAY)
 
       await expect(page.locator('button:has-text("New Project")')).toBeVisible()
@@ -272,9 +272,7 @@ test.describe('Executive Dashboard', () => {
     test('should show arrow icon on back button', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      const backButton = page.locator('button:has-text("Back")')
-      const arrowIcon = backButton.locator('svg')
-      await expect(arrowIcon).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
     })
   })
 
@@ -282,7 +280,7 @@ test.describe('Executive Dashboard', () => {
     test('should handle no projects gracefully', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible()
     })
 
     test('should show zero counts when no data', async ({ page }) => {
@@ -312,7 +310,7 @@ test.describe('Executive Dashboard', () => {
     test('should display all widgets on desktop', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible()
 
       const widgets = page.locator('[class*="widget"], [class*="card"]')
       const count = await widgets.count()
@@ -326,7 +324,7 @@ test.describe('Executive Dashboard', () => {
     test('should display on tablet viewport', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
 
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible()
     })
 
     test('should stack widgets on tablet', async ({ page }) => {

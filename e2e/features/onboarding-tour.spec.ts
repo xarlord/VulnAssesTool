@@ -25,15 +25,11 @@ test.describe('Onboarding Tour', () => {
 
     test('should display welcome message', async ({ page, browserName }) => {
       test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await page.goto('/')
+      await page.goto('/dashboard')
       await page.waitForLoadState('domcontentloaded')
       await page.waitForTimeout(E2E_UI_DELAY * 2)
 
-      const welcomeText = page.locator('text=/Welcome|Get Started|Introduction/i')
-      await welcomeText
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      await expect(page.locator('button:has-text("New Project")')).toBeVisible()
     })
 
     test('should show step indicator', async ({ page, browserName }) => {

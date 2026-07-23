@@ -29,7 +29,7 @@ test.describe('Dependency Graph', () => {
     test('should display back to project button', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      await expect(page.locator('button:has-text("Back to Project")')).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Overview' })).toBeVisible()
     })
 
     test('should show severity filter dropdown', async ({ page }) => {
@@ -222,7 +222,7 @@ test.describe('Dependency Graph', () => {
     test('should navigate back to project detail', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      await page.locator('button:has-text("Back to Project")').click()
+      await page.getByRole('link', { name: 'Overview' }).click()
       await page.waitForTimeout(E2E_UI_DELAY)
 
       // Should no longer be on graph page
@@ -233,7 +233,7 @@ test.describe('Dependency Graph', () => {
       const projectName = 'Navigation Test Project'
       await createProjectAndNavigateToGraph(page, projectName)
 
-      await page.locator('button:has-text("Back to Project")').click()
+      await page.getByRole('link', { name: 'Overview' }).click()
       await page.waitForTimeout(E2E_UI_DELAY)
 
       // Should show project name on detail page
@@ -243,9 +243,7 @@ test.describe('Dependency Graph', () => {
     test('should show arrow left icon on back button', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const backButton = page.locator('button:has-text("Back to Project")')
-      const arrowIcon = backButton.locator('svg')
-      await expect(arrowIcon).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Overview' })).toBeVisible()
     })
 
     test('should handle browser back navigation', async ({ page }) => {
