@@ -7,9 +7,7 @@ import { SbomUploadDialog } from '@/components/SbomUploadDialog'
 import { SbomGeneratorDialog } from '@/components/SbomGeneratorDialog'
 import { ExportDialog } from '@/components/ExportDialog'
 import { ProjectCard } from '@/components/ProjectCard'
-import { NotificationCenter } from '@/components/NotificationCenter'
 import { useMenuActionListener } from '@/components/MenuActionListener'
-import { OfflineIndicator } from '@/components/OfflineIndicator'
 import { refreshVulnerabilityData } from '@/lib/refresh'
 import { AppLogo } from '@/components/AppLogo'
 import type { Project } from '@@/types'
@@ -192,7 +190,6 @@ export function Dashboard() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <AppLogo size="md" showText={true} />
           <div className="flex flex-wrap items-center gap-3">
-            <OfflineIndicator compact />
             <button
               onClick={() => navigate('/search')}
               data-testid="nav-search"
@@ -201,7 +198,6 @@ export function Dashboard() {
               <Search className="h-4 w-4" />
               Search
             </button>
-            <NotificationCenter />
             <button
               onClick={() => navigate('/settings')}
               data-tour="settings-link"

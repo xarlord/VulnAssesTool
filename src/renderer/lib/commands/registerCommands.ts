@@ -16,16 +16,6 @@ import type { Command } from './types'
 function createNavigationCommands(navigate: (path: string) => void): Command[] {
   return [
     {
-      id: 'navigation.home',
-      label: 'Go to Home',
-      category: 'navigation',
-      shortcut: 'Ctrl+Shift+H',
-      icon: 'Home',
-      action: () => navigate('/'),
-      keywords: ['welcome', 'hero', 'start'],
-      priority: 5,
-    },
-    {
       id: 'navigation.dashboard',
       label: 'Go to Dashboard',
       category: 'navigation',
@@ -48,7 +38,8 @@ function createNavigationCommands(navigate: (path: string) => void): Command[] {
       id: 'navigation.search',
       label: 'Go to Search',
       category: 'navigation',
-      shortcut: 'Ctrl+K',
+      // No shortcut label: Ctrl+K opens the command palette (it never actually
+      // navigated to Search — the old label advertised an unbound key).
       icon: 'Search',
       action: () => navigate('/search'),
       keywords: ['find', 'lookup'],

@@ -37,20 +37,8 @@ test.describe('Mobile responsive headers', () => {
     await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
-  test('HomePage header fits within a 375px phone viewport', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT)
-    await spaNavigate(page, '/')
-    await page.waitForSelector('header')
-
-    const header = await headerMetrics(page)
-    expect(header.found).toBe(true)
-    // +1 tolerates sub-pixel rounding.
-    expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth + 1)
-
-    const doc = await documentMetrics(page)
-    expect(doc.scrollWidth).toBeLessThanOrEqual(doc.clientWidth + 1)
-  })
-
+  // The marketing HomePage was removed — '/' redirects to the Dashboard,
+  // whose header is covered by the test below.
   test('Dashboard header fits within a 375px phone viewport', async ({ page }) => {
     await page.setViewportSize(MOBILE_VIEWPORT)
     await spaNavigate(page, '/dashboard')

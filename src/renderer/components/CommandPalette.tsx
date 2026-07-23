@@ -260,7 +260,13 @@ export function useCommandPalette() {
 export function CommandPaletteTrigger({ onTrigger }: { onTrigger: () => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl+Shift+P (Windows/Linux) or Cmd+Shift+P (Mac)
+      // Ctrl/Cmd+K — the primary, advertised shortcut
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        onTrigger()
+        return
+      }
+      // Ctrl+Shift+P (Windows/Linux) or Cmd+Shift+P (Mac) — legacy alias
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
         e.preventDefault()
         onTrigger()
