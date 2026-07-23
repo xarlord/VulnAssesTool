@@ -160,7 +160,7 @@ test.describe('Search Page', () => {
       await input.fill('zzzzzzzznonexistent12345')
       await page.waitForTimeout(E2E_UI_DELAY * 3)
 
-      await expect(page.locator('text=/No results found|No matches found/i')).toBeVisible()
+      await expect(page.locator('text=/No results found|No matches found/i').first()).toBeVisible()
     })
 
     test('should show suggestions when no exact matches', async ({ page }) => {
