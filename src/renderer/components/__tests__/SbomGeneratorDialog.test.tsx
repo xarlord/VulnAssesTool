@@ -419,23 +419,18 @@ describe('SbomGeneratorDialog', () => {
     it('should close dialog when close button is clicked', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
 
-      const closeButton = screen.getByRole('button', { name: /close dialog/i })
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       fireEvent.click(closeButton)
 
       expect(mockOnClose).toHaveBeenCalled()
     })
 
-    it('should close dialog when backdrop is clicked', () => {
+    it('should close dialog when Escape is pressed', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
 
-      const backdrop = screen
-        .getByText(/Generate SBOM from Excel/)
-        .closest('.fixed')
-        ?.querySelector('.bg-black\\/50')
-      if (backdrop) {
-        fireEvent.click(backdrop)
-        expect(mockOnClose).toHaveBeenCalled()
-      }
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(mockOnClose).toHaveBeenCalled()
     })
 
     it('should reset state when dialog is closed and reopened', async () => {
