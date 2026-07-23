@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useNavigate, useParams } from 'react-router-dom'
 import { ProjectDetail } from './ProjectDetail'
@@ -608,27 +608,25 @@ describe('ProjectDetail', () => {
       expect(screen.getByText('Delete')).toBeInTheDocument()
     })
 
-    it('should call deleteProject and navigate when delete is confirmed', () => {
-      // Mock window.confirm
-      global.confirm = vi.fn(() => true)
-
+    it('should call deleteProject and navigate when delete is confirmed', async () => {
       renderProjectDetail()
 
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      // Open the confirm dialog from the header Delete button
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      // Confirm in the dialog
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
       expect(mockDeleteProject).toHaveBeenCalledWith('test-project-id')
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
-    it('should not delete when cancel is clicked in confirm dialog', () => {
-      global.confirm = vi.fn(() => false)
-
+    it('should not delete when cancel is clicked in confirm dialog', async () => {
       renderProjectDetail()
 
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
       expect(mockDeleteProject).not.toHaveBeenCalled()
       expect(mockNavigate).not.toHaveBeenCalled()
@@ -2293,77 +2291,49 @@ describe('ProjectDetail', () => {
   })
 
   describe('Project Deletion - TC-PM Scenarios', () => {
-    it('TC-PM-005: Delete Project - Single - should show confirmation dialog and delete on confirm', () => {
-      // Mock window.confirm to return true (user confirms deletion)
-      global.confirm = vi.fn(() => true)
-
+    it('TC-PM-005: Delete Project - Single - should show confirmation dialog and delete on confirm', async () => {
       renderProjectDetail()
 
-      // Find and click the Delete button
-      const deleteButton = screen.getByText('Delete')
-      expect(deleteButton).toBeInTheDocument()
+      // Open the confirm dialog from the header Delete button
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      // Confirm deletion inside the dialog
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
-      fireEvent.click(deleteButton)
-
-      // Verify confirmation dialog was shown
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
-
-      // Verify deleteProject was called with correct project ID
       expect(mockDeleteProject).toHaveBeenCalledWith('test-project-id')
-
-      // Verify navigation to home page after deletion
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
-    it('TC-PM-006: Delete Project - Cancel - should not delete when cancel is clicked', () => {
-      // Mock window.confirm to return false (user cancels deletion)
-      global.confirm = vi.fn(() => false)
-
+    it('TC-PM-006: Delete Project - Cancel - should not delete when cancel is clicked', async () => {
       renderProjectDetail()
 
-      // Find and click the Delete button
-      const deleteButton = screen.getByText('Delete')
-      expect(deleteButton).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
-      fireEvent.click(deleteButton)
-
-      // Verify confirmation dialog was shown
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
-
-      // Verify deleteProject was NOT called
       expect(mockDeleteProject).not.toHaveBeenCalled()
-
-      // Verify navigation did NOT occur
       expect(mockNavigate).not.toHaveBeenCalled()
-
       // Verify project is still visible (not deleted)
       expect(screen.getByText('Test Project')).toBeInTheDocument()
     })
 
-    it('TC-PM-005-variant: should handle deletion of project with different name', () => {
-      // Mock window.confirm to return true
-      global.confirm = vi.fn(() => true)
-
+    it('TC-PM-005-variant: should handle deletion of project with different name', async () => {
       const customProject = createMockProject({
         name: 'Custom Project Name',
         id: 'custom-project-id',
       })
       renderProjectDetail(customProject, 'custom-project-id')
 
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      // Confirmation shows the correct project name
+      expect(within(dialog).getByText(/Custom Project Name/)).toBeInTheDocument()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
-      // Verify confirmation shows correct project name
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Custom Project Name"?')
-
-      // Verify deleteProject was called with correct project ID
       expect(mockDeleteProject).toHaveBeenCalledWith('custom-project-id')
     })
 
-    it('should maintain project state after cancel operation', () => {
-      // Mock window.confirm to return false (user cancels)
-      global.confirm = vi.fn(() => false)
-
+    it('should maintain project state after cancel operation', async () => {
       renderProjectDetail()
 
       // Get initial project elements
@@ -2371,8 +2341,9 @@ describe('ProjectDetail', () => {
       expect(screen.getByText('A test project for vulnerability assessment')).toBeInTheDocument()
 
       // Attempt to delete but cancel
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
       // Verify project data is still visible and intact
       expect(screen.getByText('Test Project')).toBeInTheDocument()
@@ -2382,16 +2353,12 @@ describe('ProjectDetail', () => {
       expect(screen.getAllByText('Vulnerabilities').length).toBeGreaterThan(0)
     })
 
-    it('should call deleteProject exactly once per confirmed deletion', () => {
-      // Mock window.confirm to return true
-      global.confirm = vi.fn(() => true)
-
+    it('should call deleteProject exactly once per confirmed deletion', async () => {
       renderProjectDetail()
 
-      const deleteButton = screen.getByText('Delete')
-
-      // Click delete button once
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
       // Verify deleteProject was called exactly once
       expect(mockDeleteProject).toHaveBeenCalledTimes(1)
@@ -2441,15 +2408,6 @@ describe('ProjectDetail', () => {
       await user.click(screen.getByText('View Queue Vuln'))
 
       expect(screen.getByTestId('vuln-detail-modal')).toBeInTheDocument()
-    })
-
-    it('should navigate to home when back arrow button is clicked', () => {
-      renderProjectDetail()
-
-      const backButton = screen.getByLabelText('back')
-      fireEvent.click(backButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
   })
 

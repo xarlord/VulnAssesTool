@@ -11,6 +11,7 @@ import { ExportDialog } from '@/components/ExportDialog'
 import { VulnerabilityDetailModal } from '@/components/VulnerabilityDetailModal'
 import { ComponentVulnerabilitiesPopup } from '@/components/ComponentVulnerabilitiesPopup'
 import { StalenessIndicator } from '@/components/StalenessIndicator'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { OverviewTab } from './project-detail/OverviewTab'
 import { ComponentsTab } from './project-detail/ComponentsTab'
 import { VulnerabilitiesTab } from './project-detail/VulnerabilitiesTab'
@@ -48,6 +49,7 @@ export function ProjectDetail() {
   const [showContainerScanDialog, setShowContainerScanDialog] = React.useState(false)
   const [showBinarySbomDialog, setShowBinarySbomDialog] = React.useState(false)
   const [showExportDialog, setShowExportDialog] = React.useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false)
   const [selectedVulnerability, setSelectedVulnerability] = React.useState<Vulnerability | null>(null)
   const [showVulnDetail, setShowVulnDetail] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState<TabValue>('overview')
@@ -113,11 +115,10 @@ export function ProjectDetail() {
 
   const currentProjectRef = project
 
-  const handleDeleteProject = () => {
-    if (confirm(`Are you sure you want to delete "${currentProjectRef.name}"?`)) {
-      deleteProject(currentProjectRef.id)
-      navigate('/dashboard')
-    }
+  const handleConfirmDelete = () => {
+    setShowDeleteConfirm(false)
+    deleteProject(currentProjectRef.id)
+    navigate('/dashboard')
   }
 
   const handleComponentClick = (component: Component) => {
@@ -255,7 +256,7 @@ export function ProjectDetail() {
                 Edit
               </button>
               <button
-                onClick={handleDeleteProject}
+                onClick={() => setShowDeleteConfirm(true)}
                 className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
               >
                 Delete
@@ -352,6 +353,18 @@ export function ProjectDetail() {
 
       {/* Export Dialog */}
       <ExportDialog open={showExportDialog} onClose={() => setShowExportDialog(false)} project={project} />
+
+      {/* Delete Project Confirmation */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete project"
+        message={`Are you sure you want to delete "${project.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
 
       {/* Component Vulnerabilities Popup */}
       {selectedComponent && (
