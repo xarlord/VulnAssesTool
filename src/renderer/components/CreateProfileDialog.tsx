@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { X, Copy } from 'lucide-react'
+import { Copy } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import type { SettingsProfile, AppSettings } from '@@/types'
 
 interface CreateProfileDialogProps {
@@ -21,8 +22,6 @@ export function CreateProfileDialog({
   const [description, setDescription] = useState('')
   const [copyFromProfileId, setCopyFromProfileId] = useState<string>('')
   const [error, setError] = useState('')
-
-  if (!open) return null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,33 +73,13 @@ export function CreateProfileDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={handleCancel} aria-hidden="true" />
-
-      {/* Dialog */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dialog-title"
-        className="relative z-50 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg max-h-[90vh] overflow-y-auto"
-      >
-        {/* Close Button */}
-        <button
-          onClick={handleCancel}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Close dialog"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
+    <Dialog open={open} onOpenChange={(next) => !next && handleCancel()}>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="mb-4">
-          <h2 id="dialog-title" className="text-lg font-semibold">
-            Create New Settings Profile
-          </h2>
-          <p className="text-sm text-muted-foreground">Create a custom settings profile for different use cases</p>
-        </div>
+        <DialogHeader>
+          <DialogTitle>Create New Settings Profile</DialogTitle>
+          <DialogDescription>Create a custom settings profile for different use cases</DialogDescription>
+        </DialogHeader>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -214,7 +193,7 @@ export function CreateProfileDialog({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
