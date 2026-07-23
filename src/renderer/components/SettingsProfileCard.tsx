@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Clock, Trash2, CheckCircle } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { SettingsProfile } from '@@/types'
 
 interface SettingsProfileCardProps {
@@ -9,10 +11,11 @@ interface SettingsProfileCardProps {
 }
 
 export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: SettingsProfileCardProps) {
-  const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete the profile "${profile.name}"?`)) {
-      onDelete(profile.id)
-    }
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  const handleConfirmDelete = () => {
+    onDelete(profile.id)
+    setShowDeleteConfirm(false)
   }
 
   const formatDate = (date: Date | string): string => {
@@ -98,7 +101,7 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: S
           </div>
         )}
         <button
-          onClick={handleDelete}
+          onClick={() => setShowDeleteConfirm(true)}
           disabled={isActive}
           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             isActive
@@ -110,6 +113,17 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: S
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete profile"
+        message={`Are you sure you want to delete the profile "${profile.name}"?`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

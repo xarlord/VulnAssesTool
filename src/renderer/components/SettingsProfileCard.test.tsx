@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { SettingsProfileCard } from './SettingsProfileCard'
 import type { SettingsProfile } from '@@/types'
 
@@ -209,7 +209,7 @@ describe('SettingsProfileCard', () => {
       expect(mockOnSwitch).toHaveBeenCalledTimes(1)
     })
 
-    it('should call onDelete after confirmation', () => {
+    it('should call onDelete after confirmation', async () => {
       const profile = createMockProfile()
       renderCard(profile, false)
 
@@ -222,13 +222,15 @@ describe('SettingsProfileCard', () => {
       expect(deleteButton).toBeTruthy()
       if (deleteButton) {
         fireEvent.click(deleteButton)
-        expect(global.confirm).toHaveBeenCalledWith(expect.stringContaining(profile.name))
+        // Confirm in the dialog (message contains the profile name)
+        const dialog = await screen.findByRole('dialog')
+        expect(within(dialog).getByText(new RegExp(profile.name))).toBeInTheDocument()
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
         expect(mockOnDelete).toHaveBeenCalledWith(profile.id)
       }
     })
 
-    it('should not call onDelete when confirmation is cancelled', () => {
-      global.confirm = vi.fn(() => false)
+    it('should not call onDelete when confirmation is cancelled', async () => {
       const profile = createMockProfile()
       renderCard(profile, false)
 
@@ -240,6 +242,8 @@ describe('SettingsProfileCard', () => {
       expect(deleteButton).toBeTruthy()
       if (deleteButton) {
         fireEvent.click(deleteButton)
+        const dialog = await screen.findByRole('dialog')
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
         expect(mockOnDelete).not.toHaveBeenCalled()
       }
     })

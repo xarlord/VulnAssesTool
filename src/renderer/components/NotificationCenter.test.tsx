@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
@@ -157,8 +157,7 @@ describe('NotificationCenter', () => {
     expect(store.notifications.every((n) => n.read)).toBe(true)
   })
 
-  it('should clear all notifications when button is clicked', async () => {
-    global.confirm = vi.fn(() => true)
+  it('should clear all notifications when confirmed in the dialog', async () => {
     const user = userEvent.setup()
     renderWithRouter(<NotificationCenter />)
 
@@ -169,7 +168,9 @@ describe('NotificationCenter', () => {
     const clearButton = screen.getByTitle('Clear all notifications')
     await user.click(clearButton)
 
-    expect(global.confirm).toHaveBeenCalledWith('Clear all notifications?')
+    // Confirm in the dialog
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Clear all' }))
 
     const store = useNotificationsStore.getState()
     expect(store.notifications).toHaveLength(0)
@@ -225,8 +226,11 @@ describe('NotificationCenter', () => {
       .getAllByRole('button')
       .filter((button) => button.classList.contains('text-muted-foreground') || button.textContent === '')
 
-    // Click first dismiss button that's not the main bell
-    const nonBellDismiss = dismissButtons.find((b) => b !== bellButton)
+    // Click first per-item dismiss button (exclude the bell and the "Clear all" button,
+    // which share the muted-foreground styling)
+    const nonBellDismiss = dismissButtons.find(
+      (b) => b !== bellButton && b.getAttribute('title') !== 'Clear all notifications',
+    )
     if (nonBellDismiss) {
       await user.click(nonBellDismiss)
     }
