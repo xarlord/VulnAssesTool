@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Check,
   AlertCircle,
-  ArrowLeft,
 } from 'lucide-react'
 import { getPlatform } from '@/lib/platform'
 import { useProjects } from '@/store/useStore'
@@ -25,6 +24,7 @@ import {
 import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
 import { EmptyState } from '@/components/EmptyState'
+import { PageHeader } from '@/components/PageHeader'
 import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
 import type { CveResult, NvdSearchRequest } from '@@/types'
 
@@ -396,27 +396,10 @@ export function Search() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-background px-4 py-4 sm:px-6">
-        <div className="mx-auto max-w-4xl flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold">Search</h1>
-            <p className="text-sm text-muted-foreground">Search across all projects, components, and vulnerabilities</p>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
+    <div className="p-6">
+      <div className="mx-auto max-w-4xl">
+        <PageHeader title="Search" description="Search across all projects, components, and vulnerabilities" />
+        <div className="space-y-6">
           {/* Search Mode Toggle */}
           <div className="flex gap-2 rounded-lg border border-border bg-muted/50 p-1">
             <button
@@ -824,7 +807,7 @@ export function Search() {
             </div>
           )}
         </div>
-      </main>
+      </div>
 
       {/* CVE Detail Modal */}
       {selectedCveId && <NvdCveDetailModal cveId={selectedCveId} open={showCveModal} onClose={handleCloseCveModal} />}

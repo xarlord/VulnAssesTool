@@ -7,8 +7,9 @@
 
 import { useMemo, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Filter } from 'lucide-react'
+import { Filter } from 'lucide-react'
 import { DependencyGraph } from '@/components/graph/DependencyGraph'
+import { PageHeader } from '@/components/PageHeader'
 import { useProjects } from '@/store/useStore'
 import type { Component } from '@@/types'
 
@@ -62,11 +63,6 @@ export function DependencyGraphPage() {
     console.log('[DependencyGraphPage] Node clicked:', component.name)
   }, [])
 
-  // Handle back navigation
-  const handleBack = useCallback(() => {
-    navigate(`/project/${projectId}`)
-  }, [navigate, projectId])
-
   // Severity counts
   const counts = useMemo(
     () => ({
@@ -97,53 +93,44 @@ export function DependencyGraphPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 border-b bg-card">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Project
-          </button>
-          <div>
-            <h1 className="text-lg font-semibold">Dependency Graph</h1>
-            <p className="text-sm text-muted-foreground">{project.name}</p>
-          </div>
-        </div>
+      <div className="px-6 pt-6">
+        <PageHeader
+          title="Dependency Graph"
+          description={project.name}
+          actions={
+            <>
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <select
+                  value={severityFilter}
+                  onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="all">All Severities</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <select
-              value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
-              className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-
-          <button
-            onClick={() => setShowVulnerableOnly(!showVulnerableOnly)}
-            className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-              showVulnerableOnly
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-background text-muted-foreground hover:bg-accent'
-            }`}
-          >
-            Vulnerable Only
-          </button>
-        </div>
-      </header>
+              <button
+                onClick={() => setShowVulnerableOnly(!showVulnerableOnly)}
+                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                  showVulnerableOnly
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground hover:bg-accent'
+                }`}
+              >
+                Vulnerable Only
+              </button>
+            </>
+          }
+        />
+      </div>
 
       {/* Graph Container */}
-      <main className="flex-1 p-6">
+      <main className="flex-1 px-6 pb-6">
         <DependencyGraph
           components={filteredComponents}
           vulnerabilities={projectVulnerabilities}

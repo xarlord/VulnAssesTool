@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Shield, Filter, Settings, AlertTriangle } from 'lucide-react'
+import { Shield, Filter, Settings, AlertTriangle } from 'lucide-react'
 import { useProjects } from '@/store/useStore'
+import { PageHeader } from '@/components/PageHeader'
 import { FilterDashboard } from '@/components/FPF/FilterDashboard'
 import { FilteredItemsReview } from '@/components/FPF/FilteredItemsReview'
 import type { FilteredVulnerability } from '@/components/FPF/FilteredItemsReview'
@@ -312,14 +313,6 @@ export function FalsePositiveFilterPage() {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </button>
-
           <div className="text-center py-12">
             <Shield className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
             <h1 className="text-2xl font-semibold mb-2">No Project Selected</h1>
@@ -340,29 +333,17 @@ export function FalsePositiveFilterPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate(`/project/${projectId}`)}
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back to Project</span>
-              </button>
-              <div className="h-6 w-px bg-border" />
-              <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-primary" />
-                <h1 className="text-lg font-semibold">False Positive Filter</h1>
-              </div>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Project: <span className="font-medium text-foreground">{project.name}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <div className="max-w-7xl mx-auto px-6 pt-6">
+        <PageHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Shield className="h-6 w-6 text-primary" />
+              False Positive Filter
+            </span>
+          }
+          description={`Project: ${project.name}`}
+        />
+      </div>
 
       <div className="border-b border-border bg-card">
         <div className="max-w-7xl mx-auto px-6">

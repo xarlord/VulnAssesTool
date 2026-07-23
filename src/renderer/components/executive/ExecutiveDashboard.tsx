@@ -23,7 +23,8 @@ const TeamProductivity = lazy(() => import('./widgets/TeamProductivity').then((m
 const ComplianceStatus = lazy(() => import('./widgets/ComplianceStatus').then((m) => ({ default: m.ComplianceStatus })))
 const ActionItems = lazy(() => import('./widgets/ActionItems').then((m) => ({ default: m.ActionItems })))
 const DashboardConfig = lazy(() => import('./widgets/DashboardConfig').then((m) => ({ default: m.DashboardConfig })))
-import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
+import { PageHeader } from '@/components/PageHeader'
 
 export function ExecutiveDashboard() {
   const navigate = useNavigate()
@@ -93,24 +94,12 @@ export function ExecutiveDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="rounded-md hover:bg-secondary px-3 py-1.5 text-sm font-medium flex items-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Dashboard
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Executive Dashboard</h1>
-                <p className="text-sm text-muted-foreground">High-level security overview and compliance metrics</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+      <div className="container mx-auto px-4 pt-6">
+        <PageHeader
+          title="Reports"
+          description="High-level security overview and compliance metrics"
+          actions={
+            <>
               <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
                 <DashboardConfig
                   dateRange={dateRange}
@@ -131,9 +120,9 @@ export function ExecutiveDashboard() {
                 {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Export Report
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
       </div>
 
       {/* Executive Summary Banner */}
