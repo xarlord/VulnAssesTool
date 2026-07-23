@@ -240,21 +240,6 @@ describe('Settings', () => {
       expect(screen.getByText('Settings')).toBeInTheDocument()
     })
 
-    it('should render back button', () => {
-      renderSettings()
-
-      expect(screen.getByText('← Back')).toBeInTheDocument()
-    })
-
-    it('should navigate back when back button is clicked', () => {
-      renderSettings()
-
-      const backButton = screen.getByText('← Back')
-      fireEvent.click(backButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith(-1)
-    })
-
     it('should render Appearance section', () => {
       renderSettings()
 
@@ -519,41 +504,34 @@ describe('Settings', () => {
       expect(screen.getByText('Reset All Settings to Defaults')).toBeInTheDocument()
     })
 
-    it('should call confirm when reset is clicked', () => {
-      global.confirm = vi.fn(() => true)
-
+    it('should open the reset confirmation dialog when reset is clicked', () => {
       renderSettings()
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
-      fireEvent.click(resetButton)
+      fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
 
-      expect(global.confirm).toHaveBeenCalledWith('Reset all settings to default values?')
+      expect(screen.getByText(/Reset all settings to default values\?/)).toBeInTheDocument()
     })
 
     it('should reset settings when confirm is accepted', () => {
-      global.confirm = vi.fn(() => true)
-
       renderSettings()
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
-      fireEvent.click(resetButton)
+      fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+      // Confirm inside the dialog
+      fireEvent.click(screen.getByText('Reset to Defaults'))
 
       expect(mockUpdateSettings).toHaveBeenCalledWith({
         theme: 'system',
         fontSize: 'default',
-        nvdApiKey: undefined,
         dataRetentionDays: 30,
         autoRefresh: false,
       })
     })
 
     it('should not reset settings when confirm is cancelled', () => {
-      global.confirm = vi.fn(() => false)
-
       renderSettings()
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
-      fireEvent.click(resetButton)
+      fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+      fireEvent.click(screen.getByText('Cancel'))
 
       expect(mockUpdateSettings).not.toHaveBeenCalledWith(
         expect.objectContaining({
@@ -791,41 +769,33 @@ describe('Settings', () => {
         expect(screen.getByText('Reset All Settings to Defaults')).toBeInTheDocument()
       })
 
-      it('should call confirm when reset is clicked', () => {
-        global.confirm = vi.fn(() => true)
-
+      it('should open the reset confirmation dialog when reset is clicked', () => {
         renderSettings()
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
-        fireEvent.click(resetButton)
+        fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
 
-        expect(global.confirm).toHaveBeenCalledWith('Reset all settings to default values?')
+        expect(screen.getByText(/Reset all settings to default values\?/)).toBeInTheDocument()
       })
 
       it('should reset settings when confirm is accepted', () => {
-        global.confirm = vi.fn(() => true)
-
         renderSettings()
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
-        fireEvent.click(resetButton)
+        fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+        fireEvent.click(screen.getByText('Reset to Defaults'))
 
         expect(mockUpdateSettings).toHaveBeenCalledWith({
           theme: 'system',
           fontSize: 'default',
-          nvdApiKey: undefined,
           dataRetentionDays: 30,
           autoRefresh: false,
         })
       })
 
       it('should not reset settings when confirm is cancelled', () => {
-        global.confirm = vi.fn(() => false)
-
         renderSettings()
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
-        fireEvent.click(resetButton)
+        fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+        fireEvent.click(screen.getByText('Cancel'))
 
         expect(mockUpdateSettings).not.toHaveBeenCalledWith(
           expect.objectContaining({

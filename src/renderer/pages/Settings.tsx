@@ -137,6 +137,7 @@ export function Settings() {
   // Confirmation dialogs state
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [showRebuildDialog, setShowRebuildDialog] = useState(false)
+  const [showResetSettingsDialog, setShowResetSettingsDialog] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [isRebuilding, setIsRebuilding] = useState(false)
 
@@ -486,18 +487,17 @@ export function Settings() {
     }
   }
 
-  const handleResetToDefaults = () => {
-    if (confirm('Reset all settings to default values?')) {
-      updateSettings({
-        theme: 'system',
-        fontSize: 'default',
-        dataRetentionDays: 30,
-        autoRefresh: false,
-      })
-      // Note: API key is NOT reset as it's stored in secure storage
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 2000)
-    }
+  const handleConfirmResetSettings = () => {
+    setShowResetSettingsDialog(false)
+    updateSettings({
+      theme: 'system',
+      fontSize: 'default',
+      dataRetentionDays: 30,
+      autoRefresh: false,
+    })
+    // Note: API key is NOT reset as it's stored in secure storage
+    setSaveSuccess(true)
+    setTimeout(() => setSaveSuccess(false), 2000)
   }
 
   // Database settings handlers
@@ -1510,7 +1510,7 @@ export function Settings() {
               </div>
               <div className="p-4">
                 <button
-                  onClick={handleResetToDefaults}
+                  onClick={() => setShowResetSettingsDialog(true)}
                   className="rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
                 >
                   Reset All Settings to Defaults
@@ -1527,6 +1527,18 @@ export function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Reset Settings Confirmation Dialog */}
+      <ConfirmDialog
+        open={showResetSettingsDialog}
+        title="Reset Settings"
+        message="Reset all settings to default values? Your projects and vulnerability data will not be affected."
+        confirmLabel="Reset to Defaults"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmResetSettings}
+        onCancel={() => setShowResetSettingsDialog(false)}
+      />
 
       {/* Reset Database Confirmation Dialog */}
       <ConfirmDialog
