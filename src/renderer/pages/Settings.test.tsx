@@ -258,7 +258,7 @@ describe('Settings', () => {
     it('should render Appearance section', () => {
       renderSettings()
 
-      expect(screen.getByText('Appearance')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
     })
 
     it('should render API Configuration section', () => {
@@ -270,13 +270,13 @@ describe('Settings', () => {
     it('should render Data Management section', () => {
       renderSettings()
 
-      expect(screen.getByText('Data Management')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Data Management' })).toBeInTheDocument()
     })
 
     it('should render Danger Zone section', () => {
       renderSettings()
 
-      expect(screen.getByText('Danger Zone')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Danger Zone' })).toBeInTheDocument()
     })
 
     it('should render version info', () => {
@@ -568,9 +568,9 @@ describe('Settings', () => {
     it('should render section headers with icons', () => {
       renderSettings()
 
-      expect(screen.getByText('Appearance')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
       expect(screen.getByText('API Configuration')).toBeInTheDocument()
-      expect(screen.getByText('Data Management')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Data Management' })).toBeInTheDocument()
     })
 
     it('should render danger zone with destructive styling', () => {
