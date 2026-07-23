@@ -238,25 +238,16 @@ describe('ExecutiveDashboard', () => {
 
   // -----------------------------------------------------------------------
   describe('Layout & Header', () => {
-    it('should render the executive dashboard heading', () => {
+    it('should render the Reports heading', () => {
       renderDashboard()
 
-      expect(screen.getByText('Executive Dashboard')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Reports' })).toBeInTheDocument()
     })
 
     it('should render the subtitle text', () => {
       renderDashboard()
 
       expect(screen.getByText('High-level security overview and compliance metrics')).toBeInTheDocument()
-    })
-
-    it('should render a back button that navigates to /dashboard', () => {
-      renderDashboard()
-
-      const backButton = screen.getByText('Back to Dashboard')
-      fireEvent.click(backButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
     it('should render the Export Report button', () => {
