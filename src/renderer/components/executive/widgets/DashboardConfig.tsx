@@ -4,8 +4,9 @@
  */
 
 import { useState } from 'react'
-import { Settings, Filter, Calendar, Download, RefreshCw, X, Check } from 'lucide-react'
+import { Settings, Filter, Calendar, Download, RefreshCw, Check } from 'lucide-react'
 import type { Project } from '@@/types'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 interface DashboardConfigProps {
   dateRange: { start: Date; end: Date }
@@ -91,33 +92,12 @@ export function DashboardConfig({
   return (
     <>
       <TriggerButton />
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/50" onClick={setIsOpen} aria-hidden="true" />
-
-        {/* Dialog */}
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dialog-title"
-          className="relative z-50 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg max-h-[90vh] overflow-y-auto"
-        >
-          {/* Close Button */}
-          <button
-            onClick={setIsOpen}
-            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            aria-label="Close dialog"
-          >
-            <X className="h-4 w-4" />
-          </button>
-
-          {/* Header */}
-          <div className="mb-4">
-            <h2 id="dialog-title" className="text-lg font-semibold">
-              Dashboard Configuration
-            </h2>
-            <p className="text-sm text-muted-foreground">Customize your executive dashboard view and export options</p>
-          </div>
+      <Dialog open={isOpen} onOpenChange={(next) => !next && setIsOpen()}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Dashboard Configuration</DialogTitle>
+            <DialogDescription>Customize your executive dashboard view and export options</DialogDescription>
+          </DialogHeader>
 
           {/* Content */}
           <div className="space-y-6">
@@ -227,8 +207,8 @@ export function DashboardConfig({
               Export Report
             </button>
           </div>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
