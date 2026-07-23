@@ -309,13 +309,30 @@ describe('NvdCveDetailModal', () => {
   })
 
   describe('Close Behavior', () => {
-    it('should call onClose when close button (X) is clicked', async () => {
+    // The dialog now has two buttons whose accessible name is exactly "Close": the
+    // built-in Radix dismiss control (icon + sr-only "Close" text) and the footer's
+    // text-only "Close" button. Disambiguate by presence of an icon.
+    const getIconCloseButton = () => {
+      const closeButtons = screen.getAllByRole('button', { name: 'Close' })
+      const iconButton = closeButtons.find((btn) => btn.querySelector('svg'))
+      if (!iconButton) throw new Error('Expected to find the built-in dialog close button')
+      return iconButton
+    }
+
+    const getFooterCloseButton = () => {
+      const closeButtons = screen.getAllByRole('button', { name: 'Close' })
+      const footerButton = closeButtons.find((btn) => !btn.querySelector('svg'))
+      if (!footerButton) throw new Error('Expected to find the footer close button')
+      return footerButton
+    }
+
+    it('should call onClose when the built-in dialog close (X) button is clicked', async () => {
       const user = userEvent.setup()
       renderModal(true)
 
-      const closeButton = await screen.findByTestId('cve-modal-close')
+      await screen.findByTestId('cve-detail-modal')
 
-      await user.click(closeButton)
+      await user.click(getIconCloseButton())
 
       expect(mockOnClose).toHaveBeenCalledTimes(1)
     })
@@ -327,31 +344,20 @@ describe('NvdCveDetailModal', () => {
       // Wait for modal to load
       await screen.findByTestId('cve-detail-modal')
 
-      // Find the footer Close button (exact text match)
-      const footerCloseButton = screen.getByRole('button', { name: /^Close$/ })
-      await user.click(footerCloseButton)
+      await user.click(getFooterCloseButton())
 
       expect(mockOnClose).toHaveBeenCalled()
     })
 
-    it('should call onClose when backdrop is clicked', async () => {
-      renderModal(true)
-
-      await screen.findByTestId('cve-detail-modal')
-
-      // The backdrop has aria-hidden="true" and bg-black/50 class
-      const backdrop = document.querySelector('.bg-black\\/50') as HTMLElement
-      if (backdrop) {
-        fireEvent.click(backdrop)
-        expect(mockOnClose).toHaveBeenCalled()
-      }
-    })
-
+    // Radix's Dialog no longer exposes a clickable backdrop element (the overlay
+    // dismisses via internal outside-pointer-down handling, which is unreliable to
+    // simulate under jsdom); Escape exercises the same onOpenChange dismiss path and
+    // replaces the old "click backdrop" coverage.
     it('should call onClose when Escape key is pressed', async () => {
       renderModal(true)
 
-      const modal = await screen.findByTestId('cve-detail-modal')
-      fireEvent.keyDown(modal, { key: 'Escape' })
+      await screen.findByTestId('cve-detail-modal')
+      fireEvent.keyDown(document, { key: 'Escape' })
 
       expect(mockOnClose).toHaveBeenCalled()
     })
