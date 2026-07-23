@@ -1,6 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react'
 import {
-  X,
   Upload,
   FileText,
   AlertCircle,
@@ -16,6 +15,7 @@ import { parseExcel, mapRowToComponent, type ExcelRow } from '@/lib/generators/e
 import { generateCycloneDX } from '@/lib/generators/cyclonedxGenerator'
 import { suggestCPEs, isValidCPE } from '@/lib/utils/cpeUtils'
 import type { Component } from '@@/types'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 interface SbomGeneratorDialogProps {
   open: boolean
@@ -485,39 +485,22 @@ export function SbomGeneratorDialog({ open, onClose }: SbomGeneratorDialogProps)
     }))
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={handleClose} aria-hidden="true" />
-
-      {/* Dialog */}
-      <div className="relative z-50 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-        {/* Close Button */}
-        <button
-          onClick={handleClose}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Close dialog"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
+    <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="border-b border-border p-6">
-          <div className="flex items-center gap-3">
-            <div className="rounded-md bg-primary/10 p-2">
-              <FileText className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold">Generate SBOM from Excel</h2>
-              <p className="text-sm text-muted-foreground">Upload an Excel file to generate a CycloneDX SBOM</p>
-            </div>
+        <DialogHeader className="flex-row items-center gap-3">
+          <div className="rounded-md bg-primary/10 p-2">
+            <FileText className="h-5 w-5 text-primary" />
           </div>
-        </div>
+          <div>
+            <DialogTitle>Generate SBOM from Excel</DialogTitle>
+            <DialogDescription>Upload an Excel file to generate a CycloneDX SBOM</DialogDescription>
+          </div>
+        </DialogHeader>
 
         {/* Content */}
-        <div className="p-6">
+        <div>
           {/* Step Indicator */}
           <div className="mb-6 flex items-center justify-center gap-2 text-sm">
             <div
@@ -1097,7 +1080,7 @@ export function SbomGeneratorDialog({ open, onClose }: SbomGeneratorDialogProps)
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
