@@ -129,7 +129,7 @@ export function searchCVEsFTS(
       c.published_at,
       c.modified_at,
       c.source,
-      cves_fts.rank AS search_rank
+      f.rank AS search_rank
     FROM cves c
     INNER JOIN cves_fts f ON c.id = f.id
     WHERE cves_fts MATCH ?

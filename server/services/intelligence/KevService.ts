@@ -488,9 +488,23 @@ export class KevService {
   }
 
   /**
+   * Create the sync_metadata table if it doesn't exist yet. Idempotent — safe to call
+   * before every read/write since a freshly-initialized database has never run a sync.
+   */
+  private ensureSyncMetadataTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `)
+  }
+
+  /**
    * Check if sync is needed
    */
   private async isSyncNeeded(): Promise<boolean> {
+    this.ensureSyncMetadataTable()
     const row = this.db.prepare("SELECT value FROM sync_metadata WHERE key = 'kev_last_sync'").get() as
       | { value: string }
       | undefined
@@ -509,12 +523,7 @@ export class KevService {
    * Update sync timestamp
    */
   private updateSyncTimestamp(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sync_metadata (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )
-    `)
+    this.ensureSyncMetadataTable()
 
     this.db
       .prepare(

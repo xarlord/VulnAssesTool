@@ -794,7 +794,7 @@ function migration_10_performance_250k(): Migration {
       if (ftsExists.length > 0) {
         // Rebuild FTS index for optimal performance with 250K+ records
         try {
-          db.exec('INSERT INTO cves_fts(cves_fts) VALUES("optimize")')
+          db.exec("INSERT INTO cves_fts(cves_fts) VALUES('optimize')")
           console.log('[Migration 10] Optimized FTS5 index')
         } catch (error) {
           console.warn('[Migration 10] FTS5 optimize failed (non-critical):', error)
