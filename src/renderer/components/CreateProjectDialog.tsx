@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { X } from 'lucide-react'
 import { useStore } from '@/store/useStore'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 interface CreateProjectDialogProps {
   open: boolean
@@ -12,8 +12,6 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
-
-  if (!open) return null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,40 +66,13 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') handleCancel()
-      }}
-    >
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={handleCancel} aria-hidden="true" />
-
-      {/* Dialog */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dialog-title"
-        className="relative z-50 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg"
-      >
-        {/* Close Button */}
-        <button
-          onClick={handleCancel}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Close dialog"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
+    <Dialog open={open} onOpenChange={(next) => !next && handleCancel()}>
+      <DialogContent className="max-w-md">
         {/* Header */}
-        <div className="mb-4">
-          <h2 id="dialog-title" className="text-lg font-semibold">
-            Create New Project
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Enter the details for your new vulnerability assessment project
-          </p>
-        </div>
+        <DialogHeader>
+          <DialogTitle>Create New Project</DialogTitle>
+          <DialogDescription>Enter the details for your new vulnerability assessment project</DialogDescription>
+        </DialogHeader>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -159,7 +130,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
