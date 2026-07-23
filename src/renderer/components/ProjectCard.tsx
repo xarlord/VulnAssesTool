@@ -4,6 +4,7 @@ import { useSettings, useRefreshingProjectIds } from '@/store/useStore'
 import { StalenessBadge } from './StalenessIndicator'
 import { ConfirmDialog } from './ui/confirm-dialog'
 import { formatTimeUntilRefresh, getNextRefreshTime } from '@/lib/refresh'
+import { getSeverityClass } from '@/lib/severity'
 import type { Project } from '@@/types'
 
 interface ProjectCardProps {
@@ -100,17 +101,17 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
           {project.statistics.totalVulnerabilities > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {project.statistics.criticalCount > 0 && (
-                <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass('critical')}`}>
                   {project.statistics.criticalCount} Critical
                 </span>
               )}
               {project.statistics.highCount > 0 && (
-                <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-700 dark:text-orange-400">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass('high')}`}>
                   {project.statistics.highCount} High
                 </span>
               )}
               {project.statistics.mediumCount > 0 && (
-                <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass('medium')}`}>
                   {project.statistics.mediumCount} Medium
                 </span>
               )}

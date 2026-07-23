@@ -161,8 +161,7 @@ describe('ProjectCard', () => {
       renderCard()
 
       const criticalBadge = screen.getByText(/1 Critical/)
-      expect(criticalBadge.className).toContain('bg-destructive/15')
-      expect(criticalBadge.className).toContain('text-destructive')
+      expect(criticalBadge.className).toContain('severity-critical')
     })
   })
 

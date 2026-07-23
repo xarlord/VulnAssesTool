@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getSeverityClass, getSeverityLabel, SEVERITY_ORDER, type Severity } from './severity'
+import { getSeverityClass, getSeverityTextClass, getSeverityLabel, SEVERITY_ORDER, type Severity } from './severity'
 
 describe('severity utility', () => {
   it('maps every severity to its token class (never a raw palette class)', () => {
@@ -15,6 +15,22 @@ describe('severity utility', () => {
     }
     for (const severity of SEVERITY_ORDER) {
       expect(getSeverityClass(severity)).toBe(expected[severity])
+    }
+  })
+
+  it('maps every severity to its text-only token class (no background)', () => {
+    // These back colored counts/labels. They must be token classes (backed by
+    // per-theme --severity-*-text vars that stay WCAG-AA on the page), never a
+    // raw dual-mode palette string like 'text-orange-700 dark:text-orange-400'.
+    const expected: Record<Severity, string> = {
+      critical: 'severity-text-critical',
+      high: 'severity-text-high',
+      medium: 'severity-text-medium',
+      low: 'severity-text-low',
+      none: 'severity-text-none',
+    }
+    for (const severity of SEVERITY_ORDER) {
+      expect(getSeverityTextClass(severity)).toBe(expected[severity])
     }
   })
 

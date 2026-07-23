@@ -1,5 +1,6 @@
 import { Shield, Upload, FileText, AlertTriangle, Container, Binary } from 'lucide-react'
 import { LicenseComplianceCard } from '@/components/LicenseComplianceCard'
+import { getSeverityTextClass } from '@/lib/severity'
 import type { Project } from '@@/types'
 
 interface OverviewTabProps {
@@ -42,18 +43,20 @@ export function OverviewTab({
           <div className="mt-2 text-3xl font-bold">{project.statistics.totalComponents}</div>
         </div>
         <div className="rounded-lg border border-border bg-card p-6">
-          <div className="flex items-center gap-2 text-destructive">
+          <div className={`flex items-center gap-2 ${getSeverityTextClass('critical')}`}>
             <AlertTriangle className="h-4 w-4" />
             <span className="text-sm">Critical</span>
           </div>
-          <div className="mt-2 text-3xl font-bold text-destructive">{project.statistics.criticalCount}</div>
+          <div className={`mt-2 text-3xl font-bold ${getSeverityTextClass('critical')}`}>
+            {project.statistics.criticalCount}
+          </div>
         </div>
         <div className="rounded-lg border border-border bg-card p-6">
-          <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+          <div className={`flex items-center gap-2 ${getSeverityTextClass('high')}`}>
             <AlertTriangle className="h-4 w-4" />
             <span className="text-sm">High</span>
           </div>
-          <div className="mt-2 text-3xl font-bold text-orange-700 dark:text-orange-400">
+          <div className={`mt-2 text-3xl font-bold ${getSeverityTextClass('high')}`}>
             {project.statistics.highCount}
           </div>
         </div>

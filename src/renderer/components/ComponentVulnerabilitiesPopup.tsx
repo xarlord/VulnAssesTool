@@ -5,6 +5,7 @@ import type { Component, Vulnerability } from '@@/types'
 import { VirtualList } from './VirtualList'
 import { toast } from './Toaster'
 import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
+import { getSeverityClass } from '@/lib/severity'
 
 interface ComponentVulnerabilitiesPopupProps {
   component: Component
@@ -20,35 +21,30 @@ const severityConfig = {
     color: 'text-red-600',
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
-    badgeColor: 'bg-red-100 text-red-700',
   },
   high: {
     label: 'High',
     color: 'text-orange-700 dark:text-orange-400',
     bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
-    badgeColor: 'bg-orange-100 text-orange-700',
   },
   medium: {
     label: 'Medium',
     color: 'text-amber-700 dark:text-amber-400',
     bgColor: 'bg-yellow-50',
     borderColor: 'border-yellow-200',
-    badgeColor: 'bg-yellow-100 text-amber-700',
   },
   low: {
     label: 'Low',
     color: 'text-blue-700 dark:text-blue-400',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
-    badgeColor: 'bg-blue-100 text-blue-700',
   },
   none: {
     label: 'None',
     color: 'text-gray-600',
     bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
-    badgeColor: 'bg-gray-100 text-gray-700',
   },
 }
 
@@ -130,23 +126,31 @@ export function ComponentVulnerabilitiesPopup({
             </span>
             <div className="flex items-center gap-2">
               {severityCounts.critical > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('critical')}`}
+                >
                   <AlertTriangle className="h-3 w-3" />
                   {severityCounts.critical} Critical
                 </span>
               )}
               {severityCounts.high > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('high')}`}
+                >
                   {severityCounts.high} High
                 </span>
               )}
               {severityCounts.medium > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('medium')}`}
+                >
                   {severityCounts.medium} Medium
                 </span>
               )}
               {severityCounts.low > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('low')}`}
+                >
                   {severityCounts.low} Low
                 </span>
               )}
@@ -181,7 +185,9 @@ export function ComponentVulnerabilitiesPopup({
                               {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
                             </span>
                           )}
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${config.badgeColor}`}>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass(vuln.severity)}`}
+                          >
                             {config.label}
                           </span>
                           {vuln.cvssScore !== undefined && (

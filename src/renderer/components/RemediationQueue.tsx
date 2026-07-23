@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { AlertTriangle, Shield, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { getHealthColor } from '@/lib/health'
 import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
+import { getSeverityTextClass } from '@/lib/severity'
 import type { ComponentHealth, Component, Vulnerability } from '@@/types'
 
 interface RemediationQueueProps {
@@ -289,17 +290,7 @@ function RemediationItem({
                     onClick={() => onViewVulnerability?.(vuln)}
                     className="flex items-center gap-1 rounded border border-border bg-secondary px-2 py-0.5 text-xs hover:bg-secondary/80 transition-colors"
                   >
-                    <AlertTriangle
-                      className={`h-3 w-3 ${
-                        vuln.severity === 'critical'
-                          ? 'text-destructive'
-                          : vuln.severity === 'high'
-                            ? 'text-orange-700 dark:text-orange-400'
-                            : vuln.severity === 'medium'
-                              ? 'text-amber-700 dark:text-amber-400'
-                              : 'text-blue-700 dark:text-blue-400'
-                      }`}
-                    />
+                    <AlertTriangle className={`h-3 w-3 ${getSeverityTextClass(vuln.severity)}`} />
                     <span>{primaryId}</span>
                     <ExternalLink className="h-3 w-3 text-muted-foreground" />
                   </button>

@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useMenuActionListener } from '@/components/MenuActionListener'
 import { refreshVulnerabilityData } from '@/lib/refresh'
 import { aggregateProjectStats } from '@/lib/stats/projectAggregates'
+import { getSeverityTextClass } from '@/lib/severity'
 import type { Project } from '@@/types'
 
 // recharts stays out of the Dashboard chunk until a chart actually renders.
@@ -274,14 +275,14 @@ export function Dashboard() {
           <StatCard
             label="Critical"
             value={statistics.criticalCount}
-            valueClassName="text-destructive"
-            icon={<ShieldAlert className="h-4 w-4 text-destructive" />}
+            valueClassName={getSeverityTextClass('critical')}
+            icon={<ShieldAlert className={`h-4 w-4 ${getSeverityTextClass('critical')}`} />}
           />
           <StatCard
             label="High"
             value={statistics.highCount}
-            valueClassName="text-orange-600 dark:text-orange-400"
-            icon={<AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />}
+            valueClassName={getSeverityTextClass('high')}
+            icon={<AlertTriangle className={`h-4 w-4 ${getSeverityTextClass('high')}`} />}
           />
           <StatCard
             label="Total Vulnerabilities"

@@ -26,6 +26,8 @@ import { isFtsAvailable } from '@/lib/database/nvdDbFts'
 import { EmptyState } from '@/components/EmptyState'
 import { PageHeader } from '@/components/PageHeader'
 import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
+import { getSeverityTextClass } from '@/lib/severity'
+import type { Severity } from '@/lib/severity'
 import type { CveResult, NvdSearchRequest } from '@@/types'
 
 // Type definitions for Electron API
@@ -359,15 +361,18 @@ export function Search() {
     setSelectedCveId(null)
   }
 
+  // NVD severities arrive uppercase (CveResult['severity']); the shared helper's
+  // Severity union is lowercase, so normalize (and fall back to 'none' for
+  // unrecognized/missing values) before looking up the color class.
+  const normalizeSeverity = (severity?: string): Severity => {
+    const s = severity?.toLowerCase()
+    if (s === 'critical' || s === 'high' || s === 'medium' || s === 'low' || s === 'none') return s
+    return 'none'
+  }
+
   const ResultIcon = ({ type, severity }: { type: string; severity?: string }) => {
     if (type === 'vulnerability' || severity) {
-      let colorClass = 'text-muted-foreground'
-      if (severity === 'critical' || severity === 'CRITICAL') colorClass = 'text-destructive'
-      else if (severity === 'high' || severity === 'HIGH') colorClass = 'text-orange-700 dark:text-orange-400'
-      else if (severity === 'medium' || severity === 'MEDIUM') colorClass = 'text-amber-700 dark:text-amber-400'
-      else if (severity === 'low' || severity === 'LOW') colorClass = 'text-blue-700 dark:text-blue-400'
-
-      return <AlertTriangle className={`h-5 w-5 ${colorClass}`} />
+      return <AlertTriangle className={`h-5 w-5 ${getSeverityTextClass(normalizeSeverity(severity))}`} />
     }
     switch (type) {
       case 'project':
@@ -376,22 +381,6 @@ export function Search() {
         return <Package className="h-5 w-5 text-blue-500" />
       default:
         return null
-    }
-  }
-
-  const getSeverityColor = (severity: string) => {
-    const s = severity?.toLowerCase()
-    switch (s) {
-      case 'critical':
-        return 'text-destructive'
-      case 'high':
-        return 'text-orange-700 dark:text-orange-400'
-      case 'medium':
-        return 'text-amber-700 dark:text-amber-400'
-      case 'low':
-        return 'text-blue-700 dark:text-blue-400'
-      default:
-        return 'text-muted-foreground'
     }
   }
 
@@ -724,13 +713,13 @@ export function Search() {
                                   <span className="font-medium">{vuln.id}</span>
                                   {vuln.cvssScore && (
                                     <span
-                                      className={`text-xs rounded px-1.5 py-0.5 font-medium ${getSeverityColor(vuln.severity)}`}
+                                      className={`text-xs rounded px-1.5 py-0.5 font-medium ${getSeverityTextClass(normalizeSeverity(vuln.severity))}`}
                                     >
                                       CVSS {vuln.cvssScore.toFixed(1)}
                                     </span>
                                   )}
                                   <span
-                                    className={`text-xs uppercase rounded px-1.5 py-0.5 font-medium ${getSeverityColor(vuln.severity)}`}
+                                    className={`text-xs uppercase rounded px-1.5 py-0.5 font-medium ${getSeverityTextClass(normalizeSeverity(vuln.severity))}`}
                                   >
                                     {vuln.severity || 'UNKNOWN'}
                                   </span>

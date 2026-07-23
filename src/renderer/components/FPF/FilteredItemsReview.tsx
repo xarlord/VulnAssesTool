@@ -22,6 +22,7 @@ import {
   ChevronUp,
 } from 'lucide-react'
 import type { FilterAction } from '@@/types/fpf'
+import { getSeverityClass } from '@/lib/severity'
 
 // ============================================================================
 // Types
@@ -99,16 +100,9 @@ export interface FilteredItemsReviewProps {
 // ============================================================================
 
 function SeverityBadge({ severity }: { severity: 'critical' | 'high' | 'medium' | 'low' }) {
-  const colors = {
-    critical: 'bg-red-500/10 text-red-500 border-red-500/20',
-    high: 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20',
-    medium: 'bg-yellow-500/10 text-amber-700 dark:text-amber-400 border-yellow-500/20',
-    low: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
-  }
-
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${colors[severity]}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getSeverityClass(severity)}`}
       data-testid={`severity-badge-${severity}`}
     >
       {severity.toUpperCase()}

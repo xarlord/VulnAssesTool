@@ -39,6 +39,12 @@
     --severity-low-foreground: 0 0% 100%;
     --severity-none: 220 9% 40%;
     --severity-none-foreground: 0 0% 100%;
+    /* Text-only severity colors — tuned dark so they read AA on the light page */
+    --severity-critical-text: 0 74% 42%;
+    --severity-high-text: 17 88% 40%;
+    --severity-medium-text: 26 90% 37%;
+    --severity-low-text: 142 72% 29%;
+    --severity-none-text: 220 9% 40%;
   }
 
   .dark {
@@ -78,6 +84,12 @@
     --severity-low-foreground: 144 61% 8%;
     --severity-none: 220 9% 60%;
     --severity-none-foreground: 222 47% 8%;
+    /* Text-only severity colors — bright hues read AA on the dark page */
+    --severity-critical-text: 0 72% 51%;
+    --severity-high-text: 25 95% 58%;
+    --severity-medium-text: 45 93% 58%;
+    --severity-low-text: 142 69% 58%;
+    --severity-none-text: 220 9% 60%;
   }
 }
 
@@ -117,6 +129,27 @@
 .severity-none {
   background-color: hsl(var(--severity-none));
   color: hsl(var(--severity-none-foreground));
+}
+
+/* Text-only severity colors (no background) — for colored counts/labels */
+.severity-text-critical {
+  color: hsl(var(--severity-critical-text));
+}
+
+.severity-text-high {
+  color: hsl(var(--severity-high-text));
+}
+
+.severity-text-medium {
+  color: hsl(var(--severity-medium-text));
+}
+
+.severity-text-low {
+  color: hsl(var(--severity-low-text));
+}
+
+.severity-text-none {
+  color: hsl(var(--severity-none-text));
 }
 
 /* Scrollbar styling */
