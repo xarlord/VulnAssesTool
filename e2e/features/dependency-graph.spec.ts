@@ -23,7 +23,10 @@ test.describe('Dependency Graph', () => {
       const projectName = 'Graph Test Project'
       await createProjectAndNavigateToGraph(page, projectName)
 
-      await expect(page.locator(`text="${projectName}"`)).toBeVisible()
+      // Scoped to the page content: the project name also renders in the
+      // AppShell sidebar's project group label and the TopBar breadcrumb, so an
+      // unscoped locator is a strict-mode violation (3 matches).
+      await expect(page.locator('#main-content').getByText(projectName)).toBeVisible()
     })
 
     test('should display back to project button', async ({ page }) => {
@@ -42,8 +45,9 @@ test.describe('Dependency Graph', () => {
     test('should have all severity options in dropdown', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      // Find the severity filter select by its aria-label or specific context
-      const severitySelect = page.locator('header select').first()
+      // Find the severity filter select. PageHeader isn't a <header> element, so
+      // scope the same way the sibling "show severity filter dropdown" test does.
+      const severitySelect = page.locator('select').first()
       await expect(severitySelect).toBeVisible()
 
       // <option> elements inside a <select> are not "visible" when dropdown is closed.
@@ -236,8 +240,10 @@ test.describe('Dependency Graph', () => {
       await page.getByRole('link', { name: 'Overview' }).click()
       await page.waitForTimeout(E2E_UI_DELAY)
 
-      // Should show project name on detail page
-      await expect(page.locator(`text=${projectName}`)).toBeVisible()
+      // Should show project name on detail page. Scoped to the page content:
+      // the project name also renders in the AppShell sidebar and breadcrumb,
+      // so an unscoped locator is a strict-mode violation (3 matches).
+      await expect(page.locator('#main-content').getByText(projectName)).toBeVisible()
     })
 
     test('should show arrow left icon on back button', async ({ page }) => {

@@ -213,14 +213,13 @@ test.describe('Bulk Actions', () => {
 
       // Use exact match - "Delete" in the action bar (not "Delete project" per-card)
       const deleteButton = page.getByRole('button', { name: 'Delete', exact: true })
-
-      // Set up dialog handler BEFORE clicking - native confirm() blocks the main thread
-      // so Promise.all pattern causes click() to time out
-      page.once('dialog', async (dialog) => {
-        expect(dialog.type()).toBe('confirm')
-        await dialog.accept()
-      })
       await deleteButton.click()
+
+      // Bulk delete now confirms via the in-app ConfirmDialog (Radix dialog),
+      // not native confirm() - accept by clicking its "Delete" confirm button.
+      const confirmDialog = page.getByRole('dialog')
+      await expect(confirmDialog).toBeVisible()
+      await confirmDialog.getByRole('button', { name: 'Delete', exact: true }).click()
 
       await page.waitForTimeout(E2E_UI_DELAY * 2)
 
@@ -291,12 +290,13 @@ test.describe('Bulk Actions', () => {
       await selectMultipleProjects(page, 2)
 
       const deleteButton = page.getByRole('button', { name: 'Delete', exact: true })
-
-      // Set up dialog handler BEFORE clicking
-      page.once('dialog', async (dialog) => {
-        await dialog.accept()
-      })
       await deleteButton.click()
+
+      // Bulk delete now confirms via the in-app ConfirmDialog (Radix dialog),
+      // not native confirm() - accept by clicking its "Delete" confirm button.
+      const confirmDialog = page.getByRole('dialog')
+      await expect(confirmDialog).toBeVisible()
+      await confirmDialog.getByRole('button', { name: 'Delete', exact: true }).click()
 
       await page.waitForTimeout(E2E_UI_DELAY * 2)
 

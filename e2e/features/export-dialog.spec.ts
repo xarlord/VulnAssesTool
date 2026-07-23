@@ -29,6 +29,10 @@ test.describe('Export Dialog', () => {
     test('should open export dialog from project detail', async ({ page }) => {
       await createProjectOnly(page, 'Export From Detail')
       await navigateToProjectDetail(page, 'Export From Detail')
+      // Let ProjectDetail's mount-time effects (currentProject sync, hydration
+      // check) settle before opening the dialog - clicking immediately races
+      // a re-render that closes the just-opened Radix dialog.
+      await page.waitForTimeout(E2E_UI_DELAY)
 
       const exportButton = page.locator('button:has-text("Export")')
       if ((await exportButton.count()) > 0) {
