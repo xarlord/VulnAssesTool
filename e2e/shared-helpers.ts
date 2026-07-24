@@ -68,6 +68,11 @@ export async function createTestProject(page: Page, name: string): Promise<void>
  */
 export async function createMultipleProjects(page: Page, names: string[]): Promise<void> {
   for (const name of names) {
+    // createTestProject ends on the project detail page, but the "New Project"
+    // button (used by createProjectOnly) lives only on the Dashboard. Since the
+    // AppShell refactor removed the per-page back button, return to the Dashboard
+    // before each creation so subsequent iterations can find that button.
+    await navigateToDashboard(page)
     await createTestProject(page, name)
   }
 }

@@ -3,6 +3,7 @@ import {
   createProjectOnly,
   createMultipleProjects,
   navigateToProjectDetail,
+  navigateToDashboard,
   openExportDialog,
   E2E_UI_DELAY,
   E2E_SELECTOR_TIMEOUT,
@@ -151,6 +152,10 @@ test.describe('Export Dialog', () => {
     test('should show scope options', async ({ page }) => {
       const names = ['Export Project 1', 'Export Project 2']
       await createMultipleProjects(page, names)
+      // The all-projects scope option ("All Projects Summary") is only rendered
+      // in the dashboard "Export All" flow (isAllProjects = projects && !project);
+      // a single-project export shows per-project data types instead.
+      await navigateToDashboard(page)
       await openExportDialog(page)
 
       const scopeOption = page.locator('text=/All Projects|Current Project|Selected/i')
