@@ -62,6 +62,21 @@ export function parseCvssVector(vectorString: string): CvssBreakdown | null {
   }
 }
 
+// Vector-string prefixes (AV, AC, …) map to the full metric keys that
+// CVSS_METRIC_VALUES is keyed by. Without this every prefix except the
+// hand-cased 'S' looked up an undefined bucket, so parseCvssVector threw
+// and returned null for every valid vector.
+const PREFIX_TO_METRIC_KEY: Record<string, keyof typeof CVSS_METRIC_VALUES> = {
+  AV: 'attackVector',
+  AC: 'attackComplexity',
+  PR: 'privilegesRequired',
+  UI: 'userInteraction',
+  S: 'scope',
+  C: 'confidentialityImpact',
+  I: 'integrityImpact',
+  A: 'availabilityImpact',
+}
+
 /**
  * Parse a specific metric value from the vector parts
  */
@@ -72,11 +87,20 @@ function parseMetricValue(parts: string[], prefix: string): string {
   }
 
   const value = part.split(':')[1]
-  const mappingKey = prefix === 'S' ? 'scope' : prefix
+  const mappingKey = PREFIX_TO_METRIC_KEY[prefix]
+  if (!mappingKey) {
+    throw new Error(`Unknown metric prefix: ${prefix}`)
+  }
 
-  // Map to full name
-  const mapping = (CVSS_METRIC_VALUES as Record<string, Record<string, string>>)[mappingKey]
-  return mapping[value] || value
+  // Map short code (e.g. 'N') to full name (e.g. 'Network'). An unrecognized
+  // code (e.g. 'AV:Z') makes the whole vector invalid — throw so parseCvssVector
+  // returns null rather than passing the raw letter through as a metric name.
+  const mapping = CVSS_METRIC_VALUES[mappingKey] as Record<string, string>
+  const fullName = mapping[value]
+  if (!fullName) {
+    throw new Error(`Invalid value "${value}" for metric ${prefix}`)
+  }
+  return fullName
 }
 
 /**
