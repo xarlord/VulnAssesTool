@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useStore } from '@/store/useStore'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { ulid } from '@/lib/audit'
 
 interface CreateProjectDialogProps {
   open: boolean
@@ -29,7 +30,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
     // Create project
     const newProject = {
-      id: `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: ulid(),
       name: name.trim(),
       description: description.trim() || undefined,
       createdAt: new Date(),

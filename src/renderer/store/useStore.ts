@@ -15,6 +15,14 @@ import {
   importSettingsFromFile,
 } from '@/lib/settings'
 import { saveProjectToServer, loadProjectFromServer } from '@/lib/api/projectPersistence'
+import {
+  logProjectCreate,
+  logProjectUpdate,
+  logProjectDelete,
+  logVulnerabilityRefresh,
+  logSettingsChange,
+  logAuditEvent,
+} from '@/lib/audit'
 
 interface AppState {
   // Settings
@@ -63,9 +71,11 @@ export const useStore = create<AppState>()(
       // Settings
       settings: DEFAULT_SETTINGS,
       updateSettings: (updates) => {
+        const previousSettings = get().settings
         set((state) => ({
           settings: { ...state.settings, ...updates },
         }))
+        logSettingsChange(previousSettings, updates)
       },
 
       // Settings Profiles
@@ -205,22 +215,32 @@ export const useStore = create<AppState>()(
           throw new Error('No profiles to export')
         }
         exportSettingsToFile(settingsProfiles)
+        logAuditEvent('EXPORT', 'profile', 'bulk', {
+          newState: { count: settingsProfiles.length },
+          metadata: { description: `Exported ${settingsProfiles.length} settings profile(s)` },
+        })
       },
 
       // Projects
       projects: [],
       currentProject: null,
-      addProject: (project) =>
+      addProject: (project) => {
         set((state) => ({
           projects: [...state.projects, project],
-        })),
+        }))
+        logProjectCreate(project)
+      },
       updateProject: (id, updates) => {
+        const previousProject = get().projects.find((p) => p.id === id)
         set((state) => ({
           projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
           currentProject:
             state.currentProject?.id === id ? { ...state.currentProject, ...updates } : state.currentProject,
         }))
         const updated = get().projects.find((p) => p.id === id)
+        if (updated && previousProject) {
+          logProjectUpdate(id, previousProject, updates)
+        }
         if (updated && (updates.vulnerabilities || updates.components || updates.allowedLicenses)) {
           saveProjectToServer({
             id: updated.id,
@@ -238,11 +258,16 @@ export const useStore = create<AppState>()(
           })
         }
       },
-      deleteProject: (id) =>
+      deleteProject: (id) => {
+        const projectToDelete = get().projects.find((p) => p.id === id)
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           currentProject: state.currentProject?.id === id ? null : state.currentProject,
-        })),
+        }))
+        if (projectToDelete) {
+          logProjectDelete(projectToDelete)
+        }
+      },
       setCurrentProject: (project) => set({ currentProject: project }),
       hydrateProjectFromServer: async (projectId: string): Promise<Project | null> => {
         try {
@@ -341,6 +366,7 @@ export const useStore = create<AppState>()(
                   : state.currentProject,
               refreshingProjectIds: new Set([...state.refreshingProjectIds].filter((id) => id !== projectId)),
             }))
+            logVulnerabilityRefresh(projectId, project.name, newVulnerabilities.length)
           }
         } finally {
           // Always clear refreshing state

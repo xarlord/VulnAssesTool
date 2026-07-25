@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { CreateProjectDialog } from './CreateProjectDialog'
 import { useStore } from '@/store/useStore'
+import { isValidUlid } from '@/lib/audit'
 
 // Mock the store
 const mockAddProject = vi.fn()
@@ -192,6 +193,25 @@ describe('CreateProjectDialog', () => {
         }),
       )
       expect(mockOnClose).toHaveBeenCalled()
+    })
+
+    it('should create a project with a valid ULID id and createdAt/updatedAt timestamps', async () => {
+      renderDialog(true)
+
+      const nameInput = screen.getByLabelText(/Project Name/)
+      fireEvent.change(nameInput, { target: { value: 'Test Project' } })
+
+      const submitButton = screen.getByText('Create Project')
+      fireEvent.click(submitButton)
+
+      // FR-01.1: ids were previously `project-${Date.now()}-${Math.random()}` —
+      // not time-ordered/collision-resistant like the rest of the app's entities.
+      // A malformed id here would silently break audit-log correlation.
+      expect(mockAddProject).toHaveBeenCalledTimes(1)
+      const createdProject = mockAddProject.mock.calls[0][0]
+      expect(isValidUlid(createdProject.id)).toBe(true)
+      expect(createdProject.createdAt).toBeInstanceOf(Date)
+      expect(createdProject.updatedAt).toBeInstanceOf(Date)
     })
 
     it('should trim whitespace from project name', async () => {

@@ -35,6 +35,7 @@ import {
   exportSettingsToFile,
   importSettingsFromFile,
 } from '@/lib/settings'
+import { useAuditStore } from '@/lib/audit'
 
 const mockRefreshData = refreshData as jest.MockedFunction<typeof refreshData>
 
@@ -1373,6 +1374,103 @@ describe('useStore', () => {
       // currentProject (project-1) should NOT be updated
       expect(result.current.currentProject?.id).toBe('project-1')
       expect(result.current.currentProject?.vulnerabilities).toHaveLength(0)
+    })
+  })
+
+  // ==================== Audit Logging Integration Tests ====================
+  // FR-07.1/07.2: project CREATE/UPDATE/DELETE and settings changes are user
+  // actions that must leave a compliance trail — the audit logger existed but
+  // was never wired into the store, so these actions were previously silent.
+  describe('audit logging integration', () => {
+    beforeEach(() => {
+      useAuditStore.getState().resetStore()
+    })
+
+    it('records a CREATE audit entry when a project is added', () => {
+      const { result } = renderHook(() => useStore())
+      const mockProject = createMockProject()
+
+      act(() => {
+        result.current.addProject(mockProject)
+      })
+
+      const createEvent = useAuditStore
+        .getState()
+        .events.find((e) => e.actionType === 'CREATE' && e.entityType === 'project')
+
+      expect(createEvent).toBeDefined()
+      expect(createEvent?.entityId).toBe(mockProject.id)
+      expect(createEvent?.newState).toBeDefined()
+    })
+
+    it('records an UPDATE audit entry with before/after state when a project is updated', () => {
+      const { result } = renderHook(() => useStore())
+      const mockProject = createMockProject({ name: 'Original Name' })
+
+      act(() => {
+        result.current.addProject(mockProject)
+      })
+      // Isolate the update event from the create event recorded above
+      useAuditStore.getState().resetStore()
+
+      act(() => {
+        result.current.updateProject(mockProject.id, { name: 'Updated Name' })
+      })
+
+      const updateEvent = useAuditStore
+        .getState()
+        .events.find((e) => e.actionType === 'UPDATE' && e.entityType === 'project')
+
+      expect(updateEvent).toBeDefined()
+      expect(updateEvent?.entityId).toBe(mockProject.id)
+      expect(updateEvent?.previousState).toBeDefined()
+      expect(updateEvent?.newState).toBeDefined()
+    })
+
+    it('does not record an UPDATE audit entry when the project id does not match any project', () => {
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        result.current.updateProject('non-existent-id', { name: 'Updated Name' })
+      })
+
+      expect(useAuditStore.getState().events).toHaveLength(0)
+    })
+
+    it('records a DELETE audit entry with the removed project state when a project is deleted', () => {
+      const { result } = renderHook(() => useStore())
+      const mockProject = createMockProject()
+
+      act(() => {
+        result.current.addProject(mockProject)
+      })
+      // Isolate the delete event from the create event recorded above
+      useAuditStore.getState().resetStore()
+
+      act(() => {
+        result.current.deleteProject(mockProject.id)
+      })
+
+      const deleteEvent = useAuditStore
+        .getState()
+        .events.find((e) => e.actionType === 'DELETE' && e.entityType === 'project')
+
+      expect(deleteEvent).toBeDefined()
+      expect(deleteEvent?.entityId).toBe(mockProject.id)
+      expect(deleteEvent?.previousState).toBeDefined()
+    })
+
+    it('records a SETTINGS_CHANGE audit entry when settings are updated', () => {
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        result.current.updateSettings({ theme: 'light' })
+      })
+
+      const settingsEvent = useAuditStore.getState().events.find((e) => e.actionType === 'SETTINGS_CHANGE')
+
+      expect(settingsEvent).toBeDefined()
+      expect(settingsEvent?.entityType).toBe('settings')
     })
   })
 

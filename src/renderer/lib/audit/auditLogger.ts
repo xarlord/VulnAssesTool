@@ -295,9 +295,9 @@ function sanitizeProject(project: Project): unknown {
     updatedAt: project.updatedAt,
     lastScanAt: project.lastScanAt,
     lastVulnDataRefresh: project.lastVulnDataRefresh,
-    sbomFileCount: project.sbomFiles.length,
-    componentCount: project.components.length,
-    vulnerabilityCount: project.vulnerabilities.length,
+    sbomFileCount: project.sbomFiles?.length ?? 0,
+    componentCount: project.components?.length ?? 0,
+    vulnerabilityCount: project.vulnerabilities?.length ?? 0,
     statistics: project.statistics,
   }
 }
