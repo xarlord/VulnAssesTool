@@ -618,6 +618,7 @@ export interface FilterPreset {
     source?: Vulnerability['source'][]
     cvssRange?: [number, number]
     hasPatch?: boolean
+    exploited?: boolean
     componentType?: Component['type'][]
   }
 }

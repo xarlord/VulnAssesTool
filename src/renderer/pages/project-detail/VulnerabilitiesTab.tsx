@@ -7,7 +7,13 @@ import { KevBadge } from '@/components/vulnerabilities/KevBadge'
 import { RiskScoreBadge } from '@/components/vulnerabilities/RiskScoreCell'
 import { sortBySeverity } from '@/lib/api/vulnMatcher'
 import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
-import { getSbomFilenamesForVulnerability, isNameOnlyMatch, isHighRiskVuln } from './helpers'
+import {
+  getSbomFilenamesForVulnerability,
+  isNameOnlyMatch,
+  isHighRiskVuln,
+  hasAvailablePatch,
+  isExploitedVuln,
+} from './helpers'
 import type { FilterPreset, Project, Vulnerability } from '@@/types'
 
 interface VulnerabilitiesTabProps {
@@ -22,6 +28,8 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
   const [cvssRange, setCvssRange] = React.useState<[number, number]>([0, 10])
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([])
   const [referenceTagFilter, setReferenceTagFilter] = React.useState<string[]>([])
+  const [patchFilter, setPatchFilter] = React.useState<'all' | 'available' | 'unavailable'>('all')
+  const [exploitFilter, setExploitFilter] = React.useState<'all' | 'exploited' | 'not-exploited'>('all')
   const [expandedVulns, setExpandedVulns] = React.useState<Set<string>>(new Set())
   const [filterPresets, setFilterPresets] = React.useState<FilterPreset[]>(() => {
     try {
@@ -91,6 +99,22 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
         }
       }
 
+      // Patch availability filter — checks the actual patchInfo/patchedVersions data, not just
+      // reference tags, so "Has Patch" reliably hides vulns that have no real fix yet.
+      if (patchFilter !== 'all') {
+        const patched = hasAvailablePatch(vuln)
+        if (patchFilter === 'available' && !patched) return false
+        if (patchFilter === 'unavailable' && patched) return false
+      }
+
+      // Exploit status filter — checks KEV/exploitStatus, so "Exploited" only ever shows
+      // known-exploited vulnerabilities, not anything merely tagged with an "exploit" reference.
+      if (exploitFilter !== 'all') {
+        const exploited = isExploitedVuln(vuln)
+        if (exploitFilter === 'exploited' && !exploited) return false
+        if (exploitFilter === 'not-exploited' && exploited) return false
+      }
+
       return true
     })
   }
@@ -126,6 +150,14 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
       setSourceFilter(filters.source)
     }
 
+    if (filters.hasPatch !== undefined) {
+      setPatchFilter(filters.hasPatch ? 'available' : 'unavailable')
+    }
+
+    if (filters.exploited !== undefined) {
+      setExploitFilter(filters.exploited ? 'exploited' : 'not-exploited')
+    }
+
     toast.success('Preset Loaded', `Filter preset "${preset.name}" has been applied.`)
   }
 
@@ -149,6 +181,14 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
 
     if (sourceFilter.length > 0) {
       filters.source = sourceFilter as Vulnerability['source'][]
+    }
+
+    if (patchFilter !== 'all') {
+      filters.hasPatch = patchFilter === 'available'
+    }
+
+    if (exploitFilter !== 'all') {
+      filters.exploited = exploitFilter === 'exploited'
     }
 
     return filters
@@ -245,19 +285,53 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                 selected={referenceTagFilter}
                 onChange={setReferenceTagFilter}
               />
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="patch-availability-filter">
+                  Patch Availability
+                </label>
+                <select
+                  id="patch-availability-filter"
+                  value={patchFilter}
+                  onChange={(e) => setPatchFilter(e.target.value as 'all' | 'available' | 'unavailable')}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="all">All</option>
+                  <option value="available">Has Patch</option>
+                  <option value="unavailable">No Patch</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="exploit-status-filter">
+                  Exploit Status
+                </label>
+                <select
+                  id="exploit-status-filter"
+                  value={exploitFilter}
+                  onChange={(e) => setExploitFilter(e.target.value as 'all' | 'exploited' | 'not-exploited')}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="all">All</option>
+                  <option value="exploited">Exploited (KEV)</option>
+                  <option value="not-exploited">Not Exploited</option>
+                </select>
+              </div>
             </div>
             <div className="mt-3 flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
                 {(sourceFilter.length > 0 ||
                   referenceTagFilter.length > 0 ||
                   cvssRange[0] !== 0 ||
-                  cvssRange[1] !== 10) && <span>Advanced filters active</span>}
+                  cvssRange[1] !== 10 ||
+                  patchFilter !== 'all' ||
+                  exploitFilter !== 'all') && <span>Advanced filters active</span>}
               </span>
               <button
                 onClick={() => {
                   setCvssRange([0, 10])
                   setSourceFilter([])
                   setReferenceTagFilter([])
+                  setPatchFilter('all')
+                  setExploitFilter('all')
                 }}
                 className="text-sm text-primary hover:underline"
               >
@@ -354,6 +428,8 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                         setCvssRange([0, 10])
                         setSourceFilter([])
                         setReferenceTagFilter([])
+                        setPatchFilter('all')
+                        setExploitFilter('all')
                       }}
                       className="mt-2 text-sm text-primary hover:underline"
                     >
