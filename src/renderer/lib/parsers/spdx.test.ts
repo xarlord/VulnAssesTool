@@ -174,6 +174,76 @@ describe('parseSpdx', () => {
     })
   })
 
+  describe('package relationships (FR-02.2)', () => {
+    // Why this matters: the dependency graph (graph/utils.ts) and JSON/CSV exports
+    // read component.dependencies. If SPDX relationships are dropped, an SPDX import
+    // produces a flat component list with no edges even when the SBOM declared them.
+    const spdxWithRelationships = {
+      spdxVersion: 'SPDX-2.3',
+      dataLicense: 'CC0-1.0',
+      SPDXID: 'SPDXRef-DOCUMENT',
+      documentDescribes: ['SPDXRef-Package-app'],
+      packages: [
+        { SPDXID: 'SPDXRef-Package-app', name: 'app', versionInfo: '1.0.0', filesAnalyzed: false },
+        { SPDXID: 'SPDXRef-Package-lodash', name: 'lodash', versionInfo: '4.17.21', filesAnalyzed: false },
+        { SPDXID: 'SPDXRef-Package-react', name: 'react', versionInfo: '18.2.0', filesAnalyzed: false },
+      ],
+      relationships: [
+        { spdxElementId: 'SPDXRef-DOCUMENT', relatedSpdxElement: 'SPDXRef-Package-app', relationshipType: 'DESCRIBES' },
+        {
+          spdxElementId: 'SPDXRef-Package-app',
+          relatedSpdxElement: 'SPDXRef-Package-lodash',
+          relationshipType: 'DEPENDS_ON',
+        },
+        {
+          spdxElementId: 'SPDXRef-Package-react',
+          relatedSpdxElement: 'SPDXRef-Package-app',
+          relationshipType: 'DEPENDENCY_OF',
+        },
+      ],
+    }
+
+    it('maps DEPENDS_ON to the depending component dependencies', async () => {
+      const result = await parseSpdx(JSON.stringify(spdxWithRelationships), 'spdx.json')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+
+      expect(app.dependencies).toContain(lodash.id)
+    })
+
+    it('maps DEPENDENCY_OF as the inverse edge', async () => {
+      const result = await parseSpdx(JSON.stringify(spdxWithRelationships), 'spdx.json')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const react = result.components.find((c) => c.name === 'react') as Component
+
+      // react DEPENDENCY_OF app  ==>  app depends on react
+      expect(app.dependencies).toContain(react.id)
+    })
+
+    it('ignores non-dependency relationships (DESCRIBES) and unresolved endpoints', async () => {
+      const result = await parseSpdx(JSON.stringify(spdxWithRelationships), 'spdx.json')
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      const react = result.components.find((c) => c.name === 'react') as Component
+
+      // Neither leaf gained a dependency; DESCRIBES from the document is not an edge.
+      expect(lodash.dependencies ?? []).toEqual([])
+      expect(react.dependencies ?? []).toEqual([])
+    })
+
+    it('leaves dependencies undefined when the SBOM declares no relationships', async () => {
+      const noRelationships = {
+        spdxVersion: 'SPDX-2.3',
+        dataLicense: 'CC0-1.0',
+        packages: [
+          { SPDXID: 'SPDXRef-Package-a', name: 'a', versionInfo: '1.0.0', filesAnalyzed: false },
+          { SPDXID: 'SPDXRef-Package-b', name: 'b', versionInfo: '2.0.0', filesAnalyzed: false },
+        ],
+      }
+      const result = await parseSpdx(JSON.stringify(noRelationships), 'spdx.json')
+      expect(result.components.every((c) => c.dependencies === undefined)).toBe(true)
+    })
+  })
+
   describe('component type detection', () => {
     it('should detect container type from docker download location', async () => {
       const spdx = {

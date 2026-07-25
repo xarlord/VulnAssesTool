@@ -134,7 +134,10 @@ function extractSpdxVersion(spdxVersion?: string): string {
 }
 
 /**
- * Extract components from SPDX JSON
+ * Extract components from SPDX JSON, wiring package relationships into each
+ * component's `dependencies` (FR-02.2: "handle package relationships and
+ * dependencies"). Relationships reference SPDX ids, so a SPDXID -> component-id
+ * map bridges them onto the ids the dependency graph and exports consume.
  */
 function extractComponentsFromSpdxJson(json: SpdxJson): Component[] {
   if (!json.packages || json.packages.length === 0) {
@@ -142,13 +145,66 @@ function extractComponentsFromSpdxJson(json: SpdxJson): Component[] {
   }
 
   const components: Component[] = []
+  const spdxIdToComponentId = new Map<string, string>()
 
   for (const pkg of json.packages) {
     const component = mapSpdxPackageToComponent(pkg)
     components.push(component)
+    if (pkg.SPDXID) {
+      spdxIdToComponentId.set(pkg.SPDXID, component.id)
+    }
   }
 
+  applySpdxRelationships(components, spdxIdToComponentId, json.relationships)
+
   return components
+}
+
+/**
+ * Translate SPDX relationships into component dependency edges. Only the two
+ * relationship types that express a dependency are used: DEPENDS_ON (element
+ * depends on the related element) and its inverse DEPENDENCY_OF. Relationships
+ * whose endpoints don't resolve to a parsed package (e.g. DESCRIBES from the
+ * document, or refs to files) are skipped.
+ */
+function applySpdxRelationships(
+  components: Component[],
+  spdxIdToComponentId: Map<string, string>,
+  relationships?: SpdxJson['relationships'],
+): void {
+  if (!relationships || relationships.length === 0) {
+    return
+  }
+
+  const componentsById = new Map(components.map((component) => [component.id, component]))
+
+  const addDependency = (fromComponentId: string, toComponentId: string): void => {
+    if (fromComponentId === toComponentId) {
+      return
+    }
+    const component = componentsById.get(fromComponentId)
+    if (!component) {
+      return
+    }
+    const deps = component.dependencies ?? []
+    if (!deps.includes(toComponentId)) {
+      component.dependencies = [...deps, toComponentId]
+    }
+  }
+
+  for (const rel of relationships) {
+    const fromId = rel.spdxElementId ? spdxIdToComponentId.get(rel.spdxElementId) : undefined
+    const toId = rel.relatedSpdxElement ? spdxIdToComponentId.get(rel.relatedSpdxElement) : undefined
+    if (!fromId || !toId) {
+      continue
+    }
+
+    if (rel.relationshipType === 'DEPENDS_ON') {
+      addDependency(fromId, toId)
+    } else if (rel.relationshipType === 'DEPENDENCY_OF') {
+      addDependency(toId, fromId)
+    }
+  }
 }
 
 /**
