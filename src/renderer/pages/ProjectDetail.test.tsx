@@ -207,6 +207,28 @@ vi.mock('@/components/ExportDialog', () => ({
     ) : null,
 }))
 
+// Mock ReportPreview (always rendered by ProjectDetail; FR-09.2 entry point)
+vi.mock('@/components/reports', () => ({
+  ReportPreview: ({
+    open,
+    onOpenChange,
+    data,
+    projectName,
+  }: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    data: { statistics: { totalVulnerabilities: number } } | null
+    projectName?: string
+  }) =>
+    open ? (
+      <div data-testid="report-preview">
+        Report Preview for {projectName}
+        <span data-testid="report-preview-total">{data?.statistics.totalVulnerabilities ?? 'no-data'}</span>
+        <button onClick={() => onOpenChange(false)}>Close Report Preview</button>
+      </div>
+    ) : null,
+}))
+
 // Mock ComponentVulnerabilitiesPopup
 vi.mock('@/components/ComponentVulnerabilitiesPopup', () => ({
   ComponentVulnerabilitiesPopup: ({
@@ -638,6 +660,35 @@ describe('ProjectDetail', () => {
 
       const scanButton = screen.getByText('Scan for Vulnerabilities')
       expect(scanButton).toBeDisabled()
+    })
+  })
+
+  describe('Generate Report (FR-09.2)', () => {
+    // ReportPreview was built but never reachable from any route/action, so users
+    // had no way to generate a vulnerability report. This locks in the entry point
+    // and confirms it is fed the project's real vulnerability data (not stubbed data).
+    it('should open the report preview with the current project data when Generate Report is clicked', () => {
+      renderProjectDetail()
+
+      expect(screen.queryByTestId('report-preview')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('Generate Report'))
+
+      expect(screen.getByTestId('report-preview')).toBeInTheDocument()
+      expect(screen.getByText('Report Preview for Test Project')).toBeInTheDocument()
+      // Mock project statistics.totalVulnerabilities is 5 — proves real project data
+      // reaches the report, not an empty/placeholder object.
+      expect(screen.getByTestId('report-preview-total')).toHaveTextContent('5')
+    })
+
+    it('should close the report preview when its dialog requests it', () => {
+      renderProjectDetail()
+
+      fireEvent.click(screen.getByText('Generate Report'))
+      expect(screen.getByTestId('report-preview')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('Close Report Preview'))
+      expect(screen.queryByTestId('report-preview')).not.toBeInTheDocument()
     })
   })
 

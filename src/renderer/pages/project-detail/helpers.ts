@@ -1,4 +1,5 @@
 import type { Project, Vulnerability } from '@@/types'
+import type { ReportData } from '@/lib/services/reports/types'
 
 /**
  * Pure lookups shared across the ProjectDetail tabs. They take the project
@@ -41,4 +42,50 @@ export function isNameOnlyMatch(vuln: Vulnerability): boolean {
 // Never auto-hide genuinely dangerous findings, even at low match confidence.
 export function isHighRiskVuln(vuln: Vulnerability): boolean {
   return Boolean(vuln.isKev) || (vuln.epssScore ?? 0) >= 0.5 || vuln.severity === 'critical' || vuln.severity === 'high'
+}
+
+// A vulnerability "has a patch available" only when a real fix exists — 'partial'/'upstream'/
+// 'investigating'/'none' don't mean a user can actually remediate today, so they must not count as
+// having a patch (the patch-availability filter, FR-08.3, exists to separate the two).
+export function hasAvailablePatch(vuln: Vulnerability): boolean {
+  return vuln.patchInfo?.patchAvailability === 'available' || (vuln.patchedVersions?.length ?? 0) > 0
+}
+
+// A vulnerability counts as "exploited" for filtering when it's in the CISA KEV catalog or its
+// exploitStatus has been explicitly set to 'exploited'. isKev is the reliable signal in practice —
+// providers don't currently populate exploitStatus — but both are checked so the filter keeps
+// working if that changes.
+export function isExploitedVuln(vuln: Vulnerability): boolean {
+  return Boolean(vuln.isKev) || vuln.exploitStatus === 'exploited'
+}
+
+// Build report generator input from a project. `ProjectStatistics` doesn't carry
+// the KEV/EPSS aggregates the report needs, so derive them from the raw
+// vulnerability list rather than duplicating a second statistics shape upstream.
+export function buildReportData(project: Project): ReportData {
+  const { vulnerabilities, statistics } = project
+  const noneCount = vulnerabilities.filter((v) => v.severity === 'none').length
+  const kevCount = vulnerabilities.filter((v) => v.isKev).length
+  const epssScores = vulnerabilities
+    .map((v) => v.epssScore)
+    .filter((score): score is number => typeof score === 'number')
+  const avgEpssScore = epssScores.length > 0 ? epssScores.reduce((sum, score) => sum + score, 0) / epssScores.length : 0
+
+  return {
+    project,
+    vulnerabilities,
+    components: project.components,
+    statistics: {
+      totalVulnerabilities: statistics.totalVulnerabilities,
+      criticalCount: statistics.criticalCount,
+      highCount: statistics.highCount,
+      mediumCount: statistics.mediumCount,
+      lowCount: statistics.lowCount,
+      noneCount,
+      totalComponents: statistics.totalComponents,
+      vulnerableComponents: statistics.vulnerableComponents,
+      kevCount,
+      avgEpssScore,
+    },
+  }
 }

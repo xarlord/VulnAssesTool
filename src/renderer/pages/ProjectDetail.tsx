@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Shield, Search, Loader2, Download } from 'lucide-react'
+import { Shield, Search, Loader2, Download, FileText } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { toast } from '@/components/Toaster'
 import { PageHeader } from '@/components/PageHeader'
@@ -12,13 +12,14 @@ import { VulnerabilityDetailModal } from '@/components/VulnerabilityDetailModal'
 import { ComponentVulnerabilitiesPopup } from '@/components/ComponentVulnerabilitiesPopup'
 import { StalenessIndicator } from '@/components/StalenessIndicator'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ReportPreview } from '@/components/reports'
 import { OverviewTab } from './project-detail/OverviewTab'
 import { ComponentsTab } from './project-detail/ComponentsTab'
 import { VulnerabilitiesTab } from './project-detail/VulnerabilitiesTab'
 import { HealthTab } from './project-detail/HealthTab'
 import { EditProjectDialog } from './project-detail/EditProjectDialog'
 import { useProjectScan } from './project-detail/useProjectScan'
-import { getVulnerabilitiesForComponent } from './project-detail/helpers'
+import { getVulnerabilitiesForComponent, buildReportData } from './project-detail/helpers'
 import type { Vulnerability, Component } from '@@/types'
 
 type TabValue = 'overview' | 'components' | 'vulnerabilities' | 'health'
@@ -49,6 +50,7 @@ export function ProjectDetail() {
   const [showContainerScanDialog, setShowContainerScanDialog] = React.useState(false)
   const [showBinarySbomDialog, setShowBinarySbomDialog] = React.useState(false)
   const [showExportDialog, setShowExportDialog] = React.useState(false)
+  const [showReportPreview, setShowReportPreview] = React.useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false)
   const [selectedVulnerability, setSelectedVulnerability] = React.useState<Vulnerability | null>(null)
   const [showVulnDetail, setShowVulnDetail] = React.useState(false)
@@ -68,6 +70,7 @@ export function ProjectDetail() {
 
   const scan = useProjectScan({ project, updateProject, settings })
   const isRefreshing = (projectId != null && refreshingProjectIds.has(projectId)) || scan.isRefreshingVuln
+  const reportData = React.useMemo(() => (project ? buildReportData(project) : null), [project])
 
   React.useEffect(() => {
     if (project && project.id === projectId) {
@@ -243,6 +246,13 @@ export function ProjectDetail() {
                 Export
               </button>
               <button
+                onClick={() => setShowReportPreview(true)}
+                className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
+              >
+                <FileText className="h-4 w-4" />
+                Generate Report
+              </button>
+              <button
                 onClick={() => navigate(`/project/${projectId}/fpf`)}
                 className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
@@ -353,6 +363,14 @@ export function ProjectDetail() {
 
       {/* Export Dialog */}
       <ExportDialog open={showExportDialog} onClose={() => setShowExportDialog(false)} project={project} />
+
+      {/* Report Preview (FR-09.2 vulnerability report generation) */}
+      <ReportPreview
+        open={showReportPreview}
+        onOpenChange={setShowReportPreview}
+        data={reportData}
+        projectName={project.name}
+      />
 
       {/* Delete Project Confirmation */}
       <ConfirmDialog
