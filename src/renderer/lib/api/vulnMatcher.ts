@@ -221,20 +221,13 @@ async function searchLocalNvdByName(
  * 2. Priority 2: Use high-confidence suggested CPEs if available (>= 80% confidence)
  * 3. Priority 3: Fall back to name-based search (least accurate)
  *
- * **IMPORTANT: OSV Behavior in Electron Environment**
+ * **OSV Querying**
  *
- * In Electron, OSV API queries are conditionally disabled because:
- * 1. The renderer process runs in a web context subject to CORS restrictions
- * 2. Direct API calls to osv.dev from the renderer are blocked by browser security
- * 3. Unlike NVD (which uses local database), OSV requires live API calls
- *
- * OSV is only queried when:
- * - Running in a non-Electron environment (e.g., pure web app)
- * - OR when a proper API proxy is configured to bypass CORS
- *
- * For Electron users, vulnerability coverage is provided by:
- * - Local NVD database (comprehensive CVE data)
- * - Periodic database syncs to keep data current
+ * The browser cannot call osv.dev directly (CORS), so OSV queries go through
+ * the Express server's `/api/osv` proxy route (see `queryByPurls` / `OSV_API_BASE_URL`).
+ * OSV is queried whenever the platform (the server adapter) is available and the
+ * component has a PURL — the same condition the app's platform layer uses for every
+ * other server-backed call.
  *
  * @param component - The component to find vulnerabilities for
  * @param _nvdApiKey - Optional NVD API key (not used, kept for API compatibility)
@@ -325,9 +318,7 @@ export async function matchVulnerabilitiesForComponent(
   }
 
   // Try PURL matching with OSV (a precise, versioned identifier -> high confidence).
-  // NOTE: In Electron environment, this is conditionally skipped to avoid CORS issues.
-  // See the function documentation above for details on OSV behavior.
-  // OSV queries are enabled when NOT running in Electron (no electronAPI.database available)
+  // Queried via the server's `/api/osv` proxy — see the function documentation above.
   if (component.purl && typeof window !== 'undefined' && getPlatform()?.database) {
     try {
       const osvResults = await queryByPurls([component.purl])
@@ -349,10 +340,10 @@ export async function matchVulnerabilitiesForComponent(
  * 2. Priority 2: Use high-confidence suggested CPEs if available (>= 80% confidence)
  * 3. Priority 3: Fall back to name-based search (least accurate)
  *
- * **IMPORTANT: OSV Behavior in Electron Environment**
+ * **OSV Querying**
  *
- * OSV is only queried when NOT running in Electron (no electronAPI.database available).
- * See matchVulnerabilitiesForComponent documentation for details.
+ * See matchVulnerabilitiesForComponent documentation above for details on how
+ * OSV queries are proxied through the Express server.
  *
  * @param components - Array of components to find vulnerabilities for
  * @param _nvdApiKey - Optional NVD API key (not used, kept for API compatibility)
@@ -491,10 +482,9 @@ export async function matchVulnerabilitiesForComponents(
     }
   }
 
-  // Query OSV by PURLs
-  // NOTE: Only runs when NOT in Electron environment to avoid CORS issues.
-  // See matchVulnerabilitiesForComponent documentation for details.
-  if (typeof window === 'undefined' || !getPlatform()?.database) {
+  // Query OSV by PURLs, proxied through the Express server (see
+  // matchVulnerabilitiesForComponent documentation above for details).
+  if (typeof window !== 'undefined' && getPlatform()?.database) {
     const purls = components.filter((c) => c.purl).map((c) => c.purl as string)
     if (purls.length > 0) {
       onProgress?.({

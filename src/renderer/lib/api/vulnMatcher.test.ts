@@ -393,12 +393,13 @@ describe('matchVulnerabilitiesForComponents', () => {
     expect(result.get('comp-2')![0].id).toBe('CVE-2024-1001')
   })
 
-  it('should handle same vulnerability from OSV for multiple components (non-platform environment)', async () => {
-    // Simulate non-platform environment by making database unavailable.
-    // This triggers the OSV query path in matchVulnerabilitiesForComponents.
-    const platform = getPlatform()
-    const originalDatabase = platform.database
-    platform.database = undefined as any
+  it('should query OSV and merge the same vulnerability across multiple components in the normal (platform-available) case', async () => {
+    // Regression test for FR-03.3: the OSV branch must run whenever the platform's
+    // database adapter is available — which is always true in the deployed web app
+    // (server adapter, not Electron). A prior bug inverted this condition so OSV was
+    // skipped whenever the database WAS available, silently disabling OSV coverage
+    // in every real scan. This test asserts OSV runs in that default, always-on case.
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
 
     const sharedOsvVuln: Vulnerability = {
       id: 'OSV-2024-1001',
@@ -420,6 +421,7 @@ describe('matchVulnerabilitiesForComponents', () => {
 
     const result = await matchVulnerabilitiesForComponents(mockComponents)
 
+    expect(queryByPurls).toHaveBeenCalledWith(['pkg:npm/lodash@4.17.21', 'pkg:npm/express@4.18.0'])
     // Both components should have the same vulnerability
     expect(result.get('comp-1')).toHaveLength(1)
     expect(result.get('comp-2')).toHaveLength(1)
@@ -427,8 +429,22 @@ describe('matchVulnerabilitiesForComponents', () => {
     expect(result.get('comp-2')![0].id).toBe('OSV-2024-1001')
     // The vulnerability should have both components in affectedComponents
     expect(result.get('comp-1')![0].affectedComponents).toEqual(['comp-1', 'comp-2'])
+  })
 
-    // Restore platform database for subsequent tests
+  it('should NOT query OSV when the platform database is unavailable (no server adapter initialized)', async () => {
+    // Mirrors the guard used everywhere else in this module: without an initialized
+    // platform, there's nowhere to proxy the OSV request through, so it must be skipped
+    // rather than attempted directly from the browser (CORS).
+    const platform = getPlatform()
+    const originalDatabase = platform.database
+    platform.database = undefined as any
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', []]]))
+
+    await matchVulnerabilitiesForComponents(mockComponents)
+
+    expect(queryByPurls).not.toHaveBeenCalled()
+
     platform.database = originalDatabase
   })
 
