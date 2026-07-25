@@ -9,6 +9,10 @@ interface CycloneDXBom {
     version?: string
     serialNumber?: string
   }
+  // Root `<bom>` attributes are flattened onto this object by the parser config below
+  // (attributeNamePrefix: ''), so the real specVersion lives in the `xmlns` namespace
+  // (e.g. "http://cyclonedx.org/schema/bom/1.5"), not under `$`.
+  xmlns?: string
   metadata?: {
     timestamp?: string
     component?: CycloneDXComponent
@@ -44,11 +48,14 @@ interface CycloneDXComponent {
   }
   cpe?: string
   purl?: string
-  hash?: Array<{
-    alg: string
-    content: string
-  }>
+  hashes?: { hash?: CycloneDXXmlHash | CycloneDXXmlHash[] }
   properties?: { property?: CycloneDXXmlProperty | CycloneDXXmlProperty[] }
+}
+
+/** A CycloneDX XML `<hash alg="...">content</hash>` as parsed by fast-xml-parser. */
+interface CycloneDXXmlHash {
+  alg?: string
+  '#text'?: string | number
 }
 
 /** A CycloneDX XML `<property name="...">value</property>` as parsed by fast-xml-parser. */
@@ -115,6 +122,36 @@ interface CycloneDXJsonComponent {
   externalReferences?: { type: string; url: string }[]
   components?: CycloneDXJsonComponent[]
   properties?: Array<{ name: string; value: string }>
+  hashes?: Array<{ alg?: string; content: string }>
+}
+
+/**
+ * CycloneDX specVersion values this parser is validated against. PRD CR-03.1 requires v1.0-1.5;
+ * 1.6 is also accepted because the bundled Syft SBOM-from-binary feature emits CycloneDX 1.6 and
+ * its output must round-trip through this importer (see SyftService.test.ts) — do not trim 1.6 to
+ * match the PRD text or that feature breaks. The component/vulnerability mapping below is
+ * structurally version-agnostic (all fields it reads are present across 1.0-1.6), so support is
+ * enforced here as a validity check rather than per-version branching.
+ */
+const SUPPORTED_CYCLONEDX_SPEC_VERSIONS = ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6']
+
+/** Throws if `version` is not one of the CycloneDX specVersions this parser supports. */
+function assertSupportedSpecVersion(version: string): void {
+  if (!SUPPORTED_CYCLONEDX_SPEC_VERSIONS.includes(version)) {
+    throw new Error(
+      `Unsupported CycloneDX specVersion "${version}". Supported versions: ${SUPPORTED_CYCLONEDX_SPEC_VERSIONS.join(', ')}`,
+    )
+  }
+}
+
+/**
+ * Extract the CycloneDX specVersion from a parsed XML `<bom>` element.
+ * The real specVersion lives in the `xmlns` namespace (e.g. ".../schema/bom/1.5") — the `version`
+ * attribute on `<bom>` is the document/BOM revision number, not the spec version.
+ */
+function extractXmlSpecVersion(bom: CycloneDXBom): string {
+  const match = bom.xmlns?.match(/\/bom\/(\d+(?:\.\d+)*)/)
+  return match ? match[1] : '1.5'
 }
 
 /**
@@ -172,9 +209,11 @@ function parseCycloneDXJson(fileContent: string): {
     throw new Error('Invalid CycloneDX format: missing bomFormat')
   }
 
+  const formatVersion = json.specVersion || '1.5'
+  assertSupportedSpecVersion(formatVersion)
+
   const components = extractComponentsFromJson(json)
   const vulnerabilities = extractVulnerabilitiesFromJson(json)
-  const formatVersion = json.specVersion || '1.5'
 
   return {
     components,
@@ -223,9 +262,11 @@ function parseCycloneDXXml(fileContent: string): {
   }
 
   const bom = (parsed as unknown as Record<string, CycloneDXBom>)[rootKey]
+  const formatVersion = extractXmlSpecVersion(bom)
+  assertSupportedSpecVersion(formatVersion)
+
   const components = extractComponentsFromXml(bom)
   const vulnerabilities = extractVulnerabilitiesFromXml(bom)
-  const formatVersion = bom.$?.version || '1.5'
 
   return {
     components,
@@ -337,6 +378,18 @@ function coverageFromProperties(pairs: Array<{ name: string; value: string }>): 
   return { coverage, provenanceSources, coverageNote: get('vat:note') }
 }
 
+/** Normalize CycloneDX XML `<hashes>` (fast-xml-parser shape) to {alg, content} pairs. */
+function xmlHashesToPairs(hashes: { hash?: CycloneDXXmlHash | CycloneDXXmlHash[] } | undefined): Array<{
+  alg?: string
+  content: string
+}> {
+  if (!hashes?.hash) return []
+  const list = Array.isArray(hashes.hash) ? hashes.hash : [hashes.hash]
+  return list
+    .filter((h): h is CycloneDXXmlHash & { '#text': string | number } => h['#text'] !== undefined)
+    .map((h) => ({ alg: h.alg, content: String(h['#text']) }))
+}
+
 /** Normalize CycloneDX XML `<properties>` (fast-xml-parser shape) to {name, value} pairs. */
 function xmlPropertiesToPairs(
   properties: { property?: CycloneDXXmlProperty | CycloneDXXmlProperty[] } | undefined,
@@ -365,8 +418,9 @@ function mapJsonComponentToComponent(comp: CycloneDXJsonComponent, parentId?: st
   // Extract licenses
   const licenses = extractLicenses(comp.licenses)
 
-  // Extract hash from purl or external references
-  const hash = comp.purl?.split('@')[1] || undefined
+  // Extract hash from the CycloneDX 'hashes' array (first entry's content); undefined when absent.
+  // (Was `comp.purl?.split('@')[1]`, which yields the *version*, not a hash.)
+  const hash = comp.hashes?.[0]?.content
 
   // Coverage: an explicit vat:coverage property wins; otherwise derive from version presence.
   const derived = coverageFromProperties(comp.properties ?? [])
@@ -404,8 +458,9 @@ function mapXmlComponentToComponent(comp: CycloneDXComponent, parentId?: string)
   // Extract licenses
   const licenses = extractLicenses(comp.licenses)
 
-  // Extract hash from purl or hash array
-  const hash = comp.purl?.split('@')[1] || comp.hash?.find((h) => h.alg === 'SHA-256')?.content || undefined
+  // Extract hash from the CycloneDX 'hashes' array (first entry's content); undefined when absent.
+  // (Was `comp.purl?.split('@')[1]`, which yields the *version*, not a hash.)
+  const hash = xmlHashesToPairs(comp.hashes)[0]?.content
 
   const derived = coverageFromProperties(xmlPropertiesToPairs(comp.properties))
   const coverage = derived.coverage ?? (version ? 'identified' : 'gap')

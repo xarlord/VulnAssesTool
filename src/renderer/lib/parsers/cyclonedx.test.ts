@@ -572,18 +572,14 @@ describe('parseCycloneDX nested components', () => {
       <name>hashed-lib</name>
       <version>1.0.0</version>
       <hashes>
-        <hash>
-          <alg>SHA-256</alg>
-          <content>abc123def456</content>
-        </hash>
+        <hash alg="SHA-256">abc123def456</hash>
       </hashes>
     </component>
   </components>
 </bom>`
 
     const result = await parseCycloneDX(xmlWithHash, 'bom.xml')
-    // Note: hash extraction from XML requires proper cyclonedx component structure
-    expect(result.components.length).toBeGreaterThanOrEqual(0)
+    expect(result.components[0].hash).toBe('abc123def456')
   })
 
   it('should handle deeply nested component structures (JSON format)', async () => {
@@ -906,5 +902,141 @@ describe('parseCycloneDX coverage/provenance', () => {
     const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
     // ID retains the 'unknown' placeholder (VEX affects-refs key off it) even though version is ''.
     expect(components[0].id).toBe('toybox-unknown')
+  })
+})
+
+describe('component hash extraction (regression: hash must not come from purl)', () => {
+  it('reads hash from the JSON hashes[] array, not the purl version', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'lodash',
+          version: '4.17.21',
+          purl: 'pkg:npm/lodash@4.17.21',
+          hashes: [{ alg: 'SHA-256', content: 'deadbeefcafe' }],
+        },
+      ],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    // Before the fix this evaluated to '4.17.21' (the purl version) instead of a real hash.
+    expect(components[0].hash).toBe('deadbeefcafe')
+    expect(components[0].hash).not.toBe(components[0].version)
+  })
+
+  it('leaves hash undefined when no hashes are present (JSON)', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'lodash',
+          version: '4.17.21',
+          purl: 'pkg:npm/lodash@4.17.21',
+        },
+      ],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(components[0].hash).toBeUndefined()
+  })
+
+  it('reads hash from the XML hashes/hash element, not the purl version', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+      <purl>pkg:npm/lodash@4.17.21</purl>
+      <hashes>
+        <hash alg="SHA-256">deadbeefcafe</hash>
+      </hashes>
+    </component>
+  </components>
+</bom>`
+    const { components } = await parseCycloneDX(xml, 'bom.xml')
+    expect(components[0].hash).toBe('deadbeefcafe')
+    expect(components[0].hash).not.toBe(components[0].version)
+  })
+
+  it('leaves hash undefined when no hashes are present (XML)', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+      <purl>pkg:npm/lodash@4.17.21</purl>
+    </component>
+  </components>
+</bom>`
+    const { components } = await parseCycloneDX(xml, 'bom.xml')
+    expect(components[0].hash).toBeUndefined()
+  })
+})
+
+describe('CycloneDX specVersion support 1.0-1.5 (CR-03.1)', () => {
+  it.each(['1.0', '1.3', '1.5'])('parses JSON components under specVersion %s', async (specVersion) => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion,
+      components: [
+        {
+          type: 'library',
+          name: 'lodash',
+          version: '4.17.21',
+          purl: 'pkg:npm/lodash@4.17.21',
+          licenses: [{ license: { id: 'MIT' } }],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.metadata.formatVersion).toBe(specVersion)
+    expect(result.components[0].name).toBe('lodash')
+    expect(result.components[0].version).toBe('4.17.21')
+    expect(result.components[0].licenses).toContain('MIT')
+  })
+
+  it.each(['1.0', '1.3', '1.5'])('parses XML components under specVersion %s (from xmlns)', async (specVersion) => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/${specVersion}">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+      <purl>pkg:npm/lodash@4.17.21</purl>
+    </component>
+  </components>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    // Regression: formatVersion used to read the `version` attribute on <bom> (the document
+    // revision counter, e.g. "1"), which is a different field from the specVersion namespace.
+    expect(result.metadata.formatVersion).toBe(specVersion)
+    expect(result.components[0].name).toBe('lodash')
+  })
+
+  it('rejects a JSON document declaring an unsupported specVersion', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '99.9',
+      components: [{ type: 'library', name: 'lodash', version: '4.17.21' }],
+    }
+    await expect(parseCycloneDX(JSON.stringify(bom), 'bom.json')).rejects.toThrow(/Unsupported CycloneDX specVersion/)
+  })
+
+  it('rejects an XML document declaring an unsupported specVersion', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/99.9">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+    </component>
+  </components>
+</bom>`
+    await expect(parseCycloneDX(xml, 'bom.xml')).rejects.toThrow(/Unsupported CycloneDX specVersion/)
   })
 })
