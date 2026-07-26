@@ -8,6 +8,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    // Claude Code workflow graphs run in the Workflow sandbox (top-level return/await),
+    // not as ESM modules — linting them as modules is a parse error. They are tooling,
+    // like the config files, so they're exempt from the app lint (see .claude/workflows/).
+    '.claude/**',
     // Files with React Compiler patterns that are valid React but trigger compiler warnings
     'src/renderer/components/CommandPalette.tsx',
     'src/renderer/components/OfflineIndicator.tsx',
