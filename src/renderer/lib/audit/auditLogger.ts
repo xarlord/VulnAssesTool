@@ -155,6 +155,26 @@ export function logSbomRemove(
   })
 }
 
+// Settings keys whose VALUES must never reach the audit log. The audit log is a
+// compliance artifact that is viewable in AuditLogPanel and user-exportable as
+// CSV/JSON, so writing a secret there (e.g. the NVD API key) leaks it out of the
+// app — a plaintext-secret violation (SR-01 / NFR-06). Masked, not dropped, so the
+// log still records that the field changed.
+const SECRET_SETTINGS_PATTERN = /(apikey|token|secret|password)/i
+
+/**
+ * Redact secret-like values from a settings object before it is logged. Field
+ * names are preserved (audit still shows WHAT changed); only sensitive values
+ * are replaced with a placeholder.
+ */
+function sanitizeSettings(settings: Partial<AppSettings>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {}
+  for (const key of Object.keys(settings)) {
+    sanitized[key] = SECRET_SETTINGS_PATTERN.test(key) ? '[REDACTED]' : settings[key as keyof AppSettings]
+  }
+  return sanitized
+}
+
 /**
  * Log a settings change event
  */
@@ -179,7 +199,7 @@ export function logSettingsChange(
     entityType: 'settings',
     entityId: 'global',
     previousState: { changedFields },
-    newState: newSettings,
+    newState: sanitizeSettings(newSettings),
     metadata: {
       description: `Changed application settings: ${changedFields.join(', ')}`,
       ...metadata,

@@ -213,6 +213,22 @@ describe('Audit Logger', () => {
         changedFields: ['theme', 'autoRefresh'],
       })
     })
+
+    it('redacts secret values (nvdApiKey) so they never reach the exportable audit log', () => {
+      // WHY: the audit log is compliance evidence shown in AuditLogPanel and
+      // exportable as CSV/JSON. If the raw NVD API key landed in newState it would
+      // leak the secret out of the app (SR-01 / NFR-06). The field name must still
+      // be recorded so the change stays auditable.
+      const newSettings: Partial<AppSettings> = { nvdApiKey: 'super-secret-key-123' }
+
+      logSettingsChange(mockSettings, newSettings)
+
+      const event = useAuditStore.getState().events[0]
+      expect(event.previousState).toEqual({ changedFields: ['nvdApiKey'] })
+      expect((event.newState as Record<string, unknown>).nvdApiKey).toBe('[REDACTED]')
+      // The raw secret must not appear anywhere in the persisted event.
+      expect(JSON.stringify(event)).not.toContain('super-secret-key-123')
+    })
   })
 
   describe('Profile Events', () => {
