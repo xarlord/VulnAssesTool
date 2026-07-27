@@ -70,7 +70,14 @@ export function ProjectDetail() {
 
   const scan = useProjectScan({ project, updateProject, settings })
   const isRefreshing = (projectId != null && refreshingProjectIds.has(projectId)) || scan.isRefreshingVuln
-  const reportData = React.useMemo(() => (project ? buildReportData(project) : null), [project])
+  // Only build report data while the preview is actually open. buildReportData runs
+  // several O(n) passes over the vulnerability list, and `project` gets a fresh
+  // reference on every unrelated mutation (rename, etc.), so computing it eagerly
+  // burned that work on every edit for a result nothing was reading.
+  const reportData = React.useMemo(
+    () => (project && showReportPreview ? buildReportData(project) : null),
+    [project, showReportPreview],
+  )
 
   React.useEffect(() => {
     if (project && project.id === projectId) {
