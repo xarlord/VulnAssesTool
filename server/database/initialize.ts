@@ -12,6 +12,7 @@ import { CPESearch } from './cpeSearch.js'
 import { initializeBackupService, type BackupConfig } from '../services/BackupService.js'
 import { initializeStorage } from '../services/storage/index.js'
 import { getKevService } from '../services/intelligence/KevService.js'
+import { getEpssService } from '../services/intelligence/EpssService.js'
 import { config } from '../config.js'
 
 let database: ReturnType<typeof getDatabase> | null = null
@@ -60,6 +61,13 @@ export async function initializeDatabase(): Promise<void> {
         console.error('[Init] KEV service initialization failed:', err)
       })
       console.log('KEV service initializing')
+
+      // Prime the EPSS singleton against the shared DB. EpssService has no async init (it reads and
+      // caches scores in the cves table on demand), but the intelligence routes reach it via a
+      // no-arg getEpssService(), which throws unless the singleton was already created with a db —
+      // so this call is what makes /api/intelligence/epss/* work in production.
+      getEpssService(rawDb)
+      console.log('EPSS service initialized')
     }
 
     if (rawDb) {

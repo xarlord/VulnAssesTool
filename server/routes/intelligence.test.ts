@@ -14,11 +14,11 @@ import { getEpssService, resetEpssService } from '../services/intelligence/EpssS
 // (the CISA KEV feed and the first.org EPSS API), both mocked via global.fetch per the pattern in
 // server/routes/osv.test.ts so nothing here touches the network.
 //
-// KevService/EpssService are lazy singletons normally wired to the shared NVD database at server
-// startup (server/database/initialize.ts calls getKevService(rawDb) — but nothing in production
-// ever calls getEpssService(db), a real gap: every /api/intelligence/epss/* call throws "EpssService
-// not initialized" today). To exercise the real success paths we initialize both singletons here
-// against a throwaway in-memory DB before any request reaches the router's no-arg getters.
+// KevService/EpssService are lazy singletons wired to the shared NVD database at server startup
+// (server/database/initialize.ts primes both via getKevService(rawDb)/getEpssService(rawDb); that
+// EPSS priming is covered by initialize.test.ts). To exercise the real success paths in isolation
+// we initialize both singletons here against a throwaway in-memory DB before any request reaches
+// the router's no-arg getters.
 
 let app: Express
 let dataDir: string
