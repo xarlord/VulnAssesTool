@@ -244,6 +244,76 @@ describe('parseSpdx', () => {
     })
   })
 
+  describe('tag-value format (FR-02.2)', () => {
+    // SPDX's canonical `.spdx` text format. It must parse into the same Component
+    // shape as JSON (name/version/purl/cpe/hash/licenses) and honor relationships,
+    // including multi-line <text> values.
+    const tagValue = [
+      'SPDXVersion: SPDX-2.3',
+      'DataLicense: CC0-1.0',
+      'SPDXID: SPDXRef-DOCUMENT',
+      'DocumentName: tag-value-test',
+      'DocumentNamespace: https://example.com/tv',
+      '',
+      '# A package',
+      'PackageName: lodash',
+      'SPDXID: SPDXRef-Package-lodash',
+      'PackageVersion: 4.17.21',
+      'PackageDownloadLocation: https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz',
+      'PackageLicenseConcluded: MIT',
+      'PackageLicenseDeclared: MIT',
+      'PackageChecksum: SHA256: abc123def456',
+      'PackageDescription: <text>A modern JavaScript',
+      'utility library</text>',
+      'ExternalRef: PACKAGE-MANAGER purl pkg:npm/lodash@4.17.21',
+      'ExternalRef: SECURITY cpe23Type cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*',
+      '',
+      'PackageName: app',
+      'SPDXID: SPDXRef-Package-app',
+      'PackageVersion: 1.0.0',
+      '',
+      'Relationship: SPDXRef-Package-app DEPENDS_ON SPDXRef-Package-lodash',
+    ].join('\n')
+
+    it('parses packages and maps metadata consistently with the JSON path', async () => {
+      const result = await parseSpdx(tagValue, 'sbom.spdx')
+
+      expect(result.metadata.format).toBe('spdx')
+      expect(result.metadata.formatVersion).toBe('2.3')
+      expect(result.components).toHaveLength(2)
+
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(lodash.version).toBe('4.17.21')
+      expect(lodash.purl).toBe('pkg:npm/lodash@4.17.21')
+      expect(lodash.cpe).toBe('cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*')
+      expect(lodash.licenses).toContain('MIT')
+      expect(lodash.hash).toBe('abc123def456')
+    })
+
+    it('joins multi-line <text> values', async () => {
+      const result = await parseSpdx(tagValue, 'sbom.spdx')
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(lodash.description).toBe('A modern JavaScript\nutility library')
+    })
+
+    it('wires DEPENDS_ON relationships into dependencies', async () => {
+      const result = await parseSpdx(tagValue, 'sbom.spdx')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(app.dependencies).toContain(lodash.id)
+    })
+
+    it('rejects a tag-value document without the SPDX DataLicense', async () => {
+      const noLicense = 'SPDXVersion: SPDX-2.3\nPackageName: x\nSPDXID: SPDXRef-x\n'
+      await expect(parseSpdx(noLicense, 'sbom.spdx')).rejects.toThrow('Invalid SPDX format')
+    })
+
+    it('is recognized by isSpdxFile and getSpdxVersion', () => {
+      expect(isSpdxFile(tagValue, 'sbom.spdx')).toBe(true)
+      expect(getSpdxVersion(tagValue, 'sbom.spdx')).toBe('2.3')
+    })
+  })
+
   describe('component type detection', () => {
     it('should detect container type from docker download location', async () => {
       const spdx = {

@@ -63,10 +63,12 @@ export async function parseSpdx(
     return parseSpdxJson(fileContent)
   }
 
-  // XML and YAML parsing support to be added in future iteration
-  // For MVP, focusing on JSON format which is most commonly used
+  // Tag-value is SPDX's line-oriented text format (the canonical `.spdx` extension).
+  if (extension === 'spdx' || extension === 'tag' || extension === 'tv') {
+    return parseSpdxTagValue(fileContent)
+  }
 
-  throw new Error(`Unsupported file format: ${extension}. Expected .json`)
+  throw new Error(`Unsupported file format: ${extension}. Expected .json or .spdx (tag-value)`)
 }
 
 /**
@@ -100,6 +102,40 @@ function parseSpdxJson(fileContent: string): {
     throw new Error('Invalid JSON format')
   }
 
+  return buildSpdxResult(json)
+}
+
+/**
+ * Parse SPDX tag-value format (`.spdx`). The text is normalized into the same
+ * SpdxJson shape the JSON path produces, then run through the identical
+ * component/relationship extraction so both formats yield consistent output.
+ */
+function parseSpdxTagValue(fileContent: string): {
+  components: Component[]
+  vulnerabilities: Vulnerability[]
+  metadata: {
+    format: 'spdx'
+    formatVersion: string
+    componentCount: number
+  }
+} {
+  const json = tagValueToSpdxJson(fileContent)
+  return buildSpdxResult(json)
+}
+
+/**
+ * Shared tail of both SPDX parsers: validate the document is SPDX, then extract
+ * components, vulnerabilities and metadata.
+ */
+function buildSpdxResult(json: SpdxJson): {
+  components: Component[]
+  vulnerabilities: Vulnerability[]
+  metadata: {
+    format: 'spdx'
+    formatVersion: string
+    componentCount: number
+  }
+} {
   // Validate SPDX format
   if (json.dataLicense !== 'CC0-1.0') {
     throw new Error('Invalid SPDX format: missing or invalid dataLicense')
@@ -118,6 +154,141 @@ function parseSpdxJson(fileContent: string): {
       componentCount: components.length,
     },
   }
+}
+
+/**
+ * Split SPDX tag-value text into (tag, value) pairs, joining multi-line
+ * `<text>...</text>` blocks into a single value and skipping blanks/comments.
+ */
+function tokenizeTagValue(content: string): Array<{ tag: string; value: string }> {
+  const pairs: Array<{ tag: string; value: string }> = []
+  const lines = content.split(/\r?\n/)
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.trim() || line.trimStart().startsWith('#')) continue
+
+    const colon = line.indexOf(':')
+    if (colon === -1) continue
+
+    const tag = line.slice(0, colon).trim()
+    if (!tag) continue
+
+    let value = line.slice(colon + 1).trim()
+
+    // A value may open a multi-line <text> block that closes on a later line.
+    if (value.startsWith('<text>')) {
+      if (value.includes('</text>')) {
+        value = value.slice('<text>'.length, value.indexOf('</text>'))
+      } else {
+        const buf = [value.slice('<text>'.length)]
+        i++
+        while (i < lines.length && !lines[i].includes('</text>')) {
+          buf.push(lines[i])
+          i++
+        }
+        if (i < lines.length) buf.push(lines[i].slice(0, lines[i].indexOf('</text>')))
+        value = buf.join('\n')
+      }
+    }
+
+    pairs.push({ tag, value })
+  }
+
+  return pairs
+}
+
+/**
+ * Convert SPDX tag-value text into the SpdxJson shape. A `PackageName` line
+ * starts a new package (the conventional SPDX ordering, PackageName before its
+ * other fields); document-level fields seen before the first package attach to
+ * the document. Only the fields the extractor consumes are mapped.
+ */
+function tagValueToSpdxJson(content: string): SpdxJson {
+  const doc: SpdxJson = { packages: [], relationships: [] }
+  let current: SpdxJsonPackage | null = null
+
+  for (const { tag, value } of tokenizeTagValue(content)) {
+    switch (tag) {
+      case 'SPDXVersion':
+        doc.spdxVersion = value
+        break
+      case 'DataLicense':
+        doc.dataLicense = value
+        break
+      case 'DocumentName':
+        doc.name = value
+        break
+      case 'DocumentNamespace':
+        doc.documentNamespace = value
+        break
+      case 'PackageName':
+        current = { SPDXID: '', name: value }
+        doc.packages?.push(current)
+        break
+      case 'SPDXID':
+        if (current) current.SPDXID = value
+        else doc.spdxId = value
+        break
+      case 'PackageVersion':
+        if (current) current.versionInfo = value
+        break
+      case 'PackageDownloadLocation':
+        if (current) current.downloadLocation = value
+        break
+      case 'PackageLicenseConcluded':
+        if (current) current.licenseConcluded = value
+        break
+      case 'PackageLicenseDeclared':
+        if (current) current.licenseDeclared = value
+        break
+      case 'PackageCopyrightText':
+        if (current) current.copyrightText = value
+        break
+      case 'PackageDescription':
+        if (current) current.description = value
+        break
+      case 'PackageChecksum': {
+        // "SHA256: <hash>" — surface the digest as the component hash.
+        if (current) {
+          const match = value.match(/^\S+:\s*(.+)$/)
+          if (match) current.packageVerificationCode = { packageVerificationCodeValue: match[1].trim() }
+        }
+        break
+      }
+      case 'ExternalRef': {
+        // "<category> <type> <locator>", e.g. "PACKAGE-MANAGER purl pkg:npm/lodash@4.17.21".
+        if (current) {
+          const parts = value.split(/\s+/)
+          if (parts.length >= 3) {
+            current.externalRefs = current.externalRefs ?? []
+            current.externalRefs.push({
+              referenceCategory: parts[0],
+              referenceType: parts[1],
+              referenceLocator: parts.slice(2).join(' '),
+            })
+          }
+        }
+        break
+      }
+      case 'Relationship': {
+        // "<element> <TYPE> <relatedElement>", e.g. "SPDXRef-A DEPENDS_ON SPDXRef-B".
+        const parts = value.split(/\s+/)
+        if (parts.length === 3) {
+          doc.relationships?.push({
+            spdxElementId: parts[0],
+            relationshipType: parts[1],
+            relatedSpdxElement: parts[2],
+          })
+        }
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  return doc
 }
 
 /**
@@ -341,6 +512,11 @@ export function getSpdxVersion(fileContent: string, filename: string): string | 
       const json = JSON.parse(fileContent) as SpdxJson
       return extractSpdxVersion(json.spdxVersion)
     }
+
+    if (extension === 'spdx' || extension === 'tag' || extension === 'tv') {
+      const match = fileContent.match(/SPDXVersion:\s*(SPDX-\d+\.\d+)/)
+      return match ? extractSpdxVersion(match[1]) : null
+    }
   } catch {
     return null
   }
@@ -359,6 +535,10 @@ export function isSpdxFile(fileContent: string, filename: string): boolean {
       const json = JSON.parse(fileContent) as SpdxJson
       // Check for SPDX-specific fields
       return json.dataLicense === 'CC0-1.0' || !!json.spdxVersion
+    }
+
+    if (extension === 'spdx' || extension === 'tag' || extension === 'tv') {
+      return /^\s*SPDXVersion:\s*SPDX-/m.test(fileContent) || /^\s*DataLicense:\s*CC0-1\.0/m.test(fileContent)
     }
 
     return false
