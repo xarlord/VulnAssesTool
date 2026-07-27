@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   buildSearchIndex,
   searchIndex,
+  parseSearchQuery,
+  matchesParsedQuery,
   groupSearchResults,
   getSearchResultCounts,
   isValidSearchQuery,
@@ -203,6 +205,85 @@ describe('searchIndex', () => {
       if (exactMatch) {
         expect(exactMatch.relevance).toBeGreaterThan(0.8)
       }
+    })
+  })
+
+  // FR-08.1 requires "advanced search syntax (AND, OR, NOT)". These tests pin the operator
+  // semantics against the mock index: they must FAIL if a future change silently drops an
+  // operator, flips AND/OR, ignores NOT, or stops treating a "quoted phrase" as literal —
+  // each assertion contrasts a boolean query with the plain query it refines.
+  describe('boolean search syntax (FR-08.1)', () => {
+    it('ANDs adjacent terms by default, narrowing a plain-term match', () => {
+      const index = buildSearchIndex(mockProjects)
+      // Plain "react" matches the react component, react-native, and the vuln description (3).
+      expect(searchIndex(index, 'react').length).toBe(3)
+      // "react framework" requires BOTH words; only react-native's "framework" description qualifies.
+      const results = searchIndex(index, 'react framework')
+      expect(results).toHaveLength(1)
+      expect(results[0].title).toBe('react-native')
+    })
+
+    it('treats an explicit AND the same as the default conjunction', () => {
+      const index = buildSearchIndex(mockProjects)
+      expect(searchIndex(index, 'react AND framework')).toEqual(searchIndex(index, 'react framework'))
+    })
+
+    it('OR widens the match to either term', () => {
+      const index = buildSearchIndex(mockProjects)
+      const results = searchIndex(index, 'express OR mobile')
+      const titles = results.map((r) => r.title)
+      expect(titles).toContain('express') // matched by "express"
+      expect(titles).toContain('Mobile App') // matched by "mobile"
+    })
+
+    it('NOT excludes results containing the negated term', () => {
+      const index = buildSearchIndex(mockProjects)
+      const withNative = searchIndex(index, 'react').map((r) => r.title)
+      expect(withNative).toContain('react-native')
+
+      const withoutNative = searchIndex(index, 'react NOT native').map((r) => r.title)
+      expect(withoutNative).toContain('react') // the plain react component survives
+      expect(withoutNative).not.toContain('react-native') // the negated term removes it
+    })
+
+    it('only treats UPPERCASE operators as operators (lowercase is a literal term)', () => {
+      const index = buildSearchIndex(mockProjects)
+      // Uppercase: react AND native -> react-native (both words in its title).
+      expect(searchIndex(index, 'react AND native')).toHaveLength(1)
+      // Lowercase "and" is a literal search term; no indexed text contains the word "and",
+      // so the whole conjunction fails and nothing matches.
+      expect(searchIndex(index, 'react and native')).toHaveLength(0)
+    })
+
+    it('treats a quoted phrase as a literal, order-sensitive substring', () => {
+      const index = buildSearchIndex(mockProjects)
+      // project-2's description is "Mobile application project": the phrase appears in order.
+      expect(searchIndex(index, '"mobile application"').map((r) => r.title)).toContain('Mobile App')
+      // Reversed order is not a substring, so the quoted phrase matches nothing...
+      expect(searchIndex(index, '"application mobile"')).toHaveLength(0)
+      // ...but the same two words unquoted are ANDed and still match (order-independent).
+      expect(searchIndex(index, 'application mobile').map((r) => r.title)).toContain('Mobile App')
+    })
+
+    it('parseSearchQuery builds OR-of-AND groups with NOT flags', () => {
+      expect(parseSearchQuery('a AND b OR c')).toEqual([
+        [
+          { text: 'a', negated: false },
+          { text: 'b', negated: false },
+        ],
+        [{ text: 'c', negated: false }],
+      ])
+      expect(parseSearchQuery('NOT x')).toEqual([[{ text: 'x', negated: true }]])
+      // A query of only operators parses to nothing (and must not throw).
+      expect(parseSearchQuery('AND OR NOT')).toEqual([])
+    })
+
+    it('matchesParsedQuery evaluates OR of AND groups against a haystack', () => {
+      const parsed = parseSearchQuery('foo AND bar OR baz')
+      expect(matchesParsedQuery('the foo and bar here', parsed)).toBe(true) // first group
+      expect(matchesParsedQuery('only baz', parsed)).toBe(true) // second group
+      expect(matchesParsedQuery('foo without the other', parsed)).toBe(false) // neither group
+      expect(matchesParsedQuery('anything', [])).toBe(false) // empty query never matches
     })
   })
 
