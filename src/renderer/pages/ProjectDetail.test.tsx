@@ -346,6 +346,10 @@ vi.mock('@/lib/health', () => ({
     vulnerableCount: 1,
   })),
   calculateTrend: vi.fn(() => 'improving'),
+  calculateTrendFromHistory: vi.fn(() => 'unknown'),
+  getHealthHistory: vi.fn(() => []),
+  mergeTodaySnapshot: vi.fn(() => []),
+  recordHealthScore: vi.fn(() => []),
 }))
 
 // Mock vulnerability ID formatting

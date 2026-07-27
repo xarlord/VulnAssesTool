@@ -16,5 +16,8 @@ export {
   getTrendColor,
 } from './trends'
 
+// Score-history persistence (FR-05.3 trend line)
+export { getHealthHistory, recordHealthScore, mergeTodaySnapshot, type HealthSnapshot } from './healthHistory'
+
 // Types
 export type { ComponentHealth, HealthFactors, ProjectHealthSummary } from '@@/types'
