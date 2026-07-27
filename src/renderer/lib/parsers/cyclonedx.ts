@@ -244,7 +244,11 @@ function parseCycloneDXXml(fileContent: string): {
     parseAttributeValue: true,
     parseTagValue: true,
     trimValues: true,
-    isArray: (name) => ['component', 'components', 'vulnerability', 'vulnerabilities'].includes(name),
+    // Only the REPEATABLE child elements are forced to arrays. The singular container elements
+    // (`components`, `vulnerabilities`) must NOT be — forcing them produced `[{ component: [...] }]`,
+    // whose wrapper object the extractors then treated as a component (crashing mapComponentType on
+    // an undefined type) / as a bogus vulnerability. The extractors already unwrap the object shape.
+    isArray: (name) => ['component', 'vulnerability'].includes(name),
   })
 
   let parsed: CycloneDXBom
@@ -333,6 +337,47 @@ function extractComponentsFromXml(bom: CycloneDXBom, components: Component[] = [
   }
 
   return components
+}
+
+/**
+ * fast-xml-parser renders a repeated child element as the value itself, an array of values, or —
+ * for a single occurrence wrapped in a container like `<ratings><rating/></ratings>` — as
+ * `{ <childKey>: value | value[] }`. Coerce any of these to a flat array. JSON input already arrives
+ * as an array, so this is a pass-through there. This is the normalization the extraction code needs
+ * because it (and the shared JSON/XML mapper) expect flat arrays for ratings/advisories/affects/etc.
+ */
+function xmlChildList<T>(value: unknown, childKey: string): T[] {
+  if (value === undefined || value === null) return []
+  if (Array.isArray(value)) return value as T[]
+  if (typeof value === 'object') {
+    const child = (value as Record<string, unknown>)[childKey]
+    if (Array.isArray(child)) return child as T[]
+    if (child !== undefined && child !== null) return [child as T]
+  }
+  return []
+}
+
+/**
+ * Normalize a CycloneDX XML `<licenses>` element to the flat array shape extractLicenses expects.
+ * XML yields `{ license: {…} | [{…}] }` or `{ expression: '…' }`; JSON already yields the array.
+ */
+function xmlLicensesToArray(
+  licenses: unknown,
+): Array<{ expression: string } | { license: { id?: string; name?: string } }> {
+  if (!licenses) return []
+  if (Array.isArray(licenses)) {
+    return licenses as Array<{ expression: string } | { license: { id?: string; name?: string } }>
+  }
+  if (typeof licenses === 'object') {
+    const obj = licenses as Record<string, unknown>
+    if (obj.expression !== undefined) {
+      return [{ expression: String(obj.expression) }]
+    }
+    if ('license' in obj) {
+      return xmlChildList<{ id?: string; name?: string }>(obj, 'license').map((license) => ({ license }))
+    }
+  }
+  return []
 }
 
 /**
@@ -455,8 +500,8 @@ function mapXmlComponentToComponent(comp: CycloneDXComponent, parentId?: string)
   // Keep the legacy 'unknown' placeholder in the generated ID (not in `version`) for id stability.
   const id = comp.purl || generateComponentId(name, version || 'unknown', parentId)
 
-  // Extract licenses
-  const licenses = extractLicenses(comp.licenses)
+  // Extract licenses (XML nests these as {license:…}/{expression:…}; normalize to the array shape)
+  const licenses = extractLicenses(xmlLicensesToArray(comp.licenses))
 
   // Extract hash from the CycloneDX 'hashes' array (first entry's content); undefined when absent.
   // (Was `comp.purl?.split('@')[1]`, which yields the *version*, not a hash.)
@@ -590,7 +635,16 @@ function extractVulnerabilitiesFromXml(bom: CycloneDXBom): Vulnerability[] {
     }
   }
 
-  return vulnList.map((vuln) => mapCycloneDXVulnerability(vuln))
+  // The shared mapper expects ratings/advisories/affects as flat arrays (the JSON shape); XML nests
+  // them under their singular child element, so normalize each before mapping.
+  return vulnList.map((vuln) =>
+    mapCycloneDXVulnerability({
+      ...vuln,
+      ratings: xmlChildList(vuln.ratings, 'rating'),
+      advisories: xmlChildList(vuln.advisories, 'advisory'),
+      affects: xmlChildList(vuln.affects, 'target'),
+    } as CycloneDXVulnerability),
+  )
 }
 
 /**
