@@ -1060,12 +1060,15 @@ describe('SbomGeneratorDialog', () => {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
       fireEvent.change(input, { target: { files: [file] } })
-      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      // Generous async-wait + per-test budgets: the parse→map→preview re-render chain is CPU-bound
+      // and occasionally exceeds the tight 3s waits under the parallel full-suite run. Correct in
+      // isolation — this only guards against load-induced flakiness.
+      await screen.findByText('Map Columns', {}, { timeout: 15000 })
       fireEvent.click(screen.getByRole('button', { name: /next step/i }))
-      await screen.findByText(/Components Preview/, {}, { timeout: 3000 })
+      await screen.findByText(/Components Preview/, {}, { timeout: 15000 })
 
       expect(screen.getByText(/and 5 more components/)).toBeInTheDocument()
-    })
+    }, 20_000)
 
     it('should truncate long CPE strings in preview table', async () => {
       const longCpe = 'cpe:2.3:a:very-long-vendor-name:very-long-product-name:1.0.0-beta.1:build123456789:*:*:*:*:*:*:*'

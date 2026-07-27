@@ -646,7 +646,10 @@ describe('ProjectDetail', () => {
 
       expect(mockDeleteProject).toHaveBeenCalledWith('test-project-id')
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
-    })
+      // Generous timeout: mounting the heavy ProjectDetail component and awaiting the Radix confirm
+      // dialog is CPU-bound and occasionally exceeds the 10s default under the parallel full-suite
+      // run. The path is correct (passes in isolation) — this only guards against load flakiness.
+    }, 20_000)
 
     it('should not delete when cancel is clicked in confirm dialog', async () => {
       renderProjectDetail()
