@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Bookmark, Save, X } from 'lucide-react'
+import { isValidSearchQuery, parseSearchQuery } from '@/lib/search'
 import type { SavedSearch } from '@/lib/search/savedSearches'
 
 interface SavedSearchesProps {
@@ -27,7 +28,10 @@ export function SavedSearches({
   const [showSaveForm, setShowSaveForm] = useState(false)
   const [name, setName] = useState('')
 
-  const canSave = currentQuery.trim().length > 0
+  // Only allow saving a query that will actually produce results: mirror the validity gate the
+  // search itself applies (min length + at least one non-operator term), so a saved query can
+  // never load back to a silent zero-result state.
+  const canSave = isValidSearchQuery(currentQuery) && parseSearchQuery(currentQuery).length > 0
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

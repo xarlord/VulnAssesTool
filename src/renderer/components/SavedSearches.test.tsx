@@ -32,6 +32,37 @@ describe('SavedSearches', () => {
     expect(screen.getByRole('button', { name: /Save current/i })).toBeDisabled()
   })
 
+  it('disables "Save current" for queries that would load to zero results (too short / operator-only)', () => {
+    // The search box requires >= 2 chars and at least one real term. Saving 'a' or 'NOT' would
+    // create a chip that silently returns nothing when loaded, so the gate must reject them.
+    const { rerender } = render(
+      <SavedSearches searches={[makeSearch()]} currentQuery="a" onSave={vi.fn()} onLoad={vi.fn()} onDelete={vi.fn()} />,
+    )
+    expect(screen.getByRole('button', { name: /Save current/i })).toBeDisabled()
+
+    rerender(
+      <SavedSearches
+        searches={[makeSearch()]}
+        currentQuery="NOT"
+        onSave={vi.fn()}
+        onLoad={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /Save current/i })).toBeDisabled()
+
+    rerender(
+      <SavedSearches
+        searches={[makeSearch()]}
+        currentQuery="log4j"
+        onSave={vi.fn()}
+        onLoad={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /Save current/i })).toBeEnabled()
+  })
+
   it('saves the current query under a typed name', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()

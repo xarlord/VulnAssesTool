@@ -179,7 +179,10 @@ export function searchIndex(index: SearchIndex, query: string): SearchResult[] {
       const titleLower = result.title.toLowerCase()
       const descLower = result.description.toLowerCase()
 
-      if (!matchesParsedQuery(`${titleLower} ${descLower}`, parsed)) {
+      // Join with a newline (never present in a single-line query) so a quoted phrase cannot
+      // falsely match across the title/description boundary, while single terms still match
+      // either field (AND-across-fields is intentional).
+      if (!matchesParsedQuery(`${titleLower}\n${descLower}`, parsed)) {
         continue
       }
 

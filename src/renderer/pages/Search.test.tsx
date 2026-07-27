@@ -1654,4 +1654,64 @@ describe('Search Page', () => {
       vi.mocked(getPlatform).mockReturnValue(platform)
     })
   })
+
+  // FR-08.1 "Save search queries" — the saved-search bar is wired into project mode only.
+  // These guard the round-trip (save -> chip -> reload) and the mode gating, which no other
+  // Search test exercises; a regression like handleLoadSearch dropping the query would slip by.
+  describe('Saved searches (FR-08.1)', () => {
+    const projectSearchInput = () => screen.getByPlaceholderText(/search projects, components, vulnerabilities/i)
+
+    beforeEach(() => {
+      localStorage.clear()
+    })
+
+    it('saves the current query and reloads it from its chip', async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.type(projectSearchInput(), 'react OR express')
+      await user.click(screen.getByRole('button', { name: /Save current/i }))
+      await user.type(screen.getByLabelText('Saved search name'), 'Frontend libs')
+      await user.click(screen.getByRole('button', { name: /^Save$/i }))
+
+      // The chip appears and the query persists across a fresh render.
+      expect(await screen.findByRole('button', { name: 'Frontend libs' })).toBeInTheDocument()
+
+      // Clearing the box then clicking the chip restores the exact saved query.
+      await user.clear(projectSearchInput())
+      expect(projectSearchInput()).toHaveValue('')
+      await user.click(screen.getByRole('button', { name: 'Frontend libs' }))
+      expect(projectSearchInput()).toHaveValue('react OR express')
+    })
+
+    it('deletes a saved search from its chip', async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.type(projectSearchInput(), 'log4j NOT test')
+      await user.click(screen.getByRole('button', { name: /Save current/i }))
+      await user.type(screen.getByLabelText('Saved search name'), 'Log4j')
+      await user.click(screen.getByRole('button', { name: /^Save$/i }))
+      expect(await screen.findByRole('button', { name: 'Log4j' })).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /Delete saved search Log4j/i }))
+      expect(screen.queryByRole('button', { name: 'Log4j' })).not.toBeInTheDocument()
+    })
+
+    it('does not render the saved-search bar in NVD mode', async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      // Save one in project mode so the bar has content, then switch to NVD.
+      await user.type(projectSearchInput(), 'nginx')
+      await user.click(screen.getByRole('button', { name: /Save current/i }))
+      await user.type(screen.getByLabelText('Saved search name'), 'Nginx')
+      await user.click(screen.getByRole('button', { name: /^Save$/i }))
+      expect(await screen.findByRole('button', { name: 'Nginx' })).toBeInTheDocument()
+
+      await user.click(screen.getByText('NVD Database'))
+      expect(screen.queryByText('Saved searches')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Nginx' })).not.toBeInTheDocument()
+    })
+  })
 })

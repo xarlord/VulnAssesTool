@@ -265,6 +265,16 @@ describe('searchIndex', () => {
       expect(searchIndex(index, 'application mobile').map((r) => r.title)).toContain('Mobile App')
     })
 
+    it('does not let a quoted phrase match across the title/description boundary', () => {
+      const index = buildSearchIndex(mockProjects)
+      // component-3 has title "react-native" and description "0.72.0 • framework". The phrase
+      // "native 0.72.0" spans that boundary and must NOT match — otherwise concatenating the
+      // fields would invent content that appears in neither field on its own.
+      expect(searchIndex(index, '"native 0.72.0"')).toHaveLength(0)
+      // Each half is still findable on its own field.
+      expect(searchIndex(index, '"react-native"').map((r) => r.title)).toContain('react-native')
+    })
+
     it('parseSearchQuery builds OR-of-AND groups with NOT flags', () => {
       expect(parseSearchQuery('a AND b OR c')).toEqual([
         [
