@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Shield, Search, Loader2, Download, FileText } from 'lucide-react'
+import { Shield, ShieldCheck, Search, Loader2, Download, FileText } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { toast } from '@/components/Toaster'
 import { PageHeader } from '@/components/PageHeader'
@@ -8,6 +8,7 @@ import { SbomUploadDialog } from '@/components/SbomUploadDialog'
 import { ContainerScanDialog } from '@/components/ContainerScanDialog'
 import { BinarySbomDialog } from '@/components/BinarySbomDialog'
 import { ExportDialog } from '@/components/ExportDialog'
+import { ComplianceReportDialog } from '@/components/ComplianceReportDialog'
 import { VulnerabilityDetailModal } from '@/components/VulnerabilityDetailModal'
 import { ComponentVulnerabilitiesPopup } from '@/components/ComponentVulnerabilitiesPopup'
 import { StalenessIndicator } from '@/components/StalenessIndicator'
@@ -50,6 +51,7 @@ export function ProjectDetail() {
   const [showContainerScanDialog, setShowContainerScanDialog] = React.useState(false)
   const [showBinarySbomDialog, setShowBinarySbomDialog] = React.useState(false)
   const [showExportDialog, setShowExportDialog] = React.useState(false)
+  const [showComplianceDialog, setShowComplianceDialog] = React.useState(false)
   const [showReportPreview, setShowReportPreview] = React.useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false)
   const [selectedVulnerability, setSelectedVulnerability] = React.useState<Vulnerability | null>(null)
@@ -260,6 +262,13 @@ export function ProjectDetail() {
                 Generate Report
               </button>
               <button
+                onClick={() => setShowComplianceDialog(true)}
+                className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Compliance
+              </button>
+              <button
                 onClick={() => navigate(`/project/${projectId}/fpf`)}
                 className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
@@ -370,6 +379,13 @@ export function ProjectDetail() {
 
       {/* Export Dialog */}
       <ExportDialog open={showExportDialog} onClose={() => setShowExportDialog(false)} project={project} />
+
+      {/* Compliance Report Dialog */}
+      <ComplianceReportDialog
+        open={showComplianceDialog}
+        onClose={() => setShowComplianceDialog(false)}
+        project={project}
+      />
 
       {/* Report Preview (FR-09.2 vulnerability report generation) */}
       <ReportPreview

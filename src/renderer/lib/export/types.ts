@@ -13,6 +13,24 @@ export type ExportFormat = 'csv' | 'json' | 'pdf'
 export type ExportDataType = 'vulnerabilities' | 'components' | 'project' | 'all-projects'
 
 /**
+ * Compliance frameworks a compliance report can be templated for (FR-09.3).
+ * Only the frameworks named in the PRD are offered.
+ */
+export type ComplianceFramework = 'soc2' | 'iso27001' | 'hipaa'
+
+/**
+ * Human-readable label + the full standard name for each framework. Kept here (not in pdf.ts)
+ * so the report dialog can render the framework picker without pulling in the heavy jsPDF module.
+ * These are descriptive labels only — the report never claims a control is satisfied (FR-09.3 is
+ * implemented sections-only; control attestation stays with the organization's auditors).
+ */
+export const COMPLIANCE_FRAMEWORK_META: Record<ComplianceFramework, { label: string; standard: string }> = {
+  soc2: { label: 'SOC 2', standard: 'AICPA SOC 2 (System and Organization Controls 2)' },
+  iso27001: { label: 'ISO/IEC 27001', standard: 'ISO/IEC 27001 — Information Security Management' },
+  hipaa: { label: 'HIPAA', standard: 'HIPAA Security Rule (45 CFR Part 164)' },
+}
+
+/**
  * CSV export column definitions
  */
 export interface CsvColumn {

@@ -4,9 +4,10 @@ import {
   prepareComponentsPdf,
   prepareProjectPdf,
   prepareAllProjectsPdf,
+  prepareCompliancePdf,
   downloadPdf,
 } from './pdf'
-import type { Project } from '@@/types'
+import type { AuditEvent, Project } from '@@/types'
 
 // Mock jsPDF and autoTable - must be before imports
 const mockText = vi.fn()
@@ -170,6 +171,132 @@ describe('PDF Export', () => {
 
       expect(doc).toBeDefined()
       expect(mockAutoTable).toHaveBeenCalled()
+    })
+  })
+
+  describe('Compliance PDF Export (FR-09.3)', () => {
+    const createAuditEvents = (): AuditEvent[] => [
+      {
+        id: '01HAUDIT1',
+        timestamp: new Date('2024-01-03T10:00:00Z'),
+        sessionId: 'sess-1',
+        actionType: 'SCAN',
+        entityType: 'project',
+        entityId: 'project-1',
+        metadata: { description: 'Scanned project for vulnerabilities' },
+      },
+      {
+        id: '01HAUDIT2',
+        timestamp: new Date('2024-01-02T09:00:00Z'),
+        sessionId: 'sess-1',
+        actionType: 'CREATE',
+        entityType: 'project',
+        entityId: 'project-1',
+      },
+    ]
+
+    // Every section of this report is rendered as an autoTable body, so gathering all bodies lets
+    // us assert on the actual content the report will contain (Rule 9 — verify intent, not that a
+    // function ran).
+    const allRows = (): unknown[][] => mockAutoTable.mock.calls.flatMap((call) => call[0].body as unknown[][])
+    const allCellText = (): string[] => allRows().flatMap((row) => row.map((cell) => String(cell)))
+
+    it('renders a framework-specific header for the chosen framework', () => {
+      prepareCompliancePdf(createMockProject(), 'soc2', [])
+      expect(mockText).toHaveBeenCalledWith('SOC 2 Compliance Report', 14, 20)
+
+      vi.clearAllMocks()
+      prepareCompliancePdf(createMockProject(), 'hipaa', [])
+      expect(mockText).toHaveBeenCalledWith('HIPAA Compliance Report', 14, 20)
+    })
+
+    it('states the framework standard and report metadata', () => {
+      prepareCompliancePdf(createMockProject(), 'iso27001', [])
+      expect(allRows()).toContainEqual(['Framework', 'ISO/IEC 27001'])
+      expect(allCellText().some((t) => t.includes('ISO/IEC 27001 — Information Security Management'))).toBe(true)
+    })
+
+    it('includes an executive-summary count of unremediated critical findings', () => {
+      // The mock project has exactly one critical vulnerability.
+      prepareCompliancePdf(createMockProject(), 'soc2', [])
+      expect(allRows()).toContainEqual(['Unremediated critical findings', '1'])
+    })
+
+    it('derives unremediated-critical from live vulnerabilities, not the (possibly stale) statistics', () => {
+      // statistics.criticalCount is a cached rollup; "Unremediated critical findings" must instead
+      // reflect the critical-severity vulnerabilities actually present, so the two can legitimately
+      // differ. Here the rollup claims 3 but only one critical vulnerability is present. If a future
+      // change sourced the row from statistics.criticalCount, this pins that it must not.
+      const base = createMockProject()
+      const project = {
+        ...base,
+        vulnerabilities: base.vulnerabilities, // 1 critical + 1 high
+        statistics: { ...base.statistics, criticalCount: 3 }, // stale rollup
+      }
+      prepareCompliancePdf(project, 'soc2', [])
+      expect(allRows()).toContainEqual(['Critical', '3']) // summary "Critical" = statistics rollup
+      expect(allRows()).toContainEqual(['Unremediated critical findings', '1']) // = live critical vulns
+    })
+
+    it('lists only critical-severity findings in the unremediated-critical table', () => {
+      prepareCompliancePdf(createMockProject(), 'soc2', [])
+      const cveIds = allRows().map((row) => row[0])
+      expect(cveIds).toContain('CVE-2021-23337') // critical -> included
+      expect(cveIds).not.toContain('CVE-2022-1234') // high -> excluded
+    })
+
+    it('shows a placeholder row when there are no critical findings', () => {
+      const project = {
+        ...createMockProject(),
+        vulnerabilities: createMockProject().vulnerabilities.filter((v) => v.severity !== 'critical'),
+        statistics: { ...createMockProject().statistics, criticalCount: 0 },
+      }
+      prepareCompliancePdf(project, 'soc2', [])
+      expect(allCellText().some((t) => t.includes('No unremediated critical findings.'))).toBe(true)
+    })
+
+    it('renders the supplied audit-trail events, and a placeholder when there are none', () => {
+      prepareCompliancePdf(createMockProject(), 'soc2', createAuditEvents())
+      const cellText = allCellText()
+      expect(cellText).toContain('SCAN')
+      expect(cellText.some((t) => t.includes('Scanned project for vulnerabilities'))).toBe(true)
+
+      vi.clearAllMocks()
+      prepareCompliancePdf(createMockProject(), 'soc2', [])
+      expect(allCellText().some((t) => t.includes('No audit events recorded for this project.'))).toBe(true)
+    })
+
+    it('caps the audit trail and notes the truncation for a large history', () => {
+      // The dialog hands the generator the project's full audit history; the generator caps the
+      // rendered rows so a long-lived project cannot produce an oversized PDF / long render.
+      const many: AuditEvent[] = Array.from({ length: 300 }, (_, i) => ({
+        id: `evt-${i}`,
+        timestamp: new Date(2024, 0, 1, 0, 0, i),
+        sessionId: 'sess-1',
+        actionType: 'SCAN',
+        entityType: 'project',
+        entityId: 'project-1',
+      }))
+      prepareCompliancePdf(createMockProject(), 'soc2', many)
+      expect(allCellText().some((t) => t.includes('Showing the 250 most recent of 300 events.'))).toBe(true)
+    })
+
+    it('includes a due-diligence statement that does NOT claim any control is satisfied', () => {
+      // The core honesty guarantee of the sections-only implementation: the report documents
+      // activities and explicitly disclaims control attestation. If someone later makes the report
+      // assert "control X satisfied", this assertion must be revisited deliberately.
+      prepareCompliancePdf(createMockProject(), 'soc2', [])
+      const cellText = allCellText()
+      expect(cellText.some((t) => t.includes('ongoing due diligence'))).toBe(true)
+      expect(
+        cellText.some((t) => t.includes('does not assert that any specific SOC 2 control has been satisfied')),
+      ).toBe(true)
+    })
+
+    it('returns a document and paginates the footer', () => {
+      const doc = prepareCompliancePdf(createMockProject(), 'soc2', createAuditEvents())
+      expect(doc).toBeDefined()
+      expect(mockSetPage).toHaveBeenCalled()
     })
   })
 

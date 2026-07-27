@@ -123,6 +123,7 @@ vi.mock('lucide-react', () => {
     'Trash2',
     'RotateCcw',
     'Shield',
+    'ShieldCheck',
     'Scale',
     'ChevronDown',
     'ChevronUp',

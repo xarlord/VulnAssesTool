@@ -3,8 +3,9 @@
  * Handles exporting project data to PDF format using jsPDF and autoTable
  */
 
-import type { Project } from '@@/types'
-import type { ExportMetadata } from './types'
+import type { AuditEvent, Project } from '@@/types'
+import type { ComplianceFramework, ExportMetadata } from './types'
+import { COMPLIANCE_FRAMEWORK_META } from './types'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -17,6 +18,17 @@ function formatLocaleDate(date: Date | string | undefined): string {
   const dateObj = typeof date === 'string' ? new Date(date) : date
   if (isNaN(dateObj.getTime())) return 'N/A'
   return dateObj.toLocaleDateString()
+}
+
+/**
+ * Like formatLocaleDate but keeps the time — audit-trail rows need it to stay ordered/legible
+ * when several events land on the same day.
+ */
+function formatLocaleDateTime(date: Date | string | undefined): string {
+  if (!date) return 'N/A'
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(dateObj.getTime())) return 'N/A'
+  return dateObj.toLocaleString()
 }
 
 /**
@@ -570,6 +582,193 @@ export function prepareAllProjectsPdf(projects: Project[]): jsPDF {
     styles: {
       fontSize: 9,
       cellPadding: 3,
+    },
+    pageBreak: 'auto',
+  })
+
+  // Add footer with page numbers
+  const totalPages = doc.internal.pages.length - 1
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i)
+    addFooter(doc, i, totalPages)
+  }
+
+  return doc
+}
+
+/** Cap on audit-trail rows rendered into a compliance PDF, so a long-lived project with a large
+ * audit history can't produce an oversized document or a long synchronous autoTable render. */
+const AUDIT_TRAIL_MAX_ROWS = 250
+
+/**
+ * Generate a framework-specific compliance report (FR-09.3), implemented sections-only.
+ *
+ * The report contains a framework header, report metadata, an executive summary, a due-diligence
+ * statement, the project's audit trail, and an unremediated-critical-findings table. It deliberately
+ * does NOT map findings to (or claim satisfaction of) individual SOC 2 / ISO 27001 / HIPAA controls —
+ * inventing control-satisfaction claims would be misleading. The due-diligence statement says so
+ * explicitly.
+ *
+ * "Unremediated critical findings" are simply the critical-severity vulnerabilities still present in
+ * the project: the domain model stores no remediation/triage status, so a finding's continued
+ * presence in the latest scan is what "unremediated" means here (a fixed component drops off the next
+ * scan). The report text states this assumption.
+ *
+ * @param project - The assessed project
+ * @param framework - Which compliance framework to template the report for
+ * @param auditEvents - The project's audit-trail events (already queried/sorted by the caller)
+ */
+export function prepareCompliancePdf(
+  project: Project,
+  framework: ComplianceFramework,
+  auditEvents: AuditEvent[],
+): jsPDF {
+  const doc = new jsPDF()
+  const meta = COMPLIANCE_FRAMEWORK_META[framework]
+  const generatedAt = new Date()
+
+  const headStyles = {
+    fillColor: [59, 130, 246] as [number, number, number],
+    textColor: 255,
+    fontStyle: 'bold' as const,
+  }
+
+  addHeader(doc, `${meta.label} Compliance Report`, `${project.name} • ${generatedAt.toLocaleDateString()}`)
+
+  let yPosition = 45
+
+  // Report information
+  autoTable(doc, {
+    startY: yPosition,
+    body: [
+      ['Framework', meta.label],
+      ['Standard', meta.standard],
+      ['Project', project.name],
+      ['Generated', formatLocaleDateTime(generatedAt)],
+      ['Tool', 'VulnAssessTool'],
+    ],
+    theme: 'plain',
+    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45 }, 1: { cellWidth: 'auto' } },
+    styles: { fontSize: 10, cellPadding: 2 },
+  })
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
+
+  // Executive summary (plain-language counts for non-technical stakeholders)
+  const criticalFindings = project.vulnerabilities.filter((vuln) => vuln.severity === 'critical')
+  const kevCount = project.vulnerabilities.filter((vuln) => vuln.isKev).length
+
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Executive Summary', 14, yPosition)
+  yPosition += 6
+
+  autoTable(doc, {
+    startY: yPosition,
+    head: [['Metric', 'Value']],
+    body: [
+      ['Total components', project.statistics.totalComponents.toString()],
+      ['Total vulnerabilities', project.statistics.totalVulnerabilities.toString()],
+      ['Critical', project.statistics.criticalCount.toString()],
+      ['High', project.statistics.highCount.toString()],
+      ['Unremediated critical findings', criticalFindings.length.toString()],
+      ['Known exploited (CISA KEV)', kevCount.toString()],
+    ],
+    theme: 'grid',
+    headStyles,
+    columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 30, halign: 'right' } },
+  })
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
+
+  // Due-diligence statement — documents the activities performed, explicitly disclaims any
+  // control-satisfaction claim.
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Due Diligence Statement', 14, yPosition)
+  yPosition += 6
+
+  const dueDiligence =
+    `This report documents the software-composition and known-vulnerability assessment activities ` +
+    `performed for "${project.name}" as of ${generatedAt.toLocaleDateString()}. Components were ` +
+    `inventoried from the project's SBOM and evaluated against the NVD, OSV, CISA KEV, and EPSS data ` +
+    `sources. It is provided as evidence of ongoing due diligence in identifying, tracking, and ` +
+    `prioritizing known vulnerabilities. This report documents assessment activities only; it does ` +
+    `not assert that any specific ${meta.label} control has been satisfied — control attestation ` +
+    `remains the responsibility of the organization and its auditors.`
+
+  autoTable(doc, {
+    startY: yPosition,
+    body: [[dueDiligence]],
+    theme: 'plain',
+    styles: { fontSize: 10, cellPadding: 2 },
+  })
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
+
+  // Audit trail — required audit-trail information for the assessed project.
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Audit Trail', 14, yPosition)
+  yPosition += 5
+
+  // Most-recent-first, then capped: the caller may hand us the project's entire audit history.
+  const sortedEvents = [...auditEvents].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  )
+  const shownEvents = sortedEvents.slice(0, AUDIT_TRAIL_MAX_ROWS)
+  const auditBody =
+    shownEvents.length > 0
+      ? shownEvents.map((event) => [
+          formatLocaleDateTime(event.timestamp),
+          event.actionType,
+          event.entityType,
+          event.metadata?.description ?? event.entityId,
+        ])
+      : [['—', 'No audit events recorded for this project.', '', '']]
+  if (sortedEvents.length > AUDIT_TRAIL_MAX_ROWS) {
+    auditBody.push(['—', `Showing the ${AUDIT_TRAIL_MAX_ROWS} most recent of ${sortedEvents.length} events.`, '', ''])
+  }
+
+  autoTable(doc, {
+    startY: yPosition,
+    head: [['Timestamp', 'Action', 'Entity', 'Details']],
+    body: auditBody,
+    theme: 'striped',
+    headStyles,
+    styles: { fontSize: 8, cellPadding: 3 },
+    columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 32 }, 2: { cellWidth: 28 }, 3: { cellWidth: 'auto' } },
+    pageBreak: 'auto',
+  })
+  yPosition = (doc.lastAutoTable?.finalY ?? yPosition) + 12
+
+  // Unremediated critical findings
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Unremediated Critical Findings', 14, yPosition)
+  yPosition += 5
+
+  const criticalBody =
+    criticalFindings.length > 0
+      ? criticalFindings.map((vuln) => [
+          vuln.id,
+          vuln.cvssScore?.toFixed(1) ?? 'N/A',
+          vuln.affectedComponents.length.toString(),
+          vuln.patchInfo?.patchAvailability ?? 'unknown',
+          vuln.isKev ? 'Yes' : 'No',
+        ])
+      : [['—', 'No unremediated critical findings.', '', '', '']]
+
+  autoTable(doc, {
+    startY: yPosition,
+    head: [['CVE', 'CVSS', 'Components', 'Patch', 'KEV']],
+    body: criticalBody,
+    theme: 'striped',
+    headStyles,
+    styles: { fontSize: 8, cellPadding: 3 },
+    columnStyles: {
+      0: { cellWidth: 45 },
+      1: { cellWidth: 20, halign: 'right' },
+      2: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 30 },
+      4: { cellWidth: 18, halign: 'center' },
     },
     pageBreak: 'auto',
   })
