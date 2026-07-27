@@ -538,20 +538,20 @@ describe('checkFirstRun - has_full_data state', () => {
     db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '250000')`)
     db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
 
-    // Insert enough CVEs to satisfy totalCves >= 200000 (needsHistoricalSync check)
-    // Use batch insert for speed
-    for (let batch = 0; batch < 200; batch++) {
-      const insertStmt = db.prepare(
-        `INSERT INTO cves (id, description, published_at, modified_at, source)
-         VALUES (?, 'Test', '2020-01-01', '2020-01-01', 'NVD')`,
+    // Insert enough CVEs to satisfy totalCves >= 200000 (needsHistoricalSync check). A single
+    // recursive-CTE INSERT generates all 200k rows inside SQLite in one statement — orders of
+    // magnitude faster than 200k prepared-statement round-trips, which removes this test's
+    // pre-existing flakiness (it used to overrun its timeout on a loaded machine).
+    db.exec(`
+      INSERT INTO cves (id, description, published_at, modified_at, source)
+      WITH RECURSIVE seq(n) AS (
+        SELECT 0
+        UNION ALL
+        SELECT n + 1 FROM seq WHERE n < 199999
       )
-      db.exec('BEGIN TRANSACTION')
-      for (let i = 0; i < 1000; i++) {
-        const id = `CVE-2020-${(batch * 1000 + i).toString().padStart(7, '0')}`
-        insertStmt.run(id)
-      }
-      db.exec('COMMIT')
-    }
+      SELECT printf('CVE-2020-%07d', n), 'Test', '2020-01-01', '2020-01-01', 'NVD'
+      FROM seq
+    `)
 
     const newService = createDbSeedingService(db, testDbPath)
     const result = newService.checkFirstRun()
@@ -560,7 +560,7 @@ describe('checkFirstRun - has_full_data state', () => {
     expect(result.needsPreSeed).toBe(false)
     expect(result.needsHistoricalSync).toBe(false)
     expect(result.needsUpdate).toBe(false)
-  }, 60000)
+  })
 })
 
 describe('checkFirstRun - incompatible state', () => {
