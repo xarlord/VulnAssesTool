@@ -192,13 +192,14 @@ function calculateVersionScore(component: Component): number {
 }
 
 /**
- * Get health category from score
+ * Get health category from score.
+ * Thresholds follow FR-05.2: Excellent 90-100, Good 75-89, Fair 60-74, Poor 40-59, Critical 0-39.
  */
 function getHealthCategory(score: number): ComponentHealth['category'] {
   if (score >= 90) return 'excellent'
   if (score >= 75) return 'good'
-  if (score >= 50) return 'fair'
-  if (score >= 25) return 'poor'
+  if (score >= 60) return 'fair'
+  if (score >= 40) return 'poor'
   return 'critical'
 }
 

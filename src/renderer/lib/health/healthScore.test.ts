@@ -52,7 +52,7 @@ describe('calculateComponentHealth', () => {
 
     expect(result.factors.vulnerabilityScore).toBe(30) // 2 * 15
     expect(result.score).toBe(60) // 100 - 30 (vuln) - 10 (patch, no patch info)
-    expect(result.category).toBe('fair') // 60 is in fair range (50-74)
+    expect(result.category).toBe('fair') // FR-05.2: fair is 60-74
   })
 
   it('should calculate vulnerability score correctly for high vulnerabilities', () => {
@@ -90,7 +90,7 @@ describe('calculateComponentHealth', () => {
 
     expect(result.factors.vulnerabilityScore).toBe(30) // 3 * 10
     expect(result.score).toBe(60) // 100 - 30 (vuln) - 10 (patch, no patch info)
-    expect(result.category).toBe('fair') // 60 is in fair range (50-74)
+    expect(result.category).toBe('fair') // FR-05.2: fair is 60-74
   })
 
   it('should calculate vulnerability score correctly for mixed severities', () => {
@@ -136,8 +136,8 @@ describe('calculateComponentHealth', () => {
     const result = calculateComponentHealth(mockComponent, vulnerabilities)
 
     expect(result.factors.vulnerabilityScore).toBe(32) // 15 + 10 + 5 + 2
-    expect(result.score).toBe(58) // Actually need to account for patch score being calculated
-    expect(result.category).toBe('fair') // 58 is in fair range (50-74)
+    expect(result.score).toBe(58) // 100 - 32 (vuln) - 10 (patch, no patch info)
+    expect(result.category).toBe('poor') // FR-05.2: 58 is in poor range (40-59), not fair
   })
 
   it('should cap vulnerability score at 40', () => {
@@ -329,11 +329,11 @@ describe('calculateComponentHealth', () => {
 
     expect(goodResult.category).toBe('excellent') // No vulns = 100 = excellent
 
-    expect(fairResult.category).toBe('good') // 1 critical = 85 - 10 (patch) = 75, which is good range (75-89)
+    expect(fairResult.category).toBe('good') // 1 critical = 100 - 15 - 10 (patch) = 75 -> good (75-89)
 
-    expect(poorResult.category).toBe('fair') // 2 critical = 70 - 10 (patch) = 60, in fair range (50-74)
+    expect(poorResult.category).toBe('fair') // 2 critical = 100 - 30 - 10 (patch) = 60 -> fair (60-74)
 
-    expect(criticalResult.category).toBe('fair') // 3 critical = 50 (40 capped + 10 patch), in fair range (50-74)
+    expect(criticalResult.category).toBe('poor') // 3 critical = 100 - 40 (capped) - 10 (patch) = 50 -> poor (40-59) per FR-05.2
   })
 
   it('should set trend to unknown by default', () => {
