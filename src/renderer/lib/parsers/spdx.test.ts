@@ -136,7 +136,7 @@ describe('parseSpdx', () => {
     })
 
     it('should throw error for unsupported file formats', async () => {
-      await expect(parseSpdx('some content', 'spdx.xml')).rejects.toThrow('Unsupported file format: xml')
+      await expect(parseSpdx('some content', 'spdx.yaml')).rejects.toThrow('Unsupported file format: yaml')
     })
 
     it('should handle empty packages array', async () => {
@@ -311,6 +311,85 @@ describe('parseSpdx', () => {
     it('is recognized by isSpdxFile and getSpdxVersion', () => {
       expect(isSpdxFile(tagValue, 'sbom.spdx')).toBe(true)
       expect(getSpdxVersion(tagValue, 'sbom.spdx')).toBe('2.3')
+    })
+  })
+
+  describe('RDF/XML format (FR-02.2)', () => {
+    // Representative tool-generated SPDX RDF/XML: namespaced tags, licenses/relationship
+    // types as rdf:resource URIs, a nested dependsOn relationship, and a checksum block.
+    const rdfXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument rdf:about="http://example.com/doc#SPDXRef-DOCUMENT">
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:name>rdf-test</spdx:name>
+    <spdx:describesPackage>
+      <spdx:Package rdf:about="#SPDXRef-Package-app">
+        <spdx:name>app</spdx:name>
+        <spdx:versionInfo>1.0.0</spdx:versionInfo>
+        <spdx:relationship>
+          <spdx:Relationship>
+            <spdx:relationshipType rdf:resource="http://spdx.org/rdf/terms#relationshipType_dependsOn"/>
+            <spdx:relatedSpdxElement rdf:resource="#SPDXRef-Package-lodash"/>
+          </spdx:Relationship>
+        </spdx:relationship>
+      </spdx:Package>
+    </spdx:describesPackage>
+    <spdx:describesPackage>
+      <spdx:Package rdf:about="#SPDXRef-Package-lodash">
+        <spdx:name>lodash</spdx:name>
+        <spdx:versionInfo>4.17.21</spdx:versionInfo>
+        <spdx:downloadLocation>https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz</spdx:downloadLocation>
+        <spdx:licenseConcluded rdf:resource="http://spdx.org/licenses/MIT"/>
+        <spdx:checksum>
+          <spdx:Checksum>
+            <spdx:algorithm rdf:resource="http://spdx.org/rdf/terms#checksumAlgorithm_sha256"/>
+            <spdx:checksumValue>abc123def456</spdx:checksumValue>
+          </spdx:Checksum>
+        </spdx:checksum>
+        <spdx:externalRef>
+          <spdx:ExternalRef>
+            <spdx:referenceCategory rdf:resource="http://spdx.org/rdf/terms#referenceCategory_packageManager"/>
+            <spdx:referenceType rdf:resource="http://spdx.org/rdf/references#purl"/>
+            <spdx:referenceLocator>pkg:npm/lodash@4.17.21</spdx:referenceLocator>
+          </spdx:ExternalRef>
+        </spdx:externalRef>
+      </spdx:Package>
+    </spdx:describesPackage>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+    it('parses packages, resolving rdf:resource licenses and referenceTypes', async () => {
+      const result = await parseSpdx(rdfXml, 'sbom.rdf')
+
+      expect(result.metadata.format).toBe('spdx')
+      expect(result.metadata.formatVersion).toBe('2.3')
+      expect(result.components).toHaveLength(2)
+
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(lodash.version).toBe('4.17.21')
+      // referenceType URI ".../references#purl" must reduce to exactly "purl" for the mapper.
+      expect(lodash.purl).toBe('pkg:npm/lodash@4.17.21')
+      // license rdf:resource ".../licenses/MIT" must reduce to the SPDX id "MIT".
+      expect(lodash.licenses).toContain('MIT')
+      expect(lodash.hash).toBe('abc123def456')
+    })
+
+    it('wires a nested dependsOn relationship into dependencies', async () => {
+      const result = await parseSpdx(rdfXml, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(app.dependencies).toContain(lodash.id)
+    })
+
+    it('is recognized by isSpdxFile and getSpdxVersion via the .xml extension', () => {
+      expect(isSpdxFile(rdfXml, 'sbom.xml')).toBe(true)
+      expect(getSpdxVersion(rdfXml, 'sbom.xml')).toBe('2.3')
+    })
+
+    it('rejects RDF/XML that is not an SPDX document', async () => {
+      const notSpdx = '<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:RDF>'
+      await expect(parseSpdx(notSpdx, 'sbom.rdf')).rejects.toThrow('Invalid SPDX format')
     })
   })
 
@@ -490,7 +569,7 @@ describe('validateSpdx', () => {
   })
 
   it('should return false for unsupported file format', async () => {
-    const result = await validateSpdx('some content', 'spdx.xml')
+    const result = await validateSpdx('some content', 'spdx.yaml')
     expect(result).toBe(false)
   })
 })
@@ -516,7 +595,7 @@ describe('getSpdxVersion', () => {
   })
 
   it('should return null for unsupported file format', () => {
-    expect(getSpdxVersion('some content', 'spdx.xml')).toBe(null)
+    expect(getSpdxVersion('some content', 'spdx.yaml')).toBe(null)
   })
 })
 
@@ -547,7 +626,7 @@ describe('isSpdxFile', () => {
   })
 
   it('should return false for non-JSON files', () => {
-    expect(isSpdxFile('some content', 'spdx.xml')).toBe(false)
+    expect(isSpdxFile('some content', 'spdx.yaml')).toBe(false)
   })
 })
 

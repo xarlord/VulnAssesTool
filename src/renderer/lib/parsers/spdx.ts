@@ -1,3 +1,4 @@
+import { XMLParser } from 'fast-xml-parser'
 import type { Component, Vulnerability } from '@@/types'
 
 /**
@@ -68,7 +69,12 @@ export async function parseSpdx(
     return parseSpdxTagValue(fileContent)
   }
 
-  throw new Error(`Unsupported file format: ${extension}. Expected .json or .spdx (tag-value)`)
+  // RDF/XML — SPDX serialized as RDF (`.rdf`, `.rdf.xml`, or `.xml`).
+  if (extension === 'rdf' || extension === 'xml') {
+    return parseSpdxRdfXml(fileContent)
+  }
+
+  throw new Error(`Unsupported file format: ${extension}. Expected .json, .spdx (tag-value), or .rdf/.xml`)
 }
 
 /**
@@ -285,6 +291,209 @@ function tagValueToSpdxJson(content: string): SpdxJson {
       }
       default:
         break
+    }
+  }
+
+  return doc
+}
+
+/**
+ * Parse SPDX RDF/XML. This is a pragmatic parser for tool-generated SPDX RDF (the
+ * spdx:Package / spdx:Relationship structure that spdx-tools, syft, etc. emit), not
+ * a full RDF graph reasoner: it walks the XML tree prefix-agnostically, extracts the
+ * package fields the Component mapper needs, and reads relationships nested inside
+ * their subject package. Packages referenced only by rdf:resource (never given inline)
+ * cannot be resolved and are skipped. Output is normalized into the SpdxJson shape so
+ * the shared extractor produces components consistent with the JSON/tag-value paths.
+ */
+function parseSpdxRdfXml(fileContent: string): {
+  components: Component[]
+  vulnerabilities: Vulnerability[]
+  metadata: {
+    format: 'spdx'
+    formatVersion: string
+    componentCount: number
+  }
+} {
+  return buildSpdxResult(rdfXmlToSpdxJson(fileContent))
+}
+
+/** Local (namespace-stripped) name of an XML tag/attribute key, e.g. 'spdx:name' -> 'name'. */
+function localName(key: string): string {
+  const idx = key.indexOf(':')
+  return idx === -1 ? key : key.slice(idx + 1)
+}
+
+/** Value of the first child whose local name matches, regardless of namespace prefix. */
+function rdfField(node: Record<string, unknown>, name: string): unknown {
+  for (const [key, value] of Object.entries(node)) {
+    if (localName(key) === name) return value
+  }
+  return undefined
+}
+
+/** First attribute value whose local name matches (e.g. 'resource' matches 'rdf:resource'). */
+function rdfAttr(node: Record<string, unknown>, name: string): string {
+  for (const [key, value] of Object.entries(node)) {
+    if (localName(key) === name && typeof value === 'string') return value
+  }
+  return ''
+}
+
+/** Coerce an RDF field value (string, {#text}, or {rdf:resource}) to plain text. */
+function rdfText(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    if (typeof obj['#text'] === 'string') return obj['#text']
+    const resource = rdfAttr(obj, 'resource')
+    if (resource) return resource
+  }
+  return ''
+}
+
+function rdfFieldText(node: Record<string, unknown>, name: string): string {
+  return rdfText(rdfField(node, name))
+}
+
+/** SPDX ids appear as `#SPDXRef-x` or a full URI ending in `#SPDXRef-x`; reduce to the fragment. */
+function normalizeRef(ref: string): string {
+  const hash = ref.lastIndexOf('#')
+  return hash === -1 ? ref : ref.slice(hash + 1)
+}
+
+/** The SPDX id of an RDF node from its rdf:about / rdf:ID / rdf:nodeID attribute. */
+function rdfNodeId(node: Record<string, unknown>): string {
+  return normalizeRef(rdfAttr(node, 'about') || rdfAttr(node, 'ID') || rdfAttr(node, 'nodeID'))
+}
+
+/** A license as an SPDX id: strip the `spdx.org/licenses/<ID>` URI down to `<ID>`. */
+function normalizeRdfLicense(value: unknown): string | undefined {
+  const text = rdfText(value)
+  if (!text) return undefined
+  if (text.includes('spdx.org/licenses/')) return text.split('/').pop()
+  return text
+}
+
+/** Last segment of a URI-ish string, splitting on `/`, `#`, and `_` (e.g. `.../references#purl` -> `purl`). */
+function lastUriSegment(text: string): string {
+  return text.split(/[/#_]/).filter(Boolean).pop() ?? text
+}
+
+/** Reduce an RDF referenceType (e.g. `.../references#purl`) to the bare type the mapper expects. */
+function normalizeRefType(value: unknown): string {
+  return lastUriSegment(rdfText(value))
+}
+
+/** Reduce an RDF relationshipType (`.../relationshipType_dependsOn`) to SPDX's DEPENDS_ON form. */
+function normalizeRelationshipType(value: unknown): string {
+  // camelCase (dependsOn) -> SCREAMING_SNAKE (DEPENDS_ON)
+  return lastUriSegment(rdfText(value))
+    .replace(/([a-z])([A-Z])/g, '$1_$2')
+    .replace(/[-\s]+/g, '_')
+    .toUpperCase()
+}
+
+/** Collect every object that is the value of a key with the given local name, anywhere in the tree. */
+function collectNodesByLocalName(root: unknown, name: string): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = []
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+      return
+    }
+    if (!node || typeof node !== 'object') return
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (localName(key) === name) {
+        const values = Array.isArray(value) ? value : [value]
+        for (const entry of values) {
+          if (entry && typeof entry === 'object') out.push(entry as Record<string, unknown>)
+        }
+      }
+      visit(value)
+    }
+  }
+  visit(root)
+  return out
+}
+
+function extractRdfExternalRefs(packageNode: Record<string, unknown>): SpdxJsonPackage['externalRefs'] {
+  return collectNodesByLocalName(packageNode, 'ExternalRef').map((ref) => ({
+    referenceCategory: rdfFieldText(ref, 'referenceCategory'),
+    referenceType: normalizeRefType(rdfField(ref, 'referenceType')),
+    referenceLocator: rdfFieldText(ref, 'referenceLocator'),
+  }))
+}
+
+function extractRdfChecksum(packageNode: Record<string, unknown>): SpdxJsonPackage['packageVerificationCode'] {
+  const value = collectNodesByLocalName(packageNode, 'Checksum')
+    .map((check) => rdfFieldText(check, 'checksumValue'))
+    .find(Boolean)
+  return value ? { packageVerificationCodeValue: value } : undefined
+}
+
+/** Resolve a relationship's related element to an SPDX id (resource ref or inline node). */
+function relationshipTarget(relationship: Record<string, unknown>): string {
+  const value = rdfField(relationship, 'relatedSpdxElement')
+  if (typeof value === 'string') return normalizeRef(value)
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const resource = rdfAttr(obj, 'resource')
+    if (resource) return normalizeRef(resource)
+    return rdfNodeId(obj)
+  }
+  return ''
+}
+
+function rdfXmlToSpdxJson(fileContent: string): SpdxJson {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+    parseAttributeValue: false,
+    parseTagValue: false,
+    trimValues: true,
+  })
+
+  let parsed: unknown
+  try {
+    parsed = parser.parse(fileContent)
+  } catch {
+    throw new Error('Invalid XML format')
+  }
+
+  const doc: SpdxJson = { packages: [], relationships: [] }
+
+  const documentNode = collectNodesByLocalName(parsed, 'SpdxDocument')[0]
+  if (documentNode) {
+    doc.spdxVersion = rdfFieldText(documentNode, 'specVersion') || undefined
+    doc.dataLicense = normalizeRdfLicense(rdfField(documentNode, 'dataLicense'))
+    doc.name = rdfFieldText(documentNode, 'name') || undefined
+  }
+
+  for (const node of collectNodesByLocalName(parsed, 'Package')) {
+    const spdxId = rdfNodeId(node)
+    doc.packages?.push({
+      SPDXID: spdxId,
+      name: rdfFieldText(node, 'name') || 'unknown',
+      versionInfo: rdfFieldText(node, 'versionInfo') || undefined,
+      downloadLocation: rdfFieldText(node, 'downloadLocation') || undefined,
+      licenseConcluded: normalizeRdfLicense(rdfField(node, 'licenseConcluded')),
+      licenseDeclared: normalizeRdfLicense(rdfField(node, 'licenseDeclared')),
+      copyrightText: rdfFieldText(node, 'copyrightText') || undefined,
+      description: rdfFieldText(node, 'description') || rdfFieldText(node, 'summary') || undefined,
+      externalRefs: extractRdfExternalRefs(node),
+      packageVerificationCode: extractRdfChecksum(node),
+    })
+
+    // Relationships are nested inside their subject package; the enclosing package is the subject.
+    for (const relationship of collectNodesByLocalName(node, 'Relationship')) {
+      const relationshipType = normalizeRelationshipType(rdfField(relationship, 'relationshipType'))
+      const relatedSpdxElement = relationshipTarget(relationship)
+      if (spdxId && relationshipType && relatedSpdxElement) {
+        doc.relationships?.push({ spdxElementId: spdxId, relationshipType, relatedSpdxElement })
+      }
     }
   }
 
@@ -517,6 +726,11 @@ export function getSpdxVersion(fileContent: string, filename: string): string | 
       const match = fileContent.match(/SPDXVersion:\s*(SPDX-\d+\.\d+)/)
       return match ? extractSpdxVersion(match[1]) : null
     }
+
+    if (extension === 'rdf' || extension === 'xml') {
+      const match = fileContent.match(/specVersion>\s*(SPDX-\d+\.\d+)/)
+      return match ? extractSpdxVersion(match[1]) : null
+    }
   } catch {
     return null
   }
@@ -539,6 +753,10 @@ export function isSpdxFile(fileContent: string, filename: string): boolean {
 
     if (extension === 'spdx' || extension === 'tag' || extension === 'tv') {
       return /^\s*SPDXVersion:\s*SPDX-/m.test(fileContent) || /^\s*DataLicense:\s*CC0-1\.0/m.test(fileContent)
+    }
+
+    if (extension === 'rdf' || extension === 'xml') {
+      return fileContent.includes('spdx.org/rdf/terms') || /<[a-z0-9]*:?SpdxDocument/i.test(fileContent)
     }
 
     return false
