@@ -48,11 +48,15 @@ function persistAll(map: Record<string, HealthSnapshot[]>): void {
   }
 }
 
+/** Clean + order a raw stored list: drop malformed entries, oldest first. */
+function normalizeSnapshots(raw: unknown): HealthSnapshot[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter(isSnapshot).sort((a, b) => a.date.localeCompare(b.date))
+}
+
 /** All recorded snapshots for a project, oldest first, malformed entries dropped. */
 export function getHealthHistory(projectId: string): HealthSnapshot[] {
-  const list = loadAll()[projectId]
-  if (!Array.isArray(list)) return []
-  return list.filter(isSnapshot).sort((a, b) => a.date.localeCompare(b.date))
+  return normalizeSnapshots(loadAll()[projectId])
 }
 
 /**
@@ -75,8 +79,10 @@ export function mergeTodaySnapshot(existing: HealthSnapshot[], score: number): H
  * state, not every tab view).
  */
 export function recordHealthScore(projectId: string, score: number): HealthSnapshot[] {
+  // Load the cross-project blob once and reuse it for both the read and the write, rather
+  // than calling getHealthHistory() (which would parse localStorage a second time).
   const all = loadAll()
-  const next = mergeTodaySnapshot(getHealthHistory(projectId), score)
+  const next = mergeTodaySnapshot(normalizeSnapshots(all[projectId]), score)
   all[projectId] = next
   persistAll(all)
   return next
