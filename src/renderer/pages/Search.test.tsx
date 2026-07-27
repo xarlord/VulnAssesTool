@@ -49,6 +49,7 @@ vi.mock('lucide-react', () => {
     'CheckCircle2',
     'Clock',
     'Save',
+    'Bookmark',
     'FolderOpen',
     'Search',
     'Navigation',

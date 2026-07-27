@@ -20,7 +20,12 @@ import {
   getSearchResultCounts,
   isValidSearchQuery,
   getSearchSuggestions,
+  getSavedSearches,
+  saveSearch,
+  deleteSavedSearch,
+  type SavedSearch,
 } from '@/lib/search'
+import { SavedSearches } from '@/components/SavedSearches'
 import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
 import { EmptyState } from '@/components/EmptyState'
@@ -89,6 +94,9 @@ export function Search() {
   const [ftsAvailable, setFtsAvailable] = useState(false)
   const [selectedCveId, setSelectedCveId] = useState<string | null>(null)
   const [showCveModal, setShowCveModal] = useState(false)
+
+  // Saved global-search queries (FR-08.1). Persisted in localStorage via lib/search.
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() => getSavedSearches())
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false)
@@ -349,6 +357,26 @@ export function Search() {
     setSyncError(null)
   }
 
+  // Saved-search handlers (FR-08.1). saveSearch throws on empty input; the SavedSearches
+  // button already gates on a non-empty query, so a throw here is unexpected — log and ignore.
+  const handleSaveSearch = (name: string) => {
+    try {
+      setSavedSearches(saveSearch(name, query))
+    } catch (error) {
+      console.error('Failed to save search:', error)
+    }
+  }
+
+  const handleLoadSearch = (savedQuery: string) => {
+    setSearchMode('projects')
+    setQuery(savedQuery)
+    setSelectedIndex(-1)
+  }
+
+  const handleDeleteSearch = (id: string) => {
+    setSavedSearches(deleteSavedSearch(id))
+  }
+
   // Handle NVD result click
   const handleNvdResultClick = (cveId: string) => {
     setSelectedCveId(cveId)
@@ -547,6 +575,17 @@ export function Search() {
               </button>
             )}
           </div>
+
+          {/* Saved searches - only for global project search (FR-08.1) */}
+          {searchMode === 'projects' && (
+            <SavedSearches
+              searches={savedSearches}
+              currentQuery={query}
+              onSave={handleSaveSearch}
+              onLoad={handleLoadSearch}
+              onDelete={handleDeleteSearch}
+            />
+          )}
 
           {/* Suggestions - only for project search */}
           {searchMode === 'projects' &&
@@ -780,6 +819,11 @@ export function Search() {
                   <>
                     <li>• Search is case-insensitive</li>
                     <li>• Matches project names, component names, vulnerability IDs, and descriptions</li>
+                    <li>
+                      • Combine terms with <strong>AND</strong> / <strong>OR</strong> / <strong>NOT</strong>, or quote
+                      an exact phrase: <code>log4j NOT test</code>, <code>&quot;remote code execution&quot;</code>
+                    </li>
+                    <li>• Save a search to re-run it later</li>
                     <li>• Use arrow keys to navigate results</li>
                     <li>• Press Enter to open selected result</li>
                     <li>• Press Escape to clear search</li>
