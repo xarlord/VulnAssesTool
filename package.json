@@ -27,6 +27,7 @@
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "test:integration": "vitest --config tests/integration/vitest.integration.config.ts",
+    "test:perf": "vitest --config tests/perf/vitest.perf.config.ts",
     "test:ui": "vitest --ui",
     "e2e:prepare": "node scripts/e2e-prepare.mjs",
     "test:e2e": "npm run e2e:prepare && playwright test",

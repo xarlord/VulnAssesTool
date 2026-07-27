@@ -39,6 +39,7 @@ export default defineConfig({
       'tests/bdd/step-definitions/**',
       'tests/bdd/support/**',
       'tests/integration/**/*.{test,spec}.{js,ts}', // Integration tests run separately
+      'tests/perf/**', // NFR-01 perf suite runs separately (npm run test:perf) — see tests/perf/vitest.perf.config.ts
     ],
 
     // Slow test patterns for integration tests
