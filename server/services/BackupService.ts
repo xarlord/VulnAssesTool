@@ -275,6 +275,19 @@ export class BackupService {
   }
 
   /**
+   * Verify a backup addressed by its id — the same way /restore and /delete accept a backupId —
+   * resolving it to the backup's file via listBackups() before checking integrity. Falls back to
+   * treating the argument as a filesystem path so callers that pass an absolute path still work.
+   * Without this, /verify received a backupId and checked `existsSync(<id>)`, always returning
+   * 'invalid' for real UI usage.
+   */
+  async verifyBackup(backupIdOrPath: string): Promise<'valid' | 'invalid' | 'unknown'> {
+    const backups = await this.listBackups()
+    const backup = backups.find((b) => b.id === backupIdOrPath)
+    return this.verifyBackupIntegrity(backup ? backup.path : backupIdOrPath)
+  }
+
+  /**
    * Verify backup integrity
    */
   async verifyBackupIntegrity(backupPath: string): Promise<'valid' | 'invalid' | 'unknown'> {

@@ -130,8 +130,10 @@ router.post('/verify', async (req, res) => {
       return
     }
 
-    const backupPath = (req.body.backupPath || req.body.backupId) as string
-    const integrity = await service.verifyBackupIntegrity(backupPath)
+    // Accept either field. verifyBackup resolves a backupId to its file (like /restore and
+    // /delete) and falls back to treating the value as a path.
+    const backupIdOrPath = (req.body.backupId ?? req.body.backupPath) as string
+    const integrity = await service.verifyBackup(backupIdOrPath)
     const response: VerifyBackupResponse = { success: true, integrity }
     res.json(response)
   } catch (error) {
