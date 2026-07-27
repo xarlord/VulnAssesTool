@@ -39,17 +39,8 @@ interface SpdxJsonPackage {
   }
 }
 
-/**
- * Parse SPDX SBOM file (JSON, XML, or YAML format)
- * @param fileContent - The content of the SBOM file
- * @param filename - The name of the file (used for format detection)
- * @returns Object containing parsed components and metadata
- * @throws Error if the file format is invalid or unsupported
- */
-export async function parseSpdx(
-  fileContent: string,
-  filename: string,
-): Promise<{
+/** Shared return shape of every SPDX parse path (JSON, tag-value, RDF/XML). */
+interface SpdxParseResult {
   components: Component[]
   vulnerabilities: Vulnerability[]
   metadata: {
@@ -57,7 +48,16 @@ export async function parseSpdx(
     formatVersion: string
     componentCount: number
   }
-}> {
+}
+
+/**
+ * Parse SPDX SBOM file (JSON, XML, or YAML format)
+ * @param fileContent - The content of the SBOM file
+ * @param filename - The name of the file (used for format detection)
+ * @returns Object containing parsed components and metadata
+ * @throws Error if the file format is invalid or unsupported
+ */
+export async function parseSpdx(fileContent: string, filename: string): Promise<SpdxParseResult> {
   const extension = filename.split('.').pop()?.toLowerCase()
 
   if (extension === 'json') {
@@ -91,15 +91,7 @@ function extractVulnerabilitiesFromSpdxJson(_json: SpdxJson): Vulnerability[] {
 /**
  * Parse SPDX JSON format
  */
-function parseSpdxJson(fileContent: string): {
-  components: Component[]
-  vulnerabilities: Vulnerability[]
-  metadata: {
-    format: 'spdx'
-    formatVersion: string
-    componentCount: number
-  }
-} {
+function parseSpdxJson(fileContent: string): SpdxParseResult {
   let json: SpdxJson
 
   try {
@@ -116,15 +108,7 @@ function parseSpdxJson(fileContent: string): {
  * SpdxJson shape the JSON path produces, then run through the identical
  * component/relationship extraction so both formats yield consistent output.
  */
-function parseSpdxTagValue(fileContent: string): {
-  components: Component[]
-  vulnerabilities: Vulnerability[]
-  metadata: {
-    format: 'spdx'
-    formatVersion: string
-    componentCount: number
-  }
-} {
+function parseSpdxTagValue(fileContent: string): SpdxParseResult {
   const json = tagValueToSpdxJson(fileContent)
   return buildSpdxResult(json)
 }
@@ -133,15 +117,7 @@ function parseSpdxTagValue(fileContent: string): {
  * Shared tail of both SPDX parsers: validate the document is SPDX, then extract
  * components, vulnerabilities and metadata.
  */
-function buildSpdxResult(json: SpdxJson): {
-  components: Component[]
-  vulnerabilities: Vulnerability[]
-  metadata: {
-    format: 'spdx'
-    formatVersion: string
-    componentCount: number
-  }
-} {
+function buildSpdxResult(json: SpdxJson): SpdxParseResult {
   // Validate SPDX format
   if (json.dataLicense !== 'CC0-1.0') {
     throw new Error('Invalid SPDX format: missing or invalid dataLicense')
@@ -255,8 +231,10 @@ function tagValueToSpdxJson(content: string): SpdxJson {
         if (current) current.description = value
         break
       case 'PackageChecksum': {
-        // "SHA256: <hash>" — surface the digest as the component hash.
-        if (current) {
+        // "SHA256: <hash>" — surface the digest as the component hash. A package may carry
+        // several checksum lines (SHA1, SHA256, …); keep the first so the value is stable
+        // regardless of line order, matching the RDF/JSON paths (which take the first checksum).
+        if (current && !current.packageVerificationCode) {
           const match = value.match(/^\S+:\s*(.+)$/)
           if (match) current.packageVerificationCode = { packageVerificationCodeValue: match[1].trim() }
         }
@@ -306,15 +284,7 @@ function tagValueToSpdxJson(content: string): SpdxJson {
  * cannot be resolved and are skipped. Output is normalized into the SpdxJson shape so
  * the shared extractor produces components consistent with the JSON/tag-value paths.
  */
-function parseSpdxRdfXml(fileContent: string): {
-  components: Component[]
-  vulnerabilities: Vulnerability[]
-  metadata: {
-    format: 'spdx'
-    formatVersion: string
-    componentCount: number
-  }
-} {
+function parseSpdxRdfXml(fileContent: string): SpdxParseResult {
   return buildSpdxResult(rdfXmlToSpdxJson(fileContent))
 }
 
@@ -373,6 +343,12 @@ function rdfNodeId(node: Record<string, unknown>): string {
 function normalizeRdfLicense(value: unknown): string | undefined {
   const text = rdfText(value)
   if (!text) return undefined
+  // SPDX RDF encodes "no license asserted" as the ontology individuals
+  // `.../terms#noassertion` / `#none`; map them to the string literals the JSON and
+  // tag-value paths use so extractSpdxLicenses filters them the same way (FR-02.2 consistency).
+  const lower = text.toLowerCase()
+  if (lower === 'noassertion' || lower.endsWith('#noassertion')) return 'NOASSERTION'
+  if (lower === 'none' || lower.endsWith('#none')) return 'NONE'
   if (text.includes('spdx.org/licenses/')) return text.split('/').pop()
   return text
 }

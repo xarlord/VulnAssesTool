@@ -308,6 +308,26 @@ describe('parseSpdx', () => {
       await expect(parseSpdx(noLicense, 'sbom.spdx')).rejects.toThrow('Invalid SPDX format')
     })
 
+    it('keeps the first checksum when a package has several (order-independent, not last-wins)', async () => {
+      // Real SPDX tools emit multiple PackageChecksum lines (SHA1, SHA256, …). A last-wins
+      // overwrite would silently discard all but the final digest; the hash must be stable
+      // regardless of line order, so the first checksum is retained.
+      const multiChecksum = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'SPDXID: SPDXRef-DOCUMENT',
+        'DocumentName: multi-checksum',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'PackageVersion: 1.0.0',
+        'PackageChecksum: SHA256: sha256value',
+        'PackageChecksum: SHA1: sha1value',
+      ].join('\n')
+      const result = await parseSpdx(multiChecksum, 'sbom.spdx')
+      const pkg = result.components.find((c) => c.name === 'pkg') as Component
+      expect(pkg.hash).toBe('sha256value')
+    })
+
     it('is recognized by isSpdxFile and getSpdxVersion', () => {
       expect(isSpdxFile(tagValue, 'sbom.spdx')).toBe(true)
       expect(getSpdxVersion(tagValue, 'sbom.spdx')).toBe('2.3')
@@ -327,6 +347,7 @@ describe('parseSpdx', () => {
       <spdx:Package rdf:about="#SPDXRef-Package-app">
         <spdx:name>app</spdx:name>
         <spdx:versionInfo>1.0.0</spdx:versionInfo>
+        <spdx:licenseConcluded rdf:resource="http://spdx.org/rdf/terms#noassertion"/>
         <spdx:relationship>
           <spdx:Relationship>
             <spdx:relationshipType rdf:resource="http://spdx.org/rdf/terms#relationshipType_dependsOn"/>
@@ -354,6 +375,13 @@ describe('parseSpdx', () => {
             <spdx:referenceLocator>pkg:npm/lodash@4.17.21</spdx:referenceLocator>
           </spdx:ExternalRef>
         </spdx:externalRef>
+        <spdx:externalRef>
+          <spdx:ExternalRef>
+            <spdx:referenceCategory rdf:resource="http://spdx.org/rdf/terms#referenceCategory_security"/>
+            <spdx:referenceType rdf:resource="http://spdx.org/rdf/references#cpe23Type"/>
+            <spdx:referenceLocator>cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*</spdx:referenceLocator>
+          </spdx:ExternalRef>
+        </spdx:externalRef>
       </spdx:Package>
     </spdx:describesPackage>
   </spdx:SpdxDocument>
@@ -370,9 +398,23 @@ describe('parseSpdx', () => {
       expect(lodash.version).toBe('4.17.21')
       // referenceType URI ".../references#purl" must reduce to exactly "purl" for the mapper.
       expect(lodash.purl).toBe('pkg:npm/lodash@4.17.21')
+      // A SECURITY/cpe23Type externalRef must resolve into the cpe field just like the JSON and
+      // tag-value paths — this is the only RDF test guarding normalizeRefType against a cpe URI.
+      expect(lodash.cpe).toBe('cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*')
+      expect(lodash.hasMissingCpe).toBe(false)
       // license rdf:resource ".../licenses/MIT" must reduce to the SPDX id "MIT".
       expect(lodash.licenses).toContain('MIT')
       expect(lodash.hash).toBe('abc123def456')
+    })
+
+    it('does not leak a NOASSERTION license as a raw ontology URI (FR-02.2 cross-format consistency)', async () => {
+      const result = await parseSpdx(rdfXml, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      // app's licenseConcluded is the RDF individual ".../terms#noassertion"; it must be
+      // normalized and filtered exactly as the JSON/tag-value 'NOASSERTION' literal is — never
+      // surfaced as the raw URI. With no asserted license, licenses falls back to ['unknown'].
+      expect(app.licenses).toEqual(['unknown'])
+      expect(app.licenses).not.toContain('http://spdx.org/rdf/terms#noassertion')
     })
 
     it('wires a nested dependsOn relationship into dependencies', async () => {
