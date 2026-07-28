@@ -334,22 +334,32 @@ export async function uploadSbomFile(page: Page, filePath: string, waitForCompon
   const fileInput = dialog.locator('input[type="file"]')
   await fileInput.setInputFiles(filePath)
 
-  // Wait for parsing to complete — the "Add to Project" button only appears on success
+  // Wait for parsing to finish. It can either land directly on the success/error step, or —
+  // when components have ambiguous CPE matches — auto-open the modal "CPE Estimation Required"
+  // dialog on top. Since both are Radix modals, the top dialog makes the underlying
+  // "Add to Project" button inert (aria-hidden), so we can't wait on that button first; we must
+  // resolve whichever of the three appears and dismiss the CPE dialog before proceeding.
   const confirmButton = dialog.getByRole('button', { name: /add to project/i })
   const errorButton = dialog.getByRole('button', { name: /try again/i })
+  const cpeDialog = page.getByRole('dialog', { name: /cpe|match|estimation/i })
   await Promise.race([
     confirmButton.waitFor({ state: 'visible', timeout: 30000 }),
     errorButton.waitFor({ state: 'visible', timeout: 30000 }),
+    cpeDialog.waitFor({ state: 'visible', timeout: 30000 }),
   ])
 
-  // Dismiss CPE match dialog if it appeared (covers the Add to Project button)
-  const cpeDialog = page.getByRole('dialog', { name: /cpe|match/i })
+  // If the CPE match dialog auto-opened (it covers and inerts the Add to Project button),
+  // dismiss it, then wait for the now-interactable success/error button.
   if (await cpeDialog.isVisible().catch(() => false)) {
     const skipButton = cpeDialog.getByRole('button', { name: /skip|cancel|close/i }).first()
     if (await skipButton.isVisible().catch(() => false)) {
       await skipButton.click()
       await page.waitForTimeout(E2E_UI_DELAY)
     }
+    await Promise.race([
+      confirmButton.waitFor({ state: 'visible', timeout: E2E_SELECTOR_TIMEOUT }),
+      errorButton.waitFor({ state: 'visible', timeout: E2E_SELECTOR_TIMEOUT }),
+    ])
   }
 
   // Click "Add to Project" to confirm (only visible in success state)

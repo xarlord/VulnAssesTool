@@ -1,6 +1,6 @@
 import { test, expect, resetAppState } from '../test-helper'
 import type { Page } from '@playwright/test'
-import { createProjectOnly } from '../shared-helpers'
+import { createProjectOnly, navigateToSettings } from '../shared-helpers'
 
 /**
  * E2E Tests for Error Recovery and Error Boundary
@@ -136,7 +136,7 @@ test.describe('Error Recovery', () => {
 
     test('should persist settings across reloads', async ({ page }) => {
       // Navigate to settings
-      await page.getByRole('button', { name: /settings/i }).click()
+      await navigateToSettings(page)
 
       // Verify settings page loads (lazy-loaded, may take time)
       await expect(page.getByRole('heading', { name: /^Settings$/ })).toBeVisible({ timeout: 15000 })
@@ -152,7 +152,7 @@ test.describe('Error Recovery', () => {
 
       if (!isOnSettings) {
         // Navigate back to settings from dashboard
-        await page.getByRole('button', { name: /settings/i }).click()
+        await navigateToSettings(page)
       }
 
       // Settings should still be accessible
@@ -238,7 +238,7 @@ test.describe('Error Recovery', () => {
       await page.waitForLoadState('domcontentloaded')
 
       // Navigate to settings
-      await page.getByRole('button', { name: /settings/i }).click()
+      await navigateToSettings(page)
       await page.waitForLoadState('domcontentloaded')
 
       // Navigate back
