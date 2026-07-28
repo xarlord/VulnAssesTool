@@ -190,6 +190,29 @@ export class NvdDeltaSync {
   }
 
   /**
+   * Persist the auto-sync interval (in hours) without starting the scheduler.
+   * A value of 0 means auto-sync is disabled (manual only). Used by the
+   * settings UI to remember the chosen sync schedule across reloads; the
+   * scheduler itself is (re)started separately via enableAutoSync().
+   */
+  setAutoSyncInterval(hours: number): void {
+    const existing = this.db.prepare(`SELECT id FROM sync_status WHERE source = 'NVD'`).get()
+    const enabled = hours > 0 ? 1 : 0
+    if (existing) {
+      this.db
+        .prepare(`UPDATE sync_status SET auto_sync_enabled = ?, auto_sync_interval_hours = ? WHERE source = 'NVD'`)
+        .run(enabled, hours)
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO sync_status (source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours)
+           VALUES ('NVD', '', ?, ?)`,
+        )
+        .run(enabled, hours)
+    }
+  }
+
+  /**
    * Set API key for NVD API
    */
   setApiKey(apiKey: string): void {

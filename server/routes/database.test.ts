@@ -296,12 +296,22 @@ describe('GET /api/database/config/sync', () => {
 })
 
 describe('PUT /api/database/config/sync', () => {
-  // Currently a no-op that always reports success — pinning that contract so a future real
-  // implementation is a deliberate change, not a silent regression.
-  it('accepts a sync config update', async () => {
-    const res = await request(app).put('/api/database/config/sync').send({ syncInterval: 'daily' })
+  // No longer a no-op: it validates the requested schedule BEFORE any DB access, then persists it
+  // via the delta-sync service (nvdDeltaSync.setAutoSyncInterval). Here the DB is not initialized,
+  // so a *valid* request takes the graceful success:false fallback instead of crashing; an unknown
+  // value is rejected by the input-validation contract regardless of DB state. The real round-trip
+  // (set 'monthly' → reload → 'monthly') is covered by the e2e database-settings persistence spec.
+  it('rejects an unknown sync interval before touching the DB', async () => {
+    const res = await request(app).put('/api/database/config/sync').send({ syncInterval: 'yearly' })
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ success: true })
+    expect(res.body.success).toBe(false)
+    expect(res.body.error).toMatch(/invalid syncInterval/i)
+  })
+
+  it('reports the service is unavailable when delta sync is not initialized', async () => {
+    const res = await request(app).put('/api/database/config/sync').send({ syncInterval: 'monthly' })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Sync service not initialized' })
   })
 })
 

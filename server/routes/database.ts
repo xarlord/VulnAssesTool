@@ -730,6 +730,24 @@ router.post('/cpe/search', async (req, res) => {
   }
 })
 
+// Sync schedule <-> auto_sync_interval_hours mapping. Kept in sync with
+// SYNC_SCHEDULE_OPTIONS in src/shared/constants.ts.
+const SYNC_INTERVAL_HOURS: Record<string, number> = { manual: 0, daily: 24, weekly: 168, monthly: 720 }
+
+function hoursToSyncInterval(hours: number | undefined): string {
+  switch (hours) {
+    case 0:
+      return 'manual'
+    case 24:
+      return 'daily'
+    case 720:
+      return 'monthly'
+    case 168:
+    default:
+      return 'weekly'
+  }
+}
+
 router.get('/config/sync', async (_req, res) => {
   try {
     const deltaSync = getDeltaSync()
@@ -737,7 +755,7 @@ router.get('/config/sync', async (_req, res) => {
     res.json({
       success: true,
       config: {
-        syncInterval: status?.autoSyncIntervalHours ? 'daily' : 'weekly',
+        syncInterval: hoursToSyncInterval(status?.autoSyncIntervalHours),
       },
     })
   } catch (error) {
@@ -751,7 +769,17 @@ router.get('/config/sync', async (_req, res) => {
 router.put('/config/sync', async (req, res) => {
   try {
     const config = req.body as { syncInterval?: string }
-    console.log('Update sync config:', config)
+    const hours = config.syncInterval === undefined ? undefined : SYNC_INTERVAL_HOURS[config.syncInterval]
+    if (hours === undefined) {
+      res.json({ success: false, error: `Invalid syncInterval: ${String(config.syncInterval)}` })
+      return
+    }
+    const deltaSync = getDeltaSync()
+    if (!deltaSync) {
+      res.json({ success: false, error: 'Sync service not initialized' })
+      return
+    }
+    deltaSync.setAutoSyncInterval(hours)
     res.json({ success: true })
   } catch (error) {
     res.json({
