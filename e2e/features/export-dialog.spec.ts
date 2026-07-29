@@ -273,38 +273,28 @@ test.describe('Export Dialog', () => {
       await createProjectOnly(page, 'Download Test')
       await openExportDialog(page)
 
-      const downloadPromise = page.waitForEvent('download', { timeout: 10000 }).catch(() => null)
-
-      const exportButton = page.locator('button:has-text("Export")').last()
-      await exportButton.click()
-
+      // The export MUST produce a download — a missing one is a failure, not a skip.
+      // (Previously the download was swallowed with .catch(()=>null) + `if (download)`,
+      // so a broken export passed silently.)
+      const downloadPromise = page.waitForEvent('download', { timeout: 10000 })
+      await page.locator('button:has-text("Export")').last().click()
       const download = await downloadPromise
 
-      if (download) {
-        expect(download.suggestedFilename()).toBeTruthy()
-      }
+      expect(download.suggestedFilename()).toMatch(/\.(csv|json|pdf)$/)
     })
 
     test('should have correct file extension', async ({ page }) => {
       await createProjectOnly(page, 'Extension Test')
       await openExportDialog(page)
 
-      const csvOption = page.locator('text=CSV')
-      if ((await csvOption.count()) > 0) {
-        await csvOption.first().click()
-      }
+      await page.getByRole('dialog').getByRole('button', { name: 'CSV' }).click()
 
-      const downloadPromise = page.waitForEvent('download', { timeout: 10000 }).catch(() => null)
-
-      const exportButton = page.locator('button:has-text("Export")').last()
-      await exportButton.click()
-
+      const downloadPromise = page.waitForEvent('download', { timeout: 10000 })
+      await page.locator('button:has-text("Export")').last().click()
       const download = await downloadPromise
 
-      if (download) {
-        const filename = download.suggestedFilename()
-        expect(filename.endsWith('.csv') || filename.endsWith('.pdf') || filename.endsWith('.json')).toBe(true)
-      }
+      // CSV was selected, so the downloaded file MUST be a .csv.
+      expect(download.suggestedFilename()).toMatch(/\.csv$/)
     })
   })
 
@@ -358,6 +348,47 @@ test.describe('Export Dialog', () => {
       expect(csv).toMatch(/,express,4\.17\.1,/)
       expect(csv).toContain('MIT')
       expect(csv).toContain('Apache-2.0')
+    })
+
+    test('Components JSON export is structured data matching the imported SBOM', async ({ page }) => {
+      const projectName = `Export JSON ${Date.now()}`
+      await createTestProject(page, projectName)
+      await uploadSbomFile(page, path.join(FIXTURES_DIR, 'sample-cyclonedx.json'))
+
+      await page.waitForTimeout(E2E_UI_DELAY)
+      await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+
+      await dialog.getByRole('button', { name: 'JSON' }).click()
+      await dialog.getByRole('button', { name: 'Components Only' }).click()
+
+      const downloadPromise = page.waitForEvent('download', { timeout: E2E_SELECTOR_TIMEOUT })
+      await dialog.getByRole('button', { name: 'Export', exact: true }).click()
+      const download = await downloadPromise
+
+      expect(download.suggestedFilename()).toMatch(/-components-\d{4}-\d{2}-\d{2}\.json$/)
+
+      const filePath = await download.path()
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
+        metadata: { dataType: string }
+        statistics: { totalComponents: number }
+        components: Array<{ name: string; version: string; licenses: string[]; purl: string | null }>
+      }
+
+      // Structured content as designed — schema + exact counts + per-component values.
+      expect(parsed.metadata.dataType).toBe('components')
+      expect(parsed.statistics.totalComponents).toBe(5)
+      expect(parsed.components).toHaveLength(5)
+
+      const lodash = parsed.components.find((c) => c.name === 'lodash')
+      expect(lodash?.version).toBe('4.17.15')
+      expect(lodash?.licenses).toContain('MIT')
+      expect(lodash?.purl).toBe('pkg:npm/lodash@4.17.15')
+
+      const typescript = parsed.components.find((c) => c.name === 'typescript')
+      expect(typescript?.version).toBe('5.0.0')
+      expect(typescript?.licenses).toContain('Apache-2.0')
     })
   })
 })
