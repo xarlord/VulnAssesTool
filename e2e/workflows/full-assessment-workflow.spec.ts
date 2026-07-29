@@ -145,7 +145,10 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
     await page.waitForTimeout(2000)
 
     const hasVersion = await page.evaluate(() => {
-      const main = document.querySelector('main, [role="tabpanel"], tbody')
+      // The AppShell content region is `#main-content` (the skip-link target). The project-detail
+      // tabs are hand-rolled (no [role="tabpanel"]) and the component list uses buttons (no <tbody>),
+      // so query the content container directly and assert a version (e.g. 4.17.15) is rendered.
+      const main = document.getElementById('main-content')
       if (main === null) return false
       return /\d+\.\d+/.test(main.textContent ?? '')
     })

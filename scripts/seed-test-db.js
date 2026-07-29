@@ -221,6 +221,26 @@ const SAMPLE_CVES = [
       { cpe_text: 'cpe:2.3:a:meta:react:18.0.0:*:*:*:*:*:*:*', vulnerable: true },
     ]
   },
+  // Log4Shell — matches the log4j component in fixtures/sbom-with-vulns.json so the
+  // upload -> scan -> vulnerabilities pipeline test surfaces a real critical CVE offline.
+  // The scan falls back to an FTS text search on the component name ("log4j"), so the
+  // description must contain the standalone token "Log4j"; the CPE also carries product
+  // "log4j" for the CPE-based match paths.
+  {
+    id: 'CVE-2021-44228',
+    description:
+      'Critical remote code execution in Apache Log4j (Log4Shell). JNDI features in Log4j 2.x ' +
+      '(2.0 through 2.14.1) allow attacker-controlled LDAP lookups. Affects log4j and log4j-core.',
+    cvss_score: 10.0,
+    cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H',
+    severity: 'CRITICAL',
+    published_at: '2021-12-10T00:00:00Z',
+    modified_at: '2023-11-15T00:00:00Z',
+    source: 'NVD',
+    cpe_matches: [
+      { cpe_text: 'cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*', vulnerable: true },
+    ]
+  },
 ];
 
 async function seedDatabase(dbPath) {

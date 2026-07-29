@@ -84,7 +84,14 @@ export async function createMultipleProjects(page: Page, names: string[]): Promi
  */
 export async function navigateToProjectDetail(page: Page, projectName: string): Promise<void> {
   await page.locator('.group.rounded-lg.border').filter({ hasText: projectName }).first().click()
-  await expect(page.getByRole('heading', { name: new RegExp(projectName, 'i') })).toBeVisible({ timeout: 10000 })
+  // The dashboard project card renders the name in an <h3>, so a name-only heading matcher is
+  // satisfied *before* the SPA route changes — callers then interact with a mid-transition page
+  // and lose clicks (e.g. the Export button). Wait for the project route, then the level-1 detail
+  // title (rendered by PageHeader only on the detail page) so navigation is provably complete.
+  await page.waitForURL(/\/project\/[^/]+$/, { timeout: 10000 })
+  await expect(page.getByRole('heading', { level: 1, name: new RegExp(projectName, 'i') })).toBeVisible({
+    timeout: 10000,
+  })
 }
 
 /**
