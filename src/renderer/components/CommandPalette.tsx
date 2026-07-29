@@ -50,10 +50,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Search results
-  const results = useMemo(() => {
-    return searchCommands(query, { enabledOnly: true })
-  }, [query])
+  // Search results. The command registry is a mutable singleton populated by
+  // registerAppCommands() in App's mount effect — which runs AFTER this always-mounted
+  // component first renders. Memoizing on [query] alone therefore captured an empty
+  // registry and never refreshed on open (query stays ''), so the first open, before any
+  // keystroke, showed a stale "No commands found" state. Recompute every render instead;
+  // it is trivially cheap for the ~15 registered commands and always reflects the registry.
+  const results = searchCommands(query, { enabledOnly: true })
 
   // Group results by category
   const groupedResults = useMemo(() => {
