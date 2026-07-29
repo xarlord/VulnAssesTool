@@ -65,17 +65,25 @@ async function uploadSbom(page: Page, filePath: string): Promise<void> {
   await fileInput.setInputFiles(filePath)
   const confirmButton = dialog.getByRole('button', { name: /add to project/i })
   const errorButton = dialog.getByRole('button', { name: /try again/i })
+  // Parsing may auto-open the modal "CPE Estimation Required" dialog on top; as a stacked Radix
+  // modal it inerts the underlying Add to Project button, so wait for whichever of the three
+  // appears and dismiss the CPE dialog before waiting on the success/error button.
+  const cpeDialog = page.getByRole('dialog', { name: /cpe|match|estimation/i })
   await Promise.race([
     confirmButton.waitFor({ state: 'visible', timeout: 30000 }),
     errorButton.waitFor({ state: 'visible', timeout: 30000 }),
+    cpeDialog.waitFor({ state: 'visible', timeout: 30000 }),
   ])
-  const cpeDialog = page.getByRole('dialog', { name: /cpe|match/i })
   if (await cpeDialog.isVisible().catch(() => false)) {
     const skipButton = cpeDialog.getByRole('button', { name: /skip|cancel|close/i }).first()
     if (await skipButton.isVisible().catch(() => false)) {
       await skipButton.click()
       await page.waitForTimeout(500)
     }
+    await Promise.race([
+      confirmButton.waitFor({ state: 'visible', timeout: 10000 }),
+      errorButton.waitFor({ state: 'visible', timeout: 10000 }),
+    ])
   }
   if (await confirmButton.isVisible().catch(() => false)) {
     await confirmButton.click({ force: true })

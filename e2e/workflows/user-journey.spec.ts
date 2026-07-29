@@ -190,9 +190,10 @@ test.describe('Full User Journey', () => {
     // Delete project 2 from dashboard by clicking its delete button scoped to its card
     const project2Card = page.locator('.group.rounded-lg.border').filter({ hasText: project2 }).first()
 
-    // The delete uses window.confirm() — accept the browser dialog
-    page.on('dialog', (dialog) => dialog.accept())
     await project2Card.getByLabel(/delete/i).click()
+
+    // Delete now uses an in-app ConfirmDialog (P7), not window.confirm(); confirm the deletion.
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click()
     await page.waitForTimeout(E2E_UI_DELAY * 2)
 
     // Verify project 2 is gone but project 1 still exists
