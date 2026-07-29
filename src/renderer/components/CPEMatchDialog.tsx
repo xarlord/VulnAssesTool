@@ -162,7 +162,6 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
       <DialogContent
         data-testid="cpe-match-dialog"
         aria-modal="true"
-        aria-labelledby="cpe-dialog-title"
         className="max-w-4xl max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0"
       >
         {/* Header */}
@@ -170,9 +169,7 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-amber-500" />
-              <DialogTitle id="cpe-dialog-title" className="text-xl font-semibold text-foreground">
-                CPE Estimation Required
-              </DialogTitle>
+              <DialogTitle className="text-xl font-semibold text-foreground">CPE Estimation Required</DialogTitle>
             </div>
             <DialogDescription className="text-sm text-muted-foreground mt-2">
               The following components need CPE confirmation before export. Please review and select the appropriate CPE
