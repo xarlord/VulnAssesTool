@@ -34,14 +34,16 @@ test.describe('Health Dashboard', () => {
       }
     })
 
-    test('should show health icon on tab', async ({ page }) => {
+    test('should label the health tab', async ({ page }) => {
       await createProjectOnly(page, 'Health Icon Test')
       await navigateToProjectDetail(page, 'Health Icon Test')
 
+      // The project-detail tabs are text-labeled (no icons) after the P5
+      // decomposition, so the Health tab is identified by its accessible name.
       const healthTab = page.getByRole('tab', { name: /health/i })
       if ((await healthTab.count()) > 0) {
-        const icon = healthTab.first().locator('svg')
-        await expect(icon).toBeVisible()
+        await expect(healthTab.first()).toBeVisible()
+        await expect(healthTab.first()).toHaveText(/health/i)
       }
     })
 

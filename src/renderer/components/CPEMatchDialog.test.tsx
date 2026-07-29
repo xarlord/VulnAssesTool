@@ -567,7 +567,13 @@ describe('CPEMatchDialog', () => {
       const dialog = screen.getByTestId('cpe-match-dialog')
       expect(dialog).toHaveAttribute('role', 'dialog')
       expect(dialog).toHaveAttribute('aria-modal', 'true')
-      expect(dialog).toHaveAttribute('aria-labelledby', 'cpe-dialog-title')
+      // Radix auto-wires aria-labelledby to its own generated DialogTitle id. We no
+      // longer override it with a custom "cpe-dialog-title" id — that defeated Radix's
+      // title detection and logged "DialogContent requires a DialogTitle". Assert the
+      // accessible-name intent: aria-labelledby points at the visible title.
+      const labelledBy = dialog.getAttribute('aria-labelledby')
+      expect(labelledBy).toBeTruthy()
+      expect(document.getElementById(labelledBy as string)).toHaveTextContent('CPE Estimation Required')
     })
 
     it('should have accessible radio button labels', () => {
