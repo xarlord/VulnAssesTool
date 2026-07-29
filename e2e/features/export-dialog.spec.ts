@@ -2,12 +2,18 @@ import { test, expect, resetAppState } from '../test-helper'
 import {
   createProjectOnly,
   createMultipleProjects,
+  createTestProject,
+  uploadSbomFile,
   navigateToProjectDetail,
   navigateToDashboard,
   openExportDialog,
   E2E_UI_DELAY,
   E2E_SELECTOR_TIMEOUT,
 } from '../shared-helpers'
+import path from 'node:path'
+import fs from 'node:fs'
+
+const FIXTURES_DIR = path.join(import.meta.dirname, '..', 'fixtures', 'sbom')
 
 test.describe('Export Dialog', () => {
   test.beforeEach(async ({ page }) => {
@@ -299,6 +305,59 @@ test.describe('Export Dialog', () => {
         const filename = download.suggestedFilename()
         expect(filename.endsWith('.csv') || filename.endsWith('.pdf') || filename.endsWith('.json')).toBe(true)
       }
+    })
+  })
+
+  // ==========================================================================
+  // Content Contract — validates the EXPORTED OUTPUT, not just that a download
+  // happened. This is the exemplar for content-reliability hardening: a known
+  // SBOM must round-trip through the UI export into a CSV whose rows carry the
+  // real component data (name, version, license) exactly as designed.
+  // ==========================================================================
+
+  test.describe('Content Contract', () => {
+    test('Components CSV export contains the imported components as designed', async ({ page }) => {
+      const projectName = `Export Content ${Date.now()}`
+      await createTestProject(page, projectName)
+      await uploadSbomFile(page, path.join(FIXTURES_DIR, 'sample-cyclonedx.json'))
+
+      // Open the project's export dialog (let mount-time effects settle first so the
+      // click doesn't race a re-render that closes the just-opened dialog).
+      await page.waitForTimeout(E2E_UI_DELAY)
+      await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+
+      // Choose CSV format + Components Only, then export and capture the download.
+      await dialog.getByRole('button', { name: 'CSV' }).click()
+      await dialog.getByRole('button', { name: 'Components Only' }).click()
+
+      const downloadPromise = page.waitForEvent('download', { timeout: E2E_SELECTOR_TIMEOUT })
+      await dialog.getByRole('button', { name: 'Export', exact: true }).click()
+      const download = await downloadPromise
+
+      // Filename encodes the data type + date.
+      expect(download.suggestedFilename()).toMatch(/-components-\d{4}-\d{2}-\d{2}\.csv$/)
+
+      // The file CONTENT is the components as designed — strip the Excel BOM first.
+      const filePath = await download.path()
+      const raw = fs.readFileSync(filePath, 'utf8')
+      const csv = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+      const lines = csv.trim().split(/\r?\n/)
+
+      // Header is the designed component schema.
+      expect(lines[0]).toBe(
+        'ID,Name,Version,Type,Licenses,License Risk,PURL,Vulnerability Count,Patch Available,Recommended Version,Dependencies Count',
+      )
+      // One row per imported component (sample-cyclonedx.json has 5) + the header row.
+      expect(lines).toHaveLength(6)
+
+      // Each component's real name+version+license is present — the reliability check.
+      expect(csv).toMatch(/,lodash,4\.17\.15,/)
+      expect(csv).toMatch(/,axios,0\.21\.1,/)
+      expect(csv).toMatch(/,express,4\.17\.1,/)
+      expect(csv).toContain('MIT')
+      expect(csv).toContain('Apache-2.0')
     })
   })
 })
