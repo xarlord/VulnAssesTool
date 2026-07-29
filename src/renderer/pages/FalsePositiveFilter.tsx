@@ -368,7 +368,7 @@ export function FalsePositiveFilterPage() {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto px-6 py-6">
+      <div className="max-w-7xl mx-auto px-6 py-6">
         {activeTab === 'dashboard' && (
           <FilterDashboard
             config={config}
@@ -422,7 +422,7 @@ export function FalsePositiveFilterPage() {
             onLLMAnalysis={handleLlmUnavailable}
           />
         )}
-      </main>
+      </div>
     </div>
   )
 }

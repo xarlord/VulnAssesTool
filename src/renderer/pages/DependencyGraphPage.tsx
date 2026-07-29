@@ -129,8 +129,8 @@ export function DependencyGraphPage() {
         />
       </div>
 
-      {/* Graph Container */}
-      <main className="flex-1 px-6 pb-6">
+      {/* Graph Container — the AppShell owns the single <main> landmark. */}
+      <div className="flex-1 px-6 pb-6">
         <DependencyGraph
           components={filteredComponents}
           vulnerabilities={projectVulnerabilities}
@@ -140,7 +140,7 @@ export function DependencyGraphPage() {
           showLegend={true}
           className="border rounded-lg"
         />
-      </main>
+      </div>
 
       {/* Stats Footer */}
       <footer className="px-6 py-3 border-t bg-card">

@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { SidebarContent } from './Sidebar'
 import { TopBar } from './TopBar'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useSidebarOpen, useSetSidebarOpen } from '@/store/useStore'
+import { useSidebarOpen, useSetSidebarOpen, useStore } from '@/store/useStore'
 import { cn } from '@/lib/utils'
 
 interface AppShellProps {
@@ -35,6 +35,21 @@ export function AppShell({ onOpenCommandPalette }: AppShellProps) {
     setPrevPathname(location.pathname)
     if (mobileNavOpen) setMobileNavOpen(false)
   }
+
+  // Global Ctrl/Cmd+Shift+S toggles the sidebar — the shortcut the command palette
+  // advertises for "Toggle Sidebar" but which nothing bound to a raw keypress (only
+  // Ctrl+K / Ctrl+Shift+P were global). Read fresh store state so the listener binds once.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        const { sidebarOpen: open, setSidebarOpen: setOpen } = useStore.getState()
+        setOpen(!open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -70,10 +85,12 @@ export function AppShell({ onOpenCommandPalette }: AppShellProps) {
             onOpenMobileNav={() => setMobileNavOpen(true)}
             onOpenCommandPalette={onOpenCommandPalette}
           />
-          {/* The skip link's target — focusable so skipping lands correctly. */}
-          <div id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto focus:outline-none">
+          {/* The skip link's target and the app's single <main> landmark —
+              focusable so skipping lands correctly. Pages must not render their
+              own <main> (that would nest landmarks); they render plain wrappers. */}
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto focus:outline-none">
             <Outlet />
-          </div>
+          </main>
         </div>
       </div>
     </TooltipProvider>

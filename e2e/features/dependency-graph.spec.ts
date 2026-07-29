@@ -321,8 +321,10 @@ test.describe('Dependency Graph', () => {
     test('should apply border styling to graph', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      // Graph container should have border class
-      const graphContainer = page.locator('main > div').first()
+      // Graph container should have border class. The AppShell now owns the single
+      // <main> landmark, so target the graph's bordered container within the content
+      // region directly rather than assuming it is main's first child.
+      const graphContainer = page.locator('#main-content .rounded-lg.border').first()
       await expect(graphContainer).toHaveClass(/border/)
     })
 

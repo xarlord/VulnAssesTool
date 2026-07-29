@@ -54,6 +54,16 @@ describe('AppShell', () => {
     expect(container.querySelector('#main-content')).not.toBeNull()
   })
 
+  it('exposes the routed content as the single <main> landmark (skip-link target)', () => {
+    // The skip link says "Skip to main content" and screen-reader users navigate
+    // by landmark — so the content region must be a real <main>, not a bare <div>.
+    // Exactly one main landmark app-wide (pages must not render their own).
+    const { container } = renderShell('/dashboard')
+    const mains = container.querySelectorAll('main')
+    expect(mains).toHaveLength(1)
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content')
+  })
+
   it('shows a contextual project group on project routes — replacing per-page back buttons', () => {
     useStore.setState({ projects: [mockProject] })
     renderShell('/project/proj-1/fpf')
@@ -74,5 +84,16 @@ describe('AppShell', () => {
     expect(useStore.getState().sidebarOpen).toBe(true)
     await userEvent.click(screen.getByRole('button', { name: 'Toggle sidebar' }))
     expect(useStore.getState().sidebarOpen).toBe(false)
+  })
+
+  it('toggles the sidebar on the global Ctrl+Shift+S keyboard shortcut', async () => {
+    // The command palette advertises Ctrl+Shift+S for "Toggle Sidebar", but nothing
+    // bound the raw keypress — only Ctrl+K / Ctrl+Shift+P were global. Bind it here.
+    renderShell()
+    expect(useStore.getState().sidebarOpen).toBe(true)
+    await userEvent.keyboard('{Control>}{Shift>}s{/Shift}{/Control}')
+    expect(useStore.getState().sidebarOpen).toBe(false)
+    await userEvent.keyboard('{Control>}{Shift>}s{/Shift}{/Control}')
+    expect(useStore.getState().sidebarOpen).toBe(true)
   })
 })
