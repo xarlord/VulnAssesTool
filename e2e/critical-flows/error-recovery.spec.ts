@@ -1,15 +1,35 @@
 import { test, expect, resetAppState } from '../test-helper'
 import type { Page } from '@playwright/test'
-import { createProjectOnly, navigateToSettings } from '../shared-helpers'
+import { createProjectOnly, navigateToSettings, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
 
 /**
- * E2E Tests for Error Recovery and Error Boundary
+ * E2E Tests for Error Recovery and Error Boundary — content contracts
  *
- * Tests the application's ability to handle and recover from errors:
- * 1. Error boundary catches React errors
- * 2. Retry functionality works
- * 3. App state is preserved when possible
- * 4. User-friendly error messages are displayed
+ * Deterministic, offline-safe checks only. Grounding:
+ *   - components/ErrorBoundary.tsx — fallback heading "Something went wrong" (L257), "Try Again"
+ *     (L295) / "Go Home" (L310) buttons. Neither App.tsx nor the e2e harness exposes any
+ *     fault-injection hook (no window.__crash, debug route, query flag, etc.) to actually trigger
+ *     a React render error from Playwright, so the tests that would need one to be non-vacuous
+ *     are test.skip()-ed with reasons — ErrorBoundary.test.tsx already unit-tests the
+ *     catch/retry/reset behavior directly by throwing inside a child component.
+ *   - store/useStore.ts:433 — persist middleware key 'vuln-assess-storage'; partialize (L434-442)
+ *     keeps `projects` (name included, only vulnerabilities/components/dependencyGraph stripped).
+ *     addProject (L227-232) writes via a plain synchronous `set()`, and no throttle/debounce is
+ *     configured on the persist middleware, so localStorage is populated by the time the project
+ *     name appears in the DOM.
+ *   - components/CreateProjectDialog.tsx:70,74 — `<Dialog open={open} onOpenChange={(next) =>
+ *     !next && handleCancel()}>` with `<DialogTitle>Create New Project</DialogTitle>`; Radix's
+ *     Escape key fires onOpenChange(false), making dialog-open/Escape-to-close a deterministic
+ *     client-side probe for "does the UI still respond" under emulated slow network.
+ *   - server/app.ts (SPA fallback) — `app.get('/{*path}', ...)` serves index.html for every
+ *     non-API GET request, so a full reload on /settings deterministically re-resolves the
+ *     client-side route to Settings without needing a dashboard-and-retry fallback.
+ *   - pages/Settings.tsx:732 — `<PageHeader title="Settings" />`, rendered as an `<h1>`.
+ *
+ * Fixed here: an assertion-free network test (no `expect()` at all — always green), an if/else
+ * that silently swapped a real localStorage-persistence check for an unrelated UI check when the
+ * "real" branch failed, and an `.isVisible().catch(() => false)` fallback that always ended in
+ * the same passing state regardless of what reload actually did.
  */
 test.describe('Error Recovery', () => {
   test.beforeEach(async ({ page }) => {
@@ -66,52 +86,27 @@ test.describe('Error Recovery', () => {
   })
 
   test.describe('Error Boundary', () => {
-    test('should catch and display component errors', async ({ page }) => {
-      // In normal operation, errors shouldn't occur
-      // This test verifies the error boundary exists and is configured
-
-      // Check that the app renders without errors
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
-
-      // Inject an error to test the error boundary
-      // This is a simulated test - in production, this would catch real React errors
-      const hasErrorBoundary = await page.evaluate(() => {
-        // Check if error boundary is present in the React tree
-        return (
-          document.querySelector('[data-testid="error-boundary"]') !== null ||
-          document.body.textContent?.includes('Something went wrong') === false
-        )
-      })
-
-      // The app should have error boundaries configured
-      expect(hasErrorBoundary).toBeTruthy()
+    test.skip('should catch and display component errors', async () => {
+      // Infeasible: there is no fault-injection hook (window.__crash, debug route, etc.) anywhere
+      // in the app or e2e harness to make a child component throw and exercise
+      // ErrorBoundary.tsx's getDerivedStateFromError/fallback path from Playwright. The previous
+      // body was a tautology (`querySelector(...) !== null || !bodyText.includes('Something went
+      // wrong')`) that evaluated true on every normal, error-free render regardless of whether an
+      // error boundary existed at all. ErrorBoundary.test.tsx unit-tests the real catch behavior.
     })
 
-    test('should provide retry option on error', async ({ page }) => {
-      // This tests that if an error occurs, there's a way to recover
-      // In normal operation, we just verify the app is functional
-
-      // Create a project to ensure basic functionality works
-      await createTestProject(page, 'Retry Test', 'Testing retry functionality')
-
-      // Verify project was created successfully
-      await expect(page.getByText('Retry Test', { exact: false })).toBeVisible()
+    test.skip('should provide retry option on error', async () => {
+      // Infeasible: the "Try Again" button (ErrorBoundary.tsx:295) only renders while
+      // state.hasError is true, which requires an actual caught error — unavailable offline/e2e
+      // (see above). The previous body never triggered an error and never checked for the retry
+      // button; it just re-verified project creation, which is already covered elsewhere.
     })
 
-    test('should preserve navigation after error recovery', async ({ page }) => {
-      // Navigate around to establish history
-      await createTestProject(page, 'Error Nav Test', 'Testing nav after error')
-
-      // Go to project details
-      await page.getByText('Error Nav Test', { exact: false }).first().click()
-      await expect(page.getByRole('heading', { name: /Error Nav Test/i })).toBeVisible({ timeout: 5000 })
-
-      // Navigate back
-      await page.goBack()
-      await page.waitForLoadState('domcontentloaded')
-
-      // Verify navigation still works
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+    test.skip('should preserve navigation after error recovery', async () => {
+      // Infeasible: "recovery" implies an error was caught and retried first (ErrorBoundary.tsx
+      // handleRetry), which needs the same unavailable fault-injection hook. Without triggering an
+      // error, this duplicates the plain navigation checks already covered by 'should handle
+      // navigation between pages' above.
     })
   })
 
@@ -120,18 +115,12 @@ test.describe('Error Recovery', () => {
       // Create a project
       const projectName = await createTestProject(page, 'Persistence Test', 'Testing storage')
 
-      // Check localStorage - Zustand persist middleware uses 'vuln-assess-storage'
-      const storedData = await page.evaluate(() => {
-        return localStorage.getItem('vuln-assess-storage')
-      })
-
-      // Verify data was persisted (Zustand may debounce writes)
-      if (storedData) {
-        expect(storedData).toContain('Persistence Test')
-      } else {
-        // Zustand debounces persistence - just verify project exists in UI
-        await expect(page.getByText('Persistence Test', { exact: false })).toBeVisible()
-      }
+      // Zustand persist middleware (store/useStore.ts:433) writes synchronously on every `set()`
+      // call — no throttle/debounce is configured — and partialize keeps `projects` (with name),
+      // so by the time the project name is visible in the DOM the write has already happened.
+      const storedData = await page.evaluate(() => localStorage.getItem('vuln-assess-storage'))
+      expect(storedData).not.toBeNull()
+      expect(storedData).toContain(projectName)
     })
 
     test('should persist settings across reloads', async ({ page }) => {
@@ -141,22 +130,13 @@ test.describe('Error Recovery', () => {
       // Verify settings page loads (lazy-loaded, may take time)
       await expect(page.getByRole('heading', { name: /^Settings$/ })).toBeVisible({ timeout: 15000 })
 
-      // Reload - may stay on settings or go back to dashboard
+      // The server's SPA fallback (server/app.ts) serves index.html for every non-API GET, so a
+      // full reload at /settings deterministically re-resolves the client route — no
+      // dashboard-and-retry fallback needed.
       await page.reload()
       await page.waitForLoadState('domcontentloaded')
-      await page.waitForTimeout(1000)
 
-      // Check if we're still on settings or need to navigate
-      const settingsHeading = page.getByRole('heading', { name: /^Settings$/ })
-      const isOnSettings = await settingsHeading.isVisible().catch(() => false)
-
-      if (!isOnSettings) {
-        // Navigate back to settings from dashboard
-        await navigateToSettings(page)
-      }
-
-      // Settings should still be accessible
-      await expect(settingsHeading).toBeVisible({ timeout: 15000 })
+      await expect(page.getByRole('heading', { name: /^Settings$/ })).toBeVisible({ timeout: 15000 })
     })
   })
 
@@ -171,13 +151,14 @@ test.describe('Error Recovery', () => {
         uploadThroughput: 50000,
       })
 
-      // Try to navigate - should still work, just slower
+      // CreateProjectDialog is pure client-side state (CreateProjectDialog.tsx) — it must still
+      // open with its designed title, and close on Escape, even while the network is throttled.
       await page.getByRole('button', { name: 'New Project' }).click()
-      await page.waitForTimeout(1000)
-
-      // App should still be responsive
       const dialog = page.getByRole('dialog')
-      const dialogVisible = await dialog.isVisible().catch(() => false)
+      await expect(dialog.getByText('Create New Project')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+
+      await page.keyboard.press('Escape')
+      await expect(dialog).not.toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
 
       // Clean up
       await cdpSession.send('Network.emulateNetworkConditions', {
@@ -186,11 +167,6 @@ test.describe('Error Recovery', () => {
         downloadThroughput: -1,
         uploadThroughput: -1,
       })
-
-      // Close dialog if open
-      if (dialogVisible) {
-        await page.keyboard.press('Escape')
-      }
     })
 
     test('should recover from temporary network failure', async ({ page }) => {

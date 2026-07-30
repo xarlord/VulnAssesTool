@@ -1,8 +1,26 @@
 /**
- * E2E Tests for Notification Center Component
+ * Notification Center E2E Tests — content contracts
  *
- * These tests cover click-outside behavior and notification functionality
- * that cannot be properly tested in jsdom.
+ * NotificationCenter.tsx is pure client state (zustand store, no network), so its
+ * behavior is fully deterministic offline. Grounding:
+ *   - data-testid="notification-bell" / "notification-dropdown" (NotificationCenter.tsx:100,113)
+ *   - bell click toggles the same boolean: `onClick={() => setIsOpen(!isOpen)}` (L97); the
+ *     bell button lives inside the same `dropdownRef` div as the dropdown (L95), so clicking it
+ *     never fires the outside-click handler (L27-36) — a second click must close the dropdown.
+ *   - a `mousedown` listener outside `dropdownRef` sets `isOpen` to false (L27-36)
+ *   - nothing seeds a notification automatically: notificationsStore.ts starts with
+ *     `notifications: []` (L36) and only persists `preferences` (partialize, L101-103); no
+ *     caller in notificationService.ts adds one on load. So in a fresh test the list is always
+ *     empty, which renders the designed empty state "No notifications" (NotificationCenter.tsx:146)
+ *     and drives unreadCount to 0.
+ *   - the bell's aria-label template is `Notifications ${unreadCount > 0 ? '(N unread)' : ''}`
+ *     (L99); with unreadCount always 0 here, the literal rendered value is "Notifications "
+ *     (trailing space from the template, not a typo).
+ *
+ * Replaced: a regex-OR locator (`text=/notification|no.*notification|empty/i`) that always
+ * matched the dropdown's own "Notifications" header regardless of whether the list or the empty
+ * state rendered, a boolean-presence check (`ariaLabel !== null`) that could never fail while any
+ * aria-label is set, and a toggle test that asserted nothing at all after its second click.
  */
 
 import { test, expect, resetAppState } from '../test-helper'
@@ -49,43 +67,37 @@ test.describe('Notification Center E2E Tests', () => {
     await expect(dropdown).not.toBeVisible({ timeout: 3000 })
   })
 
-  test('should display notification list when dropdown is open', async ({ page }) => {
-    // Open notification dropdown
+  test('should show the empty-notifications state when dropdown is open', async ({ page }) => {
+    // Nothing seeds a notification automatically (see notificationsStore.ts / notificationService.ts),
+    // so a fresh app state always renders NotificationCenter.tsx's designed empty state.
     const bellIcon = page.getByTestId('notification-bell')
     await bellIcon.click()
 
-    // Check for notification list or empty state
-    const notificationArea = page.locator('text=/notification|no.*notification|empty/i')
-    await expect(notificationArea.first()).toBeVisible({ timeout: 5000 })
+    const dropdown = page.getByTestId('notification-dropdown')
+    await expect(dropdown).toBeVisible({ timeout: 5000 })
+    await expect(dropdown.getByText('No notifications')).toBeVisible()
   })
 
-  test('should have accessible notification button', async ({ page }) => {
-    // Check for accessibility attributes using data-testid
+  test('should expose the zero unread count in the bell aria-label', async ({ page }) => {
+    // aria-label is `Notifications ${unreadCount > 0 ? '(N unread)' : ''}` (NotificationCenter.tsx:99).
+    // With zero notifications the ternary's else-branch is '', so the rendered label is
+    // literally "Notifications " (trailing space from the template).
     const bellButton = page.getByTestId('notification-bell')
-
-    // Button should be visible
     await expect(bellButton).toBeVisible()
-
-    // Check for aria-label or content
-    const ariaLabel = await bellButton.getAttribute('aria-label')
-    const hasAccessibleName = ariaLabel !== null
-
-    expect(hasAccessibleName).toBe(true)
+    await expect(bellButton).toHaveAttribute('aria-label', 'Notifications ')
   })
 
-  test('should toggle dropdown on repeated clicks', async ({ page }) => {
+  test('should toggle the dropdown closed on a second bell click', async ({ page }) => {
     const bellIcon = page.getByTestId('notification-bell')
+    const dropdown = page.getByTestId('notification-dropdown')
 
     // First click - open
     await bellIcon.click()
-    await page.waitForTimeout(300)
-
-    // Verify dropdown is visible
-    const dropdown = page.getByTestId('notification-dropdown')
     await expect(dropdown).toBeVisible({ timeout: 3000 })
 
-    // Second click - close (if toggle behavior)
+    // Second click flips the same isOpen boolean (`onClick={() => setIsOpen(!isOpen)}`,
+    // NotificationCenter.tsx:97), so the dropdown must close again.
     await bellIcon.click()
-    await page.waitForTimeout(300)
+    await expect(dropdown).not.toBeVisible({ timeout: 3000 })
   })
 })

@@ -1,9 +1,21 @@
 import { test, expect, resetAppState } from '../test-helper'
 
 /**
- * E2E Tests for SBOM Upload Flow
+ * E2E Tests for SBOM Upload Flow — content contracts
  *
- * Tests the complete user flow for uploading SBOM files
+ * Tests 1 and 2 already drive real UI deterministically (real project creation, real
+ * navigation, a specific "Upload SBOM" button assertion) and are left unchanged. Test 3
+ * previously contained a false-green fallback: after pressing Escape it did
+ * `if (await dialog.isVisible().catch(() => false)) { click Close button }` and only then
+ * asserted the dialog was closed — so the test passed whether or not Escape actually closed
+ * the dialog (the Close-button fallback silently did the job instead). Escape-to-close is
+ * Radix's built-in Dialog behavior, wired to the real close handler, so it is asserted
+ * directly with no fallback. Grounding:
+ *   - components/SbomUploadDialog.tsx:327 `<Dialog open={open} onOpenChange={(next) =>
+ *     !next && handleClose()}>` — Escape triggers `onOpenChange(false)`, which calls the
+ *     real `handleClose` (:86).
+ *   - pages/project-detail/OverviewTab.tsx:107 "Upload SBOM" button (Overview is the
+ *     project detail default tab).
  */
 test.describe('SBOM Upload Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -66,24 +78,13 @@ test.describe('SBOM Upload Flow', () => {
 
     // Open upload dialog
     await page.getByRole('button', { name: /upload sbom/i }).click()
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible({ timeout: 5000 })
 
-    // Close with Escape
+    // Escape is Radix's built-in Dialog behavior (SbomUploadDialog.tsx:327
+    // `onOpenChange={(next) => !next && handleClose()}`), so it is asserted directly —
+    // no Close-button fallback that would mask a broken Escape handler.
     await page.keyboard.press('Escape')
-    await page.waitForTimeout(500)
-
-    // Escape may not propagate in headless; fall back to close button
-    if (
-      await page
-        .getByRole('dialog')
-        .isVisible()
-        .catch(() => false)
-    ) {
-      await page.getByRole('button', { name: 'Close' }).click()
-      await page.waitForTimeout(500)
-    }
-
-    // Dialog should be closed
-    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 })
+    await expect(dialog).not.toBeVisible({ timeout: 5000 })
   })
 })
