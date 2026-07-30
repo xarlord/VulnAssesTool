@@ -1,6 +1,35 @@
 import { test, expect, resetAppState } from '../test-helper'
 import type { Page } from '@playwright/test'
-import { E2E_UI_DELAY, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
+import { E2E_UI_DELAY, E2E_SELECTOR_TIMEOUT, uploadSbomFile } from '../shared-helpers'
+import path from 'node:path'
+
+/**
+ * Dependency Graph — content contracts
+ *
+ * DependencyGraphPage.tsx renders entirely from project.components / project.vulnerabilities
+ * already in the store — no scan or network call is needed — so every test below is fully
+ * offline-deterministic. Grounding:
+ *   - pages/DependencyGraphPage.tsx — h1 "Dependency Graph", description={project.name},
+ *     severity <select> options ('All Severities'/'Critical'/'High'/'Medium'/'Low'),
+ *     "Vulnerable Only" toggle (bg-primary class when active), footer
+ *     "Showing {filtered} of {total} components" + "Critical: N"/"High: N"/"Medium: N"/
+ *     "Low: N", "Project not found" fallback
+ *   - components/graph/DependencyGraph.tsx — 0-component empty state "No components to
+ *     display" / "Upload an SBOM to view the dependency graph", rendered in the same
+ *     bordered container + height style as the populated graph
+ *   - components/shell/Sidebar.tsx — contextual project-route link "Overview"
+ *
+ * Two tests previously asserted only on AppShell chrome that renders identically on every
+ * route (the shell's single <main> landmark; the TopBar's <header>) regardless of this
+ * page's own logic — replaced with assertions on the graph's own container/content, which
+ * would actually fail if this page stopped rendering the graph correctly. "should show
+ * filter icon" and "should update footer counts when filter changes" asserted nothing
+ * specific to this page (any on-page <svg>; an unused footer-text snapshot) — replaced with
+ * a DOM-structure-grounded icon check and, for the footer-count test, a real SBOM import
+ * (5-component fixture, no scan) so the severity filter has a real effect to observe.
+ */
+
+const SAMPLE_SBOM = path.join(import.meta.dirname, '..', 'fixtures', 'sbom', 'sample-cyclonedx.json')
 
 test.describe('Dependency Graph', () => {
   test.beforeEach(async ({ page }) => {
@@ -92,9 +121,15 @@ test.describe('Dependency Graph', () => {
     test('should show filter icon', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      // Filter icon should be visible
-      const filterIcon = page.locator('svg').filter({ has: page.locator('path') })
-      await expect(filterIcon.first()).toBeVisible()
+      // The Filter icon renders as a sibling of the severity <select> inside a shared
+      // "flex items-center gap-2" row (DependencyGraphPage.tsx: <Filter /> + <select>).
+      // PageHeader's own actions wrapper (PageHeader.tsx) coincidentally carries the exact
+      // same three Tailwind classes (flex, items-center, gap-2) alongside extras, and is an
+      // ancestor of this row — so a class selector scoped to "div.flex.items-center.gap-2"
+      // would strict-mode-match both that wrapper AND this row (both satisfy :has(select)).
+      // There is exactly one <select> on this page, so its direct parent is unambiguous.
+      const filterRow = page.locator('#main-content select').locator('xpath=..')
+      await expect(filterRow.locator('svg')).toBeVisible()
     })
   })
 
@@ -203,18 +238,23 @@ test.describe('Dependency Graph', () => {
     })
 
     test('should update footer counts when filter changes', async ({ page }) => {
-      await createProjectAndNavigateToGraph(page)
+      const projectName = 'Graph Filter Test Project'
+      await createProjectAndOpenDetail(page, projectName)
 
-      // Get initial count text
-      const footerText = await page.locator('footer').textContent()
+      // Local CycloneDX parse only (no scan) — the project ends up with 5 components and 0
+      // vulnerabilities, so every severity bucket in filteredComponents is empty
+      // (DependencyGraphPage.tsx filteredComponents, L43-59).
+      await uploadSbomFile(page, SAMPLE_SBOM)
+      await navigateFromDetailToGraph(page)
 
-      // Apply filter
-      const severitySelect = page.locator('select')
-      await severitySelect.selectOption('critical')
+      const footer = page.locator('footer')
+      await expect(footer.getByText('Showing 5 of 5 components')).toBeVisible()
+
+      // Selecting a severity that matches zero vulnerabilities filters every component out —
+      // proving the footer count is actually driven by the select, not a static snapshot.
+      await page.locator('select').selectOption('critical')
       await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Footer should still be visible (may have updated text)
-      await expect(page.locator('footer')).toBeVisible()
+      await expect(footer.getByText('Showing 0 of 5 components')).toBeVisible()
     })
   })
 
@@ -313,9 +353,13 @@ test.describe('Dependency Graph', () => {
     test('should have graph container element', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      // Main content area should exist
-      const mainContent = page.locator('main')
-      await expect(mainContent).toBeVisible()
+      // createProjectAndNavigateToGraph makes a project with 0 components, so
+      // DependencyGraph.tsx renders its dedicated empty state instead of the cytoscape
+      // canvas. Asserting on <main> (present unconditionally on every route via AppShell)
+      // would pass even if this page rendered nothing at all, so assert the graph's own
+      // content instead.
+      await expect(page.locator('#main-content').getByText('No components to display')).toBeVisible()
+      await expect(page.locator('#main-content').getByText('Upload an SBOM to view the dependency graph')).toBeVisible()
     })
 
     test('should apply border styling to graph', async ({ page }) => {
@@ -331,10 +375,12 @@ test.describe('Dependency Graph', () => {
     test('should have proper height for graph area', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const mainContent = page.locator('main')
-      const boundingBox = await mainContent.boundingBox()
+      // AppShell's <main> always fills the viewport regardless of this page's own layout,
+      // so measure the graph's own bordered container instead — it carries
+      // height="calc(100vh - 180px)" from DependencyGraphPage.tsx.
+      const graphContainer = page.locator('#main-content .rounded-lg.border').first()
+      const boundingBox = await graphContainer.boundingBox()
 
-      // Main content should have significant height
       expect(boundingBox?.height).toBeGreaterThan(200)
     })
   })
@@ -382,9 +428,12 @@ test.describe('Dependency Graph', () => {
     test('should stack header elements on mobile', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      // Header should still be visible
-      const header = page.locator('header')
-      await expect(header).toBeVisible()
+      // page.locator('header') would match the TopBar's global <header>, present
+      // unconditionally on every route regardless of this page's own layout. The actual
+      // "stacking" concern is PageHeader's flex-wrap row (title + actions) — assert its
+      // filter controls are still visible at mobile width rather than an unrelated element.
+      await expect(page.locator('select')).toBeVisible()
+      await expect(page.locator('button:has-text("Vulnerable Only")')).toBeVisible()
     })
   })
 })
@@ -394,10 +443,9 @@ test.describe('Dependency Graph', () => {
 // ==========================================================================
 
 /**
- * Create a project and navigate to its dependency graph
+ * Create a project and land on its detail page (without navigating to the graph).
  */
-async function createProjectAndNavigateToGraph(page: Page, name = 'Graph Test Project'): Promise<void> {
-  // Create project
+async function createProjectAndOpenDetail(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: 'New Project' }).click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
   await page.locator('#project-name').fill(name)
@@ -413,20 +461,32 @@ async function createProjectAndNavigateToGraph(page: Page, name = 'Graph Test Pr
 
   await expect(page.getByRole('heading', { name: new RegExp(name, 'i') })).toBeVisible({ timeout: 10000 })
   await page.waitForTimeout(E2E_UI_DELAY)
+}
 
-  // Navigate to dependency graph using SPA navigation
+/**
+ * From the project detail page, navigate to its dependency graph via SPA routing
+ * (a full page reload would drop client-side project/component state).
+ */
+async function navigateFromDetailToGraph(page: Page): Promise<void> {
   const url = page.url()
   const projectId = url.match(/\/project\/([^/]+)/)?.[1]
-  if (projectId) {
-    // Use React Router's navigate function to avoid full page reload
-    await page.evaluate((path) => {
-      const nav = (window as unknown as Record<string, unknown>).__navigate
-      if (typeof nav === 'function') {
-        nav(path)
-      }
-    }, `/project/${projectId}/graph`)
-  }
+  if (!projectId) throw new Error('Project id not found in current URL')
+
+  await page.evaluate((path) => {
+    const nav = (window as unknown as Record<string, unknown>).__navigate
+    if (typeof nav === 'function') {
+      nav(path)
+    }
+  }, `/project/${projectId}/graph`)
 
   await page.waitForTimeout(E2E_UI_DELAY)
   await expect(page.locator('h1:has-text("Dependency Graph")')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+}
+
+/**
+ * Create a project and navigate to its dependency graph
+ */
+async function createProjectAndNavigateToGraph(page: Page, name = 'Graph Test Project'): Promise<void> {
+  await createProjectAndOpenDetail(page, name)
+  await navigateFromDetailToGraph(page)
 }

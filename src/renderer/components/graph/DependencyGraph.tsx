@@ -8,10 +8,16 @@
 import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EventObject } from 'cytoscape'
+import fcose from 'cytoscape-fcose'
 import { cn } from '@/lib/utils'
 import type { DependencyGraphProps, GraphNodeData } from './types'
 import { SEVERITY_NODE_COLORS, DEFAULT_LAYOUT_CONFIG } from './types'
 import { buildGraphElements, getNodeStyle, getBaseStyles, getPathEdges } from './utils'
+
+// Register the fcose force-directed layout extension once at module load — before any
+// cy.layout({ name: 'fcose' }) runs. Without this the layout throws "No such layout `fcose`"
+// and the whole graph crashes for any project that has components.
+cytoscape.use(fcose)
 
 /**
  * DependencyGraph Component

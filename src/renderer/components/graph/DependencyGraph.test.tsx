@@ -61,7 +61,12 @@ const mockCy = {
 }
 
 vi.mock('cytoscape', () => ({
-  default: vi.fn(() => mockCy),
+  // The default export is the cytoscape factory, but the component also calls
+  // cytoscape.use(fcose) at module load to register the layout extension.
+  default: Object.assign(
+    vi.fn(() => mockCy),
+    { use: vi.fn() },
+  ),
 }))
 
 // Mock cn utility
