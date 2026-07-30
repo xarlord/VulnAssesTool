@@ -51,12 +51,13 @@ test.describe('Project Management Workflow', () => {
       await page.getByRole('button', { name: 'New Project' }).click()
       await expect(page.getByRole('dialog')).toBeVisible()
 
-      // Try to submit without name
+      // Submit with an empty name — the dialog surfaces its exact validation error.
       await page.locator('#project-name').clear()
       await page.getByRole('button', { name: 'Create Project' }).click()
 
-      // Should show validation error
-      await expect(page.locator('text=/required|invalid/i')).toBeVisible()
+      await expect(page.getByText('Project name is required')).toBeVisible()
+      // Submission was rejected, so the dialog stays open.
+      await expect(page.getByRole('dialog')).toBeVisible()
     })
 
     test('should cancel project creation', async ({ page }) => {
@@ -145,55 +146,49 @@ test.describe('Project Management Workflow', () => {
   // ==========================================================================
 
   test.describe('Project Configuration', () => {
-    test('should access project settings', async ({ page }) => {
+    test('should open the edit dialog prefilled with the project name', async ({ page }) => {
       const projectName = 'Settings Test Project'
       await createProjectOnly(page, projectName)
       await navigateToProjectDetail(page, projectName)
 
-      // Look for settings/edit button
-      const settingsButton = page.locator('button:has-text("Settings"), button:has-text("Edit")')
-      if ((await settingsButton.count()) > 0) {
-        await settingsButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+      // The header "Edit" button opens EditProjectDialog, seeded with the current name.
+      await page.getByRole('button', { name: 'Edit', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Edit Project' })).toBeVisible()
+      await expect(page.locator('#edit-name')).toHaveValue(projectName)
     })
 
-    test('should view project statistics', async ({ page }) => {
+    test('should show zeroed overview statistics for a fresh project', async ({ page }) => {
       const projectName = 'Stats Test Project'
       await createProjectOnly(page, projectName)
       await navigateToProjectDetail(page, projectName)
 
-      // Should show statistics
-      const stats = page.locator('text=/Component|Vulnerability|Critical|High/i')
-      await expect(stats.first()).toBeVisible()
+      // No SBOM/scan yet ⇒ every OverviewTab stat is exactly 0.
+      const grid = page.locator('#main-content div[class*="grid-cols-4"]').first()
+      for (const label of ['Components', 'Critical', 'High', 'Total Vulns']) {
+        const card = grid.locator('div.bg-card').filter({ hasText: label })
+        await expect(card.locator('div.text-3xl')).toHaveText('0')
+      }
     })
 
-    test('should access dependency graph from project', async ({ page }) => {
+    test('should open the dependency graph via the project sidebar nav', async ({ page }) => {
       const projectName = 'Graph Access Test'
       await createProjectOnly(page, projectName)
       await navigateToProjectDetail(page, projectName)
 
-      const graphButton = page.locator('button:has-text("Dependency Graph")')
-      if ((await graphButton.count()) > 0) {
-        await graphButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        await expect(page.locator('h1:has-text("Dependency Graph")')).toBeVisible()
-      }
+      // Dependency Graph is a contextual project link in the shell sidebar.
+      await page.getByRole('link', { name: 'Dependency Graph' }).click()
+      await expect(page).toHaveURL(/\/project\/[^/]+\/graph$/)
+      await expect(page.getByRole('heading', { level: 1, name: 'Dependency Graph' })).toBeVisible()
     })
 
-    test('should access FPF from project', async ({ page }) => {
+    test('should open the false-positive filter from the project header', async ({ page }) => {
       const projectName = 'FPF Access Test'
       await createProjectOnly(page, projectName)
       await navigateToProjectDetail(page, projectName)
 
-      const fpfButton = page.locator('button:has-text("False Positive")')
-      if ((await fpfButton.count()) > 0) {
-        await fpfButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        await expect(page.locator('text=/False Positive|Filter/i').first()).toBeVisible()
-      }
+      await page.getByRole('button', { name: 'False Positive Filter' }).click()
+      await expect(page).toHaveURL(/\/project\/[^/]+\/fpf$/)
+      await expect(page.getByRole('heading', { level: 1, name: 'False Positive Filter' })).toBeVisible()
     })
   })
 
@@ -202,70 +197,48 @@ test.describe('Project Management Workflow', () => {
   // ==========================================================================
 
   test.describe('Project Deletion', () => {
-    test('should show delete confirmation', async ({ page }) => {
+    test('should show the delete confirmation with the project name', async ({ page }) => {
       const projectName = 'Delete Confirm Test'
       await createProjectOnly(page, projectName)
       await navigateToProjectDetail(page, projectName)
 
-      const deleteButton = page.locator('button:has-text("Delete")')
-      if ((await deleteButton.count()) > 0) {
-        await deleteButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        // Confirmation dialog should appear
-        const confirmDialog = page.locator('[role="dialog"], [role="alertdialog"]')
-        // Confirmation dialog may or may not appear depending on implementation
-        await confirmDialog.isVisible().catch(() => false)
-
-        // Cancel
-        const cancelButton = page.locator('button:has-text("Cancel")')
-        if ((await cancelButton.count()) > 0) {
-          await cancelButton.click()
-        }
-      }
+      await page.getByRole('button', { name: 'Delete', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByText('Delete project')).toBeVisible()
+      await expect(
+        dialog.getByText(`Are you sure you want to delete "${projectName}"? This cannot be undone.`),
+      ).toBeVisible()
     })
 
-    test('should cancel deletion', async ({ page }) => {
+    test('should keep the project when deletion is cancelled', async ({ page }) => {
       const projectName = 'Cancel Delete Test'
       await createProjectOnly(page, projectName)
       await navigateToProjectDetail(page, projectName)
 
-      const deleteButton = page.locator('button:has-text("Delete")')
-      if ((await deleteButton.count()) > 0) {
-        await deleteButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      await page.getByRole('button', { name: 'Delete', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByText('Delete project')).toBeVisible()
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+      await expect(dialog).not.toBeVisible()
 
-        const cancelButton = page.locator('button:has-text("Cancel")')
-        if ((await cancelButton.count()) > 0) {
-          await cancelButton.click()
-          await page.waitForTimeout(E2E_UI_DELAY)
-
-          // Project should still exist
-          await navigateToDashboard(page)
-          await expect(page.getByText(projectName)).toBeVisible()
-        }
-      }
+      // The project survives on the dashboard.
+      await navigateToDashboard(page)
+      await expect(page.getByText(projectName)).toBeVisible()
     })
 
-    test('should delete project after confirmation', async ({ page }) => {
+    test('should delete the project after confirmation', async ({ page }) => {
       const projectName = 'Delete Me Project'
       await createProjectOnly(page, projectName)
       await navigateToProjectDetail(page, projectName)
 
-      const deleteButton = page.locator('button:has-text("Delete")')
-      if ((await deleteButton.count()) > 0) {
-        await deleteButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      await page.getByRole('button', { name: 'Delete', exact: true }).click()
+      // The confirm button inside the dialog is also labelled "Delete".
+      await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
 
-        const confirmButton = page.locator('button:has-text("Confirm"), button:has-text("Delete")').last()
-        if ((await confirmButton.count()) > 0) {
-          await confirmButton.click()
-          await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-          // Should redirect to dashboard
-          await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
-        }
-      }
+      // handleConfirmDelete removes the project and navigates to /dashboard.
+      await expect(page).toHaveURL(/\/dashboard$/)
+      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+      await expect(page.getByText(projectName)).not.toBeVisible()
     })
   })
 
@@ -286,9 +259,13 @@ test.describe('Project Management Workflow', () => {
     test('should show aggregate statistics', async ({ page }) => {
       await createProjectOnly(page, 'Stats Project')
 
-      // Dashboard should show statistics
-      const stats = page.locator('text=/Project|Component|Vulnerability|Critical/i')
-      await expect(stats.first()).toBeVisible()
+      // One project, no scans ⇒ Projects=1, all severity tallies 0.
+      const grid = page.locator('div[class*="grid-cols-4"]').first()
+      const statValue = (label: string) => grid.locator('div.p-6').filter({ hasText: label }).locator('p.text-3xl')
+      await expect(statValue('Projects')).toHaveText('1')
+      await expect(statValue('Critical')).toHaveText('0')
+      await expect(statValue('High')).toHaveText('0')
+      await expect(statValue('Total Vulnerabilities')).toHaveText('0')
     })
 
     test('should show quick actions', async ({ page }) => {
@@ -323,32 +300,25 @@ test.describe('Project Management Workflow', () => {
   test.describe('Settings Workflow', () => {
     test('should navigate to settings', async ({ page }) => {
       await navigateToSettingsPage(page)
-
-      // Should show settings content
-      const settingsContent = page.locator('text=/Settings|Theme|Appearance/i')
-      await expect(settingsContent.first()).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
     })
 
-    test('should toggle theme', async ({ page }) => {
+    test('should switch the theme via the shell theme menu', async ({ page }) => {
       await navigateToSettingsPage(page)
+      const openMenu = () => page.getByRole('button', { name: 'Change theme' }).click()
 
-      // Look for theme toggle
-      const themeToggle = page.locator('button:has-text("Theme"), [data-testid="theme-toggle"]')
-      if ((await themeToggle.count()) > 0) {
-        await themeToggle.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
-    })
+      // Theme lives in the shell TopBar (aria-label "Change theme"); it is a Radix radio group.
+      // Exercise both directions so the assertion cannot pass on the default theme alone.
+      await openMenu()
+      await page.getByRole('menuitemradio', { name: 'Light' }).click()
+      await openMenu()
+      await expect(page.getByRole('menuitemradio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true')
+      await expect(page.getByRole('menuitemradio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'false')
 
-    test('should save settings', async ({ page }) => {
-      await navigateToSettingsPage(page)
-
-      // Look for save button
-      const saveButton = page.locator('button:has-text("Save")')
-      if ((await saveButton.count()) > 0) {
-        await saveButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+      await page.getByRole('menuitemradio', { name: 'Dark' }).click()
+      await openMenu()
+      await expect(page.getByRole('menuitemradio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
+      await expect(page.getByRole('menuitemradio', { name: 'Light' })).toHaveAttribute('aria-checked', 'false')
     })
   })
 })
