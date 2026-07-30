@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { createJSONStorage } from 'zustand/middleware'
 import { useStore } from './useStore'
 import { act } from '@testing-library/react'
 import { renderHook } from '@testing-library/react'
@@ -2059,6 +2060,36 @@ describe('useStore', () => {
       })
 
       expect(result.current.settingsProfiles).toEqual([])
+    })
+  })
+
+  // ==================== Persistence across reload ====================
+  // WHY: a page reload re-creates the store from DEFAULT_SETTINGS and then rehydrates
+  // localStorage over it. A user's chosen theme MUST win over the compiled default, or
+  // the setting silently reverts on every refresh. This reproduces the reload path
+  // (seed storage -> rehydrate) so it fails if persist ever stops restoring settings.
+  describe('persistence across reload (rehydration)', () => {
+    it('restores a persisted non-default theme when the store rehydrates from storage', async () => {
+      // Default theme is 'dark'; persist 'light' so the assertion proves the persisted
+      // value — not the default — is what survives. Guard keeps the test honest if the
+      // default ever changes to 'light'.
+      expect(DEFAULT_SETTINGS.theme).toBe('dark')
+      // The persist storage is bound to the real global localStorage at module load (before
+      // this suite stubs it), so point it at the per-test mock explicitly.
+      useStore.persist.setOptions({ storage: createJSONStorage(() => localStorageMock) })
+      localStorageMock.setItem(
+        'vuln-assess-storage',
+        JSON.stringify({
+          state: { settings: { ...DEFAULT_SETTINGS, theme: 'light' }, projects: [], activeProfileId: '' },
+          version: 0,
+        }),
+      )
+
+      await act(async () => {
+        await useStore.persist.rehydrate()
+      })
+
+      expect(useStore.getState().settings.theme).toBe('light')
     })
   })
 })

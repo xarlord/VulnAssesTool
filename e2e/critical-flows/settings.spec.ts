@@ -17,7 +17,11 @@ import { test, expect, resetAppState } from '../test-helper'
  *     `root.classList.add(theme)`, so a theme button click is verifiable via the actual DOM
  *     class the rest of the app styles against, not just component state.
  *
- * Theme does NOT persist across page.reload() (known gap) — not asserted here.
+ * Theme DOES persist across page.reload(): the persist middleware ('vuln-assess-storage',
+ * useStore.ts:432-445) rehydrates settings from localStorage before App.tsx's theme effect
+ * runs, and nothing on mount re-fetches or overwrites settings. Asserted below in
+ * 'should persist the selected theme across a full page reload'. (An earlier suspicion that it
+ * reverted did not reproduce — see store/useStore.test.ts rehydration test.)
  */
 test.describe('Settings Configuration Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -56,6 +60,26 @@ test.describe('Settings Configuration Flow', () => {
     await main.getByRole('button', { name: 'dark', exact: true }).click()
     await expect(html).toHaveClass(/dark/)
     await expect(html).not.toHaveClass(/light/)
+  })
+
+  test('should persist the selected theme across a full page reload', async ({ page }) => {
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+    const html = page.locator('html')
+
+    // Default theme is 'dark' (DEFAULT_SETTINGS); switch to a non-default 'light' so the
+    // post-reload assertion proves the *persisted user choice* survived, not the compiled
+    // default happening to match.
+    await main.getByRole('button', { name: 'light', exact: true }).click()
+    await expect(html).toHaveClass(/light/)
+    await expect(html).not.toHaveClass(/dark/)
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+
+    // On reload the persist middleware rehydrates settings from localStorage before App's
+    // theme effect runs, so the html element must still carry the chosen 'light' class.
+    await expect(html).toHaveClass(/light/)
+    await expect(html).not.toHaveClass(/dark/)
   })
 
   test('should navigate back to dashboard from settings', async ({ page }) => {
