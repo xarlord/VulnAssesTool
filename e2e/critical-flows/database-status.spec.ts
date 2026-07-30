@@ -1,130 +1,102 @@
+import { test, expect, resetAppState } from '../test-helper'
+import { E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
+
 /**
- * E2E Tests for Database Status Component
+ * Database Status — content contracts
  *
- * These tests cover functionality that requires real Electron context
- * and cannot be tested in jsdom environment.
+ * The local NVD database status lives in the Settings page's "Database Management" section
+ * (there is no standalone DatabaseStatus component any more — see the "DatabaseStatus removed"
+ * comment in Settings.tsx). scripts/seed-test-db.js seeds exactly 16 CVEs via
+ * NvdDatabase.upsertCVE before every e2e run and never touches the metadata table, so the
+ * stats this section renders are fully deterministic offline. Grounding:
+ *   - shell/Sidebar.tsx MAIN_NAV — sidebar links "Dashboard"(/dashboard) and "Settings"(/settings);
+ *     shell/AppShell.tsx — content is rendered inside <main id="main-content">
+ *   - Settings.tsx `<div id="database">` — h2 "Database Management"; stat labels "Total CVEs",
+ *     "CPE Matches", "Database Size", "Last Sync" inside `div.p-3` cards, with the CVE count in
+ *     a `div.text-lg.font-semibold` and the sync date/"Never" fallback in a
+ *     `div.text-sm.font-medium`; action buttons "Sync Now", "Bulk Download", "Rebuild Indexes",
+ *     "Reset Database"
+ *   - server/routes/database.ts `/database/stats` — totalCves: metadata.total_cves
+ *   - server/database/nvdDb.ts `getMetadata()` — total_cves = SELECT COUNT(*) FROM cves, and
+ *     last_sync_at is only ever set by a sync run (never by the seed script), so a fresh e2e
+ *     run always shows 16 CVEs and a "Never" last-sync status
  *
- * NOTE: The DatabaseStatus component may not be visible if it's not
- * integrated into the Settings page. Tests verify the Settings page
- * loads correctly and check for database-related UI if present.
+ * Everything here is reachable offline with no scan/sync required, so there are no test.skip
+ * entries in this file.
  */
 
-import { test, expect, resetAppState } from '../test-helper'
-import { navigateToSettings } from '../shared-helpers'
-
-test.describe('Database Status E2E Tests', () => {
+test.describe('Database Status', () => {
   test.beforeEach(async ({ page }) => {
     await resetAppState(page)
-    // Wait for dashboard to load
     await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
-  test('should navigate to settings page', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-
-    // If settings navigation is available, verify we're on settings page
-    if (navigated) {
-      // Wait for settings to load
-      await page.waitForTimeout(500)
-
-      // Check for settings-related content
-      const settingsContent = page.locator('text=/Settings|Theme|Appearance|NVD|Database|API/i')
-      const hasSettings = (await settingsContent.count()) > 0
-
-      // If we found settings content, test passes
-      expect(hasSettings).toBe(true)
-    } else {
-      // Settings may not be accessible from this view - that's OK
-    }
+  test.describe('Settings Navigation', () => {
+    test('should navigate to the settings page via the sidebar', async ({ page }) => {
+      await page.getByRole('link', { name: 'Settings' }).click()
+      await expect(page).toHaveURL(/\/settings$/)
+      await expect(page.locator('#main-content').getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+    })
   })
 
-  test('should show settings page content when loaded', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      // Settings page not available - mark as passed since this is optional
-      return
-    }
+  test.describe('Database Management Statistics', () => {
+    test('should show the database management stat labels', async ({ page }) => {
+      await page.getByRole('link', { name: 'Settings' }).click()
+      const dbSection = page.locator('#main-content').locator('#database')
 
-    // Wait for content to load
-    await page.waitForTimeout(1000)
+      await expect(dbSection.getByRole('heading', { name: 'Database Management' })).toBeVisible()
+      for (const label of ['Total CVEs', 'CPE Matches', 'Database Size', 'Last Sync']) {
+        await expect(dbSection.getByText(label, { exact: true })).toBeVisible()
+      }
+    })
 
-    // Check for any settings-related UI elements
-    const settingsElements = page.locator('text=/Settings|Theme|Appearance|General|Advanced/i')
-    const hasContent = (await settingsElements.count()) > 0
+    test('should show the seeded NVD CVE count', async ({ page }) => {
+      await page.getByRole('link', { name: 'Settings' }).click()
+      const dbSection = page.locator('#main-content').locator('#database')
 
-    // Test passes if we find any settings content
-    expect(hasContent).toBe(true)
+      // The seed script inserts exactly 16 CVEs and getMetadata() counts them live, so this
+      // value would change if the seed fixture or the stats query changed.
+      const totalCvesValue = dbSection
+        .locator('div.p-3')
+        .filter({ hasText: 'Total CVEs' })
+        .locator('div.text-lg.font-semibold')
+      await expect(totalCvesValue).toHaveText('16', { timeout: E2E_SELECTOR_TIMEOUT })
+    })
+
+    test('should default the last sync status to Never', async ({ page }) => {
+      await page.getByRole('link', { name: 'Settings' }).click()
+      const dbSection = page.locator('#main-content').locator('#database')
+
+      // The seed script never writes a last_sync_at metadata row, so Settings.tsx's lastSyncAt
+      // stays null and falls back to the 'Never' label until a real sync runs.
+      const lastSyncValue = dbSection
+        .locator('div.p-3')
+        .filter({ hasText: 'Last Sync' })
+        .locator('div.text-sm.font-medium')
+      await expect(lastSyncValue).toHaveText('Never', { timeout: E2E_SELECTOR_TIMEOUT })
+    })
   })
 
-  test('should show database-related UI if available', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
+  test.describe('Database Maintenance Actions', () => {
+    test('should show the sync and maintenance action buttons', async ({ page }) => {
+      await page.getByRole('link', { name: 'Settings' }).click()
+      const dbSection = page.locator('#main-content').locator('#database')
 
-    // Wait for data to load
-    await page.waitForTimeout(1000)
-
-    // Check for database-related content (NVD, CVE, sync, etc.)
-    const dbContent = page.locator('text=/NVD|Database|CVE|sync|refresh/i')
-    const hasDbContent = (await dbContent.count()) > 0
+      await expect(dbSection.getByRole('button', { name: 'Sync Now' })).toBeVisible()
+      await expect(dbSection.getByRole('button', { name: 'Bulk Download' })).toBeVisible()
+      await expect(dbSection.getByRole('button', { name: 'Rebuild Indexes' })).toBeVisible()
+      await expect(dbSection.getByRole('button', { name: 'Reset Database' })).toBeVisible()
+    })
   })
 
-  test('should have interactive elements on settings page', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
+  test.describe('Cross-Feature Navigation', () => {
+    test('should return to the dashboard from settings', async ({ page }) => {
+      await page.getByRole('link', { name: 'Settings' }).click()
+      await expect(page).toHaveURL(/\/settings$/)
 
-    // Wait for component to load
-    await page.waitForTimeout(500)
-
-    // Look for any buttons on the settings page
-    const buttons = page.locator('button')
-    const buttonCount = await buttons.count()
-
-    // Should have at least some buttons on settings page
-    expect(buttonCount).toBeGreaterThanOrEqual(0)
-  })
-
-  test('settings page should be responsive', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
-
-    // Verify the page is still functional
-    await page.waitForTimeout(500)
-
-    // Navigate back to dashboard
-    const dashboardLink = page.locator('text=/Dashboard|Home|Projects/i')
-    if ((await dashboardLink.count()) > 0) {
-      await dashboardLink.first().click()
-      await page.waitForTimeout(500)
-
-      // Check if we're back on a main page (look for any common element)
-      const mainContent = page.locator('button, h1, h2, a')
-      const hasContent = (await mainContent.count()) > 0
-      expect(hasContent).toBe(true)
-    } else {
-      // No back navigation - that's OK
-    }
-  })
-
-  test('settings page loads without errors', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
-
-    // Check that the page loaded without showing error messages
-    await page.waitForTimeout(1000)
-
-    // Look for error indicators
-    const errorElements = page.locator('text=/error|failed|crashed|not found/i')
-    const hasErrors = (await errorElements.count()) > 0
-
-    // Page should load without obvious errors
-    expect(hasErrors).toBe(false)
+      await page.getByRole('link', { name: 'Dashboard' }).click()
+      await expect(page).toHaveURL(/\/dashboard$/)
+      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+    })
   })
 })

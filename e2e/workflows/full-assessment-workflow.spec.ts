@@ -1,13 +1,10 @@
-import { test, expect, type Page } from '@playwright/test'
-import { fileURLToPath } from 'url'
-import * as path from 'path'
+import path from 'node:path'
+import { test, expect, resetAppState } from '../test-helper'
+import { createProjectOnly, navigateToProjectDetail, uploadSbomFile } from '../shared-helpers'
+import type { Page } from '@playwright/test'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const FIXTURES_DIR = path.join(__dirname, '..', 'fixtures')
-
-const cycloneDxSample = path.join(FIXTURES_DIR, 'sbom', 'sample-cyclonedx.json')
-const spdxSample = path.join(FIXTURES_DIR, 'sbom', 'sample-spdx.json')
+const cycloneDxSample = path.join(import.meta.dirname, '..', 'fixtures', 'sbom', 'sample-cyclonedx.json')
+const spdxSample = path.join(import.meta.dirname, '..', 'fixtures', 'sbom', 'sample-spdx.json')
 
 interface ConsoleMessage {
   type: string
@@ -29,83 +26,59 @@ function getErrors(messages: ConsoleMessage[]): ConsoleMessage[] {
   return messages.filter((m) => m.type === 'error' || m.type === 'pageerror')
 }
 
-async function gotoDashboard(page: Page) {
-  await page.goto('/dashboard', { waitUntil: 'networkidle', timeout: 30000 })
-  await page.waitForTimeout(2000)
-  await expect(page.locator('#root')).not.toBeEmpty({ timeout: 15000 })
-}
-
-async function clearStorage(page: Page) {
-  await page.evaluate(() => {
-    localStorage.clear()
-    sessionStorage.clear()
-  })
-}
-
-async function createProject(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: 'New Project' }).click()
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
-  await page.locator('#project-name').fill(name)
-  await page.getByRole('button', { name: 'Create Project' }).click()
-  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 })
-}
-
-async function navigateToProject(page: Page, name: string): Promise<void> {
-  await page.locator('.group.rounded-lg.border').filter({ hasText: name }).first().click()
-  await expect(page.getByRole('heading', { name: new RegExp(name, 'i') })).toBeVisible({ timeout: 10000 })
-}
-
-async function uploadSbom(page: Page, filePath: string): Promise<void> {
-  const uploadButton = page.getByRole('button', { name: /upload sbom/i }).first()
-  await uploadButton.waitFor({ state: 'visible', timeout: 10000 })
-  await uploadButton.click({ force: true })
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible({ timeout: 10000 })
-  const fileInput = dialog.locator('input[type="file"]')
-  await fileInput.setInputFiles(filePath)
-  const confirmButton = dialog.getByRole('button', { name: /add to project/i })
-  const errorButton = dialog.getByRole('button', { name: /try again/i })
-  // Parsing may auto-open the modal "CPE Estimation Required" dialog on top; as a stacked Radix
-  // modal it inerts the underlying Add to Project button, so wait for whichever of the three
-  // appears and dismiss the CPE dialog before waiting on the success/error button.
-  const cpeDialog = page.getByRole('dialog', { name: /cpe|match|estimation/i })
-  await Promise.race([
-    confirmButton.waitFor({ state: 'visible', timeout: 30000 }),
-    errorButton.waitFor({ state: 'visible', timeout: 30000 }),
-    cpeDialog.waitFor({ state: 'visible', timeout: 30000 }),
-  ])
-  if (await cpeDialog.isVisible().catch(() => false)) {
-    const skipButton = cpeDialog.getByRole('button', { name: /skip|cancel|close/i }).first()
-    if (await skipButton.isVisible().catch(() => false)) {
-      await skipButton.click()
-      await page.waitForTimeout(500)
-    }
-    await Promise.race([
-      confirmButton.waitFor({ state: 'visible', timeout: 10000 }),
-      errorButton.waitFor({ state: 'visible', timeout: 10000 }),
-    ])
-  }
-  if (await confirmButton.isVisible().catch(() => false)) {
-    await confirmButton.click({ force: true })
-    await page.waitForTimeout(500)
-  }
-  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 })
-}
-
+/**
+ * Full Assessment Workflow — Console Error Audit
+ *
+ * Unlike security-assessment.spec.ts and vulnerability-lifecycle.spec.ts (content contracts for
+ * one feature at a time), this spec drives the full multi-step journey — create → upload SBOM →
+ * every project tab → Export → False Positive Filter → Settings → Search — and asserts ZERO
+ * console errors/hydration failures accumulate across the whole sequence. It complements the
+ * static per-route audit in ../critical-flows/console-error-audit.spec.ts, which only loads each
+ * route cold and never drives a multi-step flow.
+ *
+ * Project setup/navigation/upload reuse the shared, already-proven helpers in ../shared-helpers
+ * and ../test-helper (createProjectOnly, navigateToProjectDetail, uploadSbomFile, resetAppState)
+ * rather than re-implementing them — navigateToProjectDetail specifically waits for the project
+ * route AND a level-1 heading match, because the Dashboard's ProjectCard renders the same project
+ * name in an <h3> (ProjectCard.tsx:63): a level-less heading matcher would be satisfied by that
+ * stale card before the SPA route actually changes, racing every step that follows.
+ *
+ * Every step interacts UNCONDITIONALLY (no `if (await x.isVisible().catch(() => false))` guards)
+ * because the elements targeted are never conditionally rendered:
+ *   - ProjectDetail.tsx's TABS is a static array — Components/Vulnerabilities/Health tabs always
+ *     render regardless of scan state (ProjectDetail.tsx:28-33)
+ *   - ProjectDetail.tsx's header always renders "Export" and "False Positive Filter" buttons
+ *     (ProjectDetail.tsx:250-256, :271-277), independent of project.components/vulnerabilities
+ *   - shell/Sidebar.tsx's MAIN_NAV always renders "Search" and "Settings" links (Sidebar.tsx:29, :121)
+ * A guard here would only ever hide a genuine breakage (element removed/renamed) behind a
+ * trivially-true "zero errors" assertion, so it is removed in favor of the unconditional action:
+ * if the target disappears, the click/expect itself now fails loudly instead of the test staying
+ * green for the wrong reason.
+ *
+ * Content assertions grounded in source (added so a broken tab/page fails on its own, not just
+ * via "no console error"):
+ *   - project-detail/VulnerabilitiesTab.tsx:215 — "Vulnerabilities (0)" (the fixture embeds no
+ *     vulnerabilities and uploading never triggers a scan — SbomUploadDialog.tsx merges only
+ *     the parsed SBOM's own vulnerabilities array)
+ *   - project-detail/ComponentsTab.tsx:35 — "Components (5)" for the 5-library fixture; each row
+ *     is a role="button" element carrying name+version (lodash@4.17.15)
+ *   - project-detail/HealthTab.tsx:59 — "Component Health Dashboard" (unconditional heading)
+ *   - components/ExportDialog.tsx:98 — DialogTitle "Export Data"
+ *   - FalsePositiveFilter.tsx / PageHeader — <h1> "False Positive Filter"
+ *   - Settings.tsx / Search.tsx — PageHeader <h1> "Settings" / "Search"
+ */
 test.describe('Full Assessment Workflow — Console Error Audit', () => {
   const messages: ConsoleMessage[] = []
 
   test.beforeEach(async ({ page }) => {
     messages.length = 0
     collectConsole(page, messages)
-    await gotoDashboard(page)
-    await clearStorage(page)
-    await page.reload({ waitUntil: 'networkidle', timeout: 30000 })
-    await page.waitForTimeout(2000)
+    await resetAppState(page)
+    await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
   test('Step 1: Create project with zero console errors', async ({ page }) => {
-    await createProject(page, 'Workflow Test')
+    await createProjectOnly(page, 'Workflow Test')
     await page.waitForTimeout(2000)
 
     const errors = getErrors(messages)
@@ -114,9 +87,9 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 2: Upload CycloneDX SBOM with zero console errors', async ({ page }) => {
-    await createProject(page, 'SBOM Upload Test')
-    await navigateToProject(page, 'SBOM Upload Test')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'SBOM Upload Test')
+    await navigateToProjectDetail(page, 'SBOM Upload Test')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(3000)
 
     const errors = getErrors(messages)
@@ -125,9 +98,9 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 3: Upload SPDX SBOM with zero console errors', async ({ page }) => {
-    await createProject(page, 'SPDX Upload Test')
-    await navigateToProject(page, 'SPDX Upload Test')
-    await uploadSbom(page, spdxSample)
+    await createProjectOnly(page, 'SPDX Upload Test')
+    await navigateToProjectDetail(page, 'SPDX Upload Test')
+    await uploadSbomFile(page, spdxSample)
     await page.waitForTimeout(3000)
 
     const errors = getErrors(messages)
@@ -136,23 +109,17 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 4: Component list renders with version numbers after upload', async ({ page }) => {
-    await createProject(page, 'Version Test')
-    await navigateToProject(page, 'Version Test')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'Version Test')
+    await navigateToProjectDetail(page, 'Version Test')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(2000)
 
-    await page.getByRole('tab', { name: /components/i }).click()
-    await page.waitForTimeout(2000)
-
-    const hasVersion = await page.evaluate(() => {
-      // The AppShell content region is `#main-content` (the skip-link target). The project-detail
-      // tabs are hand-rolled (no [role="tabpanel"]) and the component list uses buttons (no <tbody>),
-      // so query the content container directly and assert a version (e.g. 4.17.15) is rendered.
-      const main = document.getElementById('main-content')
-      if (main === null) return false
-      return /\d+\.\d+/.test(main.textContent ?? '')
-    })
-    expect(hasVersion, 'No version numbers found in components').toBeTruthy()
+    // ComponentsTab.tsx renders each of the fixture's 5 libraries as a role="button" row; the
+    // lodash row carries its exact version, so this fails if versions stop rendering.
+    const main = page.locator('#main-content')
+    await main.getByRole('tab', { name: 'Components' }).click()
+    await expect(main.getByRole('heading', { name: 'Components (5)' })).toBeVisible({ timeout: 10000 })
+    await expect(main.getByRole('button').filter({ hasText: 'lodash' })).toContainText('4.17.15')
 
     const errors = getErrors(messages)
     for (const e of errors) console.log(`[ERROR] version-numbers: "${e.text}"`)
@@ -160,16 +127,17 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 5: Vulnerabilities tab renders without console errors', async ({ page }) => {
-    await createProject(page, 'Vuln Tab Test')
-    await navigateToProject(page, 'Vuln Tab Test')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'Vuln Tab Test')
+    await navigateToProjectDetail(page, 'Vuln Tab Test')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(2000)
 
-    const vulnTab = page.getByRole('tab', { name: /vulnerabilities/i })
-    if (await vulnTab.isVisible().catch(() => false)) {
-      await vulnTab.click()
-      await page.waitForTimeout(3000)
-    }
+    // The Vulnerabilities tab always renders (static TABS array); the fixture carries no
+    // embedded vulnerabilities and upload never triggers a scan, so the count is deterministically 0.
+    const main = page.locator('#main-content')
+    await main.getByRole('tab', { name: 'Vulnerabilities' }).click()
+    await expect(main.getByRole('heading', { name: 'Vulnerabilities (0)' })).toBeVisible({ timeout: 10000 })
+    await page.waitForTimeout(2000)
 
     const errors = getErrors(messages)
     for (const e of errors) console.log(`[ERROR] vuln-tab: "${e.text}"`)
@@ -177,16 +145,16 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 6: Health tab renders without console errors', async ({ page }) => {
-    await createProject(page, 'Health Tab Test')
-    await navigateToProject(page, 'Health Tab Test')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'Health Tab Test')
+    await navigateToProjectDetail(page, 'Health Tab Test')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(2000)
 
-    const healthTab = page.getByRole('tab', { name: /health/i })
-    if (await healthTab.isVisible().catch(() => false)) {
-      await healthTab.click()
-      await page.waitForTimeout(3000)
-    }
+    // The Health tab always renders, and its dashboard heading is unconditional.
+    const main = page.locator('#main-content')
+    await main.getByRole('tab', { name: 'Health' }).click()
+    await expect(main.getByRole('heading', { name: 'Component Health Dashboard' })).toBeVisible({ timeout: 10000 })
+    await page.waitForTimeout(2000)
 
     const errors = getErrors(messages)
     for (const e of errors) console.log(`[ERROR] health-tab: "${e.text}"`)
@@ -194,11 +162,12 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 7: Settings page — Database status without errors', async ({ page }) => {
-    await page
-      .getByRole('link', { name: /settings/i })
-      .or(page.getByRole('button', { name: /settings/i }))
-      .first()
-      .click()
+    // Settings is always a sidebar nav link; Settings.tsx's PageHeader renders an unconditional
+    // <h1>Settings</h1>.
+    await page.getByRole('link', { name: 'Settings' }).click()
+    await expect(page.locator('#main-content').getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible({
+      timeout: 10000,
+    })
     await page.waitForTimeout(3000)
 
     const errors = getErrors(messages)
@@ -207,21 +176,17 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 8: Export dialog opens and closes without errors', async ({ page }) => {
-    await createProject(page, 'Export Test')
-    await navigateToProject(page, 'Export Test')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'Export Test')
+    await navigateToProjectDetail(page, 'Export Test')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(2000)
 
-    const exportBtn = page.getByRole('button', { name: /export/i }).first()
-    if (await exportBtn.isVisible().catch(() => false)) {
-      await exportBtn.click()
-      await page.waitForTimeout(1500)
-      const dialog = page.getByRole('dialog')
-      if (await dialog.isVisible().catch(() => false)) {
-        await page.keyboard.press('Escape')
-        await page.waitForTimeout(500)
-      }
-    }
+    // The Export button always renders in the ProjectDetail header (no disabled/hidden state).
+    await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('Export Data')).toBeVisible({ timeout: 10000 })
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible({ timeout: 5000 })
 
     const errors = getErrors(messages)
     for (const e of errors) console.log(`[ERROR] export: "${e.text}"`)
@@ -229,20 +194,19 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 9: FPF (False Positive Filter) page without errors', async ({ page }) => {
-    await createProject(page, 'FPF Test')
-    await navigateToProject(page, 'FPF Test')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'FPF Test')
+    await navigateToProjectDetail(page, 'FPF Test')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(2000)
 
-    const fpfBtn = page.getByRole('button', { name: /false positive|fpf/i })
-    const fpfLink = page.getByRole('link', { name: /false positive|fpf/i })
-    if (await fpfBtn.isVisible().catch(() => false)) {
-      await fpfBtn.click()
-      await page.waitForTimeout(3000)
-    } else if (await fpfLink.isVisible().catch(() => false)) {
-      await fpfLink.click()
-      await page.waitForTimeout(3000)
-    }
+    // "False Positive Filter" is always a header button on ProjectDetail; it navigates to
+    // /project/:id/fpf, whose PageHeader renders an <h1> with that text.
+    await page.getByRole('button', { name: 'False Positive Filter' }).click()
+    await expect(page).toHaveURL(/\/project\/[^/]+\/fpf$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'False Positive Filter' })).toBeVisible({
+      timeout: 10000,
+    })
+    await page.waitForTimeout(3000)
 
     const errors = getErrors(messages)
     for (const e of errors) console.log(`[ERROR] fpf: "${e.text}"`)
@@ -250,11 +214,12 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 10: Search page renders without console errors', async ({ page }) => {
-    await page
-      .getByRole('link', { name: /search/i })
-      .or(page.getByRole('button', { name: /search/i }))
-      .first()
-      .click()
+    // Search is always a sidebar nav link; Search.tsx's PageHeader renders an unconditional
+    // <h1>Search</h1>.
+    await page.getByRole('link', { name: 'Search' }).click()
+    await expect(page.locator('#main-content').getByRole('heading', { level: 1, name: 'Search' })).toBeVisible({
+      timeout: 10000,
+    })
     await page.waitForTimeout(3000)
 
     const errors = getErrors(messages)
@@ -263,40 +228,26 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 11: Full workflow — create → upload → tabs → export — zero errors', async ({ page }) => {
-    await createProject(page, 'Full Workflow')
-    await navigateToProject(page, 'Full Workflow')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'Full Workflow')
+    await navigateToProjectDetail(page, 'Full Workflow')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(2000)
 
-    await page.getByRole('tab', { name: /components/i }).click()
-    await page.waitForTimeout(1500)
+    const main = page.locator('#main-content')
+    await main.getByRole('tab', { name: 'Components' }).click()
+    await expect(main.getByRole('heading', { name: 'Components (5)' })).toBeVisible({ timeout: 10000 })
 
-    const vulnTab = page.getByRole('tab', { name: /vulnerabilities/i })
-    if (await vulnTab.isVisible().catch(() => false)) {
-      await vulnTab.click()
-      await page.waitForTimeout(2000)
-    }
+    await main.getByRole('tab', { name: 'Vulnerabilities' }).click()
+    await expect(main.getByRole('heading', { name: 'Vulnerabilities (0)' })).toBeVisible({ timeout: 10000 })
 
-    const healthTab = page.getByRole('tab', { name: /health/i })
-    if (await healthTab.isVisible().catch(() => false)) {
-      await healthTab.click()
-      await page.waitForTimeout(2000)
-    }
+    await main.getByRole('tab', { name: 'Health' }).click()
+    await expect(main.getByRole('heading', { name: 'Component Health Dashboard' })).toBeVisible({ timeout: 10000 })
 
-    const exportBtn = page.getByRole('button', { name: /export/i }).first()
-    if (await exportBtn.isVisible().catch(() => false)) {
-      await exportBtn.click()
-      await page.waitForTimeout(1000)
-      if (
-        await page
-          .getByRole('dialog')
-          .isVisible()
-          .catch(() => false)
-      ) {
-        await page.keyboard.press('Escape')
-        await page.waitForTimeout(500)
-      }
-    }
+    await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('Export Data')).toBeVisible({ timeout: 10000 })
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible({ timeout: 5000 })
 
     await page.waitForTimeout(2000)
     const errors = getErrors(messages)
@@ -305,9 +256,9 @@ test.describe('Full Assessment Workflow — Console Error Audit', () => {
   })
 
   test('Step 12: No hydration or undefined-property errors in any workflow', async ({ page }) => {
-    await createProject(page, 'Hydration Check')
-    await navigateToProject(page, 'Hydration Check')
-    await uploadSbom(page, cycloneDxSample)
+    await createProjectOnly(page, 'Hydration Check')
+    await navigateToProjectDetail(page, 'Hydration Check')
+    await uploadSbomFile(page, cycloneDxSample)
     await page.waitForTimeout(3000)
 
     const bad = messages.filter(
