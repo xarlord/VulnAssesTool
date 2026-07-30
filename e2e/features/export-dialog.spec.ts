@@ -15,6 +15,33 @@ import fs from 'node:fs'
 
 const FIXTURES_DIR = path.join(import.meta.dirname, '..', 'fixtures', 'sbom')
 
+/**
+ * Export Dialog — content contracts
+ *
+ * Hardens the vacuous `if (count > 0) { assert }` / `expect(typeof x).toBe('boolean')` /
+ * unscoped-selector guards against the shipped ExportDialog. Grounding:
+ *   - components/ExportDialog.tsx — DialogTitle "Export Data"; three format buttons (CSV/JSON/PDF,
+ *     no "Excel") with `aria-pressed={selectedFormat === format.value}`; for a single project, three
+ *     mutually-exclusive data-type buttons ("Full Project Report" / "Vulnerabilities Only" /
+ *     "Components Only") under a "Data Type" label — not checkboxes — defaulting to "Vulnerabilities
+ *     Only" selected; no spinner or toast anywhere in the file. The only "exporting" indicator is the
+ *     Export button's text flipping to "Exporting..." while `disabled={isExporting}`, and the dialog
+ *     closes itself (`onClose()`) the instant the export call returns, so that state has no stable
+ *     window to observe end-to-end without mocking the export module.
+ *   - components/ui/dialog.tsx — DialogOverlay is `fixed inset-0 z-50` with no onPointerDownOutside
+ *     override, so Radix's default "click outside closes" behavior applies.
+ *   - pages/Dashboard.tsx — the Dashboard's ExportDialog is ALWAYS opened with `projects` and never
+ *     `project` (both the "Export All" button and the bulk-selection "Export" button), so
+ *     `isAllProjects` is always true there and the dialog's only data-type option is "All Projects
+ *     Summary". The single-project data-type buttons only exist behind Project Detail's "Export"
+ *     button (which passes `project`), so tests targeting those buttons must open the dialog from
+ *     Project Detail, not via the Dashboard/openExportDialog helper.
+ *
+ * Tests that would require breaking/mocking the export module to observe a transient state (the
+ * disabled/"Exporting..." window, a forced export error, a non-existent toast) are skipped with a
+ * reason instead of asserting something fake.
+ */
+
 test.describe('Export Dialog', () => {
   test.beforeEach(async ({ page }) => {
     await resetAppState(page)
@@ -41,13 +68,9 @@ test.describe('Export Dialog', () => {
       // a re-render that closes the just-opened Radix dialog.
       await page.waitForTimeout(E2E_UI_DELAY)
 
-      const exportButton = page.locator('button:has-text("Export")')
-      if ((await exportButton.count()) > 0) {
-        await exportButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        await expect(page.locator('[role="dialog"]')).toBeVisible()
-      }
+      // The project detail header always has an "Export" button - no guard needed.
+      await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+      await expect(page.getByRole('dialog')).toBeVisible()
     })
 
     test('should close dialog with Cancel button', async ({ page }) => {
@@ -74,23 +97,19 @@ test.describe('Export Dialog', () => {
       await createProjectOnly(page, 'Export Outside Click Test')
       await openExportDialog(page)
 
+      // DialogOverlay is `fixed inset-0 z-50` (components/ui/dialog.tsx) with no
+      // onPointerDownOutside override, so Radix's default outside-click-closes behavior applies.
       await page.mouse.click(10, 10)
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Dialog may or may not close depending on overlay click handler
-      const dialogVisible = await page
-        .locator('[role="dialog"]')
-        .isVisible()
-        .catch(() => false)
-      expect(typeof dialogVisible).toBe('boolean')
+      await expect(page.getByRole('dialog')).not.toBeVisible()
     })
 
     test('should show dialog title', async ({ page }) => {
       await createProjectOnly(page, 'Export Title Test')
       await openExportDialog(page)
 
-      const title = page.locator('[role="dialog"] h2, [role="dialog"] h3')
-      await expect(title).toBeVisible()
+      // Scoped to the dialog - createProjectOnly leaves an unrelated <h3> project card on the
+      // dashboard, which an unscoped heading selector would match regardless of this title.
+      await expect(page.getByRole('dialog').getByText('Export Data')).toBeVisible()
     })
   })
 
@@ -103,8 +122,11 @@ test.describe('Export Dialog', () => {
       await createProjectOnly(page, 'Format Options Test')
       await openExportDialog(page)
 
-      const formats = page.locator('text=/PDF|CSV|JSON|Excel/i')
-      await expect(formats.first()).toBeVisible()
+      // The exact three formats ExportDialog.tsx renders - no "Excel" exists.
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByRole('button', { name: 'CSV' })).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'JSON' })).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'PDF' })).toBeVisible()
     })
 
     for (const format of ['PDF', 'CSV', 'JSON']) {
@@ -121,32 +143,30 @@ test.describe('Export Dialog', () => {
       await createProjectOnly(page, 'Format Select Test')
       await openExportDialog(page)
 
-      const pdfButton = page.getByRole('button', { name: /PDF/i })
-      if ((await pdfButton.count()) > 0) {
-        await pdfButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      // The PDF format button always exists - no guard needed.
+      const pdfButton = page.getByRole('dialog').getByRole('button', { name: 'PDF' })
+      await pdfButton.click()
 
-        await expect(pdfButton.first()).toHaveAttribute('aria-pressed', 'true')
-      }
+      await expect(pdfButton).toHaveAttribute('aria-pressed', 'true')
     })
 
     test('should allow only one format selection', async ({ page }) => {
       await createProjectOnly(page, 'Single Format Test')
       await openExportDialog(page)
 
-      const pdfOption = page.locator('text=PDF')
-      const csvOption = page.locator('text=CSV')
+      // aria-pressed mirrors the single-value selectedFormat state (ExportDialog.tsx), so
+      // selecting one format must deselect whichever one was previously selected.
+      const dialog = page.getByRole('dialog')
+      const pdfButton = dialog.getByRole('button', { name: 'PDF' })
+      const csvButton = dialog.getByRole('button', { name: 'CSV' })
 
-      if ((await pdfOption.count()) > 0 && (await csvOption.count()) > 0) {
-        await pdfOption.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-        await csvOption.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      await pdfButton.click()
+      await expect(pdfButton).toHaveAttribute('aria-pressed', 'true')
+      await expect(csvButton).toHaveAttribute('aria-pressed', 'false')
 
-        const selected = page.locator('[class*="selected"], [class*="active"]')
-        const count = await selected.count()
-        expect(count).toBeLessThanOrEqual(2)
-      }
+      await csvButton.click()
+      await expect(csvButton).toHaveAttribute('aria-pressed', 'true')
+      await expect(pdfButton).toHaveAttribute('aria-pressed', 'false')
     })
   })
 
@@ -168,23 +188,44 @@ test.describe('Export Dialog', () => {
       await expect(scopeOption.first()).toBeVisible({ timeout: 5000 })
     })
 
-    test('should show include options', async ({ page }) => {
-      await createProjectOnly(page, 'Include Options Test')
-      await openExportDialog(page)
+    test('should show data type options', async ({ page }) => {
+      await createTestProject(page, 'Data Type Options Test')
+      // The single-project data-type buttons only render when ExportDialog gets a `project` prop.
+      // The Dashboard's dialog (openExportDialog) always passes `projects` instead (isAllProjects
+      // = true — see pages/Dashboard.tsx's ExportDialog usage), so this must be opened via Project
+      // Detail's "Export" button, same as the "should open export dialog from project detail" test.
+      await page.waitForTimeout(E2E_UI_DELAY)
+      await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
 
-      const includeOption = page.locator('text=/Include|Components|Vulnerabilities/i')
-      await expect(includeOption.first()).toBeVisible({ timeout: 5000 })
+      // ExportDialog has no "Include" toggles - a single-project export offers three
+      // mutually-exclusive data-type buttons under the "Data Type" label.
+      await expect(dialog.getByRole('button', { name: 'Full Project Report' })).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'Vulnerabilities Only' })).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'Components Only' })).toBeVisible()
     })
 
-    test('should toggle include options', async ({ page }) => {
-      await createProjectOnly(page, 'Toggle Include Test')
-      await openExportDialog(page)
+    test('should switch data type selection on click', async ({ page }) => {
+      await createTestProject(page, 'Toggle Data Type Test')
+      // Same as above: the single-value/aria-pressed data-type buttons require the project-detail
+      // "Export" button (project prop) - the Dashboard's dialog only ever offers "All Projects
+      // Summary" (isAllProjects = true, see pages/Dashboard.tsx).
+      await page.waitForTimeout(E2E_UI_DELAY)
+      await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
 
-      const checkbox = page.locator('input[type="checkbox"]').first()
-      if ((await checkbox.count()) > 0) {
-        await checkbox.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+      // No checkbox exists in ExportDialog.tsx - data-type selection is single-value with
+      // aria-pressed mirroring state, defaulting to "Vulnerabilities Only".
+      const vulnButton = dialog.getByRole('button', { name: 'Vulnerabilities Only' })
+      const componentsButton = dialog.getByRole('button', { name: 'Components Only' })
+
+      await expect(vulnButton).toHaveAttribute('aria-pressed', 'true')
+
+      await componentsButton.click()
+      await expect(componentsButton).toHaveAttribute('aria-pressed', 'true')
+      await expect(vulnButton).toHaveAttribute('aria-pressed', 'false')
     })
   })
 
@@ -201,28 +242,17 @@ test.describe('Export Dialog', () => {
       await expect(exportButton).toBeVisible()
     })
 
-    test('should disable Export button while exporting', async ({ page }) => {
-      await createProjectOnly(page, 'Export Disable Test')
-      await openExportDialog(page)
-
-      const exportButton = page.locator('button:has-text("Export")').last()
-      await exportButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const isDisabled = await exportButton.isDisabled().catch(() => true)
-      expect(typeof isDisabled).toBe('boolean')
+    test.skip('should disable Export button while exporting', async () => {
+      // isExporting flips synchronously on click, but ExportDialog calls onClose() the instant
+      // the export call resolves (ExportDialog.tsx), so there is no stable window to observe
+      // `disabled` end-to-end without mocking the export module (see ExportDialog.test.tsx's
+      // controlled-promise mock, which the E2E layer has no equivalent for).
     })
 
-    test('should show loading indicator during export', async ({ page }) => {
-      await createProjectOnly(page, 'Export Loading Test')
-      await openExportDialog(page)
-
-      const exportButton = page.locator('button:has-text("Export")').last()
-      await exportButton.click()
-
-      const spinner = page.locator('.animate-spin, [class*="loading"]')
-      const spinnerVisible = await spinner.isVisible().catch(() => false)
-      expect(typeof spinnerVisible).toBe('boolean')
+    test.skip('should show loading indicator during export', async () => {
+      // ExportDialog has no spinner/loading element - the only "exporting" indicator is the
+      // Export button's text flipping to "Exporting...", which has the same unobservable
+      // transient window as the disabled-button skip above.
     })
 
     test('should close dialog after successful export', async ({ page }) => {
@@ -238,29 +268,15 @@ test.describe('Export Dialog', () => {
       expect(isVisible).toBe(false)
     })
 
-    test('should show success toast after export', async ({ page }) => {
-      await createProjectOnly(page, 'Export Toast Test')
-      await openExportDialog(page)
-
-      const exportButton = page.locator('button:has-text("Export")').last()
-      await exportButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
-
-      const successToast = page.locator('text=/Export.*success|Downloaded|Complete/i')
-      const toastVisible = await successToast.isVisible().catch(() => false)
-      expect(typeof toastVisible).toBe('boolean')
+    test.skip('should show success toast after export', async () => {
+      // No toast is wired to export: ExportDialog.tsx's handleExport only calls onClose() on
+      // success - there is no toast.success/Toaster call anywhere in the file.
     })
 
-    test('should handle export errors gracefully', async ({ page }) => {
-      await createProjectOnly(page, 'Export Error Test')
-      await openExportDialog(page)
-
-      const exportButton = page.locator('button:has-text("Export")').last()
-      await exportButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      // Verify no unhandled errors - page should remain responsive
-      await expect(page.locator('body')).toBeVisible()
+    test.skip('should handle export errors gracefully', async () => {
+      // Forcing handleExport's catch branch requires breaking the dynamic import of the export
+      // module or corrupting project data - not reachable through UI interaction in this
+      // offline, unmocked suite.
     })
   })
 

@@ -1,6 +1,28 @@
 import { test, expect, resetAppState } from '../test-helper'
 import type { Page } from '@playwright/test'
-import { createProjectOnly, E2E_UI_DELAY } from '../shared-helpers'
+import { createProjectOnly, E2E_UI_DELAY, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
+
+/**
+ * Bulk Actions — content contracts
+ *
+ * Dashboard.tsx owns all bulk-selection state (`isBulkMode`, `selectedProjectIds`); its markup
+ * is the single source of truth for every assertion below:
+ *   - "Select Projects" / "Exit Selection" toggle button (Dashboard.tsx:319-329), rendered only
+ *     when projects.length > 0
+ *   - Select-all + per-row checkboxes: native <input type="checkbox"> (Dashboard.tsx:409-444)
+ *   - Bulk actions bar (Dashboard.tsx:333-359): "<N> project(s) selected" text, "Clear selection",
+ *     and exact "Export"/"Delete" buttons — rendered only while selectedProjectIds.size > 0
+ *   - Bulk delete confirms via the Radix ConfirmDialog (Dashboard.tsx:477-488; ui/confirm-dialog.tsx),
+ *     title "Delete selected projects", confirm button "Delete", cancel button "Cancel" —
+ *     NOT a native window.confirm(), so `page.once('dialog', ...)` handlers never fire
+ *   - Bulk export opens the shared ExportDialog (components/ExportDialog.tsx:98), titled
+ *     "Export Data"
+ *   - Each project card renders as a `.group` element (components/ProjectCard.tsx:50)
+ *
+ * "should show success toast after bulk operation" is skipped: handleBulkAction('delete')
+ * (Dashboard.tsx:208-218) calls deleteProject() in a loop with no toast.success() call anywhere
+ * in that path (store/useStore.ts deleteProject) — there is no success toast to assert.
+ */
 
 test.describe('Bulk Actions', () => {
   test.beforeEach(async ({ page }) => {
@@ -41,17 +63,16 @@ test.describe('Bulk Actions', () => {
       await createMultipleProjects(page, 3)
       await enterSelectionMode(page)
 
-      // Click "Exit Selection" to exit bulk mode
-      const exitButton = page.getByRole('button', { name: /exit selection/i })
-      if (await exitButton.isVisible()) {
-        await exitButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      // The toggle button is the same element, relabelled "Exit Selection" while isBulkMode is
+      // true (Dashboard.tsx:327) — it is unconditionally present once selection mode is entered.
+      const exitButton = page.getByRole('button', { name: 'Exit Selection', exact: true })
+      await expect(exitButton).toBeVisible()
+      await exitButton.click()
+      await page.waitForTimeout(E2E_UI_DELAY)
 
-        // Checkboxes should be gone
-        const checkboxes = page.getByRole('checkbox')
-        const count = await checkboxes.count()
-        expect(count).toBe(0)
-      }
+      // Checkboxes should be gone
+      const checkboxes = page.getByRole('checkbox')
+      await expect(checkboxes).toHaveCount(0)
     })
 
     test('should show select all option', async ({ page }) => {
@@ -114,10 +135,9 @@ test.describe('Bulk Actions', () => {
       await createMultipleProjects(page, 3)
       await selectMultipleProjects(page, 2)
 
-      // Should show count like "2 selected"
-      const countText = page.locator('text=/\\d+ selected/i')
-      // Count text is optional on some viewports
-      await countText.isVisible().catch(() => false)
+      // Dashboard.tsx:337 renders `{size} project{s if plural} selected` — with 2 selected
+      // that is the literal string "2 projects selected".
+      await expect(page.getByText('2 projects selected')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
     })
 
     test('should toggle selection on click', async ({ page }) => {
@@ -188,17 +208,16 @@ test.describe('Bulk Actions', () => {
       await createMultipleProjects(page, 3)
       await selectMultipleProjects(page, 2)
 
-      // Clear selection by clicking "Clear selection" button
-      const clearButton = page.getByRole('button', { name: /clear selection/i })
-      if (await clearButton.isVisible()) {
-        await clearButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      // "Clear selection" is unconditionally rendered inside the bulk actions bar
+      // (Dashboard.tsx:339) whenever selectedProjectIds.size > 0 — no visibility guard needed.
+      const clearButton = page.getByRole('button', { name: 'Clear selection' })
+      await clearButton.click()
+      await page.waitForTimeout(E2E_UI_DELAY)
 
-        // Action bar should be gone (selection count text hidden)
-        const selectionText = page.getByText(/\d+ project.*selected/i)
-        const isVisible = await selectionText.isVisible().catch(() => false)
-        expect(isVisible).toBe(false)
-      }
+      // The action bar (and its "N selected" text) is gated on selectedProjectIds.size > 0
+      // (Dashboard.tsx:333), so clearing the selection removes it.
+      const selectionText = page.getByText(/\d+ project.*selected/i)
+      await expect(selectionText).not.toBeVisible()
     })
   })
 
@@ -215,18 +234,15 @@ test.describe('Bulk Actions', () => {
       const deleteButton = page.getByRole('button', { name: 'Delete', exact: true })
       await deleteButton.click()
 
-      // Bulk delete now confirms via the in-app ConfirmDialog (Radix dialog),
+      // Bulk delete confirms via the in-app ConfirmDialog (Radix dialog, Dashboard.tsx:477-488),
       // not native confirm() - accept by clicking its "Delete" confirm button.
       const confirmDialog = page.getByRole('dialog')
       await expect(confirmDialog).toBeVisible()
       await confirmDialog.getByRole('button', { name: 'Delete', exact: true }).click()
 
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      // Projects should be deleted
+      // Exactly 1 of the 3 created projects remains — the other 2 were the deleted selection.
       const projectCards = page.locator('.group')
-      const count = await projectCards.count()
-      expect(count).toBeLessThanOrEqual(1) // Only 1 should remain
+      await expect(projectCards).toHaveCount(1, { timeout: E2E_SELECTOR_TIMEOUT })
     })
 
     test('should export selected projects', async ({ page }) => {
@@ -236,12 +252,11 @@ test.describe('Bulk Actions', () => {
       // Use exact match - "Export" in action bar (not "Export All")
       const exportButton = page.getByRole('button', { name: 'Export', exact: true })
       await exportButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
 
-      // Export dialog should appear
+      // handleBulkAction('export') opens the shared ExportDialog (Dashboard.tsx:215-217),
+      // titled "Export Data" (components/ExportDialog.tsx:98).
       const dialog = page.getByRole('dialog')
-      // Dialog may or may not appear depending on implementation
-      await dialog.isVisible().catch(() => false)
+      await expect(dialog.getByText('Export Data')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
     })
 
     test('should show confirmation before destructive action', async ({ page }) => {
@@ -249,20 +264,18 @@ test.describe('Bulk Actions', () => {
       await selectMultipleProjects(page, 2)
 
       const deleteButton = page.getByRole('button', { name: 'Delete', exact: true })
-
-      // Set up dialog handler BEFORE clicking
-      page.once('dialog', async (dialog) => {
-        expect(dialog.type()).toBe('confirm')
-        await dialog.dismiss()
-      })
       await deleteButton.click()
 
-      await page.waitForTimeout(E2E_UI_DELAY)
+      // Bulk delete confirms via the in-app ConfirmDialog (Radix dialog, Dashboard.tsx:477-488) —
+      // not a native confirm(), so no window 'dialog' event is ever emitted here.
+      const confirmDialog = page.getByRole('dialog')
+      await expect(confirmDialog.getByText('Delete selected projects')).toBeVisible()
+      await expect(confirmDialog.getByRole('button', { name: 'Delete', exact: true })).toBeVisible()
+      await expect(confirmDialog.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
 
-      // Projects should still exist since we cancelled
+      // Nothing has been confirmed yet, so all 3 projects still exist.
       const projectCards = page.locator('.group')
-      const count = await projectCards.count()
-      expect(count).toBeGreaterThanOrEqual(3)
+      await expect(projectCards).toHaveCount(3)
     })
 
     test('should cancel bulk delete', async ({ page }) => {
@@ -270,39 +283,23 @@ test.describe('Bulk Actions', () => {
       await selectMultipleProjects(page, 2)
 
       const deleteButton = page.getByRole('button', { name: 'Delete', exact: true })
-
-      // Set up dialog handler BEFORE clicking
-      page.once('dialog', async (dialog) => {
-        await dialog.dismiss()
-      })
       await deleteButton.click()
 
-      await page.waitForTimeout(E2E_UI_DELAY)
+      // Cancel via the ConfirmDialog's "Cancel" button (ui/confirm-dialog.tsx default cancelLabel).
+      const confirmDialog = page.getByRole('dialog')
+      await expect(confirmDialog).toBeVisible()
+      await confirmDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(confirmDialog).not.toBeVisible()
 
       // Projects should still exist
       const projectCards = page.locator('.group')
-      const count = await projectCards.count()
-      expect(count).toBeGreaterThanOrEqual(3)
+      await expect(projectCards).toHaveCount(3)
     })
 
-    test('should show success toast after bulk operation', async ({ page }) => {
-      await createMultipleProjects(page, 4)
-      await selectMultipleProjects(page, 2)
-
-      const deleteButton = page.getByRole('button', { name: 'Delete', exact: true })
-      await deleteButton.click()
-
-      // Bulk delete now confirms via the in-app ConfirmDialog (Radix dialog),
-      // not native confirm() - accept by clicking its "Delete" confirm button.
-      const confirmDialog = page.getByRole('dialog')
-      await expect(confirmDialog).toBeVisible()
-      await confirmDialog.getByRole('button', { name: 'Delete', exact: true }).click()
-
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      // Check for toast or verify deletion happened
-      const remainingProjects = await page.locator('.group').count()
-      expect(remainingProjects).toBeLessThanOrEqual(2)
+    test.skip('should show success toast after bulk operation', async () => {
+      // Infeasible: handleBulkAction('delete') (Dashboard.tsx:208-218) loops deleteProject() with
+      // no toast.success() call in that path (store/useStore.ts deleteProject) — bulk delete
+      // never shows a toast, so there is nothing in shipped source to assert here.
     })
   })
 
@@ -317,10 +314,10 @@ test.describe('Bulk Actions', () => {
       await createMultipleProjects(page, 3)
       await selectMultipleProjects(page, 2)
 
-      // Check for selection count text as indicator of action bar
+      // The bulk actions bar (Dashboard.tsx:333-359) has no viewport-gated rendering, so the
+      // same "N selected" content contract applies at tablet width.
       const selectionText = page.getByText(/\d+ project.*selected/i)
-      // Selection text may or may not be visible on tablet
-      await selectionText.isVisible().catch(() => false)
+      await expect(selectionText).toBeVisible({ timeout: 5000 })
     })
 
     test('should allow selection on tablet', async ({ page }) => {
