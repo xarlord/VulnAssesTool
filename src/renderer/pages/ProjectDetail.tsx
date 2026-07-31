@@ -342,7 +342,9 @@ export function ProjectDetail() {
           project={project}
           onClose={() => setShowEditDialog(false)}
           onSave={(updates) => {
-            updateProject(project.id, updates)
+            // Stamp updatedAt here (per-caller convention — see SbomUploadDialog/handleRemoveSbom)
+            // so an edit reorders the project in updatedAt-sorted views (FR-01.1).
+            updateProject(project.id, { ...updates, updatedAt: new Date() })
             setShowEditDialog(false)
           }}
         />

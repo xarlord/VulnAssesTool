@@ -8,6 +8,7 @@ import { isValidUlid } from '@/lib/audit'
 const mockAddProject = vi.fn()
 const mockStore = {
   addProject: mockAddProject,
+  projects: [] as { name: string }[],
 }
 vi.mock('@/store/useStore', () => ({
   useStore: (selector?: (state: typeof mockStore) => unknown) => {
@@ -23,11 +24,39 @@ describe('CreateProjectDialog', () => {
     vi.clearAllMocks()
     mockAddProject.mockReset()
     mockOnClose.mockReset()
+    mockStore.projects = []
   })
 
   const renderDialog = (open: boolean = true) => {
     return render(<CreateProjectDialog open={open} onClose={mockOnClose} />)
   }
+
+  describe('Duplicate name validation (FR-01.1)', () => {
+    // WHY: the PRD requires unique project names. Two indistinguishable projects would corrupt
+    // the Dashboard list, search results, and exports — so creation must be blocked, not silently
+    // allowed. These fail if the uniqueness guard is removed.
+    it('should show an error and not create a project when the name already exists', () => {
+      mockStore.projects = [{ name: 'Test Project' }]
+      renderDialog(true)
+
+      fireEvent.change(screen.getByLabelText(/Project Name/), { target: { value: 'Test Project' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Project' }))
+
+      expect(screen.getByText('A project with this name already exists')).toBeInTheDocument()
+      expect(mockAddProject).not.toHaveBeenCalled()
+    })
+
+    it('should treat names as duplicate case-insensitively and ignoring surrounding whitespace', () => {
+      mockStore.projects = [{ name: 'Test Project' }]
+      renderDialog(true)
+
+      fireEvent.change(screen.getByLabelText(/Project Name/), { target: { value: '  test project  ' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Project' }))
+
+      expect(screen.getByText('A project with this name already exists')).toBeInTheDocument()
+      expect(mockAddProject).not.toHaveBeenCalled()
+    })
+  })
 
   describe('Rendering', () => {
     it('should not render dialog when open is false', () => {

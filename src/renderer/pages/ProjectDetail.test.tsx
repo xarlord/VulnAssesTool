@@ -2120,6 +2120,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Updated Project Name',
         description: 'A test project for vulnerability assessment',
+        updatedAt: expect.any(Date),
       })
     })
 
@@ -2176,6 +2177,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Test Project',
         description: 'Updated description',
+        updatedAt: expect.any(Date),
       })
     })
 
@@ -2197,6 +2199,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'New Project Name',
         description: 'New description',
+        updatedAt: expect.any(Date),
       })
     })
 
@@ -2216,6 +2219,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Test Project',
         description: 'Added description',
+        updatedAt: expect.any(Date),
       })
     })
   })
@@ -2642,7 +2646,22 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Updated Name',
         description: 'A test project for vulnerability assessment',
+        updatedAt: expect.any(Date),
       })
+    })
+
+    it('should stamp a fresh updatedAt on save so the edit reorders in updatedAt-sorted views (FR-01.1)', () => {
+      renderProjectDetail()
+      fireEvent.click(screen.getByText('Edit'))
+      fireEvent.change(screen.getByDisplayValue('Test Project'), { target: { value: 'Renamed' } })
+
+      const before = Date.now()
+      fireEvent.click(screen.getByText('Save Changes'))
+
+      // Stronger than expect.any(Date): a regression that reused the project's OLD updatedAt
+      // would pass a type check but fail this freshness assertion.
+      const stamped = mockUpdateProject.mock.calls[0][1].updatedAt as Date
+      expect(stamped.getTime()).toBeGreaterThanOrEqual(before)
     })
 
     it('should save with undefined description when description is empty', () => {
@@ -2658,6 +2677,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Test Project',
         description: undefined,
+        updatedAt: expect.any(Date),
       })
     })
   })

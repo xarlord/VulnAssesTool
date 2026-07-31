@@ -11,6 +11,14 @@ vi.mock('@/lib/refresh', () => ({
   refreshVulnerabilityData: vi.fn(),
 }))
 
+// Mock the server-persistence module so we can assert the delete cascade (FR-01.2) and so the
+// store's fire-and-forget network calls don't hit a real (rejecting) endpoint during tests.
+vi.mock('@/lib/api/projectPersistence', () => ({
+  saveProjectToServer: vi.fn().mockResolvedValue(undefined),
+  loadProjectFromServer: vi.fn().mockResolvedValue(null),
+  deleteProjectFromServer: vi.fn().mockResolvedValue(undefined),
+}))
+
 // Mock the settings modules
 vi.mock('@/lib/settings', () => ({
   createProfile: vi.fn(),
@@ -25,6 +33,7 @@ vi.mock('@/lib/settings', () => ({
 }))
 
 import { refreshVulnerabilityData as refreshData } from '@/lib/refresh'
+import { deleteProjectFromServer } from '@/lib/api/projectPersistence'
 import {
   createProfile,
   updateProfile,
@@ -841,6 +850,23 @@ describe('useStore', () => {
       })
 
       expect(result.current.projects).toHaveLength(0)
+    })
+
+    it('should cascade the delete to the server-persisted copy so scan data does not orphan (FR-01.2)', () => {
+      const { result } = renderHook(() => useStore())
+      const project = createMockProject({ id: 'cascade-delete-id' })
+
+      act(() => {
+        result.current.addProject(project)
+      })
+      act(() => {
+        result.current.deleteProject(project.id)
+      })
+
+      // WHY: the PRD requires deletion to cascade to associated scan results/vulnerabilities.
+      // Those live in DATA_DIR/projects/<id>.json on the server; without this call they orphan
+      // on disk after a UI delete.
+      expect(deleteProjectFromServer).toHaveBeenCalledWith('cascade-delete-id')
     })
 
     it('should delete correct project when multiple exist', () => {

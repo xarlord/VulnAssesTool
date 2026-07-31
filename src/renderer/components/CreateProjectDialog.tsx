@@ -10,6 +10,7 @@ interface CreateProjectDialogProps {
 
 export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps) {
   const addProject = useStore((s) => s.addProject)
+  const projects = useStore((s) => s.projects)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
@@ -28,10 +29,16 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
       return
     }
 
+    const trimmedName = name.trim()
+    if (projects.some((p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setError('A project with this name already exists')
+      return
+    }
+
     // Create project
     const newProject = {
       id: ulid(),
-      name: name.trim(),
+      name: trimmedName,
       description: description.trim() || undefined,
       createdAt: new Date(),
       updatedAt: new Date(),

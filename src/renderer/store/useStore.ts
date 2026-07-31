@@ -14,7 +14,7 @@ import {
   exportSettingsToFile,
   importSettingsFromFile,
 } from '@/lib/settings'
-import { saveProjectToServer, loadProjectFromServer } from '@/lib/api/projectPersistence'
+import { saveProjectToServer, loadProjectFromServer, deleteProjectFromServer } from '@/lib/api/projectPersistence'
 import {
   logProjectCreate,
   logProjectUpdate,
@@ -267,6 +267,12 @@ export const useStore = create<AppState>()(
         if (projectToDelete) {
           logProjectDelete(projectToDelete)
         }
+        // Cascade the delete to the server-persisted copy (DATA_DIR/projects/<id>.json), else
+        // scan/vulnerability payloads orphan on disk after a UI delete (FR-01.2). Fire-and-forget,
+        // matching updateProject's saveProjectToServer convention; the route is idempotent.
+        deleteProjectFromServer(id).catch((err) => {
+          console.error('[Store] Failed to delete project from server:', err)
+        })
       },
       setCurrentProject: (project) => set({ currentProject: project }),
       hydrateProjectFromServer: async (projectId: string): Promise<Project | null> => {

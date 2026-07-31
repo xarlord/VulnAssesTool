@@ -236,11 +236,14 @@ export function calculateProjectHealth(componentHealths: ComponentHealth[]): Pro
     critical: componentHealths.filter((h) => h.category === 'critical').length,
   }
 
-  // Calculate overall trend based on component trends
+  // Calculate overall trend based on component trends. If NO component has a known trend yet
+  // (production never sets previousScore until real history accrues), report 'unknown' rather
+  // than fabricating 'stable' — the dashboard shows a "No Historical Data" banner on 'unknown'.
   const improvingCount = componentHealths.filter((h) => h.trend === 'improving').length
   const degradingCount = componentHealths.filter((h) => h.trend === 'degrading').length
+  const hasKnownTrend = componentHealths.some((h) => h.trend !== 'unknown')
 
-  let trend: ProjectHealthSummary['trend'] = 'stable'
+  let trend: ProjectHealthSummary['trend'] = hasKnownTrend ? 'stable' : 'unknown'
   if (improvingCount > degradingCount * 1.5) {
     trend = 'improving'
   } else if (degradingCount > improvingCount * 1.5) {

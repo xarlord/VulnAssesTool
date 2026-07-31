@@ -372,6 +372,26 @@ describe('calculateProjectHealth', () => {
     expect(result.trend).toBe('unknown')
   })
 
+  it('should report trend as unknown (not stable) when every component trend is unknown', () => {
+    // WHY (FR-05.1): in production calculateComponentHealth never populates previousScore, so
+    // every component trend is 'unknown' until real history exists. The aggregate must NOT
+    // fabricate a 'stable' trend from that no-data state — HealthDashboard only shows its
+    // "No Historical Data Available" banner (and suppresses a misleading Stable badge) when the
+    // trend is 'unknown'. A regression that defaults to 'stable' would silently mislead users.
+    const noHistory = (id: string) => ({
+      componentId: id,
+      score: 80,
+      category: 'good' as const,
+      factors: { vulnerabilityScore: 0, ageScore: 0, patchScore: 0, versionScore: 0 },
+      trend: 'unknown' as const,
+      lastCalculated: new Date(),
+    })
+
+    const result = calculateProjectHealth([noHistory('c1'), noHistory('c2')])
+
+    expect(result.trend).toBe('unknown')
+  })
+
   it('should calculate average score correctly', () => {
     const componentHealths = [
       {
