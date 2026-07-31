@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Project, ProjectStatistics, Vulnerability } from '@@/types'
-import { hasAvailablePatch, isExploitedVuln, buildReportData } from './helpers'
+import { hasAvailablePatch, isExploitedVuln, buildReportData, matchesVulnerabilitySearch } from './helpers'
 
 function makeVuln(overrides: Partial<Vulnerability> = {}): Vulnerability {
   return {
@@ -144,5 +144,36 @@ describe('buildReportData', () => {
     expect(data.statistics.criticalCount).toBe(1)
     expect(data.statistics.totalComponents).toBe(3)
     expect(data.statistics.vulnerableComponents).toBe(1)
+  })
+})
+
+describe('matchesVulnerabilitySearch (FR-04.1)', () => {
+  it('matches by CVE id substring, case-insensitively', () => {
+    const vuln = makeVuln({ id: 'CVE-2021-44228' })
+    expect(matchesVulnerabilitySearch(vuln, '44228')).toBe(true)
+    expect(matchesVulnerabilitySearch(vuln, 'cve-2021')).toBe(true)
+  })
+
+  it('matches by an alias when the primary id does not match', () => {
+    // WHY: OSV-sourced findings are frequently looked up by GHSA/OSV id, not their CVE id.
+    const vuln = makeVuln({ id: 'CVE-2021-44228', aliases: ['GHSA-jfh8-c2jp-5v3q'] })
+    expect(matchesVulnerabilitySearch(vuln, 'ghsa-jfh8')).toBe(true)
+  })
+
+  it('matches by a keyword found only in the description', () => {
+    // WHY: the PRD requires keyword search, not just id lookup.
+    const vuln = makeVuln({ id: 'CVE-2021-44228', description: 'Remote code execution via JNDI lookup' })
+    expect(matchesVulnerabilitySearch(vuln, 'jndi')).toBe(true)
+  })
+
+  it('treats an empty or whitespace query as matching everything', () => {
+    const vuln = makeVuln({ id: 'CVE-2021-44228' })
+    expect(matchesVulnerabilitySearch(vuln, '')).toBe(true)
+    expect(matchesVulnerabilitySearch(vuln, '   ')).toBe(true)
+  })
+
+  it('returns false when the query matches none of id, aliases, or description', () => {
+    const vuln = makeVuln({ id: 'CVE-2021-44228', aliases: ['GHSA-xxxx'], description: 'buffer overflow' })
+    expect(matchesVulnerabilitySearch(vuln, 'sql injection')).toBe(false)
   })
 })

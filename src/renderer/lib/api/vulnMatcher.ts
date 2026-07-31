@@ -623,6 +623,26 @@ export function sortBySeverity(vulnerabilities: Vulnerability[]): Vulnerability[
 }
 
 /**
+ * Sort vulnerabilities by CVSS score (highest first); undefined scores sort last (FR-04.1).
+ * Non-mutating — returns a new array.
+ */
+export function sortByCvssScore(vulnerabilities: Vulnerability[]): Vulnerability[] {
+  return [...vulnerabilities].sort((a, b) => (b.cvssScore ?? 0) - (a.cvssScore ?? 0))
+}
+
+/**
+ * Sort vulnerabilities by publication date (most recent first); missing dates sort last (FR-04.1).
+ * Non-mutating — returns a new array.
+ */
+export function sortByPublicationDate(vulnerabilities: Vulnerability[]): Vulnerability[] {
+  return [...vulnerabilities].sort((a, b) => {
+    const timeA = a.publishedAt ? new Date(a.publishedAt).getTime() : -Infinity
+    const timeB = b.publishedAt ? new Date(b.publishedAt).getTime() : -Infinity
+    return timeB - timeA
+  })
+}
+
+/**
  * Get vulnerability statistics
  * @param vulnerabilities - Array of vulnerabilities
  * @returns Object with counts by severity

@@ -1,11 +1,22 @@
 import React from 'react'
-import { AlertTriangle, Filter, CheckCircle2, Copy, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import {
+  AlertTriangle,
+  Filter,
+  CheckCircle2,
+  Copy,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Search,
+  Download,
+} from 'lucide-react'
 import { toast } from '@/components/Toaster'
 import { FilterPresets, CvssRangeSlider, MultiSelectFilter } from '@/components/FilterPresets'
 import { VirtualList } from '@/components/VirtualList'
 import { KevBadge } from '@/components/vulnerabilities/KevBadge'
 import { RiskScoreBadge } from '@/components/vulnerabilities/RiskScoreCell'
-import { sortBySeverity } from '@/lib/api/vulnMatcher'
+import { sortBySeverity, sortByCvssScore, sortByPublicationDate } from '@/lib/api/vulnMatcher'
+import { exportVulnerabilitiesToCsv, downloadCsv, generateFilename, buildComponentMap } from '@/lib/export/csv'
 import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
 import {
   getSbomFilenamesForVulnerability,
@@ -13,6 +24,7 @@ import {
   isHighRiskVuln,
   hasAvailablePatch,
   isExploitedVuln,
+  matchesVulnerabilitySearch,
 } from './helpers'
 import type { FilterPreset, Project, Vulnerability } from '@@/types'
 
@@ -24,6 +36,9 @@ interface VulnerabilitiesTabProps {
 
 export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: VulnerabilitiesTabProps) {
   const [severityFilter, setSeverityFilter] = React.useState<'all' | Vulnerability['severity']>('all')
+  const [vulnSearch, setVulnSearch] = React.useState('')
+  const [sortField, setSortField] = React.useState<'severity' | 'cvss' | 'date'>('severity')
+  const [selectedVulnIds, setSelectedVulnIds] = React.useState<Set<string>>(new Set())
   const [copiedVulnId, setCopiedVulnId] = React.useState<string | null>(null)
   const [cvssRange, setCvssRange] = React.useState<[number, number]>([0, 10])
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([])
@@ -194,6 +209,32 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
     return filters
   }
 
+  // Toggle a vulnerability's membership in the bulk-select set (FR-04.1).
+  const toggleVulnSelected = (vulnId: string) => {
+    setSelectedVulnIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(vulnId)) {
+        next.delete(vulnId)
+      } else {
+        next.add(vulnId)
+      }
+      return next
+    })
+  }
+
+  // Export only the selected vulnerabilities as CSV — the one bulk "operation" delivered here.
+  // Reuses the existing, tested CSV pipeline; the export is scoped strictly to the selection.
+  const handleExportSelected = () => {
+    const selected = project.vulnerabilities.filter((v) => selectedVulnIds.has(v.id))
+    if (selected.length === 0) return
+    const csv = exportVulnerabilitiesToCsv(selected, buildComponentMap(selected))
+    downloadCsv(csv, generateFilename(project.name, 'csv', 'vulnerabilities'))
+    toast.success(
+      'Export Complete',
+      `Exported ${selected.length} selected vulnerabilit${selected.length === 1 ? 'y' : 'ies'} to CSV.`,
+    )
+  }
+
   // Handle copy vulnerability ID
   const handleCopyVulnId = async (vulnId: string) => {
     try {
@@ -242,9 +283,31 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                 />
                 Hide low-confidence
               </label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={vulnSearch}
+                  onChange={(e) => setVulnSearch(e.target.value)}
+                  placeholder="Search by CVE ID or keyword..."
+                  aria-label="Search vulnerabilities"
+                  className="w-56 rounded-md border border-border bg-background py-1 pl-8 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <select
+                value={sortField}
+                onChange={(e) => setSortField(e.target.value as 'severity' | 'cvss' | 'date')}
+                aria-label="Sort by"
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="severity">Sort: Severity</option>
+                <option value="cvss">Sort: CVSS Score</option>
+                <option value="date">Sort: Publication Date</option>
+              </select>
               <select
                 value={severityFilter}
                 onChange={(e) => setSeverityFilter(e.target.value as 'all' | Vulnerability['severity'])}
+                aria-label="Filter by severity"
                 className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="all">All Severities</option>
@@ -341,6 +404,27 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
           </div>
         )}
         <div className="p-4">
+          {/* Bulk-select action bar (FR-04.1) — appears only once vulnerabilities are checked. */}
+          {selectedVulnIds.size > 0 && (
+            <div className="mb-4 flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm">
+              <span className="font-medium">{selectedVulnIds.size} selected</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedVulnIds(new Set())}
+                  className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:underline"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={handleExportSelected}
+                  className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <Download className="h-4 w-4" />
+                  Export Selected ({selectedVulnIds.size})
+                </button>
+              </div>
+            </div>
+          )}
           {/* Never let gap components read as "clean": surface what the hide-toggle suppressed. */}
           {hideNameOnlyMatches && nameOnlyNoise.hidden > 0 && (
             <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
@@ -378,46 +462,71 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                   severityFilter === 'all'
                     ? project.vulnerabilities
                     : project.vulnerabilities.filter((v) => v.severity === severityFilter)
-                // Apply advanced filters
+                // Apply advanced filters, then the free-text search box (FR-04.1)
                 filteredVulns = applyAdvancedFilters(filteredVulns)
-                const sortedVulns = sortBySeverity(filteredVulns)
+                filteredVulns = filteredVulns.filter((v) => matchesVulnerabilitySearch(v, vulnSearch))
 
-                // Group by severity
-                const groupedVulns = {
-                  critical: sortedVulns.filter((v) => v.severity === 'critical'),
-                  high: sortedVulns.filter((v) => v.severity === 'high'),
-                  medium: sortedVulns.filter((v) => v.severity === 'medium'),
-                  low: sortedVulns.filter((v) => v.severity === 'low'),
+                // Grouping + styling depend on the selected sort field (FR-04.1). Severity keeps the
+                // existing four-group split (default, unchanged output); CVSS / publication-date
+                // collapse into a single flat, neutrally-styled section whose row order reflects the
+                // chosen sort.
+                type SectionStyle = { label: string; color: string; bgColor: string; borderColor: string }
+                let groupedVulns: Record<string, Vulnerability[]>
+                let severityConfig: Record<string, SectionStyle>
+                if (sortField === 'cvss' || sortField === 'date') {
+                  const flat =
+                    sortField === 'cvss' ? sortByCvssScore(filteredVulns) : sortByPublicationDate(filteredVulns)
+                  groupedVulns = { all: flat }
+                  severityConfig = {
+                    all: {
+                      label:
+                        sortField === 'cvss'
+                          ? 'All vulnerabilities (highest CVSS first)'
+                          : 'All vulnerabilities (newest first)',
+                      color: 'text-foreground',
+                      bgColor: 'bg-muted/30',
+                      borderColor: 'border-border',
+                    },
+                  }
+                } else {
+                  const sortedVulns = sortBySeverity(filteredVulns)
+                  groupedVulns = {
+                    critical: sortedVulns.filter((v) => v.severity === 'critical'),
+                    high: sortedVulns.filter((v) => v.severity === 'high'),
+                    medium: sortedVulns.filter((v) => v.severity === 'medium'),
+                    low: sortedVulns.filter((v) => v.severity === 'low'),
+                  }
+                  severityConfig = {
+                    critical: {
+                      label: 'Critical',
+                      color: 'text-destructive',
+                      bgColor: 'bg-destructive/10',
+                      borderColor: 'border-destructive/30',
+                    },
+                    high: {
+                      label: 'High',
+                      color: 'text-orange-700 dark:text-orange-400',
+                      bgColor: 'bg-orange-500/10',
+                      borderColor: 'border-orange-500/30',
+                    },
+                    medium: {
+                      label: 'Medium',
+                      color: 'text-amber-700 dark:text-amber-400',
+                      bgColor: 'bg-yellow-600/10',
+                      borderColor: 'border-yellow-600/30',
+                    },
+                    low: {
+                      label: 'Low',
+                      color: 'text-blue-700 dark:text-blue-400',
+                      bgColor: 'bg-blue-500/10',
+                      borderColor: 'border-blue-500/30',
+                    },
+                  }
                 }
 
-                const severityConfig = {
-                  critical: {
-                    label: 'Critical',
-                    color: 'text-destructive',
-                    bgColor: 'bg-destructive/10',
-                    borderColor: 'border-destructive/30',
-                  },
-                  high: {
-                    label: 'High',
-                    color: 'text-orange-700 dark:text-orange-400',
-                    bgColor: 'bg-orange-500/10',
-                    borderColor: 'border-orange-500/30',
-                  },
-                  medium: {
-                    label: 'Medium',
-                    color: 'text-amber-700 dark:text-amber-400',
-                    bgColor: 'bg-yellow-600/10',
-                    borderColor: 'border-yellow-600/30',
-                  },
-                  low: {
-                    label: 'Low',
-                    color: 'text-blue-700 dark:text-blue-400',
-                    bgColor: 'bg-blue-500/10',
-                    borderColor: 'border-blue-500/30',
-                  },
-                }
+                const totalShown = Object.values(groupedVulns).reduce((count, arr) => count + arr.length, 0)
 
-                return sortedVulns.length === 0 ? (
+                return totalShown === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <Filter className="mb-3 h-12 w-12 text-muted-foreground" />
                     <p className="text-muted-foreground">No vulnerabilities match the current filters</p>
@@ -425,6 +534,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                     <button
                       onClick={() => {
                         setSeverityFilter('all')
+                        setVulnSearch('')
                         setCvssRange([0, 10])
                         setSourceFilter([])
                         setReferenceTagFilter([])
@@ -441,7 +551,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                     {Object.entries(groupedVulns)
                       .filter(([, vulns]) => vulns.length > 0)
                       .map(([severity, vulns]) => {
-                        const config = severityConfig[severity as keyof typeof severityConfig]
+                        const config = severityConfig[severity]
                         return (
                           <div key={severity} className={`rounded-lg border ${config.borderColor} ${config.bgColor}`}>
                             {/* Severity Header */}
@@ -479,6 +589,13 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                     <div className="bg-background hover:bg-muted/50 transition-colors">
                                       <div className="flex flex-col md:flex-row md:items-center justify-between p-3 gap-2">
                                         <div className="flex items-start md:items-center gap-3 min-w-0 flex-1">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedVulnIds.has(vuln.id)}
+                                            onChange={() => toggleVulnSelected(vuln.id)}
+                                            aria-label={`Select ${primaryId}`}
+                                            className="shrink-0 mt-1 md:mt-0 h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-ring"
+                                          />
                                           <button
                                             onClick={() => {
                                               setExpandedVulns((prev) => {

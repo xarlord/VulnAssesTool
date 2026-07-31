@@ -5,6 +5,8 @@ import {
   filterBySeverity,
   filterByCvssScore,
   sortBySeverity,
+  sortByCvssScore,
+  sortByPublicationDate,
   getVulnerabilityStatistics,
   hasHighSeverityVulnerabilities,
 } from './vulnMatcher'
@@ -622,6 +624,77 @@ describe('sortBySeverity', () => {
     const originalOrder = mockVulnerabilities.map((v) => v.id)
     sortBySeverity(mockVulnerabilities)
     expect(mockVulnerabilities.map((v) => v.id)).toEqual(originalOrder)
+  })
+})
+
+describe('sortByCvssScore', () => {
+  const vulns: Vulnerability[] = [
+    { id: 'low', source: 'nvd', severity: 'medium', cvssScore: 4.0, references: [], affectedComponents: [] },
+    { id: 'high', source: 'nvd', severity: 'critical', cvssScore: 9.8, references: [], affectedComponents: [] },
+    { id: 'none', source: 'nvd', severity: 'high', references: [], affectedComponents: [] },
+    { id: 'mid', source: 'nvd', severity: 'high', cvssScore: 7.5, references: [], affectedComponents: [] },
+  ]
+
+  it('sorts by CVSS score descending', () => {
+    const result = sortByCvssScore(vulns)
+    expect(result.map((v) => v.id)).toEqual(['high', 'mid', 'low', 'none'])
+  })
+
+  it('sorts vulnerabilities without a CVSS score last', () => {
+    const result = sortByCvssScore(vulns)
+    expect(result[result.length - 1].id).toBe('none')
+  })
+
+  it('does not mutate the input array', () => {
+    const order = vulns.map((v) => v.id)
+    sortByCvssScore(vulns)
+    expect(vulns.map((v) => v.id)).toEqual(order)
+  })
+})
+
+describe('sortByPublicationDate', () => {
+  const vulns: Vulnerability[] = [
+    {
+      id: 'old',
+      source: 'nvd',
+      severity: 'high',
+      publishedAt: new Date('2020-01-01'),
+      references: [],
+      affectedComponents: [],
+    },
+    {
+      id: 'new',
+      source: 'nvd',
+      severity: 'high',
+      publishedAt: new Date('2026-06-01'),
+      references: [],
+      affectedComponents: [],
+    },
+    { id: 'undated', source: 'nvd', severity: 'high', references: [], affectedComponents: [] },
+    {
+      id: 'mid',
+      source: 'nvd',
+      severity: 'high',
+      publishedAt: new Date('2023-03-15'),
+      references: [],
+      affectedComponents: [],
+    },
+  ]
+
+  it('sorts by publication date, most recent first', () => {
+    const result = sortByPublicationDate(vulns)
+    expect(result.map((v) => v.id)).toEqual(['new', 'mid', 'old', 'undated'])
+  })
+
+  it('sorts vulnerabilities without a publication date last', () => {
+    const result = sortByPublicationDate(vulns)
+    expect(result[result.length - 1].id).toBe('undated')
+  })
+
+  it('does not mutate the input array', () => {
+    const order = vulns.map((v) => v.id)
+    sortByPublicationDate(vulns)
+    expect(vulns.map((v) => v.id)).toEqual(order)
   })
 })
 

@@ -59,6 +59,18 @@ export function isExploitedVuln(vuln: Vulnerability): boolean {
   return Boolean(vuln.isKev) || vuln.exploitStatus === 'exploited'
 }
 
+// Case-insensitive free-text match for the vulnerability search box (FR-04.1). Matches against
+// the primary id, any aliases (GHSA/OSV ids — OSV-sourced findings are often looked up by those,
+// not a CVE id), and the description (PRD requires keyword search, not just id lookup). An
+// empty/whitespace query matches everything so clearing the box restores the full list.
+export function matchesVulnerabilitySearch(vuln: Vulnerability, query: string): boolean {
+  const normalized = query.trim().toLowerCase()
+  if (normalized === '') return true
+  if (vuln.id.toLowerCase().includes(normalized)) return true
+  if ((vuln.aliases ?? []).some((alias) => alias.toLowerCase().includes(normalized))) return true
+  return vuln.description.toLowerCase().includes(normalized)
+}
+
 // Build report generator input from a project. `ProjectStatistics` doesn't carry
 // the KEV/EPSS aggregates the report needs, so derive them from the raw
 // vulnerability list rather than duplicating a second statistics shape upstream.

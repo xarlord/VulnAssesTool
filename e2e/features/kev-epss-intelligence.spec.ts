@@ -77,7 +77,7 @@ async function scanLog4jProject(page: Page, projectName: string): Promise<void> 
  */
 async function openLog4jDetailModal(page: Page): Promise<Locator> {
   const main = page.locator('#main-content')
-  await main.locator('select').selectOption('critical')
+  await main.getByLabel('Filter by severity').selectOption('critical')
   await expect(main.getByText('CVE-2021-44228').first()).toBeVisible()
 
   await main.getByRole('button', { name: 'View Details' }).click()
@@ -139,7 +139,7 @@ test.describe('KEV/EPSS Intelligence', () => {
 
       // ...but express's CVE-2022-24999 is NOT in the KEV catalog, so filtering down to just
       // that finding (severity=high) proves the badge is per-CVE, not shown for every finding.
-      await main.locator('select').selectOption('high')
+      await main.getByLabel('Filter by severity').selectOption('high')
       await expect(main.getByText('CVE-2022-24999').first()).toBeVisible()
       await expect(main.locator('[title="Actively Exploited (CISA KEV)"]')).not.toBeVisible()
     })
