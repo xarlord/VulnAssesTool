@@ -218,6 +218,25 @@ export async function navigateToSearch(page: Page): Promise<void> {
 }
 
 /**
+ * Navigate to the Audit Log page via the sidebar nav link, with an SPA fallback.
+ * @param page - Playwright page object
+ */
+export async function navigateToAuditLog(page: Page): Promise<void> {
+  const auditLink = page.getByRole('link', { name: /audit log/i })
+
+  if (await auditLink.isVisible().catch(() => false)) {
+    await auditLink.click()
+  } else {
+    await page.evaluate(() => {
+      const nav = (window as unknown as Record<string, unknown>).__navigate
+      if (typeof nav === 'function') nav('/audit')
+    })
+  }
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForTimeout(E2E_UI_DELAY)
+}
+
+/**
  * Navigate to the Dependency Graph page
  * @param page - Playwright page object
  */

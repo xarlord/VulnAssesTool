@@ -375,6 +375,13 @@ vi.mock('@/lib/services/intelligence/enrichVulnerabilities', () => ({
   enrichVulnerabilities: vi.fn((vulns: unknown[]) => Promise.resolve(vulns)),
 }))
 
+// Spy on the audit logger's SCAN event while keeping every other export real, so the scan
+// flow emits a real, filterable SCAN event (FR-07.1) and we can assert it independently.
+vi.mock('@/lib/audit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/audit')>()
+  return { ...actual, logVulnerabilityScan: vi.fn() }
+})
+
 // Mock the store
 const mockUpdateProject = vi.fn()
 const mockDeleteProject = vi.fn()
@@ -385,6 +392,7 @@ vi.mock('@/store/useStore', () => ({ useStore: () => mockUseStore() }))
 
 // Import mocked modules
 const { matchVulnerabilitiesForComponents } = await import('@/lib/api/vulnMatcher')
+const { logVulnerabilityScan } = await import('@/lib/audit')
 const { refreshVulnerabilityData } = await import('@/lib/refresh')
 const { toast } = await import('@/components/Toaster')
 const { formatVulnerabilityId } = await import('@/lib/utils/vulnIdFormat')
@@ -1534,18 +1542,11 @@ describe('ProjectDetail', () => {
       expect(sourceLabel).toBeInTheDocument()
     })
 
-    it('TC-VM-005: should filter vulnerabilities by reference tags', () => {
-      renderProjectDetail()
-      clickVulnerabilitiesTab()
-
-      // Click Advanced Filters button
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
-      fireEvent.click(advancedFiltersButton)
-
-      // Find reference tags filter
-      const refTagLabel = screen.getByText('Reference Tags')
-      expect(refTagLabel).toBeInTheDocument()
-    })
+    // TC-VM-005 removed: it was titled "should filter vulnerabilities by reference tags" but only
+    // asserted the 'Reference Tags' label rendered (FilterPresets is stub-mocked here), so it could
+    // not fail if reference-tag filtering broke. That rendering check is already covered by TC-VM-006
+    // below, and the real reference-tag narrowing is now driven against the unmocked control in
+    // src/renderer/pages/project-detail/VulnerabilitiesTab.test.tsx (FR-08.3).
 
     it('TC-VM-006: should apply multiple filters together', () => {
       renderProjectDetail()
@@ -1764,6 +1765,47 @@ describe('ProjectDetail', () => {
         () => {
           expect(mockUpdateProject).toHaveBeenCalled()
         },
+        { timeout: 10000 },
+      )
+    })
+
+    it('emits a distinct SCAN audit event when a scan completes (not just a generic UPDATE)', async () => {
+      vi.mocked(logVulnerabilityScan).mockClear()
+      vi.mocked(matchVulnerabilitiesForComponents).mockResolvedValue(
+        new Map([
+          [
+            'comp-1',
+            [
+              {
+                id: 'CVE-2024-1234',
+                source: 'nvd',
+                severity: 'high',
+                description: '',
+                references: [],
+                affectedComponents: ['comp-1'],
+              },
+            ],
+          ],
+        ]),
+      )
+
+      renderProjectDetail()
+
+      fireEvent.click(screen.getByText('Scan for Vulnerabilities'))
+
+      // Why: SCAN is a first-class filterable audit action; the scan flow previously only fired
+      // a generic UPDATE via updateProject, so a compliance filter on 'SCAN' saw nothing. A test
+      // that only checks updateProject was called cannot catch this regression — spying on the
+      // SCAN logger directly can.
+      await waitFor(
+        () =>
+          expect(logVulnerabilityScan).toHaveBeenCalledWith(
+            'test-project-id',
+            'Test Project',
+            2,
+            expect.any(Number),
+            expect.any(Number),
+          ),
         { timeout: 10000 },
       )
     })
@@ -3238,22 +3280,28 @@ describe('ProjectDetail', () => {
       expect(screen.queryByText('CVE-2022-12345')).not.toBeInTheDocument()
     })
 
-    it('should load a preset with reference tags filter', () => {
-      const projectWithRefTags = createMockProject({
+    // NOTE: FilterPresets (incl. MultiSelectFilter) is stub-mocked in this file, so real
+    // reference-tag/source *controls* cannot be driven here — that lives in
+    // VulnerabilitiesTab.test.tsx. This test exercises only the preset-LOAD path for the source
+    // filter, with mixed sources so it actually narrows (was previously mistitled "reference
+    // tags filter" while loading a source preset over two same-source fixtures, so it could not
+    // fail if source filtering broke).
+    it('should load a preset with a source filter and hide non-matching sources', () => {
+      const projectWithMixedSources = createMockProject({
         vulnerabilities: [
           {
-            id: 'CVE-WITH-PATCH',
+            id: 'CVE-NVD-SRC',
             source: 'nvd',
             severity: 'high',
-            description: 'Has patch ref',
-            references: [{ url: 'https://example.com', tags: ['Patch'] }],
+            description: 'From NVD',
+            references: [],
             affectedComponents: ['comp-1'],
           },
           {
-            id: 'CVE-NO-REFS',
-            source: 'nvd',
+            id: 'CVE-OSV-SRC',
+            source: 'osv',
             severity: 'high',
-            description: 'No refs',
+            description: 'From OSV',
             references: [],
             affectedComponents: ['comp-1'],
           },
@@ -3264,13 +3312,14 @@ describe('ProjectDetail', () => {
         JSON.stringify([{ id: 'preset-1', name: 'Source NVD', filters: { source: ['nvd'] } }]),
       )
 
-      renderProjectDetail(projectWithRefTags)
+      renderProjectDetail(projectWithMixedSources)
       clickVulnerabilitiesTab()
 
       fireEvent.click(screen.getByTestId('load-preset-btn'))
 
-      expect(screen.getByText('CVE-WITH-PATCH')).toBeInTheDocument()
-      expect(screen.getByText('CVE-NO-REFS')).toBeInTheDocument()
+      // Loading a source=['nvd'] preset keeps the NVD vuln and hides the OSV one.
+      expect(screen.getByText('CVE-NVD-SRC')).toBeInTheDocument()
+      expect(screen.queryByText('CVE-OSV-SRC')).not.toBeInTheDocument()
     })
 
     it('should load a preset with source filter', () => {

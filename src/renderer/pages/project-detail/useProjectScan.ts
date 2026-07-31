@@ -5,6 +5,7 @@ import type { ScanProgressEvent } from '@/lib/api/vulnMatcher'
 import { refreshVulnerabilityData } from '@/lib/refresh'
 import { getSecureKeyService } from '@/lib/storage'
 import { enrichVulnerabilities } from '@/lib/services/intelligence/enrichVulnerabilities'
+import { logVulnerabilityScan } from '@/lib/audit'
 import type { AppSettings, Project, Vulnerability } from '@@/types'
 
 interface UseProjectScanArgs {
@@ -144,6 +145,16 @@ export function useProjectScan({ project, updateProject, settings }: UseProjectS
           vulnerableComponents,
         },
       })
+
+      // Emit a distinct SCAN audit event (the generic updateProject above only fires an
+      // UPDATE) so compliance can filter scans apart from ordinary project edits (FR-07.1).
+      logVulnerabilityScan(
+        project.id,
+        project.name,
+        project.components.length,
+        stats.total,
+        existingVulnerabilities.length,
+      )
 
       setScanProgress(100)
       setScanPhase('Scan complete!')

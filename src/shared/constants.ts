@@ -203,6 +203,11 @@ export const AUTO_REFRESH_INTERVAL_OPTIONS = [
   { value: 168, label: 'Weekly' },
 ]
 
+// Default TTL (hours) for cached OSV responses, keyed by (purl, 'osv') in the vuln cache.
+// Mirrors the documented 24h refresh window so repeated scans of an unchanged SBOM do not
+// re-hit OSV's public, rate-limited API within the window.
+export const OSV_CACHE_TTL_HOURS = 24
+
 // Cache TTL options
 export const CACHE_TTL_OPTIONS = [
   { value: 1, label: '1 hour' },

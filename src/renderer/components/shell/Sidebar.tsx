@@ -2,6 +2,7 @@ import { NavLink, matchPath, useLocation } from 'react-router-dom'
 import {
   BarChart3,
   FolderOpen,
+  History,
   LayoutDashboard,
   Network,
   Search,
@@ -28,6 +29,7 @@ const MAIN_NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/search', label: 'Search', icon: Search },
   { to: '/executive', label: 'Reports', icon: BarChart3 },
+  { to: '/audit', label: 'Audit Log', icon: History },
 ]
 
 interface SidebarContentProps {

@@ -1,7 +1,8 @@
 import type { Component, MatchConfidence, Vulnerability, VulnerabilityReference } from '@@/types'
 import { queryByPurls } from './osv'
-import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT } from '@@/constants'
+import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT, OSV_CACHE_TTL_HOURS } from '@@/constants'
 import { getPlatform } from '@/lib/platform'
+import { getVulnCache } from '@/lib/cache'
 
 export interface ScanProgressEvent {
   phase: 'nvd-cpe' | 'nvd-name' | 'osv' | 'dedup' | 'done'
@@ -213,6 +214,43 @@ async function searchLocalNvdByName(
   }
 }
 
+const OSV_CACHE_TTL_MS = OSV_CACHE_TTL_HOURS * 60 * 60 * 1000
+
+/**
+ * Query OSV for a set of PURLs, serving any already-cached PURL from the shared vuln
+ * cache (keyed by `(purl, 'osv')`) and only hitting the OSV proxy for cache misses.
+ *
+ * Mirrors the NVD-cache convention already used in refreshService.ts so repeated scans
+ * or refreshes of an unchanged SBOM do not needlessly re-query OSV's public, rate-limited
+ * API within the TTL window (FR-03.3). Misses that return no vulnerabilities are cached as
+ * an empty array so an unaffected PURL is not re-queried on every scan either.
+ */
+async function queryOsvWithCache(purls: string[]): Promise<Map<string, Vulnerability[]>> {
+  const cache = getVulnCache()
+  const results = new Map<string, Vulnerability[]>()
+  const misses: string[] = []
+
+  for (const purl of purls) {
+    const cached = cache.get(purl, 'osv')
+    if (cached) {
+      results.set(purl, cached)
+    } else {
+      misses.push(purl)
+    }
+  }
+
+  if (misses.length > 0) {
+    const fetched = await queryByPurls(misses)
+    for (const purl of misses) {
+      const vulns = fetched.get(purl) || []
+      cache.set(purl, 'osv', vulns, OSV_CACHE_TTL_MS)
+      results.set(purl, vulns)
+    }
+  }
+
+  return results
+}
+
 /**
  * Match component to vulnerabilities using local NVD database and OSV
  *
@@ -321,7 +359,7 @@ export async function matchVulnerabilitiesForComponent(
   // Queried via the server's `/api/osv` proxy — see the function documentation above.
   if (component.purl && typeof window !== 'undefined' && getPlatform()?.database) {
     try {
-      const osvResults = await queryByPurls([component.purl])
+      const osvResults = await queryOsvWithCache([component.purl])
       const osvVulns = osvResults.get(component.purl) || []
       pushMatches(osvVulns, 'cpe-exact')
     } catch (error) {
@@ -495,7 +533,7 @@ export async function matchVulnerabilitiesForComponents(
       })
     }
     try {
-      const osvResults = await queryByPurls(purls)
+      const osvResults = await queryOsvWithCache(purls)
       for (const component of components) {
         if (component.purl) {
           const vulns = osvResults.get(component.purl) || []

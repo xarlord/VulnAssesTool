@@ -10,12 +10,32 @@ import {
 } from '@/components/ui/dialog'
 import type { ExportFormat, ExportDataType } from '@/lib/export/types'
 import type { Project } from '@@/types'
+import { logExport } from '@/lib/audit'
 
 interface ExportDialogProps {
   open: boolean
   onClose: () => void
   project?: Project
   projects?: Project[]
+}
+
+/**
+ * Maps the user's single-project export selection to the audit event's entity type and
+ * the count of records the export covers, so the EXPORT audit trail records what was
+ * actually exported (e.g. N vulnerabilities) rather than a generic "1 project".
+ */
+function describeProjectExport(
+  project: Project,
+  dataType: ExportDataType,
+): { entityType: 'project' | 'vulnerability' | 'component'; itemCount: number } {
+  if (dataType === 'components') {
+    return { entityType: 'component', itemCount: project.components?.length ?? 0 }
+  }
+  if (dataType === 'project') {
+    return { entityType: 'project', itemCount: 1 }
+  }
+  // 'vulnerabilities' (the default) — 'all-projects' never reaches this single-project branch.
+  return { entityType: 'vulnerability', itemCount: project.vulnerabilities?.length ?? 0 }
 }
 
 export function ExportDialog({ open, onClose, project, projects }: ExportDialogProps) {
@@ -38,8 +58,12 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
 
       if (isAllProjects && projects) {
         exportAllProjects(projects, selectedFormat)
+        // Record an EXPORT audit event so the exported compliance evidence is itself auditable.
+        logExport('all', selectedFormat, projects.length)
       } else if (project) {
         exportProjectData(project, selectedFormat, selectedDataType)
+        const audited = describeProjectExport(project, selectedDataType)
+        logExport(audited.entityType, selectedFormat, audited.itemCount, project.id)
       }
 
       // Close dialog after export completes

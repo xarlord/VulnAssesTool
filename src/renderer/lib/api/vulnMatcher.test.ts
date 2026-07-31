@@ -9,8 +9,9 @@ import {
   hasHighSeverityVulnerabilities,
 } from './vulnMatcher'
 import type { Component, Vulnerability, CveResult } from '@@/types'
-import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT } from '@@/constants'
+import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT, OSV_CACHE_TTL_HOURS } from '@@/constants'
 import { getPlatform } from '@/lib/platform'
+import { resetVulnCache } from '@/lib/cache'
 
 // Mock the OSV module
 vi.mock('./osv', () => ({
@@ -40,6 +41,9 @@ function mockDatabaseSearch() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // OSV responses are cached across calls (FR-03.3); reset so cached entries never
+  // leak between tests and a per-test queryByPurls mock is always the one consulted.
+  resetVulnCache()
 })
 
 afterEach(() => {
@@ -429,6 +433,55 @@ describe('matchVulnerabilitiesForComponents', () => {
     expect(result.get('comp-2')![0].id).toBe('OSV-2024-1001')
     // The vulnerability should have both components in affectedComponents
     expect(result.get('comp-1')![0].affectedComponents).toEqual(['comp-1', 'comp-2'])
+  })
+
+  describe('OSV response caching (FR-03.3)', () => {
+    const cacheComponent: Component = {
+      id: 'comp-cache',
+      name: 'lodash',
+      version: '4.17.21',
+      type: 'library',
+      purl: 'pkg:npm/lodash@4.17.21',
+      licenses: ['MIT'],
+      vulnerabilities: [],
+    }
+
+    const cachedOsvVuln: Vulnerability = {
+      id: 'OSV-2024-9001',
+      source: 'osv',
+      severity: 'high',
+      cvssScore: 7.5,
+      description: 'Cached OSV vulnerability',
+      references: [],
+      affectedComponents: [],
+    }
+
+    beforeEach(() => {
+      vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
+      vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', [cachedOsvVuln]]]))
+    })
+
+    it('serves a second OSV lookup for the same PURL from cache instead of calling the API again', async () => {
+      await matchVulnerabilitiesForComponents([cacheComponent])
+      await matchVulnerabilitiesForComponents([cacheComponent])
+      // Why: repeated scans/renders of an unchanged SBOM must not re-hit OSV's public,
+      // rate-limited endpoint. A naive always-query implementation passes every other test
+      // yet violates this PRD bullet — only asserting the SECOND call is suppressed catches it.
+      expect(queryByPurls).toHaveBeenCalledTimes(1)
+    })
+
+    it('re-queries OSV after the cache TTL has elapsed', async () => {
+      vi.useFakeTimers()
+      try {
+        await matchVulnerabilitiesForComponents([cacheComponent])
+        // Advance past the TTL so the cached entry expires — proves the cache is not permanent.
+        vi.advanceTimersByTime((OSV_CACHE_TTL_HOURS + 1) * 60 * 60 * 1000)
+        await matchVulnerabilitiesForComponents([cacheComponent])
+        expect(queryByPurls).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
   it('should NOT query OSV when the platform database is unavailable (no server adapter initialized)', async () => {

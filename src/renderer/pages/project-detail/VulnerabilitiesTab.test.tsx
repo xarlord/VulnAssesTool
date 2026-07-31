@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VulnerabilitiesTab } from './VulnerabilitiesTab'
 import type { Project, ProjectStatistics, Vulnerability } from '@@/types'
@@ -131,5 +131,85 @@ describe('VulnerabilitiesTab advanced filters (FR-08.3)', () => {
     expect(highGroup()).toBeInTheDocument()
     expect(screen.getByLabelText<HTMLSelectElement>('Patch Availability').value).toBe('all')
     expect(screen.getByLabelText<HTMLSelectElement>('Exploit Status').value).toBe('all')
+  })
+
+  // The CVSS-range and Source filters were previously verified only through the preset-load
+  // path (ProjectDetail.test.tsx), where FilterPresets is fully stub-mocked — so no test drove
+  // the real CvssRangeSlider / MultiSelectFilter DOM and watched the list narrow. These do.
+
+  it('CVSS range max slider narrows to vulns within the range', async () => {
+    const user = userEvent.setup()
+    const crit = makeVuln({ id: 'CVE-CRIT-98', severity: 'critical', cvssScore: 9.8 })
+    const high = makeVuln({ id: 'CVE-HIGH-40', severity: 'high', cvssScore: 4.0 })
+    render(
+      <VulnerabilitiesTab project={makeProject([crit, high])} projectId="test-proj" onViewVulnerability={vi.fn()} />,
+    )
+
+    await openAdvancedFilters(user)
+    expect(criticalGroup()).toBeInTheDocument()
+    expect(highGroup()).toBeInTheDocument()
+
+    // Drag the MAX slider (index 1; index 0 is min) down to 5 → the 9.8 critical falls outside
+    // [0,5], the 4.0 high stays. WHY: must fail if onChange={setCvssRange} or handleMaxChange's
+    // boundary guard regresses — the preset-load test bypasses the slider entirely.
+    const sliders = screen.getAllByRole('slider')
+    fireEvent.change(sliders[1], { target: { value: '5' } })
+
+    expect(criticalGroup()).toBeNull()
+    expect(highGroup()).toBeInTheDocument()
+  })
+
+  it('Source multi-select filter narrows to the selected source', async () => {
+    const user = userEvent.setup()
+    const nvdVuln = makeVuln({ id: 'CVE-NVD-1', severity: 'critical', source: 'nvd' })
+    const osvVuln = makeVuln({ id: 'CVE-OSV-1', severity: 'high', source: 'osv' })
+    render(
+      <VulnerabilitiesTab
+        project={makeProject([nvdVuln, osvVuln])}
+        projectId="test-proj"
+        onViewVulnerability={vi.fn()}
+      />,
+    )
+
+    await openAdvancedFilters(user)
+    expect(criticalGroup()).toBeInTheDocument()
+    expect(highGroup()).toBeInTheDocument()
+
+    // Open the real Source dropdown and select OSV only → only the OSV (high) vuln remains.
+    await user.click(screen.getByRole('button', { name: /Source/ }))
+    await user.click(screen.getByLabelText('OSV'))
+
+    expect(criticalGroup()).toBeNull()
+    expect(highGroup()).toBeInTheDocument()
+  })
+
+  it('Reference Tags multi-select filter narrows to vulns carrying the tag', async () => {
+    const user = userEvent.setup()
+    const withPatchRef = makeVuln({
+      id: 'CVE-WITH-PATCH',
+      severity: 'critical',
+      references: [{ url: 'https://example.com/fix', tags: ['Patch'] }],
+    })
+    const noRefs = makeVuln({ id: 'CVE-NO-REFS', severity: 'high', references: [] })
+    render(
+      <VulnerabilitiesTab
+        project={makeProject([withPatchRef, noRefs])}
+        projectId="test-proj"
+        onViewVulnerability={vi.fn()}
+      />,
+    )
+
+    await openAdvancedFilters(user)
+    expect(criticalGroup()).toBeInTheDocument()
+    expect(highGroup()).toBeInTheDocument()
+
+    // Select the 'Patch Available' reference tag → only the vuln whose references carry a Patch
+    // tag survives. WHY: this is the assertion the mislabeled ProjectDetail preset test could
+    // never make (it loaded a source filter), so a broken referenceTagFilter predicate shipped green.
+    await user.click(screen.getByRole('button', { name: /Reference Tags/ }))
+    await user.click(screen.getByLabelText('Patch Available'))
+
+    expect(criticalGroup()).toBeInTheDocument()
+    expect(highGroup()).toBeNull()
   })
 })

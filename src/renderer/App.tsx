@@ -25,6 +25,8 @@ const DependencyGraphPage = lazy(() =>
 
 const ExecutiveDashboard = lazy(() => import('./components/executive').then((m) => ({ default: m.ExecutiveDashboard })))
 
+const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })))
+
 // Loading fallback component
 function PageLoader() {
   return (
@@ -148,6 +150,7 @@ export function App() {
               <Route path="/project/:projectId" element={<ProjectDetail />} />
               <Route path="/project/:projectId/fpf" element={<FalsePositiveFilterPage />} />
               <Route path="/project/:projectId/graph" element={<DependencyGraphPage />} />
+              <Route path="/audit" element={<AuditLog />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
