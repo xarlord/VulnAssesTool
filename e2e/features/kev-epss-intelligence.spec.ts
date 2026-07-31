@@ -1,27 +1,90 @@
+import type { Locator, Page } from '@playwright/test'
 import { test, expect, resetAppState } from '../test-helper'
-import {
-  E2E_DEFAULT_TIMEOUT,
-  E2E_UI_DELAY,
-  createTestProject,
-  createProjectWithKevVulnerability,
-  createProjectWithEpssData,
-  createProjectWithNoEpssData,
-  createProjectWithVaryingEpssScores,
-  createProjectWithIntelligenceData,
-  createProjectWithMultipleVulnerabilities,
-  navigateToVulnerabilitiesTab,
-  isFeatureImplemented,
-} from '../shared-helpers'
+import { createTestProject, uploadSbomFile, navigateToVulnerabilitiesTab } from '../shared-helpers'
+import path from 'node:path'
 
 /**
- * E2E Tests for KEV/EPSS Intelligence Features
+ * KEV/EPSS Intelligence — content contracts
  *
- * Tests the threat intelligence display and functionality:
- * - KEV badge display
- * - EPSS score display
- * - Risk score calculations
- * - Filtering and sorting
+ * This suite runs offline against a seeded NVD DB, and CISA's live feed is unreachable here
+ * (confirmed: KevService's background sync logs "HTTP 403"). But KEV status is NOT purely a
+ * live-network feature: KevService ships a hardcoded fallback catalog (`EMBEDDED_KEV_ENTRIES`,
+ * server/services/intelligence/KevService.ts:577-821) that's loaded into the local `kev_catalog`
+ * table whenever it's empty (KevService.ts:110-121, `initialize` -> `loadBaseline` ->
+ * `loadEmbeddedBaseline`, both fully synchronous/local — no network involved). That embedded
+ * list includes `CVE-2021-44228` (Log4Shell) at KevService.ts:773-784, exactly the CVE
+ * `sbom-with-vulns.json` scans to. `useProjectScan.ts:119` unconditionally awaits
+ * `enrichVulnerabilities()` (which calls the local, network-free `kevService.isKev()` /
+ * `getKevDetails()` via server/routes/intelligence.ts:19-49) BEFORE the enriched vulnerabilities
+ * are ever written to project state — so every vulnerability the UI ever shows is already
+ * KEV-checked. Verified directly against the checked-in e2e fixture DB (`.e2e-data/nvd-data.db`):
+ * `kev_catalog` already has a `CVE-2021-44228` row whose `notes` field
+ * ("Also known as Log4Shell; extremely widespread impact") is a verbatim match for the embedded
+ * baseline literal, proving it came from that fallback path, not a lucky live sync. So KEV
+ * badge/detail content for Log4Shell is a genuine, reliable, offline content contract, and the
+ * "KEV Badge" / relevant "Filtering" / "Vulnerability Detail" tests below are real, not skips.
+ *
+ * EPSS is different: `EpssService` (server/services/intelligence/EpssService.ts) has no bundled
+ * baseline at all — `getEpssScore(s)` only ever calls the live `api.first.org` API (L84-99,
+ * L247-309) or reads a previously-cached successful fetch. With no offline fallback and the
+ * network genuinely unavailable in the target CI, `epssScore`/`epssPercentile` stay `undefined`,
+ * so any EPSS-specific UI (VulnerabilityDetailModal.tsx:241, gated on
+ * `epssScore !== undefined`) never renders — those tests stay honest skips.
+ *
+ * Composite risk score is a middle case: `enrichVulnerabilities.ts:67-75` unconditionally
+ * computes `riskScore` for every vulnerability (no network needed for the calculation itself —
+ * `calculateRiskScore`, src/renderer/lib/services/riskScore.ts:82-111 — is pure local math), so
+ * the risk-score UI DOES render offline. But its exact numeric value mixes in the EPSS
+ * component (0-30 pts, riskScore.ts:87), which is only non-zero when the (unreliable) EPSS
+ * fetch succeeds — so the precise number is not safely assertable. What IS safe: Log4Shell's
+ * KEV(+50) and CRITICAL severity(+20) alone floor its score at 70 regardless of EPSS
+ * (riskScore.ts:58-64,69,84,93), which is >= the modal's "High risk" threshold
+ * (VulnerabilityDetailModal.tsx:257), so that classification text is asserted as a real,
+ * EPSS-independent contract; the exact row-level badge NUMBER is not.
+ *
+ * Not duplicated here: cve-database-sync.spec.ts covers the Settings "KEV Entries: 0" card;
+ * security-assessment.spec.ts covers the vulnerabilities empty-state; vulnerability-details.spec.ts
+ * covers the detail modal's title/severity/source/close-button content contracts (not
+ * Threat-Intelligence content, which is unique to this file).
  */
+
+const SBOM_WITH_VULNS = path.join(import.meta.dirname, '..', 'fixtures', 'sbom-with-vulns.json')
+
+/**
+ * Create a project, upload the log4j/express SBOM fixture, and run a real scan against the
+ * seeded offline NVD DB. Every vulnerability that reaches the UI is already KEV/risk-enriched
+ * (useProjectScan.ts:119 awaits enrichVulnerabilities before writing project state), so no
+ * extra wait is needed beyond the "Vulnerabilities (4)" heading.
+ */
+async function scanLog4jProject(page: Page, projectName: string): Promise<void> {
+  await createTestProject(page, projectName)
+  await uploadSbomFile(page, SBOM_WITH_VULNS)
+
+  const scanButton = page.getByRole('button', { name: 'Scan for Vulnerabilities' })
+  await expect(scanButton).toBeEnabled({ timeout: 10000 })
+  await scanButton.click()
+
+  await navigateToVulnerabilitiesTab(page)
+  await expect(page.locator('#main-content').getByRole('heading', { name: 'Vulnerabilities (4)' })).toBeVisible({
+    timeout: 120_000,
+  })
+}
+
+/**
+ * Isolate Log4Shell via the exact-severity filter (the only way to get a single unambiguous
+ * "View Details" button — matches critical-flows/vulnerability-details.spec.ts's pattern) and
+ * open its detail modal.
+ */
+async function openLog4jDetailModal(page: Page): Promise<Locator> {
+  const main = page.locator('#main-content')
+  await main.locator('select').selectOption('critical')
+  await expect(main.getByText('CVE-2021-44228').first()).toBeVisible()
+
+  await main.getByRole('button', { name: 'View Details' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'CVE-2021-44228' })).toBeVisible()
+  return dialog
+}
 
 test.describe('KEV/EPSS Intelligence', () => {
   test.beforeEach(async ({ page }) => {
@@ -35,100 +98,60 @@ test.describe('KEV/EPSS Intelligence', () => {
 
   test.describe('KEV Badge', () => {
     test('should display KEV badge for known exploited vulnerabilities', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `KEV Badge Test ${Date.now()}`)
 
-      // Check if KEV feature is implemented
-      const kevBadge = page.locator('text=/KEV|Known Exploited|CISA/i')
-      const hasFeature = await isFeatureImplemented(page, 'text=/KEV|Known Exploited|CISA/i')
-
-      if (!hasFeature) {
-        test.fixme(true, 'KEV badge feature not yet implemented')
-        return
-      }
-
-      await expect(kevBadge.first()).toBeVisible({ timeout: E2E_DEFAULT_TIMEOUT })
+      // Log4Shell is in KevService's bundled fallback KEV catalog (KevService.ts:773-784),
+      // so KevBadge (KevBadge.tsx:34-53) renders its compact "Actively Exploited" badge.
+      const main = page.locator('#main-content')
+      await expect(main.locator('[title="Actively Exploited (CISA KEV)"]')).toBeVisible()
     })
 
     test('should show KEV icon', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `KEV Icon Test ${Date.now()}`)
 
-      const kevRow = page.locator('tr:has-text("KEV"), [class*="kev"]').first()
-      const hasKevRow = await kevRow.isVisible().catch(() => false)
-
-      if (!hasKevRow) {
-        test.fixme(true, 'KEV row not found - feature may not be implemented')
-        return
-      }
-
-      const icon = kevRow.locator('svg')
-      await expect(icon.first()).toBeVisible()
+      // KevBadge.tsx:50 renders an AlertTriangle svg inside the compact badge.
+      const main = page.locator('#main-content')
+      const kevBadge = main.locator('[title="Actively Exploited (CISA KEV)"]')
+      await expect(kevBadge.locator('svg')).toBeVisible()
     })
 
     test('should show KEV tooltip on hover', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `KEV Tooltip Test ${Date.now()}`)
 
-      const kevBadge = page.locator('[class*="kev"], text=/KEV/i').first()
-      const hasKevBadge = await kevBadge.isVisible().catch(() => false)
-
-      if (!hasKevBadge) {
-        test.fixme(true, 'KEV badge not found - feature may not be implemented')
-        return
-      }
-
+      // The compact badge's info-on-hover is a native `title` attribute (KevBadge.tsx:48), not
+      // a custom [role="tooltip"] widget — hovering exposes exactly this text via the browser.
+      const main = page.locator('#main-content')
+      const kevBadge = main.locator('[title="Actively Exploited (CISA KEV)"]')
       await kevBadge.hover()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Tooltip should appear
-      const tooltip = page.locator('[role="tooltip"], [class*="tooltip"]')
-      await expect(tooltip.first()).toBeVisible({ timeout: 5000 })
+      await expect(kevBadge).toHaveAttribute('title', 'Actively Exploited (CISA KEV)')
     })
 
     test('should highlight KEV vulnerabilities prominently', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `KEV Highlight Test ${Date.now()}`)
+      const main = page.locator('#main-content')
 
-      const kevRow = page.locator('tr:has-text("KEV"), [class*="kev"]')
-      const hasStyling = (await kevRow.count()) > 0
+      // Log4Shell (a real KEV catalog entry) gets the badge...
+      await expect(main.locator('[title="Actively Exploited (CISA KEV)"]')).toBeVisible()
 
-      if (!hasStyling) {
-        test.fixme(true, 'KEV styling not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasStyling).toBe(true)
+      // ...but express's CVE-2022-24999 is NOT in the KEV catalog, so filtering down to just
+      // that finding (severity=high) proves the badge is per-CVE, not shown for every finding.
+      await main.locator('select').selectOption('high')
+      await expect(main.getByText('CVE-2022-24999').first()).toBeVisible()
+      await expect(main.locator('[title="Actively Exploited (CISA KEV)"]')).not.toBeVisible()
     })
 
     test('should show CISA reference link', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `CISA Link Test ${Date.now()}`)
+      const dialog = await openLog4jDetailModal(page)
 
-      const vulnRow = page.locator('tr:has-text("CVE-")').first()
-      if (!(await vulnRow.isVisible().catch(() => false))) {
-        test.fixme(true, 'No vulnerability rows found')
-        return
-      }
-
-      await vulnRow.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const modal = page.locator('[role="dialog"]')
-      if (!(await modal.isVisible().catch(() => false))) {
-        test.fixme(true, 'Vulnerability detail modal not found')
-        return
-      }
-
-      const cisaLink = modal.locator('text=/CISA|Known Exploited/i')
-      const hasCisa = (await cisaLink.count()) > 0
-
-      if (!hasCisa) {
-        test.fixme(true, 'CISA reference not found - KEV feature may not be fully implemented')
-        return
-      }
-
-      expect(hasCisa).toBe(true)
+      // VulnerabilityDetailModal.tsx:176-184: the KEV callout links straight to CISA's catalog.
+      const cisaLink = dialog.getByRole('link', { name: 'CISA Known Exploited Vulnerabilities (KEV) Catalog' })
+      await expect(cisaLink).toHaveAttribute('href', 'https://www.cisa.gov/known-exploited-vulnerabilities-catalog')
     })
   })
 
@@ -137,100 +160,35 @@ test.describe('KEV/EPSS Intelligence', () => {
   // ==========================================================================
 
   test.describe('EPSS Score', () => {
-    test('should display EPSS percentile', async ({ page }) => {
-      await createProjectWithEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const epssCell = page.locator('text=/\\d+%/')
-      const count = await epssCell.count()
-
-      if (count === 0) {
-        test.skip(true, 'No EPSS percentile data found - feature may not be fully implemented')
-        return
-      }
-
-      expect(count).toBeGreaterThan(0)
+    test.skip('should display EPSS percentile', async () => {
+      // EpssService has no bundled fallback (unlike KEV) — it only ever calls the live
+      // api.first.org API (EpssService.ts:84-99,247-309). Unreachable offline, so
+      // epssScore/epssPercentile stay undefined and no EPSS cell ever renders.
     })
 
-    test('should show EPSS icon', async ({ page }) => {
-      await createProjectWithEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const epssCell = page.locator('[class*="epss"], text=/EPSS|%/')
-      const hasEpss = await epssCell
-        .first()
-        .isVisible()
-        .catch(() => false)
-
-      if (!hasEpss) {
-        test.fixme(true, 'EPSS cell not found - feature may not be implemented')
-        return
-      }
-
-      const icon = epssCell.first().locator('svg')
-      await icon
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should show EPSS icon', async () => {
+      // Same gate as above — no EPSS UI renders at all without a successful live fetch.
     })
 
-    test('should show N/A when no EPSS data', async ({ page }) => {
-      await createProjectWithNoEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const naCell = page.locator('text=N/A')
-      await naCell
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should show N/A when no EPSS data', async () => {
+      // Not offline-unreachable but simply not wired up: `formatEpssPercentile` (riskScore.ts:270)
+      // does return 'N/A' for a null percentile, but it is never called from any rendered
+      // component (grep confirmed its only caller is its own unit test) — no "N/A" fallback
+      // state exists in the actual UI.
     })
 
-    test('should color code by EPSS percentile', async ({ page }) => {
-      await createProjectWithVaryingEpssScores(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // High EPSS (>80%) should have red/warning color
-      // Low EPSS (<50%) should have green/safe color
-      const coloredCells = page.locator('[class*="red"], [class*="green"], [class*="yellow"]')
-      await coloredCells
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should color code by EPSS percentile', async () => {
+      // Same story as the N/A case: `getEpssColorClass` (riskScore.ts:280) exists but is only
+      // referenced from its own unit test — no component applies it.
     })
 
-    test('should show EPSS score in tooltip', async ({ page }) => {
-      await createProjectWithEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const epssCell = page.locator('[class*="epss"], text=/\\d+%/').first()
-      const hasEpssCell = await epssCell.isVisible().catch(() => false)
-
-      if (!hasEpssCell) {
-        test.fixme(true, 'EPSS cell not found')
-        return
-      }
-
-      await epssCell.hover()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Should show detailed score
-      const tooltip = page.locator('[role="tooltip"], [class*="tooltip"]')
-      const tooltipVisible = await tooltip
-        .first()
-        .isVisible()
-        .catch(() => false)
-      expect(typeof tooltipVisible).toBe('boolean')
+    test.skip('should show EPSS score in tooltip', async () => {
+      // No EPSS tooltip UI exists in source; the only EPSS content anywhere is the
+      // Threat-Intelligence "EPSS Probability" card, itself gated on epssScore !== undefined.
     })
 
-    test('should display EPSS bar chart if available', async ({ page }) => {
-      await createProjectWithEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const barChart = page.locator('[class*="progress"], [class*="bar"]')
-      await barChart
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should display EPSS bar chart if available', async () => {
+      // No EPSS bar chart exists anywhere in source.
     })
   })
 
@@ -239,101 +197,44 @@ test.describe('KEV/EPSS Intelligence', () => {
   // ==========================================================================
 
   test.describe('Risk Score', () => {
-    test('should display combined risk score', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // Look for risk score column
-      const riskScore = page.locator('text=/Risk|Score/i')
-      const hasRisk = (await riskScore.count()) > 0
-
-      if (!hasRisk) {
-        test.fixme(true, 'Risk score column not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasRisk).toBe(true)
+    test.skip('should display combined risk score', async () => {
+      // The row-level RiskScoreBadge does render offline (riskScore is unconditionally computed
+      // by enrichVulnerabilities.ts:67-75), but its displayed NUMBER mixes in the EPSS
+      // percentile component (riskScore.ts:87), which varies with EPSS network reachability —
+      // there's no content-stable (non-value) selector that safely distinguishes it from the
+      // row's other numeric text (CVSS score, ref/component counts) without asserting that
+      // volatile number. The EPSS-independent floor is instead asserted via the modal's stable
+      // "High risk" classification text (see "should show risk calculation breakdown").
     })
 
-    test('should calculate risk from CVSS + EPSS + KEV', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // Risk should be visible in table
-      const riskColumn = page.locator('th:has-text("Risk"), td:has-text("Risk")')
-      const hasRiskColumn = (await riskColumn.count()) > 0
-
-      if (!hasRiskColumn) {
-        test.fixme(true, 'Risk column not found')
-        return
-      }
-
-      expect(hasRiskColumn).toBe(true)
+    test.skip('should calculate risk from CVSS + EPSS + KEV', async () => {
+      // Same volatility as above: the composite score is real, but its exact value depends on
+      // EPSS reachability, which this offline suite cannot assert deterministically.
     })
 
-    test('should sort by risk score', async ({ page }) => {
-      await createProjectWithMultipleVulnerabilities(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // Click risk score column header to sort
-      const riskHeader = page.locator('th:has-text("Risk")')
-      if (!(await riskHeader.isVisible().catch(() => false))) {
-        test.fixme(true, 'Risk header not found')
-        return
-      }
-
-      await riskHeader.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Click again for descending
-      await riskHeader.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Verify sort happened (no error thrown)
+    test.skip('should sort by risk score', async () => {
+      // The vulnerabilities list is a VirtualList/div layout, not a <table> — there is no
+      // "Risk" <th> header anywhere in VulnerabilitiesTab.tsx to sort by.
     })
 
-    test('should highlight high-risk vulnerabilities', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // High risk items should have distinct styling
-      const highRisk = page.locator('[class*="high-risk"], [class*="critical"]')
-      await highRisk
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should highlight high-risk vulnerabilities', async () => {
+      // No `[class*="high-risk"]`/`[class*="critical"]` styling exists (severity classes use
+      // "destructive" naming, not the literal word "critical"). The real per-CVE highlighting
+      // is the KEV badge, already covered by "should highlight KEV vulnerabilities prominently";
+      // the severity grouping heading ("Critical") is already asserted in
+      // workflows/sbom-vulnerability-scan.spec.ts.
     })
 
     test('should show risk breakdown in details', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `Risk Breakdown Test ${Date.now()}`)
+      const dialog = await openLog4jDetailModal(page)
 
-      // Click on vulnerability
-      const vulnRow = page.locator('tr:has-text("CVE-")').first()
-      if (!(await vulnRow.isVisible().catch(() => false))) {
-        test.fixme(true, 'No vulnerability rows found')
-        return
-      }
-
-      await vulnRow.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Modal should show risk breakdown
-      const modal = page.locator('[role="dialog"]')
-      if (!(await modal.isVisible().catch(() => false))) {
-        test.fixme(true, 'Detail modal not found')
-        return
-      }
-
-      const riskBreakdown = modal.locator('text=/CVSS|EPSS|KEV|Risk/i')
-      const hasBreakdown = (await riskBreakdown.count()) > 0
-
-      if (!hasBreakdown) {
-        test.fixme(true, 'Risk breakdown not found in detail modal')
-        return
-      }
-
-      expect(hasBreakdown).toBe(true)
+      // VulnerabilityDetailModal.tsx:252-255: the Composite Risk Score card always renders
+      // once riskScore is defined (true for every enriched vuln) — assert its label and the
+      // "<score>/100" format without hardcoding the EPSS-dependent number.
+      await expect(dialog.getByText('Composite Risk Score')).toBeVisible()
+      await expect(dialog.getByText(/^\d{1,3}\/100$/)).toBeVisible()
     })
   })
 
@@ -343,73 +244,37 @@ test.describe('KEV/EPSS Intelligence', () => {
 
   test.describe('Filtering', () => {
     test('should filter by KEV status', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `KEV Filter Test ${Date.now()}`)
+      const main = page.locator('#main-content')
 
-      // Look for KEV filter
-      const kevFilter = page.locator('button:has-text("KEV"), [data-testid="kev-filter"]')
-      const hasKevFilter = (await kevFilter.count()) > 0
+      // The "Exploit Status" advanced filter (VulnerabilitiesTab.tsx:303-317,
+      // id="exploit-status-filter") checks isExploitedVuln (project-detail/helpers.ts:58-60),
+      // which is true for Log4Shell (KEV) and false for express's CVE-2022-24999 (not KEV).
+      await main.getByRole('button', { name: 'Advanced Filters' }).click()
+      await main.locator('#exploit-status-filter').selectOption('exploited')
+      await expect(main.getByText('CVE-2021-44228').first()).toBeVisible()
+      await expect(main.getByText('CVE-2022-24999')).not.toBeVisible()
 
-      if (!hasKevFilter) {
-        test.fixme(true, 'KEV filter not found')
-        return
-      }
-
-      await kevFilter.first().click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+      // Flip it: "Not Exploited" shows express and hides Log4Shell.
+      await main.locator('#exploit-status-filter').selectOption('not-exploited')
+      await expect(main.getByText('CVE-2022-24999').first()).toBeVisible()
+      await expect(main.getByText('CVE-2021-44228')).not.toBeVisible()
     })
 
-    test('should filter by EPSS threshold', async ({ page }) => {
-      await createProjectWithEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // Look for EPSS filter
-      const epssFilter = page.locator('button:has-text("EPSS"), [data-testid="epss-filter"]')
-      const hasEpssFilter = (await epssFilter.count()) > 0
-
-      if (!hasEpssFilter) {
-        test.fixme(true, 'EPSS filter not found')
-        return
-      }
-
-      await epssFilter.first().click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+    test.skip('should filter by EPSS threshold', async () => {
+      // No EPSS filter control exists anywhere in source (grepped VulnerabilitiesTab.tsx and
+      // FilterPresets.tsx for "EPSS" — only CVSS range, Source, Reference Tags, Patch
+      // Availability, and Exploit Status filters exist).
     })
 
-    test('should filter by high risk', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // Look for risk filter
-      const riskFilter = page.locator('button:has-text("High Risk"), [data-testid="risk-filter"]')
-      const hasRiskFilter = (await riskFilter.count()) > 0
-
-      if (!hasRiskFilter) {
-        test.fixme(true, 'High risk filter not found')
-        return
-      }
-
-      await riskFilter.first().click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+    test.skip('should filter by high risk', async () => {
+      // No risk-score filter control exists anywhere in source (same grep as above).
     })
 
-    test('should combine multiple intelligence filters', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      // Try to apply multiple filters
-      const filters = page.locator('[data-testid*="filter"]')
-      const filterCount = await filters.count()
-
-      if (filterCount < 2) {
-        test.fixme(true, 'Not enough filters available for combined test')
-        return
-      }
-
-      await filters.first().click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-      await filters.nth(1).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+    test.skip('should combine multiple intelligence filters', async () => {
+      // No `[data-testid*="filter"]` elements exist in VulnerabilitiesTab.tsx/FilterPresets.tsx
+      // (grep confirmed) — there is no dedicated KEV/EPSS/risk filter set to combine.
     })
   })
 
@@ -419,120 +284,42 @@ test.describe('KEV/EPSS Intelligence', () => {
 
   test.describe('Vulnerability Detail', () => {
     test('should show KEV section in detail modal', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `KEV Section Test ${Date.now()}`)
+      const dialog = await openLog4jDetailModal(page)
 
-      const vulnRow = page.locator('tr:has-text("CVE-")').first()
-      if (!(await vulnRow.isVisible().catch(() => false))) {
-        test.fixme(true, 'No vulnerability rows found')
-        return
-      }
-
-      await vulnRow.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const modal = page.locator('[role="dialog"]')
-      if (!(await modal.isVisible().catch(() => false))) {
-        test.fixme(true, 'Detail modal not found')
-        return
-      }
-
-      const kevSection = modal.locator('text=/Known Exploited|KEV|CISA/i')
-      const hasKevSection = (await kevSection.count()) > 0
-
-      if (!hasKevSection) {
-        test.fixme(true, 'KEV section not found in detail modal')
-        return
-      }
-
-      expect(hasKevSection).toBe(true)
+      // VulnerabilityDetailModal.tsx:166-223: the KEV callout with its badges and the
+      // embedded-baseline's own field values (vendorProject/product), all sourced from the
+      // local, network-free kevService.getKevDetails() lookup. exact: true on "KNOWN EXPLOIT"
+      // avoids a strict-mode clash with the nearby CISA link's "Known Exploited" substring.
+      await expect(dialog.getByText('KNOWN EXPLOIT', { exact: true })).toBeVisible()
+      await expect(dialog.getByText('RANSOMWARE')).toBeVisible()
+      await expect(dialog.getByText('Vendor/Project:')).toBeVisible()
+      await expect(dialog.getByText('Product:')).toBeVisible()
     })
 
-    test('should show EPSS section in detail modal', async ({ page }) => {
-      await createProjectWithEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const vulnRow = page.locator('tr:has-text("CVE-")').first()
-      if (!(await vulnRow.isVisible().catch(() => false))) {
-        test.fixme(true, 'No vulnerability rows found')
-        return
-      }
-
-      await vulnRow.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const modal = page.locator('[role="dialog"]')
-      if (!(await modal.isVisible().catch(() => false))) {
-        test.fixme(true, 'Detail modal not found')
-        return
-      }
-
-      const epssSection = modal.locator('text=/EPSS|Exploit Prediction/i')
-      const hasEpssSection = (await epssSection.count()) > 0
-
-      if (!hasEpssSection) {
-        test.fixme(true, 'EPSS section not found in detail modal')
-        return
-      }
-
-      expect(hasEpssSection).toBe(true)
+    test.skip('should show EPSS section in detail modal', async () => {
+      // The "EPSS Probability" card (VulnerabilityDetailModal.tsx:241-251) is gated on
+      // `epssScore !== undefined`, which requires the live api.first.org fetch to have
+      // succeeded — unreachable in this offline suite, with no bundled fallback (unlike KEV).
     })
 
     test('should show risk calculation breakdown', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `Risk Calc Test ${Date.now()}`)
+      const dialog = await openLog4jDetailModal(page)
 
-      const vulnRow = page.locator('tr:has-text("CVE-")').first()
-      if (!(await vulnRow.isVisible().catch(() => false))) {
-        test.fixme(true, 'No vulnerability rows found')
-        return
-      }
-
-      await vulnRow.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const modal = page.locator('[role="dialog"]')
-      if (!(await modal.isVisible().catch(() => false))) {
-        test.fixme(true, 'Detail modal not found')
-        return
-      }
-
-      // Should show how risk was calculated
-      const riskCalc = modal.locator('text=/Risk Score|Calculated|Weighted/i')
-      const hasRiskCalc = (await riskCalc.count()) > 0
-
-      if (!hasRiskCalc) {
-        test.fixme(true, 'Risk calculation breakdown not found')
-        return
-      }
-
-      expect(hasRiskCalc).toBe(true)
+      // Log4Shell's KEV(+50) and CRITICAL severity(+20) alone floor its risk score at 70
+      // (riskScore.ts:58-64,69,84,93) regardless of the EPSS component, which is >= the
+      // modal's "High risk" threshold (VulnerabilityDetailModal.tsx:257-258) — so this
+      // classification text is a stable, EPSS-independent contract.
+      await expect(dialog.getByText('High risk — prioritize remediation')).toBeVisible()
     })
 
-    test('should close detail modal', async ({ page }) => {
-      await createProjectWithIntelligenceData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const vulnRow = page.locator('tr:has-text("CVE-")').first()
-      if (!(await vulnRow.isVisible().catch(() => false))) {
-        test.fixme(true, 'No vulnerability rows found')
-        return
-      }
-
-      await vulnRow.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const modal = page.locator('[role="dialog"]')
-      if (!(await modal.isVisible().catch(() => false))) {
-        test.fixme(true, 'Detail modal not found')
-        return
-      }
-
-      // Close with X or Escape
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      await expect(modal).not.toBeVisible()
+    test.skip('should close detail modal', async () => {
+      // Already a real content contract in critical-flows/vulnerability-details.spec.ts (opens
+      // the log4j detail modal and closes it via the footer "Close" button, asserting
+      // `dialog).not.toBeVisible()`) — not duplicated here.
     })
   })
 
@@ -544,30 +331,18 @@ test.describe('KEV/EPSS Intelligence', () => {
     test.use({ viewport: { width: 768, height: 1024 } })
 
     test('should display KEV badges on tablet', async ({ page }) => {
-      await createProjectWithKevVulnerability(page)
-      await navigateToVulnerabilitiesTab(page)
+      test.setTimeout(150_000)
+      await scanLog4jProject(page, `KEV Tablet Test ${Date.now()}`)
 
-      const kevBadge = page.locator('text=/KEV|Known Exploited/i')
-      // Verify KEV badges are visible on tablet or feature not implemented
-      await kevBadge
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      // Same fact as "should display KEV badge...": isKev is a local/offline fact independent
+      // of viewport size.
+      const main = page.locator('#main-content')
+      await expect(main.locator('[title="Actively Exploited (CISA KEV)"]')).toBeVisible()
     })
 
-    test('should display EPSS scores on tablet', async ({ page }) => {
-      await createProjectWithEpssData(page)
-      await navigateToVulnerabilitiesTab(page)
-
-      const epssCell = page.locator('text=/\\d+%/')
-      const count = await epssCell.count()
-
-      if (count === 0) {
-        test.skip(true, 'No EPSS data found on tablet viewport - feature may not be fully implemented')
-        return
-      }
-
-      expect(count).toBeGreaterThan(0)
+    test.skip('should display EPSS scores on tablet', async () => {
+      // Same as "should display EPSS percentile": no EPSS UI renders offline regardless of
+      // viewport (VulnerabilityDetailModal.tsx:241).
     })
   })
 })
