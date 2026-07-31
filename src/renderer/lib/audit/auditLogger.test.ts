@@ -196,7 +196,9 @@ describe('Audit Logger', () => {
       const event = events[0]
       expect(event.actionType).toBe('SETTINGS_CHANGE')
       expect(event.entityType).toBe('settings')
-      expect(event.previousState).toEqual({ changedFields: ['theme', 'fontSize'] })
+      // previousState captures the OLD values of the changed fields (before/after audit trail),
+      // not just their names — a diff viewer/compliance reviewer needs what it changed FROM.
+      expect(event.previousState).toEqual({ theme: 'dark', fontSize: 'default' })
       expect(event.newState).toEqual(newSettings)
     })
 
@@ -209,9 +211,7 @@ describe('Audit Logger', () => {
       logSettingsChange(mockSettings, newSettings)
 
       const events = useAuditStore.getState().events
-      expect(events[0].previousState).toEqual({
-        changedFields: ['theme', 'autoRefresh'],
-      })
+      expect(events[0].previousState).toEqual({ theme: 'dark', autoRefresh: false })
     })
 
     it('redacts secret values (nvdApiKey) so they never reach the exportable audit log', () => {
@@ -224,7 +224,9 @@ describe('Audit Logger', () => {
       logSettingsChange(mockSettings, newSettings)
 
       const event = useAuditStore.getState().events[0]
-      expect(event.previousState).toEqual({ changedFields: ['nvdApiKey'] })
+      // Both states run through sanitizeSettings, so the secret field is redacted on BOTH sides —
+      // capturing before-values must never turn the audit log into a secret-exfiltration channel.
+      expect(event.previousState).toEqual({ nvdApiKey: '[REDACTED]' })
       expect((event.newState as Record<string, unknown>).nvdApiKey).toBe('[REDACTED]')
       // The raw secret must not appear anywhere in the persisted event.
       expect(JSON.stringify(event)).not.toContain('super-secret-key-123')
