@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import type { Project, ProjectStatistics, Vulnerability } from '@@/types'
-import { hasAvailablePatch, isExploitedVuln, buildReportData, matchesVulnerabilitySearch } from './helpers'
+import type { Component, Project, ProjectStatistics, Vulnerability } from '@@/types'
+import {
+  hasAvailablePatch,
+  hasComponentPatchAvailable,
+  isExploitedVuln,
+  buildReportData,
+  matchesVulnerabilitySearch,
+} from './helpers'
 
 function makeVuln(overrides: Partial<Vulnerability> = {}): Vulnerability {
   return {
@@ -175,5 +181,35 @@ describe('matchesVulnerabilitySearch (FR-04.1)', () => {
   it('returns false when the query matches none of id, aliases, or description', () => {
     const vuln = makeVuln({ id: 'CVE-2021-44228', aliases: ['GHSA-xxxx'], description: 'buffer overflow' })
     expect(matchesVulnerabilitySearch(vuln, 'sql injection')).toBe(false)
+  })
+})
+
+describe('hasComponentPatchAvailable (FR-08.2)', () => {
+  function makeComponent(patchInfo?: Component['patchInfo']): Component {
+    return {
+      id: 'comp-1',
+      name: 'lodash',
+      version: '4.17.21',
+      type: 'library',
+      licenses: ['MIT'],
+      vulnerabilities: [],
+      patchInfo,
+    }
+  }
+
+  it('returns true only when patchInfo.hasFixAvailable is true', () => {
+    expect(
+      hasComponentPatchAvailable(makeComponent({ hasFixAvailable: true, fixedVersions: [], vulnerableVersions: [] })),
+    ).toBe(true)
+  })
+
+  it('returns false when patchInfo is undefined', () => {
+    expect(hasComponentPatchAvailable(makeComponent())).toBe(false)
+  })
+
+  it('returns false when hasFixAvailable is false', () => {
+    expect(
+      hasComponentPatchAvailable(makeComponent({ hasFixAvailable: false, fixedVersions: [], vulnerableVersions: [] })),
+    ).toBe(false)
   })
 })

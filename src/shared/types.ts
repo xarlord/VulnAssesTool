@@ -620,6 +620,9 @@ export interface FilterPreset {
     hasPatch?: boolean
     exploited?: boolean
     componentType?: Component['type'][]
+    // Component-filter dimensions (FR-08.2); presets are namespaced per-tab by localStorage key.
+    license?: string[]
+    hasVulnerabilities?: boolean
   }
 }
 

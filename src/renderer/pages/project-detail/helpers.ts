@@ -1,4 +1,4 @@
-import type { Project, Vulnerability } from '@@/types'
+import type { Component, Project, Vulnerability } from '@@/types'
 import type { ReportData } from '@/lib/services/reports/types'
 
 /**
@@ -49,6 +49,13 @@ export function isHighRiskVuln(vuln: Vulnerability): boolean {
 // having a patch (the patch-availability filter, FR-08.3, exists to separate the two).
 export function hasAvailablePatch(vuln: Vulnerability): boolean {
   return vuln.patchInfo?.patchAvailability === 'available' || (vuln.patchedVersions?.length ?? 0) > 0
+}
+
+// A component "has a patch available" only when its resolved patch metadata says a fix exists
+// (Component.patchInfo.hasFixAvailable). Used by the ComponentsTab patch-availability filter
+// (FR-08.2); mirrors hasAvailablePatch on the Vulnerability side.
+export function hasComponentPatchAvailable(component: Component): boolean {
+  return component.patchInfo?.hasFixAvailable === true
 }
 
 // A vulnerability counts as "exploited" for filtering when it's in the CISA KEV catalog or its

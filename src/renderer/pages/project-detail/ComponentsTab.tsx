@@ -1,8 +1,10 @@
 import React from 'react'
 import { Shield } from 'lucide-react'
+import { toast } from '@/components/Toaster'
 import { VirtualList } from '@/components/VirtualList'
-import { getSbomFilename, getVulnerabilitiesForComponent } from './helpers'
-import type { Component, Project } from '@@/types'
+import { FilterPresets } from '@/components/FilterPresets'
+import { getSbomFilename, getVulnerabilitiesForComponent, hasComponentPatchAvailable } from './helpers'
+import type { Component, FilterPreset, Project } from '@@/types'
 
 interface ComponentsTabProps {
   project: Project
@@ -15,7 +17,71 @@ export function ComponentsTab({ project, onComponentClick }: ComponentsTabProps)
   const [componentVulnFilter, setComponentVulnFilter] = React.useState<'all' | 'vulnerable' | 'safe'>('all')
   const [componentLicenseFilter, setComponentLicenseFilter] = React.useState<string>('all')
   const [componentCoverageFilter, setComponentCoverageFilter] = React.useState<'all' | 'identified' | 'gap'>('all')
+  const [componentPatchFilter, setComponentPatchFilter] = React.useState<'all' | 'available' | 'unavailable'>('all')
   const [componentSort, setComponentSort] = React.useState<'name' | 'version' | 'type'>('name')
+
+  // Component-filter presets live in their own localStorage namespace, distinct from the
+  // Vulnerabilities tab's `vuln-filter-presets-*` (FR-08.2).
+  const presetStorageKey = `component-filter-presets-${project.id}`
+  const [filterPresets, setFilterPresets] = React.useState<FilterPreset[]>(() => {
+    try {
+      const saved = localStorage.getItem(presetStorageKey)
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(presetStorageKey, JSON.stringify(filterPresets))
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [filterPresets, presetStorageKey])
+
+  // Capture the current component-filter selections into a preset payload.
+  const getCurrentFilters = (): FilterPreset['filters'] => {
+    const filters: FilterPreset['filters'] = {}
+    if (componentTypeFilter !== 'all') {
+      filters.componentType = [componentTypeFilter]
+    }
+    if (componentLicenseFilter !== 'all') {
+      filters.license = [componentLicenseFilter]
+    }
+    if (componentVulnFilter !== 'all') {
+      filters.hasVulnerabilities = componentVulnFilter === 'vulnerable'
+    }
+    if (componentPatchFilter !== 'all') {
+      filters.hasPatch = componentPatchFilter === 'available'
+    }
+    return filters
+  }
+
+  const handleSavePreset = (name: string, filters: FilterPreset['filters']) => {
+    setFilterPresets((prev) => [...prev, { id: Date.now().toString(), name, filters }])
+    toast.success('Preset Saved', `Filter preset "${name}" has been saved.`)
+  }
+
+  const handleLoadPreset = (presetId: string) => {
+    const preset = filterPresets.find((p) => p.id === presetId)
+    if (!preset) return
+    const { filters } = preset
+    setComponentTypeFilter(
+      filters.componentType && filters.componentType.length === 1 ? filters.componentType[0] : 'all',
+    )
+    setComponentLicenseFilter(filters.license && filters.license.length === 1 ? filters.license[0] : 'all')
+    setComponentVulnFilter(
+      filters.hasVulnerabilities === undefined ? 'all' : filters.hasVulnerabilities ? 'vulnerable' : 'safe',
+    )
+    setComponentPatchFilter(filters.hasPatch === undefined ? 'all' : filters.hasPatch ? 'available' : 'unavailable')
+    toast.success('Preset Loaded', `Filter preset "${preset.name}" has been applied.`)
+  }
+
+  const handleDeletePreset = (presetId: string) => {
+    setFilterPresets((prev) => prev.filter((p) => p.id !== presetId))
+    toast.success('Preset Deleted', 'Filter preset has been deleted.')
+  }
 
   // Extract unique licenses from components for filter dropdown
   const uniqueLicenses = React.useMemo(() => {
@@ -92,6 +158,16 @@ export function ComponentsTab({ project, onComponentClick }: ComponentsTabProps)
                 </select>
               )}
               <select
+                value={componentPatchFilter}
+                onChange={(e) => setComponentPatchFilter(e.target.value as 'all' | 'available' | 'unavailable')}
+                aria-label="Filter by patch availability"
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="all">All Patch Status</option>
+                <option value="available">Has Patch</option>
+                <option value="unavailable">No Patch</option>
+              </select>
+              <select
                 value={componentSort}
                 onChange={(e) => setComponentSort(e.target.value as 'name' | 'version' | 'type')}
                 aria-label="Sort components by"
@@ -101,6 +177,13 @@ export function ComponentsTab({ project, onComponentClick }: ComponentsTabProps)
                 <option value="version">Sort: Version</option>
                 <option value="type">Sort: Type</option>
               </select>
+              <FilterPresets
+                presets={filterPresets}
+                currentFilters={getCurrentFilters()}
+                onSavePreset={handleSavePreset}
+                onLoadPreset={handleLoadPreset}
+                onDeletePreset={handleDeletePreset}
+              />
             </div>
           )}
         </div>
@@ -154,7 +237,13 @@ export function ComponentsTab({ project, onComponentClick }: ComponentsTabProps)
                   (componentCoverageFilter === 'gap' && component.coverage === 'gap') ||
                   (componentCoverageFilter === 'identified' && component.coverage !== 'gap')
 
-                return matchesSearch && matchesType && matchesVuln && matchesLicense && matchesCoverage
+                const patchAvailable = hasComponentPatchAvailable(component)
+                const matchesPatch =
+                  componentPatchFilter === 'all' ||
+                  (componentPatchFilter === 'available' && patchAvailable) ||
+                  (componentPatchFilter === 'unavailable' && !patchAvailable)
+
+                return matchesSearch && matchesType && matchesVuln && matchesLicense && matchesCoverage && matchesPatch
               })
 
               // Sort components
@@ -182,6 +271,7 @@ export function ComponentsTab({ project, onComponentClick }: ComponentsTabProps)
                           setComponentTypeFilter('all')
                           setComponentVulnFilter('all')
                           setComponentLicenseFilter('all')
+                          setComponentPatchFilter('all')
                         }}
                         className="mt-2 text-sm text-primary hover:underline"
                       >
