@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { getDb, getDeltaSync, getCpeSearch } from '../database/initialize.js'
+import { config } from '../config.js'
 import {
   validateNvdSearchRequest,
   validateGetCveRequest,
@@ -339,6 +340,9 @@ router.get('/stats', async (_req, res) => {
         success: false,
         stats: null,
         error: 'Database not initialized',
+        // Storage location (FR-10.3) is a config fact, available even before the
+        // DB file exists, so the Settings page can always show where it lives.
+        dbPath: config.DB_PATH,
       })
       return
     }
@@ -354,6 +358,7 @@ router.get('/stats', async (_req, res) => {
         dbSize,
         version: 1,
       },
+      dbPath: config.DB_PATH,
     })
   } catch (error) {
     console.error('Get stats error:', error)
@@ -756,6 +761,7 @@ router.get('/config/sync', async (_req, res) => {
       success: true,
       config: {
         syncInterval: hoursToSyncInterval(status?.autoSyncIntervalHours),
+        bandwidthLimitKBps: status?.bandwidthLimitKBps ?? 0,
       },
     })
   } catch (error) {
@@ -768,18 +774,38 @@ router.get('/config/sync', async (_req, res) => {
 
 router.put('/config/sync', async (req, res) => {
   try {
-    const config = req.body as { syncInterval?: string }
-    const hours = config.syncInterval === undefined ? undefined : SYNC_INTERVAL_HOURS[config.syncInterval]
-    if (hours === undefined) {
-      res.json({ success: false, error: `Invalid syncInterval: ${String(config.syncInterval)}` })
-      return
+    const config = req.body as { syncInterval?: string; bandwidthLimitKBps?: number }
+
+    // syncInterval and bandwidthLimitKBps are independently optional — the Settings
+    // UI updates one at a time. Validate whichever is present before any DB access.
+    let hours: number | undefined
+    if (config.syncInterval !== undefined) {
+      hours = SYNC_INTERVAL_HOURS[config.syncInterval]
+      if (hours === undefined) {
+        res.json({ success: false, error: `Invalid syncInterval: ${String(config.syncInterval)}` })
+        return
+      }
     }
+
+    const { bandwidthLimitKBps } = config
+    if (bandwidthLimitKBps !== undefined) {
+      if (typeof bandwidthLimitKBps !== 'number' || !Number.isFinite(bandwidthLimitKBps) || bandwidthLimitKBps < 0) {
+        res.json({ success: false, error: `Invalid bandwidthLimitKBps: ${String(bandwidthLimitKBps)}` })
+        return
+      }
+    }
+
     const deltaSync = getDeltaSync()
     if (!deltaSync) {
       res.json({ success: false, error: 'Sync service not initialized' })
       return
     }
-    deltaSync.setAutoSyncInterval(hours)
+    if (hours !== undefined) {
+      deltaSync.setAutoSyncInterval(hours)
+    }
+    if (bandwidthLimitKBps !== undefined) {
+      deltaSync.setBandwidthLimitKBps(bandwidthLimitKBps)
+    }
     res.json({ success: true })
   } catch (error) {
     res.json({

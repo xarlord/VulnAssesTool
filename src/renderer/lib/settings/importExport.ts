@@ -70,6 +70,12 @@ const AppSettingsSchema = z.object({
   }),
   cvssVersion: z.enum(['3.0', '3.1']),
   showCvssBreakdown: z.boolean(),
+  severityThresholds: z.object({
+    critical: z.number(),
+    high: z.number(),
+    medium: z.number(),
+    low: z.number(),
+  }),
   maxGraphNodes: z.number(),
   showVulnerableOnly: z.boolean(),
 })

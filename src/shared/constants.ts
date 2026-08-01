@@ -93,6 +93,8 @@ export const DEFAULT_SETTINGS = {
   },
   cvssVersion: '3.1' as const,
   showCvssBreakdown: true,
+  // CVSS v3.x spec cutoffs (FR-10.5); kept in sync with DEFAULT_SEVERITY_THRESHOLDS in cvss/parser.ts.
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 500,
   showVulnerableOnly: false,
   // Database update schedule

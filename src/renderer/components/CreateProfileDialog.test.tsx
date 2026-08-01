@@ -25,6 +25,7 @@ const mockSettings: AppSettings = {
   },
   cvssVersion: '3.1',
   showCvssBreakdown: true,
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 500,
   showVulnerableOnly: false,
 }

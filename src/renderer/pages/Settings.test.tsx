@@ -20,6 +20,7 @@ vi.mock('lucide-react', () => {
     'Trash2',
     'RotateCcw',
     'Shield',
+    'ShieldAlert',
     'ChevronDown',
     'ChevronUp',
     'ExternalLink',
@@ -121,6 +122,7 @@ const defaultSettings: AppSettings = {
   },
   cvssVersion: '3.1',
   showCvssBreakdown: true,
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 100,
   showVulnerableOnly: false,
 }
@@ -1479,6 +1481,40 @@ describe('Settings', () => {
 
       await waitFor(() => {
         expect(platform.database.updateSyncConfig).toHaveBeenCalledWith({ syncInterval: 'daily' })
+      })
+    })
+
+    it('updates the bandwidth limit via updateSyncConfig (FR-10.3)', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      renderSettings()
+
+      // The Settings input is the only client->server path for the update bandwidth
+      // cap; a change must reach updateSyncConfig as a number, not a string.
+      const input = screen.getByLabelText(/bandwidth limit/i)
+      fireEvent.change(input, { target: { value: '500' } })
+
+      await waitFor(() => {
+        expect(platform.database.updateSyncConfig).toHaveBeenCalledWith({ bandwidthLimitKBps: 500 })
+      })
+    })
+
+    it('displays the database storage location from getStats().dbPath (FR-10.3)', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+      vi.mocked(platform.database.getStats).mockResolvedValueOnce({
+        success: true,
+        stats: { totalCves: 0, lastUpdate: null, dbSize: 0, version: 1 },
+        dbPath: 'C:\\vulndata\\nvd-data.db',
+      })
+
+      renderSettings()
+
+      // The user must be able to see where the DB lives; the path comes from the
+      // server config, surfaced via getStats().dbPath.
+      await waitFor(() => {
+        expect(screen.getByText('C:\\vulndata\\nvd-data.db')).toBeInTheDocument()
       })
     })
 

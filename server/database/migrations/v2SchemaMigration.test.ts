@@ -201,6 +201,20 @@ describe('Database Schema Migrations', () => {
     })
   })
 
+  describe('Migration 14: Sync Bandwidth Limit', () => {
+    it('adds bandwidth_limit_kbps to sync_status defaulting to 0/unlimited (FR-10.3)', () => {
+      runMigrations(db, 0)
+
+      const tableInfo = db.pragma('table_info(sync_status)') as Array<{ name: string; dflt_value: unknown }>
+      const column = tableInfo.find((row) => row.name === 'bandwidth_limit_kbps')
+
+      expect(column).toBeDefined()
+      // WHY default 0: an unset limit MUST mean "unlimited" so a DB upgraded from
+      // an older version keeps syncing at full speed rather than silently throttling.
+      expect(Number(column?.dflt_value)).toBe(0)
+    })
+  })
+
   describe('Error Handling', () => {
     it('should report errors when migration fails', () => {
       // This test verifies error handling in the migration system

@@ -4,6 +4,7 @@
  */
 
 import type { SettingsProfile, AppSettings } from '@@/types'
+import { DEFAULT_SEVERITY_THRESHOLDS } from '@/lib/cvss/parser'
 
 const PROFILES_STORAGE_KEY = 'vuln-assess-settings-profiles'
 const ACTIVE_PROFILE_ID_KEY = 'vuln-assess-active-profile-id'
@@ -301,6 +302,7 @@ function getDefaultSettings(): AppSettings {
     },
     cvssVersion: '3.1',
     showCvssBreakdown: true,
+    severityThresholds: { ...DEFAULT_SEVERITY_THRESHOLDS },
     maxGraphNodes: 500,
     showVulnerableOnly: false,
   }

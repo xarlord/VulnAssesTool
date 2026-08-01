@@ -147,7 +147,15 @@ describe('GET /api/database/stats', () => {
   it('reports not-initialized instead of throwing', async () => {
     const res = await request(app).get('/api/database/stats')
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ success: false, stats: null, error: 'Database not initialized' })
+    // dbPath (FR-10.3) is a config fact independent of DB readiness, so the Settings
+    // page can show the storage location even before the first sync creates the file.
+    const { config } = await import('../config.js')
+    expect(res.body).toEqual({
+      success: false,
+      stats: null,
+      error: 'Database not initialized',
+      dbPath: config.DB_PATH,
+    })
   })
 })
 
@@ -291,7 +299,9 @@ describe('GET /api/database/config/sync', () => {
   it('returns the default sync config', async () => {
     const res = await request(app).get('/api/database/config/sync')
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ success: true, config: { syncInterval: 'weekly' } })
+    // bandwidthLimitKBps defaults to 0 (unlimited); the Settings input reads it to
+    // render the current cap, so it must always be present, not just when set.
+    expect(res.body).toEqual({ success: true, config: { syncInterval: 'weekly', bandwidthLimitKBps: 0 } })
   })
 })
 
@@ -310,6 +320,24 @@ describe('PUT /api/database/config/sync', () => {
 
   it('reports the service is unavailable when delta sync is not initialized', async () => {
     const res = await request(app).put('/api/database/config/sync').send({ syncInterval: 'monthly' })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Sync service not initialized' })
+  })
+
+  it('rejects a negative bandwidth limit before touching the DB (FR-10.3)', async () => {
+    // A negative cap is nonsensical and would make computeThrottleDelayMs misbehave;
+    // reject it up front, same as an unknown syncInterval.
+    const res = await request(app).put('/api/database/config/sync').send({ bandwidthLimitKBps: -1 })
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(false)
+    expect(res.body.error).toMatch(/invalid bandwidthLimitKBps/i)
+  })
+
+  it('accepts a bandwidth-only update with no syncInterval (FR-10.3)', async () => {
+    // The Settings bandwidth input sends ONLY bandwidthLimitKBps; syncInterval must
+    // no longer be mandatory. A valid value passes validation and reaches the persist
+    // step, which here takes the graceful not-initialized fallback.
+    const res = await request(app).put('/api/database/config/sync').send({ bandwidthLimitKBps: 500 })
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, error: 'Sync service not initialized' })
   })

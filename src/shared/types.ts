@@ -421,6 +421,18 @@ export interface DatabaseSettings {
 }
 
 // Settings Types
+/**
+ * CVSS base-score cutoffs for each severity band (FR-10.5). Defaults match the
+ * CVSS v3.x spec (9.0/7.0/4.0/0.1). Consumed ONLY by the CVSS detail view's
+ * parser call, never by ingestion-time severity or the stored `.severity` field.
+ */
+export interface SeverityThresholds {
+  critical: number
+  high: number
+  medium: number
+  low: number
+}
+
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system'
   fontSize: 'small' | 'default' | 'large'
@@ -433,6 +445,7 @@ export interface AppSettings {
   // CVSS settings
   cvssVersion: '3.0' | '3.1'
   showCvssBreakdown: boolean
+  severityThresholds: SeverityThresholds
   // Graph settings
   maxGraphNodes: number
   showVulnerableOnly: boolean

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseCvssVector } from './parser'
+import { parseCvssVector, getSeverityFromScore } from './parser'
 
 describe('parseCvssVector (FR-04.3 / CR-03.3)', () => {
   // Regression guard: parseMetricValue previously looked up CVSS_METRIC_VALUES
@@ -63,5 +63,33 @@ describe('parseCvssVector (FR-04.3 / CR-03.3)', () => {
 
   it('returns null for a non-CVSS string', () => {
     expect(parseCvssVector('not a vector')).toBeNull()
+  })
+})
+
+describe('getSeverityFromScore configurable thresholds (FR-10.5)', () => {
+  it('uses the default 9/7/4/0.1 cutoffs when no thresholds are supplied', () => {
+    // Backward-compat: every existing caller (ingestion providers included) omits
+    // the arg and must keep the exact spec buckets.
+    expect(getSeverityFromScore(9.5)).toBe('critical')
+    expect(getSeverityFromScore(8.5)).toBe('high')
+    expect(getSeverityFromScore(5.0)).toBe('medium')
+    expect(getSeverityFromScore(2.0)).toBe('low')
+    expect(getSeverityFromScore(0)).toBe('none')
+  })
+
+  it('consults custom thresholds so the same score can land in a different bucket', () => {
+    // WHY: proves the param is actually read, not accepted-and-ignored. 8.5 is 'high'
+    // under the defaults but 'critical' once the critical cutoff drops to 8.0.
+    expect(getSeverityFromScore(8.5, { critical: 8.0, high: 7.0, medium: 4.0, low: 0.1 })).toBe('critical')
+    expect(getSeverityFromScore(8.5, { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 })).toBe('high')
+  })
+})
+
+describe('parseCvssVector threshold threading (FR-10.5)', () => {
+  it('reflects custom severity thresholds in breakdown.severity', () => {
+    // base 9.8 -> 'critical' by default, but only 'high' once critical is raised to 10.0.
+    const vector = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'
+    expect(parseCvssVector(vector)?.severity).toBe('critical')
+    expect(parseCvssVector(vector, { critical: 10.0, high: 7.0, medium: 4.0, low: 0.1 })?.severity).toBe('high')
   })
 })

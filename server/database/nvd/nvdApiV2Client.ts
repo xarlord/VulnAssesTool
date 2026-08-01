@@ -17,6 +17,7 @@
  */
 
 import { RateLimiter, createNvdRateLimiter } from './rateLimiter.js'
+import { computeThrottleDelayMs } from './bandwidthThrottle.js'
 
 // NVD API 2.0 base URL
 const NVD_API_V2_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
@@ -460,12 +461,35 @@ export class NvdApiV2Client {
   private abortController: AbortController | null = null
   private cache: ResponseCache
   private executor: ConcurrentExecutor
+  private bandwidthLimitKBps: number
 
-  constructor(apiKey?: string, concurrency: number = DEFAULT_CONCURRENCY) {
+  constructor(apiKey?: string, concurrency: number = DEFAULT_CONCURRENCY, bandwidthLimitKBps: number = 0) {
     this.apiKey = apiKey
     this.rateLimiter = createNvdRateLimiter(!!apiKey)
     this.cache = new ResponseCache(CACHE_TTL_MS)
     this.executor = new ConcurrentExecutor(concurrency)
+    this.bandwidthLimitKBps = bandwidthLimitKBps > 0 ? bandwidthLimitKBps : 0
+  }
+
+  /**
+   * Set the download bandwidth limit in KB/s (0 = unlimited). Applied after each
+   * fetched page via computeThrottleDelayMs. A non-positive value disables it.
+   */
+  setBandwidthLimitKBps(kbps: number): void {
+    this.bandwidthLimitKBps = kbps > 0 ? kbps : 0
+  }
+
+  /**
+   * Pause after a real network page so the average download rate stays at/below
+   * the configured KB/s (FR-10.3). No-op at the default (0 = unlimited), so an
+   * unset limit leaves sync timing byte-for-byte unchanged.
+   */
+  private async throttleForPayload(response: NvdApiResponseV2): Promise<void> {
+    if (this.bandwidthLimitKBps <= 0) {
+      return
+    }
+    const bytes = Buffer.byteLength(JSON.stringify(response))
+    await this.delay(computeThrottleDelayMs(bytes, this.bandwidthLimitKBps))
   }
 
   /**
@@ -616,6 +640,11 @@ export class NvdApiV2Client {
           if (response && useCache) {
             this.cache.set(cacheKey, response)
           }
+
+          // Throttle only real network fetches (cached pages transferred nothing).
+          if (response) {
+            await this.throttleForPayload(response)
+          }
         }
 
         if (!response) {
@@ -749,6 +778,11 @@ export class NvdApiV2Client {
 
           if (response && useCache) {
             this.cache.set(cacheKey, response)
+          }
+
+          // Throttle only real network fetches (cached pages transferred nothing).
+          if (response) {
+            await this.throttleForPayload(response)
           }
         }
 
@@ -1098,8 +1132,12 @@ export class NvdApiV2Client {
 /**
  * Create a new NVD API v2 client
  */
-export function createNvdApiV2Client(apiKey?: string, concurrency?: number): NvdApiV2Client {
-  return new NvdApiV2Client(apiKey, concurrency)
+export function createNvdApiV2Client(
+  apiKey?: string,
+  concurrency?: number,
+  bandwidthLimitKBps?: number,
+): NvdApiV2Client {
+  return new NvdApiV2Client(apiKey, concurrency, bandwidthLimitKBps)
 }
 
 /**

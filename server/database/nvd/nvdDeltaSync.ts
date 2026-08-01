@@ -26,6 +26,7 @@ export interface SyncStatus {
   nextScheduledSync: string | null
   autoSyncEnabled: boolean
   autoSyncIntervalHours: number
+  bandwidthLimitKBps: number
 }
 
 /**
@@ -98,6 +99,9 @@ export class NvdDeltaSync {
     this.apiClient = createNvdApiV2Client(apiKey)
     this.importer = createNvdDataImporter(db)
     this.progress = this.createInitialProgress()
+    // Re-apply the persisted bandwidth cap so a restart keeps throttling updates
+    // at the user's chosen rate (migrations have already run before this point).
+    this.apiClient.setBandwidthLimitKBps(this.getSyncStatus().bandwidthLimitKBps)
   }
 
   /**
@@ -142,7 +146,8 @@ export class NvdDeltaSync {
         last_error,
         next_scheduled_sync,
         auto_sync_enabled,
-        auto_sync_interval_hours
+        auto_sync_interval_hours,
+        bandwidth_limit_kbps
       FROM sync_status
       WHERE source = 'NVD'
       ORDER BY id DESC
@@ -159,6 +164,7 @@ export class NvdDeltaSync {
           next_scheduled_sync: string | null
           auto_sync_enabled: number
           auto_sync_interval_hours: number
+          bandwidth_limit_kbps: number | null
         }
       | undefined
 
@@ -171,6 +177,7 @@ export class NvdDeltaSync {
       nextScheduledSync: null,
       autoSyncEnabled: false,
       autoSyncIntervalHours: 24,
+      bandwidthLimitKBps: 0,
     }
 
     if (!row) {
@@ -186,6 +193,7 @@ export class NvdDeltaSync {
       nextScheduledSync: row.next_scheduled_sync,
       autoSyncEnabled: row.auto_sync_enabled === 1,
       autoSyncIntervalHours: row.auto_sync_interval_hours,
+      bandwidthLimitKBps: row.bandwidth_limit_kbps ?? 0,
     }
   }
 
@@ -210,6 +218,24 @@ export class NvdDeltaSync {
         )
         .run(enabled, hours)
     }
+  }
+
+  /**
+   * Persist the update bandwidth limit (KB/s, 0 = unlimited) and apply it to the
+   * API client immediately so in-flight and future syncs honour it. Mirrors how
+   * setAutoSyncInterval persists to sync_status; survives reload/restart.
+   */
+  setBandwidthLimitKBps(kbps: number): void {
+    const normalized = kbps > 0 ? kbps : 0
+    const existing = this.db.prepare(`SELECT id FROM sync_status WHERE source = 'NVD'`).get()
+    if (existing) {
+      this.db.prepare(`UPDATE sync_status SET bandwidth_limit_kbps = ? WHERE source = 'NVD'`).run(normalized)
+    } else {
+      this.db
+        .prepare(`INSERT INTO sync_status (source, last_sync_at, bandwidth_limit_kbps) VALUES ('NVD', '', ?)`)
+        .run(normalized)
+    }
+    this.apiClient.setBandwidthLimitKBps(normalized)
   }
 
   /**

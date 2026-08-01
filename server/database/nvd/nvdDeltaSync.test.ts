@@ -17,6 +17,7 @@ import { runMigrations, getSchemaVersion } from '../migrations/v2SchemaMigration
 vi.mock('./nvdApiV2Client.js', () => ({
   NvdApiV2Client: vi.fn().mockImplementation(() => ({
     setApiKey: vi.fn(),
+    setBandwidthLimitKBps: vi.fn(),
     fetchModifiedSince: vi.fn().mockResolvedValue({
       cves: [
         {
@@ -69,6 +70,7 @@ vi.mock('./nvdApiV2Client.js', () => ({
   })),
   createNvdApiV2Client: vi.fn().mockReturnValue({
     setApiKey: vi.fn(),
+    setBandwidthLimitKBps: vi.fn(),
     fetchModifiedSince: vi.fn().mockResolvedValue({
       cves: [],
       totalResults: 0,
@@ -130,6 +132,19 @@ describe('NvdDeltaSync', () => {
     it('should update API key', () => {
       deltaSync.setApiKey('new-api-key')
       // No error should be thrown
+    })
+  })
+
+  describe('setBandwidthLimitKBps (FR-10.3)', () => {
+    it('defaults to 0 (unlimited) and persists a chosen limit through getSyncStatus', () => {
+      // WHY: the settings UI writes the cap once. It must be persisted (not just
+      // held in memory) so the scheduler keeps throttling updates at the chosen
+      // rate after a reload/restart instead of silently reverting to unlimited.
+      expect(deltaSync.getSyncStatus().bandwidthLimitKBps).toBe(0)
+
+      deltaSync.setBandwidthLimitKBps(500)
+
+      expect(deltaSync.getSyncStatus().bandwidthLimitKBps).toBe(500)
     })
   })
 
@@ -368,6 +383,7 @@ describe('NvdDeltaSync', () => {
       const { createNvdApiV2Client } = await import('./nvdApiV2Client.js')
       vi.mocked(createNvdApiV2Client).mockReturnValueOnce({
         setApiKey: vi.fn(),
+        setBandwidthLimitKBps: vi.fn(),
         fetchModifiedSince: vi.fn().mockRejectedValue(new Error('API Error')),
         cancel: vi.fn(),
         getRateLimiterStatus: vi.fn().mockReturnValue({
@@ -387,6 +403,7 @@ describe('NvdDeltaSync', () => {
       const { createNvdApiV2Client } = await import('./nvdApiV2Client.js')
       vi.mocked(createNvdApiV2Client).mockReturnValueOnce({
         setApiKey: vi.fn(),
+        setBandwidthLimitKBps: vi.fn(),
         fetchModifiedSince: vi.fn().mockRejectedValue(new Error('Test error')),
         cancel: vi.fn(),
         getRateLimiterStatus: vi.fn().mockReturnValue({
@@ -516,6 +533,7 @@ describe('NvdDeltaSync scheduleNextSync timer callback', () => {
     const { createNvdApiV2Client } = await import('./nvdApiV2Client.js')
     vi.mocked(createNvdApiV2Client).mockReturnValueOnce({
       setApiKey: vi.fn(),
+      setBandwidthLimitKBps: vi.fn(),
       fetchModifiedSince: vi.fn().mockRejectedValue(new Error('Timer sync failure')),
       cancel: vi.fn(),
       getRateLimiterStatus: vi.fn().mockReturnValue({

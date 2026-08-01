@@ -9,9 +9,13 @@ import { useMemo, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Filter } from 'lucide-react'
 import { DependencyGraph } from '@/components/graph/DependencyGraph'
+import { findShortestPath } from '@/components/graph'
 import { MAX_GRAPH_NODES } from '@/components/graph/types'
 import { PageHeader } from '@/components/PageHeader'
+import { ComponentVulnerabilitiesPopup } from '@/components/ComponentVulnerabilitiesPopup'
+import { toast } from '@/components/Toaster'
 import { useProjects } from '@/store/useStore'
+import { getVulnerabilitiesForComponent } from './project-detail/helpers'
 import type { Component } from '@@/types'
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low'
@@ -23,6 +27,15 @@ export function DependencyGraphPage() {
 
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [showVulnerableOnly, setShowVulnerableOnly] = useState(false)
+
+  // Node-selection details popup (FR-11.2-a)
+  const [selectedComponent, setSelectedComponent] = useState<Component | null>(null)
+  const [showDetail, setShowDetail] = useState(false)
+
+  // Path highlighting (FR-11.2-b)
+  const [fromId, setFromId] = useState('')
+  const [toId, setToId] = useState('')
+  const [highlightedPath, setHighlightedPath] = useState<string[] | null>(null)
 
   // Get current project
   const project = useMemo(() => {
@@ -59,9 +72,25 @@ export function DependencyGraphPage() {
     return filtered
   }, [components, projectVulnerabilities, severityFilter, showVulnerableOnly])
 
-  // Handle node click
+  // Handle node click — open the shared component details popup (FR-11.2-a)
   const handleNodeClick = useCallback((component: Component) => {
-    console.log('[DependencyGraphPage] Node clicked:', component.name)
+    setSelectedComponent(component)
+    setShowDetail(true)
+  }, [])
+
+  // Path highlighting (FR-11.2-b) — wire the From/To picker to findShortestPath
+  const handleHighlightPath = useCallback(() => {
+    const path = findShortestPath(components, fromId, toId)
+    if (path) {
+      setHighlightedPath(path)
+    } else {
+      setHighlightedPath(null)
+      toast.error('No path found between these components')
+    }
+  }, [components, fromId, toId])
+
+  const handleClearPath = useCallback(() => {
+    setHighlightedPath(null)
   }, [])
 
   // Severity counts
@@ -125,6 +154,56 @@ export function DependencyGraphPage() {
               >
                 Vulnerable Only
               </button>
+
+              {/* Path highlighting controls (FR-11.2-b) */}
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label="Path from"
+                  value={fromId}
+                  onChange={(e) => {
+                    setFromId(e.target.value)
+                    setHighlightedPath(null)
+                  }}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">From…</option>
+                  {components.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.version}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Path to"
+                  value={toId}
+                  onChange={(e) => {
+                    setToId(e.target.value)
+                    setHighlightedPath(null)
+                  }}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">To…</option>
+                  {components.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.version}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleHighlightPath}
+                  disabled={!fromId || !toId}
+                  className="px-3 py-1.5 text-sm rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Highlight Path
+                </button>
+                <button
+                  onClick={handleClearPath}
+                  disabled={!highlightedPath}
+                  className="px-3 py-1.5 text-sm rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Clear Path
+                </button>
+              </div>
             </>
           }
         />
@@ -143,6 +222,8 @@ export function DependencyGraphPage() {
           components={filteredComponents}
           vulnerabilities={projectVulnerabilities}
           onNodeClick={handleNodeClick}
+          highlightPath={highlightedPath ?? undefined}
+          clearHighlight={!highlightedPath}
           height="calc(100vh - 180px)"
           showControls={true}
           showLegend={true}
@@ -180,6 +261,20 @@ export function DependencyGraphPage() {
           </div>
         </div>
       </footer>
+
+      {/* Node-selection details (FR-11.2-a) — reuses the shared component popup. */}
+      {selectedComponent && (
+        <ComponentVulnerabilitiesPopup
+          component={selectedComponent}
+          vulnerabilities={getVulnerabilitiesForComponent(project, selectedComponent.id)}
+          open={showDetail}
+          onClose={() => {
+            setShowDetail(false)
+            setSelectedComponent(null)
+          }}
+          onViewVulnerability={() => navigate(`/project/${project.id}`)}
+        />
+      )}
     </div>
   )
 }

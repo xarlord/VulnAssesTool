@@ -54,6 +54,7 @@ export function getMigrations(): Migration[] {
     migration_11_kev_catalog(),
     migration_12_epss_columns(),
     migration_13_cpe_product_index(),
+    migration_14_sync_bandwidth_limit(),
   ]
 }
 
@@ -998,6 +999,32 @@ function migration_13_cpe_product_index(): Migration {
     down: (db: Database) => {
       db.exec('DROP INDEX IF EXISTS idx_cpe_product_lookup')
     },
+  }
+}
+
+/**
+ * Migration 14: bandwidth limit for NVD updates (FR-10.3)
+ */
+function migration_14_sync_bandwidth_limit(): Migration {
+  return {
+    version: 14,
+    name: 'sync_bandwidth_limit',
+    description: 'Add bandwidth_limit_kbps to sync_status so the update bandwidth cap persists across restarts',
+    up: (db: Database) => {
+      const tableInfo = db.pragma('table_info(sync_status)') as Array<{ name: string }>
+      // sync_status is created by migration 6, so it always exists on a real
+      // upgrade path by the time this runs; guard only so a partial schema
+      // (e.g. a test seeded from a later version) is a safe no-op instead of a throw.
+      if (tableInfo.length === 0) {
+        return
+      }
+      const existingColumns = tableInfo.map((row) => row.name)
+      // Default 0 = unlimited, so an upgraded DB keeps syncing at full speed.
+      if (!existingColumns.includes('bandwidth_limit_kbps')) {
+        db.exec('ALTER TABLE sync_status ADD COLUMN bandwidth_limit_kbps INTEGER DEFAULT 0')
+      }
+    },
+    down: (_db: Database) => {},
   }
 }
 

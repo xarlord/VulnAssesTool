@@ -42,6 +42,7 @@ import { SettingsNav } from './settings/SettingsNav'
 import { ProfilesSection } from './settings/ProfilesSection'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { NotificationsSection } from './settings/NotificationsSection'
+import { CvssSection } from './settings/CvssSection'
 // DatabaseStatus removed - unused
 
 /**
@@ -134,6 +135,8 @@ export function Settings() {
   const [cveCount, setCveCount] = useState<number>(0)
   const [cpeCount, setCpeCount] = useState<number>(0)
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const [bandwidthLimit, setBandwidthLimit] = useState<number>(0)
+  const [dbPath, setDbPath] = useState<string | null>(null)
 
   // Confirmation dialogs state
   const [showResetDialog, setShowResetDialog] = useState(false)
@@ -224,6 +227,8 @@ export function Settings() {
         // Load database stats
         const statsResponse = await getPlatform().database.getStats()
         console.log('[Settings] Stats response:', statsResponse)
+        // dbPath is a config fact, present even when the DB itself isn't ready yet.
+        setDbPath(statsResponse.dbPath ?? null)
         if (statsResponse.success && statsResponse.stats) {
           const stats = statsResponse.stats
           setDatabaseSize(stats.dbSize || 0)
@@ -251,6 +256,7 @@ export function Settings() {
           if (configResponse.config.syncInterval) {
             setSyncSchedule(configResponse.config.syncInterval as SyncSchedule)
           }
+          setBandwidthLimit(configResponse.config.bandwidthLimitKBps ?? 0)
         }
       } catch (error) {
         console.error('[Settings] Failed to load database settings:', error)
@@ -511,6 +517,16 @@ export function Settings() {
     }
   }
 
+  const handleBandwidthLimitChange = async (value: number) => {
+    const normalized = Number.isFinite(value) && value > 0 ? value : 0
+    setBandwidthLimit(normalized)
+    try {
+      await getPlatform().database.updateSyncConfig({ bandwidthLimitKBps: normalized })
+    } catch (error) {
+      console.error('Failed to update bandwidth limit:', error)
+    }
+  }
+
   const handleStorageSettingChange = async (key: keyof DatabaseStorageSettings, value: number | boolean) => {
     const newSettings = { ...storageSettings, [key]: value }
     setStorageSettings(newSettings)
@@ -737,6 +753,7 @@ export function Settings() {
             <ProfilesSection />
             <AppearanceSection />
             <NotificationsSection />
+            <CvssSection />
 
             {/* API Configuration Section */}
             <div id="api" className="rounded-lg border border-border bg-card scroll-mt-6">
@@ -1002,6 +1019,24 @@ export function Settings() {
                       )}
                     </div>
                   )}
+
+                  {/* Bandwidth Limit (FR-10.3) */}
+                  <div className="mt-4">
+                    <label htmlFor="bandwidth-limit" className="mb-2 block text-sm font-medium">
+                      Bandwidth Limit (KB/s, 0 = unlimited)
+                    </label>
+                    <input
+                      id="bandwidth-limit"
+                      type="number"
+                      min={0}
+                      value={bandwidthLimit}
+                      onChange={(e) => handleBandwidthLimitChange(Number(e.target.value))}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Throttles NVD update downloads so a sync does not saturate the connection. 0 means no limit.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Storage Management */}
@@ -1009,6 +1044,17 @@ export function Settings() {
                   <div className="flex items-center gap-2">
                     <HardDrive className="h-4 w-4 text-muted-foreground" />
                     <h3 className="font-medium">Storage Management</h3>
+                  </div>
+
+                  {/* Storage Location (FR-10.3) — read-only; changing it is an env/restart concern */}
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">Storage Location</label>
+                    <p className="break-all rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+                      {dbPath ?? 'Not available'}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Set via the DATA_DIR environment variable; requires an application restart to change.
+                    </p>
                   </div>
 
                   {/* Storage Limit Slider */}
