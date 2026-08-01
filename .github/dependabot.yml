@@ -1,0 +1,14 @@
+# Automated dependency-update monitoring (SR-02.1).
+# Note: security-update PRs also require the repo's "Dependabot alerts" setting to be
+# enabled in GitHub → Settings → Code security; that toggle cannot be set from here.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
