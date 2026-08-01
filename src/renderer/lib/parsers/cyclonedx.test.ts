@@ -920,3 +920,54 @@ describe('CycloneDX specVersion support 1.0-1.5 (CR-03.1)', () => {
     await expect(parseCycloneDX(xml, 'bom.xml')).rejects.toThrow(/Unsupported CycloneDX specVersion/)
   })
 })
+
+/**
+ * Build a CycloneDX 1.5 JSON BOM with `count` distinct library components, each carrying the
+ * fields the mapper actually reads (name/version/purl/cpe/licenses/description) so the parse does
+ * representative per-component work, not a trivial pass over near-empty objects.
+ */
+function buildLargeCycloneDXJson(count: number): string {
+  return JSON.stringify({
+    bomFormat: 'CycloneDX',
+    specVersion: '1.5',
+    version: 1,
+    metadata: {
+      timestamp: '2024-01-01T00:00:00Z',
+      component: { type: 'application', name: 'large-app', version: '1.0.0' },
+    },
+    components: Array.from({ length: count }, (_, i) => ({
+      type: 'library',
+      'bom-ref': `pkg:npm/lib-${i}@1.0.0`,
+      name: `lib-${i}`,
+      version: '1.0.0',
+      purl: `pkg:npm/lib-${i}@1.0.0`,
+      cpe: `cpe:2.3:a:vendor:lib-${i}:1.0.0:*:*:*:*:*:*:*`,
+      licenses: [{ license: { id: 'MIT' } }],
+      description: `Component number ${i}`,
+    })),
+  })
+}
+
+/**
+ * NFR-01.2 — SBOM import of 1000 components must complete in under 5 seconds.
+ *
+ * WHY this exists (Rule 9): parseCycloneDX maps every component independently, so a 1000-component
+ * import should be linear and finish in milliseconds. This guard fails if per-component mapping
+ * regresses to O(n^2) (e.g. an accidental nested scan over all components per item) — the 5s ceiling
+ * is the PRD SLA, deliberately generous so normal CI jitter never trips it; only an algorithmic
+ * regression would. The length assertion guarantees the timing reflects real work and not an early
+ * bail-out that returns an empty result quickly.
+ */
+describe('NFR-01.2 performance', () => {
+  it('parses a 1000-component CycloneDX SBOM in under 5 seconds', async () => {
+    const json = buildLargeCycloneDXJson(1000)
+
+    const start = performance.now()
+    const result = await parseCycloneDX(json, 'large-sbom.json')
+    const elapsedMs = performance.now() - start
+
+    // Sanity: all 1000 components were actually produced, so the timing isn't from an early bail-out.
+    expect(result.components).toHaveLength(1000)
+    expect(elapsedMs).toBeLessThan(5000)
+  })
+})
