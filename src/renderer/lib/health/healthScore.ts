@@ -194,8 +194,10 @@ function calculateVersionScore(component: Component): number {
 /**
  * Get health category from score.
  * Thresholds follow FR-05.2: Excellent 90-100, Good 75-89, Fair 60-74, Poor 40-59, Critical 0-39.
+ * Exported as the single source of truth for score->category so widgets (e.g.
+ * ProjectHealthComparison, FR-05.3) never re-derive their own boundaries.
  */
-function getHealthCategory(score: number): ComponentHealth['category'] {
+export function getHealthCategory(score: number): ComponentHealth['category'] {
   if (score >= 90) return 'excellent'
   if (score >= 75) return 'good'
   if (score >= 60) return 'fair'

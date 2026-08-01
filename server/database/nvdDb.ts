@@ -13,6 +13,7 @@ import type { CVE, CPEMatch, Reference, CVEWithDetails, DatabaseMetadata } from 
 import type { CveFullDetails, CpeMatchFull, CweReference, ReferenceFull, CvssMetric } from '../types/database.js'
 import { runMigrations as runV2Migrations } from './migrations/v2SchemaMigration.js'
 import { escapeLikePattern } from './sqlSanitizer.js'
+import { isVersionInRange, type VersionRange } from './versionRange.js'
 
 type BetterDatabase = InstanceType<typeof BetterSqlite3>
 
@@ -784,27 +785,102 @@ export class NvdDatabase {
   }
 
   /**
-   * Search CVEs by CPE text
+   * Search CVEs by CPE text.
+   *
+   * Two matching strategies are unioned:
+   *  1. Literal substring match on the full cpe23_uri (fast path, unchanged) —
+   *     catches rows that list the component's exact version.
+   *  2. Version-RANGE match (FR-03.1): when the query CPE carries a concrete
+   *     version, also match same part/vendor/product rows whose cpe23_uri uses
+   *     version='*' plus version_start/end bound columns and whose range actually
+   *     contains that version. Most real NVD applicability data is published as
+   *     ranges, which a literal substring can never hit.
    */
   searchCVEsByCPE(cpeText: string, limit = 100, offset = 0): CVEWithDetails[] {
     if (!this.db) throw new Error('Database not initialized')
 
+    const literalRows = this.db
+      .prepare(
+        `SELECT DISTINCT c.* FROM cves c
+         INNER JOIN cpe_matches cp ON c.id = cp.cve_id
+         WHERE cp.cpe23_uri LIKE ? AND cp.vulnerable = 1`,
+      )
+      .all(`%${cpeText}%`) as CVE[]
+
+    // Merge both strategies by CVE id (literal wins on collision — same CVE).
+    const matched = new Map<string, CVE>()
+    for (const row of literalRows) if (row.id) matched.set(row.id, row)
+
+    const parsed = this.parseCpeForRange(cpeText)
+    if (parsed) {
+      for (const { cve, range } of this.searchVersionRangeCandidates(parsed)) {
+        if (cve.id && !matched.has(cve.id) && isVersionInRange(parsed.version, range)) {
+          matched.set(cve.id, cve)
+        }
+      }
+    }
+
+    // Order by CVSS desc (nulls last) and paginate in JS: the union of the two
+    // strategies cannot be expressed as one paginated query.
+    const ordered = [...matched.values()].sort((a, b) => (b.cvss_score ?? -1) - (a.cvss_score ?? -1))
+    const pageIds = ordered.slice(offset, offset + limit).map((cve) => cve.id)
+
+    const batchDetails = this.getCVEsByIds(pageIds)
+    return pageIds.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+  }
+
+  /**
+   * Parse a cpe:2.3 URI into the fields the range query needs. Returns null for
+   * bare tokens or wildcard/absent versions (nothing to range-match), so those
+   * queries use the literal path only.
+   */
+  private parseCpeForRange(cpeText: string): { part: string; vendor: string; product: string; version: string } | null {
+    const parts = cpeText.split(':')
+    if (parts.length < 6 || parts[0] !== 'cpe' || parts[1] !== '2.3') return null
+    const [, , part, vendor, product, version] = parts
+    if (!part || !vendor || !product || !version || version === '*' || version === '-') return null
+    return { part, vendor, product, version }
+  }
+
+  /**
+   * Candidate rows for range matching: same part/vendor/product as the query CPE,
+   * carrying at least one version bound. Scoped via an index-usable cpe23_uri
+   * prefix (`cpe:2.3:part:vendor:product:`) rather than the cpe_product column —
+   * insertCPEMatches (the sync insert path) leaves cpe_product NULL, so scoping by
+   * it would miss freshly-synced rows; the cpe23_uri prefix is always populated
+   * and still uses idx_cpe_matches_cpe23_uri (no leading wildcard).
+   */
+  private searchVersionRangeCandidates(parsed: {
+    part: string
+    vendor: string
+    product: string
+  }): Array<{ cve: CVE; range: VersionRange }> {
+    if (!this.db) return []
+    const prefix = `cpe:2.3:${parsed.part}:${parsed.vendor}:${parsed.product}:`
     const rows = this.db
       .prepare(
-        `
-      SELECT DISTINCT c.* FROM cves c
-      INNER JOIN cpe_matches cp ON c.id = cp.cve_id
-      WHERE cp.cpe23_uri LIKE ?
-      AND cp.vulnerable = 1
-      ORDER BY c.cvss_score DESC
-      LIMIT ? OFFSET ?
-    `,
+        `SELECT DISTINCT c.*,
+           cp.version_start_including AS versionStartIncluding,
+           cp.version_start_excluding AS versionStartExcluding,
+           cp.version_end_including  AS versionEndIncluding,
+           cp.version_end_excluding  AS versionEndExcluding
+         FROM cves c INNER JOIN cpe_matches cp ON c.id = cp.cve_id
+         WHERE cp.cpe23_uri LIKE ? ESCAPE '\\'
+           AND cp.vulnerable = 1
+           AND (cp.version_start_including IS NOT NULL OR cp.version_start_excluding IS NOT NULL
+                OR cp.version_end_including IS NOT NULL OR cp.version_end_excluding IS NOT NULL)`,
       )
-      .all(`%${cpeText}%`, limit, offset) as CVE[]
+      .all(`${escapeLikePattern(prefix)}%`) as Array<Record<string, unknown>>
 
-    const cveIds = rows.map((cve) => cve.id)
-    const batchDetails = this.getCVEsByIds(cveIds)
-    return cveIds.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+    return rows.map((row) => ({
+      cve: row as unknown as CVE,
+      range: {
+        versionStartIncluding: (row.versionStartIncluding as string) || undefined,
+        versionStartExcluding: (row.versionStartExcluding as string) || undefined,
+        versionEndIncluding: (row.versionEndIncluding as string) || undefined,
+        versionEndExcluding: (row.versionEndExcluding as string) || undefined,
+      },
+    }))
   }
 
   /** Whether the indexed cpe_product column exists (added by the v2 migration). */

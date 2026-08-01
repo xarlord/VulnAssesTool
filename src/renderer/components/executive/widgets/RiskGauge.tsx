@@ -105,7 +105,7 @@ export function RiskGauge({ metrics }: RiskGaugeProps) {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+      <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
         <div className="text-center p-2 bg-muted rounded">
           <div className={`font-semibold ${getSeverityTextClass('critical')}`}>{metrics.criticalCount}</div>
           <div className="text-muted-foreground">Critical</div>
@@ -113,6 +113,10 @@ export function RiskGauge({ metrics }: RiskGaugeProps) {
         <div className="text-center p-2 bg-muted rounded">
           <div className={`font-semibold ${getSeverityTextClass('high')}`}>{metrics.highCount}</div>
           <div className="text-muted-foreground">High</div>
+        </div>
+        <div className="text-center p-2 bg-muted rounded">
+          <div className={`font-semibold ${getSeverityTextClass('critical')}`}>{metrics.exploitedCount}</div>
+          <div className="text-muted-foreground">Exploited</div>
         </div>
       </div>
     </div>

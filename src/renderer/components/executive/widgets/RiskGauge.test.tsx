@@ -18,6 +18,7 @@ function createMockOverallMetrics(overrides?: Partial<OverallMetrics>): OverallM
     averageHealthScore: 72,
     riskLevel: 'medium',
     vulnerableComponentPercentage: 30,
+    exploitedCount: 0,
     ...overrides,
   }
 }
@@ -120,14 +121,28 @@ describe('RiskGauge', () => {
       expect(screen.getByText('3')).toBeInTheDocument()
       expect(screen.getAllByText('High').length).toBeGreaterThanOrEqual(1)
     })
+
+    it('should display an Exploited stat cell driven by metrics.exploitedCount (FR-06.1)', () => {
+      // The count of actively-exploited (KEV) vulns is a top-line executive signal,
+      // so it must surface next to Critical/High, not only inside per-vuln badges.
+      const metrics = createMockOverallMetrics({ exploitedCount: 4 })
+      render(<RiskGauge metrics={metrics} />)
+
+      expect(screen.getByText('Exploited')).toBeInTheDocument()
+      expect(screen.getByText('4')).toBeInTheDocument()
+    })
   })
 
   // -----------------------------------------------------------------------
   describe('Edge cases', () => {
     it('should handle 0 health score', () => {
+      // Distinct non-zero counts so the only rendered "0" is the health score itself.
       const metrics = createMockOverallMetrics({
         averageHealthScore: 0,
         riskLevel: 'critical',
+        criticalCount: 2,
+        highCount: 1,
+        exploitedCount: 3,
       })
       render(<RiskGauge metrics={metrics} />)
 

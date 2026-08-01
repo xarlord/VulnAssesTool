@@ -3,7 +3,7 @@
  * Aggregates and calculates high-level metrics from project data
  */
 
-import type { Project } from '@@/types'
+import type { Project, Vulnerability } from '@@/types'
 import { aggregateProjectStats } from '@/lib/stats/projectAggregates'
 
 export interface ExecutiveMetrics {
@@ -12,6 +12,17 @@ export interface ExecutiveMetrics {
   trends: TrendMetrics
   compliance: ComplianceMetrics
   productivity: ProductivityMetrics
+  topCriticalVulnerabilities: TopVulnerabilityItem[]
+}
+
+/** A single CVE-level entry for the "Top critical vulnerabilities" widget (FR-06.2). */
+export interface TopVulnerabilityItem {
+  id: string
+  severity: Vulnerability['severity']
+  cvssScore?: number
+  projectId: string
+  projectName: string
+  affectedComponentCount: number
 }
 
 export interface OverallMetrics {
@@ -25,6 +36,8 @@ export interface OverallMetrics {
   averageHealthScore: number
   riskLevel: 'critical' | 'high' | 'medium' | 'low' | 'excellent'
   vulnerableComponentPercentage: number
+  /** Count of vulnerabilities in the CISA KEV catalog (isKev) — actively exploited. */
+  exploitedCount: number
 }
 
 export interface ProjectMetrics {
@@ -110,6 +123,15 @@ export function calculateOverallMetrics(projects: Project[]): OverallMetrics {
   }
   const averageHealthScore = projectsWithHealth > 0 ? totalHealthScore / projectsWithHealth : 100
 
+  // Count actively-exploited vulnerabilities (present in the CISA KEV catalog),
+  // independent of severity — a KEV medium is still exploited-in-the-wild.
+  let exploitedCount = 0
+  for (const project of projects) {
+    for (const vuln of project.vulnerabilities) {
+      if (vuln.isKev) exploitedCount++
+    }
+  }
+
   // Determine risk level based on multiple factors
   const riskLevel = calculateRiskLevel({
     criticalCount,
@@ -130,6 +152,7 @@ export function calculateOverallMetrics(projects: Project[]): OverallMetrics {
     averageHealthScore: Math.round(averageHealthScore),
     riskLevel,
     vulnerableComponentPercentage: Math.round(vulnerableComponentPercentage),
+    exploitedCount,
   }
 }
 
@@ -167,7 +190,7 @@ export function calculateProjectMetrics(projects: Project[]): ProjectMetrics[] {
 export function calculateTrendMetrics(projects: Project[]): TrendMetrics {
   const now = new Date()
   const periods: TrendPeriod[] = []
-  const weeksToInclude = 12 // Show last 12 weeks
+  const weeksToInclude = 26 // Show last 26 weeks (~6 months) per FR-06.2
 
   // Generate weekly periods
   for (let i = weeksToInclude - 1; i >= 0; i--) {
@@ -295,22 +318,22 @@ export function calculateComplianceMetrics(projects: Project[]): ComplianceMetri
   const projectsFresh = projects.filter((p) => p.lastVulnDataRefresh && p.lastVulnDataRefresh >= sevenDaysAgo).length
   const dataFreshness = projects.length > 0 ? (projectsFresh / projects.length) * 100 : 100
 
-  // Remediation rate (percentage of vulnerabilities with available patches)
-  let totalWithPatchInfo = 0
+  // Remediation rate: percentage of ALL vulnerabilities that are fixable (a patch
+  // is available). The PRD asks for "% of all vulns fixable", so the denominator is
+  // every vulnerability, not only those that happen to carry patch metadata.
+  let totalVulnerabilitiesCounted = 0
   let totalFixable = 0
 
   for (const project of projects) {
     for (const vuln of project.vulnerabilities) {
-      if (vuln.patchInfo) {
-        totalWithPatchInfo++
-        if (vuln.patchInfo.patchAvailability === 'available') {
-          totalFixable++
-        }
+      totalVulnerabilitiesCounted++
+      if (vuln.patchInfo?.patchAvailability === 'available') {
+        totalFixable++
       }
     }
   }
 
-  const remediationRate = totalWithPatchInfo > 0 ? (totalFixable / totalWithPatchInfo) * 100 : 100
+  const remediationRate = totalVulnerabilitiesCounted > 0 ? (totalFixable / totalVulnerabilitiesCounted) * 100 : 100
 
   return {
     slaCompliance: {
@@ -368,7 +391,43 @@ export function calculateExecutiveMetrics(projects: Project[]): ExecutiveMetrics
     trends: calculateTrendMetrics(projects),
     compliance: calculateComplianceMetrics(projects),
     productivity: calculateProductivityMetrics(projects),
+    topCriticalVulnerabilities: calculateTopCriticalVulnerabilities(projects),
   }
+}
+
+/**
+ * The most severe individual CVEs across all projects (FR-06.2).
+ *
+ * Flattens every project's critical-severity vulnerabilities, deduplicates by CVE
+ * id (a CVE can affect multiple projects — the highest-CVSS occurrence is kept),
+ * sorts by CVSS descending (unscored entries last), and caps at `limit`.
+ */
+export function calculateTopCriticalVulnerabilities(projects: Project[], limit = 10): TopVulnerabilityItem[] {
+  const byId = new Map<string, TopVulnerabilityItem>()
+
+  for (const project of projects) {
+    for (const vuln of project.vulnerabilities) {
+      if (vuln.severity !== 'critical') continue
+
+      const candidate: TopVulnerabilityItem = {
+        id: vuln.id,
+        severity: vuln.severity,
+        cvssScore: vuln.cvssScore,
+        projectId: project.id,
+        projectName: project.name,
+        affectedComponentCount: vuln.affectedComponents?.length ?? 0,
+      }
+
+      const existing = byId.get(vuln.id)
+      if (!existing || (candidate.cvssScore ?? 0) > (existing.cvssScore ?? 0)) {
+        byId.set(vuln.id, candidate)
+      }
+    }
+  }
+
+  return Array.from(byId.values())
+    .sort((a, b) => (b.cvssScore ?? -1) - (a.cvssScore ?? -1))
+    .slice(0, limit)
 }
 
 /**

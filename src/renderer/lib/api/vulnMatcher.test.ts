@@ -427,7 +427,9 @@ describe('matchVulnerabilitiesForComponents', () => {
 
     const result = await matchVulnerabilitiesForComponents(mockComponents)
 
-    expect(queryByPurls).toHaveBeenCalledWith(['pkg:npm/lodash@4.17.21', 'pkg:npm/express@4.18.0'])
+    // The NVD key is always threaded to OSV now (FR-03.4); here no key was passed,
+    // so it forwards `undefined`.
+    expect(queryByPurls).toHaveBeenCalledWith(['pkg:npm/lodash@4.17.21', 'pkg:npm/express@4.18.0'], undefined)
     // Both components should have the same vulnerability
     expect(result.get('comp-1')).toHaveLength(1)
     expect(result.get('comp-2')).toHaveLength(1)
@@ -1578,5 +1580,66 @@ describe('sortBySeverity edge cases', () => {
     const result = sortBySeverity(vulns)
     expect(result[0].cvssScore).toBe(7.0)
     expect(result[1].cvssScore).toBeUndefined()
+  })
+})
+
+describe('Hybrid scanning: NVD key forwarding + source merge (FR-03.4)', () => {
+  const purl = 'pkg:npm/lodash@4.17.21'
+  const hybridComponent: Component = {
+    id: 'comp-1',
+    name: 'lodash',
+    version: '4.17.21',
+    type: 'library',
+    purl,
+    cpe: 'cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*',
+    licenses: ['MIT'],
+    vulnerabilities: [],
+  }
+
+  it('forwards the NVD API key to OSV queries instead of silently dropping it', async () => {
+    // WHY: osv.ts's NVD-over-OSV enrichment merge is gated on the key arriving.
+    // Before the fix the key was declared `_nvdApiKey` ("not used") and never
+    // passed to queryByPurls, so the enrichment path was dead in the real app.
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    await matchVulnerabilitiesForComponents([hybridComponent], 'test-api-key')
+
+    expect(queryByPurls).toHaveBeenCalledWith(expect.arrayContaining([purl]), 'test-api-key')
+  })
+
+  it('keeps both sources attributed when the same CVE is found via local NVD first and OSV second', async () => {
+    // WHY: the PRD requires source attribution per vulnerability. A CVE found in
+    // local NVD first must not drop OSV's cross-reference when OSV reports the
+    // same id — recordMatch has to UNION sources/aliases, not keep only the first.
+    const shared: Vulnerability = {
+      id: 'CVE-2021-44228',
+      source: 'nvd',
+      severity: 'critical',
+      cvssScore: 10.0,
+      description: 'Log4Shell',
+      references: [],
+      affectedComponents: [],
+    }
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(shared)],
+      totalResults: 1,
+    })
+    // osv.ts, once the key arrives, returns the same CVE enriched with both
+    // sources and its GHSA alias.
+    const osvEnriched: Vulnerability = {
+      ...shared,
+      source: 'osv',
+      sources: ['nvd', 'osv'],
+      aliases: ['GHSA-jfh8-c2jp-5v3q'],
+    }
+    vi.mocked(queryByPurls).mockResolvedValue(new Map([[purl, [osvEnriched]]]))
+
+    const result = await matchVulnerabilitiesForComponents([hybridComponent], 'test-api-key')
+    const merged = (result.get('comp-1') ?? []).find((v) => v.id === 'CVE-2021-44228')
+
+    expect(merged?.sources).toEqual(expect.arrayContaining(['nvd', 'osv']))
+    expect(merged?.aliases).toEqual(expect.arrayContaining(['GHSA-jfh8-c2jp-5v3q']))
   })
 })

@@ -73,24 +73,6 @@ import { wsClient } from './wsClient'
 
 const noopCleanup = () => {}
 
-/**
- * Convert report HTML into plain text for the fallback text-only PDF export.
- *
- * `Element.innerText` requires a rendered layout box, but a `DOMParser`-parsed
- * document is never attached to the visible DOM, so `innerText` comes back
- * empty/undefined here. The previous implementation then fell back to the raw
- * `htmlContent` string, silently writing HTML tags into the "PDF" instead of
- * the report text. Insert line breaks after block-level tags and read
- * `textContent` instead, which works regardless of render state.
- */
-export function htmlToPdfText(htmlContent: string): string {
-  const withLineBreaks = htmlContent.replace(/<\/(h[1-6]|p|div|tr|li|section|header|footer)>/gi, '$&\n')
-  const parser = new DOMParser()
-  const parsedDoc = parser.parseFromString(withLineBreaks, 'text/html')
-  const bodyText = parsedDoc.body?.textContent ?? ''
-  return bodyText.replace(/\n{3,}/g, '\n\n').trim()
-}
-
 function createServerDatabase(): DatabaseAPI {
   return {
     search: (request: NvdSearchRequest) => apiPost<NvdSearchResponse>('/database/search', request),
@@ -294,31 +276,6 @@ export async function createServerAdapter(): Promise<PlatformAPI> {
     },
     getSystemTheme: () => Promise.resolve(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
     onMenuAction: () => noopCleanup,
-    generatePDF: async (htmlContent: string): Promise<Uint8Array> => {
-      const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-
-      const bodyText = htmlToPdfText(htmlContent)
-
-      const pageWidth = doc.internal.pageSize.getWidth()
-      const margin = 15
-      const maxWidth = pageWidth - margin * 2
-      const lines = doc.splitTextToSize(bodyText, maxWidth)
-
-      let y = margin
-      const pageHeight = doc.internal.pageSize.getHeight()
-      for (const line of lines) {
-        if (y + 7 > pageHeight - margin) {
-          doc.addPage()
-          y = margin
-        }
-        doc.text(line, margin, y)
-        y += 7
-      }
-
-      const arrayBuffer = doc.output('arraybuffer')
-      return new Uint8Array(arrayBuffer)
-    },
 
     database: createServerDatabase(),
     secureStorage: createServerSecureStorage(),

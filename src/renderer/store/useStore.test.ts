@@ -5,6 +5,7 @@ import { act } from '@testing-library/react'
 import { renderHook } from '@testing-library/react'
 import type { AppSettings, Project, Component, Vulnerability } from '@@/types'
 import { DEFAULT_SETTINGS } from '@@/constants'
+import { DEFAULT_DASHBOARD_LAYOUT } from '@/lib/dashboard/dashboardLayout'
 
 // Mock the refresh module
 vi.mock('@/lib/refresh', () => ({
@@ -2116,6 +2117,67 @@ describe('useStore', () => {
       })
 
       expect(useStore.getState().settings.theme).toBe('light')
+    })
+  })
+
+  // ==================== Dashboard Layout Profiles (FR-06.3) ====================
+  describe('Dashboard layout profiles', () => {
+    it('seeds a Default profile matching DEFAULT_DASHBOARD_LAYOUT on a fresh store', () => {
+      const { dashboardLayoutProfiles, activeDashboardLayoutProfileId } = useStore.getState()
+      expect(dashboardLayoutProfiles).toHaveLength(1)
+      expect(activeDashboardLayoutProfileId).toBe('default')
+      expect(dashboardLayoutProfiles[0].widgets.map((w) => w.id)).toEqual(DEFAULT_DASHBOARD_LAYOUT.map((w) => w.id))
+    })
+
+    it('updateDashboardLayoutWidgets replaces the widgets for the given profile only', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      const [first, second] = useStore.getState().dashboardLayoutProfiles
+      const hiddenWidgets = first.widgets.map((w) => ({ ...w, visible: false }))
+
+      act(() => {
+        useStore.getState().updateDashboardLayoutWidgets(second.id, hiddenWidgets)
+      })
+
+      const profiles = useStore.getState().dashboardLayoutProfiles
+      // The other profile must be untouched (catches accidental global mutation).
+      expect(profiles.find((p) => p.id === first.id)?.widgets.every((w) => w.visible)).toBe(true)
+      expect(profiles.find((p) => p.id === second.id)?.widgets.every((w) => !w.visible)).toBe(true)
+    })
+
+    it('addDashboardLayoutProfile creates a new profile without changing the active profile id', () => {
+      const activeBefore = useStore.getState().activeDashboardLayoutProfileId
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      expect(useStore.getState().dashboardLayoutProfiles).toHaveLength(2)
+      // Adding is not switching.
+      expect(useStore.getState().activeDashboardLayoutProfileId).toBe(activeBefore)
+    })
+
+    it('setActiveDashboardLayoutProfileId switches which profile is active', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      const second = useStore.getState().dashboardLayoutProfiles[1]
+      act(() => {
+        useStore.getState().setActiveDashboardLayoutProfileId(second.id)
+      })
+      expect(useStore.getState().activeDashboardLayoutProfileId).toBe(second.id)
+    })
+
+    it('persists dashboardLayoutProfiles and activeDashboardLayoutProfileId through the partialize allowlist', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      // A future edit that drops these from partialize (silently breaking "Save
+      // dashboard configurations") must fail here rather than ship unnoticed.
+      const partialized = useStore.persist.getOptions().partialize?.(useStore.getState()) as
+        | { dashboardLayoutProfiles?: unknown[]; activeDashboardLayoutProfileId?: string }
+        | undefined
+      expect(partialized?.dashboardLayoutProfiles).toHaveLength(2)
+      expect(partialized?.activeDashboardLayoutProfileId).toBe('default')
     })
   })
 })

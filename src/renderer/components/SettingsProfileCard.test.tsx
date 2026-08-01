@@ -43,6 +43,7 @@ const createMockProfile = (overrides?: Partial<SettingsProfile>): SettingsProfil
 describe('SettingsProfileCard', () => {
   const mockOnSwitch = vi.fn()
   const mockOnDelete = vi.fn()
+  const mockOnSetDefault = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -52,9 +53,33 @@ describe('SettingsProfileCard', () => {
 
   const renderCard = (profile: SettingsProfile, isActive = false) => {
     return render(
-      <SettingsProfileCard profile={profile} isActive={isActive} onSwitch={mockOnSwitch} onDelete={mockOnDelete} />,
+      <SettingsProfileCard
+        profile={profile}
+        isActive={isActive}
+        onSwitch={mockOnSwitch}
+        onDelete={mockOnDelete}
+        onSetDefault={mockOnSetDefault}
+      />,
     )
   }
+
+  describe('Set Default (FR-10.2)', () => {
+    it('renders a Set Default button for a non-default profile', () => {
+      renderCard(createMockProfile({ isDefault: false }))
+      expect(screen.getByRole('button', { name: /set default/i })).toBeEnabled()
+    })
+
+    it('calls onSetDefault with the profile id when Set Default is clicked', () => {
+      renderCard(createMockProfile({ id: 'profile-9', isDefault: false }))
+      fireEvent.click(screen.getByRole('button', { name: /set default/i }))
+      expect(mockOnSetDefault).toHaveBeenCalledWith('profile-9')
+    })
+
+    it('disables the Set Default button for the already-default profile', () => {
+      renderCard(createMockProfile({ isDefault: true }))
+      expect(screen.getByRole('button', { name: /set default/i })).toBeDisabled()
+    })
+  })
 
   describe('Rendering', () => {
     it('should render profile name', () => {
@@ -373,7 +398,8 @@ describe('SettingsProfileCard', () => {
         })
         const { unmount } = renderCard(profile)
 
-        expect(screen.getByText(new RegExp(size, 'i'))).toBeInTheDocument()
+        // Exact match: the loose /default/i regex now also matches the "Set Default" button.
+        expect(screen.getByText(size)).toBeInTheDocument()
         unmount()
       })
     })

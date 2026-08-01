@@ -6,10 +6,9 @@
  * @module services/reports/reportGenerator
  */
 
-import { getPlatform } from '@/lib/platform'
-
 import type { ReportOptions, ReportData, GeneratedReport, ExecutiveSummaryMetrics } from './types'
 import { generateExecutiveReportHTML } from './templates/executiveReport'
+import { buildExecutiveReportPdf } from './executiveReportPdf'
 
 /**
  * Default report options
@@ -152,32 +151,22 @@ export async function generateHTML(data: ReportData, options: ReportOptions): Pr
 }
 
 /**
- * Generate PDF report using Electron's printToPDF
+ * Generate a PDF report by rendering directly with jsPDF (FR-09.2).
+ *
+ * Produces a real document — embedded logo, vector severity chart, severity-sorted
+ * table with CVSS vectors — instead of the old HTML-flattened-to-text path.
  */
 export async function generatePDF(data: ReportData, options: ReportOptions): Promise<GeneratedReport> {
-  // First generate HTML
-  const htmlReport = await generateHTML(data, options)
+  const mergedOptions = { ...DEFAULT_OPTIONS, ...options }
+  const metrics = calculateMetrics(data)
+  const doc = buildExecutiveReportPdf(data, mergedOptions, metrics)
+  const blob = doc.output('blob')
 
-  // In Electron environment, use webContents.printToPDF
-  // This is a placeholder that returns the HTML for now
-  // The actual PDF generation should be done via IPC to main process
-  if (getPlatform()?.generatePDF) {
-    const pdfBuffer = await getPlatform().generatePDF(htmlReport.content as string)
-    const pdfBlob = new Blob([pdfBuffer.buffer as ArrayBuffer], { type: 'application/pdf' })
-    return {
-      content: pdfBlob,
-      contentType: 'application/pdf',
-      filename: `${options.projectName.replace(/[^a-z0-9]/gi, '_')}_report_${formatDate()}.pdf`,
-      size: pdfBlob.size,
-    }
-  }
-
-  // Fallback: return HTML with PDF filename
-  // Caller can use browser print functionality
-  console.warn('[ReportGenerator] Electron API not available, returning HTML instead of PDF')
   return {
-    ...htmlReport,
-    filename: htmlReport.filename.replace('.html', '.pdf'),
+    content: blob,
+    contentType: 'application/pdf',
+    filename: `${options.projectName.replace(/[^a-z0-9]/gi, '_')}_report_${formatDate()}.pdf`,
+    size: blob.size,
   }
 }
 

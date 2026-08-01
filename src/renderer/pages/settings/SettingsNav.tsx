@@ -1,4 +1,4 @@
-import { UserCircle, Palette, Key, Database, Archive, Gauge, FileText, Shield, AlertTriangle } from 'lucide-react'
+import { UserCircle, Palette, Key, Database, Archive, Gauge, FileText, Shield, AlertTriangle, Bell } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface NavItem {
@@ -10,6 +10,7 @@ interface NavItem {
 const SECTIONS: NavItem[] = [
   { id: 'profiles', label: 'Profiles', icon: UserCircle },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'api', label: 'API', icon: Key },
   { id: 'database', label: 'Database', icon: Database },
   { id: 'backup', label: 'Backup', icon: Archive },

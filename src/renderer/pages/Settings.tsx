@@ -41,6 +41,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { SettingsNav } from './settings/SettingsNav'
 import { ProfilesSection } from './settings/ProfilesSection'
 import { AppearanceSection } from './settings/AppearanceSection'
+import { NotificationsSection } from './settings/NotificationsSection'
 // DatabaseStatus removed - unused
 
 /**
@@ -735,6 +736,7 @@ export function Settings() {
           <div className="min-w-0 space-y-6">
             <ProfilesSection />
             <AppearanceSection />
+            <NotificationsSection />
 
             {/* API Configuration Section */}
             <div id="api" className="rounded-lg border border-border bg-card scroll-mt-6">

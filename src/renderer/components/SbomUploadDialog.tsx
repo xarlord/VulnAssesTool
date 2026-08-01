@@ -57,6 +57,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
     components: Component[]
     vulnerabilities: Vulnerability[]
     format: 'cyclonedx' | 'spdx'
+    formatVersion: string
   } | null>(null)
   const [cpeEstimationStats, setCpeEstimationStats] = useState<{
     autoSelected: number
@@ -183,6 +184,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
           components: result.components,
           vulnerabilities: result.vulnerabilities || [],
           format: result.metadata.format,
+          formatVersion: result.metadata.formatVersion,
         })
         setStep('success')
         return
@@ -203,6 +205,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
         components: cpeResult.components,
         vulnerabilities: result.vulnerabilities || [],
         format: result.metadata.format,
+        formatVersion: result.metadata.formatVersion,
       })
 
       // If there are ambiguous components, show CPE match dialog
@@ -228,7 +231,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
       id: sbomFileId,
       filename: fileInputRef.current?.files?.[0]?.name || 'sbom.json',
       format: parsedData.format,
-      formatVersion: parsedData.format === 'cyclonedx' ? '1.5' : '2.3',
+      formatVersion: parsedData.formatVersion,
       uploadedAt: new Date(),
       fileHash: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       componentCount: parsedData.components.length,
@@ -361,7 +364,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json,.xml,.yaml,.yml"
+                  accept=".json,.xml,.yaml,.yml,.spdx,.tag,.tv,.rdf"
                   onChange={handleFileSelect}
                   className="hidden"
                   disabled={!targetProject}
@@ -369,15 +372,15 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                 <Upload className="mb-3 h-12 w-12 text-muted-foreground" />
                 <p className="text-sm font-medium">Click to upload or drag and drop</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  CycloneDX or SPDX JSON files (.json) • Max size: 50MB
+                  CycloneDX or SPDX files (.json, .xml, .spdx, .rdf) • Max size: 50MB
                 </p>
               </div>
 
               <div className="rounded-md bg-muted p-3 text-sm">
                 <p className="font-medium">Supported formats:</p>
                 <ul className="mt-1 list-inside list-disc space-y-1 text-muted-foreground">
-                  <li>CycloneDX JSON and XML</li>
-                  <li>SPDX JSON</li>
+                  <li>CycloneDX (JSON, XML)</li>
+                  <li>SPDX (JSON, tag-value, RDF/XML)</li>
                 </ul>
               </div>
             </div>

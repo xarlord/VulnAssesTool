@@ -9,6 +9,7 @@ import { useMemo, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Filter } from 'lucide-react'
 import { DependencyGraph } from '@/components/graph/DependencyGraph'
+import { MAX_GRAPH_NODES } from '@/components/graph/types'
 import { PageHeader } from '@/components/PageHeader'
 import { useProjects } from '@/store/useStore'
 import type { Component } from '@@/types'
@@ -128,6 +129,13 @@ export function DependencyGraphPage() {
           }
         />
       </div>
+
+      {/* Truncation banner (FR-11.1-b): the graph caps at MAX_GRAPH_NODES. */}
+      {filteredComponents.length > MAX_GRAPH_NODES && (
+        <div className="mx-6 mb-2 rounded-md bg-yellow-500/15 px-3 py-2 text-sm text-yellow-600">
+          Showing first {MAX_GRAPH_NODES} of {filteredComponents.length} components — narrow the filter to see the rest.
+        </div>
+      )}
 
       {/* Graph Container — the AppShell owns the single <main> landmark. */}
       <div className="flex-1 px-6 pb-6">

@@ -5,7 +5,13 @@
  */
 
 // Health score calculations
-export { calculateComponentHealth, calculateProjectHealth, getHealthColor, getHealthChartColor } from './healthScore'
+export {
+  calculateComponentHealth,
+  calculateProjectHealth,
+  getHealthColor,
+  getHealthChartColor,
+  getHealthCategory,
+} from './healthScore'
 
 // Trend calculations
 export {

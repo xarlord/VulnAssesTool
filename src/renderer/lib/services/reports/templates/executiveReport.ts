@@ -8,6 +8,7 @@
  */
 
 import type { ReportOptions, ReportData, ExecutiveSummaryMetrics } from '../types'
+import { compareBySeverity, type Severity } from '@/lib/severity'
 
 /**
  * Severity color mapping
@@ -451,8 +452,16 @@ function generateVulnerabilityTable(
     severity: string
     description: string
     cvssScore?: number
+    cvssVector?: string
   }>,
 ): string {
+  // Sort a copy most-severe-first (CVSS desc as tiebreak) so the highest-priority
+  // findings lead the table regardless of the caller's input order.
+  const sorted = [...vulnerabilities].sort(
+    (a, b) =>
+      compareBySeverity(a.severity as Severity, b.severity as Severity) || (b.cvssScore ?? 0) - (a.cvssScore ?? 0),
+  )
+
   return `
     <table class="vuln-table">
       <thead>
@@ -460,11 +469,12 @@ function generateVulnerabilityTable(
           <th>CVE ID</th>
           <th>Severity</th>
           <th>CVSS</th>
+          <th>CVSS Vector</th>
           <th>Description</th>
         </tr>
       </thead>
       <tbody>
-        ${vulnerabilities
+        ${sorted
           .slice(0, 50)
           .map(
             (vuln) => `
@@ -476,6 +486,7 @@ function generateVulnerabilityTable(
               </span>
             </td>
             <td>${vuln.cvssScore?.toFixed(1) || 'N/A'}</td>
+            <td><code style="font-size: 11px;">${vuln.cvssVector || 'N/A'}</code></td>
             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">${vuln.description?.substring(0, 100) || 'No description'}${vuln.description && vuln.description.length > 100 ? '...' : ''}</td>
           </tr>
         `,
@@ -483,7 +494,7 @@ function generateVulnerabilityTable(
           .join('')}
       </tbody>
     </table>
-    ${vulnerabilities.length > 50 ? `<p style="text-align: center; color: #64748B; font-size: 12px;">Showing 50 of ${vulnerabilities.length} vulnerabilities</p>` : ''}
+    ${sorted.length > 50 ? `<p style="text-align: center; color: #64748B; font-size: 12px;">Showing 50 of ${sorted.length} vulnerabilities</p>` : ''}
   `
 }
 
@@ -566,6 +577,7 @@ export function generateExecutiveReportHTML(
           severity: v.severity,
           description: v.description || '',
           cvssScore: v.cvssScore,
+          cvssVector: v.cvssVector,
         })),
       )}
     </section>

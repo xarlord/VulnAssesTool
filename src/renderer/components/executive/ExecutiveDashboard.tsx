@@ -22,9 +22,16 @@ const VulnerabilityTrendChart = lazy(() =>
 const TeamProductivity = lazy(() => import('./widgets/TeamProductivity').then((m) => ({ default: m.TeamProductivity })))
 const ComplianceStatus = lazy(() => import('./widgets/ComplianceStatus').then((m) => ({ default: m.ComplianceStatus })))
 const ActionItems = lazy(() => import('./widgets/ActionItems').then((m) => ({ default: m.ActionItems })))
+const TopCriticalVulnerabilities = lazy(() =>
+  import('./widgets/TopCriticalVulnerabilities').then((m) => ({ default: m.TopCriticalVulnerabilities })),
+)
 const DashboardConfig = lazy(() => import('./widgets/DashboardConfig').then((m) => ({ default: m.DashboardConfig })))
+const DashboardLayoutEditor = lazy(() =>
+  import('./widgets/DashboardLayoutEditor').then((m) => ({ default: m.DashboardLayoutEditor })),
+)
 import { Download, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
+import { WIDGET_SIZE_CLASSES, type DashboardWidgetId } from '@/lib/dashboard/dashboardLayout'
 
 export function ExecutiveDashboard() {
   const navigate = useNavigate()
@@ -92,6 +99,45 @@ export function ExecutiveDashboard() {
     [navigate],
   )
 
+  // Active dashboard layout profile (FR-06.3) drives which widgets render, in
+  // what order, at what size.
+  const dashboardProfiles = useStore((s) => s.dashboardLayoutProfiles)
+  const activeDashboardProfileId = useStore((s) => s.activeDashboardLayoutProfileId)
+  const activeProfile = dashboardProfiles.find((p) => p.id === activeDashboardProfileId) ?? dashboardProfiles[0]
+
+  // Exhaustive per-widget renderer. A missing case is a compile error, so a
+  // widget can never be silently dropped or mis-supplied when the grid is
+  // data-driven instead of hardcoded.
+  const renderWidget = (id: DashboardWidgetId) => {
+    switch (id) {
+      case 'risk-gauge':
+        return <RiskGauge metrics={metrics.overall} />
+      case 'compliance-status':
+        return <ComplianceStatus compliance={metrics.compliance} />
+      case 'team-productivity':
+        return <TeamProductivity productivity={metrics.productivity} />
+      case 'project-health-comparison':
+        return <ProjectHealthComparison projectMetrics={metrics.byProject} />
+      case 'vulnerability-trend-chart':
+        return <VulnerabilityTrendChart trends={metrics.trends} />
+      case 'top-critical-vulnerabilities':
+        return (
+          <TopCriticalVulnerabilities
+            vulnerabilities={metrics.topCriticalVulnerabilities}
+            onProjectClick={handleProjectClick}
+          />
+        )
+      case 'action-items':
+        return (
+          <ActionItems
+            recommendations={summary.topRecommendations}
+            topRisks={summary.topRisks}
+            onProjectClick={handleProjectClick}
+          />
+        )
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 pt-6">
@@ -100,6 +146,9 @@ export function ExecutiveDashboard() {
           description="High-level security overview and compliance metrics"
           actions={
             <>
+              <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
+                <DashboardLayoutEditor />
+              </Suspense>
               <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
                 <DashboardConfig
                   dateRange={dateRange}
@@ -186,33 +235,13 @@ export function ExecutiveDashboard() {
             }
           >
             <div className="grid grid-cols-9 gap-4 auto-rows-min">
-              {/* Row 1 */}
-              <div className="col-span-3 row-span-4">
-                <RiskGauge metrics={metrics.overall} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <ComplianceStatus compliance={metrics.compliance} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <TeamProductivity productivity={metrics.productivity} />
-              </div>
-
-              {/* Row 2 */}
-              <div className="col-span-6 row-span-4">
-                <ProjectHealthComparison projectMetrics={metrics.byProject} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <VulnerabilityTrendChart trends={metrics.trends} />
-              </div>
-
-              {/* Row 3 */}
-              <div className="col-span-9 row-span-4">
-                <ActionItems
-                  recommendations={summary.topRecommendations}
-                  topRisks={summary.topRisks}
-                  onProjectClick={handleProjectClick}
-                />
-              </div>
+              {activeProfile.widgets
+                .filter((slot) => slot.visible)
+                .map((slot) => (
+                  <div key={slot.id} className={WIDGET_SIZE_CLASSES[slot.size]}>
+                    {renderWidget(slot.id)}
+                  </div>
+                ))}
             </div>
           </Suspense>
         )}

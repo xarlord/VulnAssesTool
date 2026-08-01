@@ -16,6 +16,12 @@ import {
 } from '@/lib/settings'
 import { saveProjectToServer, loadProjectFromServer, deleteProjectFromServer } from '@/lib/api/projectPersistence'
 import {
+  createDefaultDashboardProfile,
+  DEFAULT_DASHBOARD_LAYOUT_PROFILE_ID,
+  type DashboardLayoutProfile,
+  type DashboardWidgetSlot,
+} from '@/lib/dashboard/dashboardLayout'
+import {
   logProjectCreate,
   logProjectUpdate,
   logProjectDelete,
@@ -60,6 +66,14 @@ interface AppState {
   // Notification Preferences
   notificationPreferences: NotificationPreferences
   updateNotificationPreferences: (preferences: Partial<NotificationPreferences>) => void
+
+  // Executive dashboard layout profiles (FR-06.3)
+  dashboardLayoutProfiles: DashboardLayoutProfile[]
+  activeDashboardLayoutProfileId: string
+  addDashboardLayoutProfile: (name: string) => void
+  deleteDashboardLayoutProfile: (id: string) => void
+  setActiveDashboardLayoutProfileId: (id: string) => void
+  updateDashboardLayoutWidgets: (profileId: string, widgets: DashboardWidgetSlot[]) => void
 
   // Test helpers (only exposed in test mode)
   resetStore: () => void
@@ -413,6 +427,40 @@ export const useStore = create<AppState>()(
           notificationPreferences: { ...state.notificationPreferences, ...preferences },
         })),
 
+      // Executive dashboard layout profiles (FR-06.3)
+      dashboardLayoutProfiles: [createDefaultDashboardProfile()],
+      activeDashboardLayoutProfileId: DEFAULT_DASHBOARD_LAYOUT_PROFILE_ID,
+      addDashboardLayoutProfile: (name) =>
+        set((state) => {
+          // Clone the active profile's slots as the starting point for the new one.
+          const source =
+            state.dashboardLayoutProfiles.find((p) => p.id === state.activeDashboardLayoutProfileId) ??
+            createDefaultDashboardProfile()
+          const newProfile: DashboardLayoutProfile = {
+            id: `dash-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            name,
+            widgets: source.widgets.map((slot) => ({ ...slot })),
+          }
+          // Adding a profile does NOT switch to it (documents intended UX).
+          return { dashboardLayoutProfiles: [...state.dashboardLayoutProfiles, newProfile] }
+        }),
+      deleteDashboardLayoutProfile: (id) =>
+        set((state) => {
+          // Never delete the last profile; the dashboard always needs one.
+          if (state.dashboardLayoutProfiles.length <= 1) return {}
+          const remaining = state.dashboardLayoutProfiles.filter((p) => p.id !== id)
+          const activeDashboardLayoutProfileId =
+            state.activeDashboardLayoutProfileId === id ? remaining[0].id : state.activeDashboardLayoutProfileId
+          return { dashboardLayoutProfiles: remaining, activeDashboardLayoutProfileId }
+        }),
+      setActiveDashboardLayoutProfileId: (id) => set({ activeDashboardLayoutProfileId: id }),
+      updateDashboardLayoutWidgets: (profileId, widgets) =>
+        set((state) => ({
+          dashboardLayoutProfiles: state.dashboardLayoutProfiles.map((profile) =>
+            profile.id === profileId ? { ...profile, widgets } : profile,
+          ),
+        })),
+
       // Test helpers - reset store to initial state
       resetStore: () =>
         set({
@@ -433,6 +481,8 @@ export const useStore = create<AppState>()(
               system: true,
             },
           },
+          dashboardLayoutProfiles: [createDefaultDashboardProfile()],
+          activeDashboardLayoutProfileId: DEFAULT_DASHBOARD_LAYOUT_PROFILE_ID,
         }),
     }),
     {
@@ -446,6 +496,10 @@ export const useStore = create<AppState>()(
           dependencyGraph: undefined,
         })),
         activeProfileId: state.activeProfileId,
+        // FR-06.3: persist saved dashboard layouts so "Save dashboard configurations"
+        // survives reload. Strictly additive to the allowlist.
+        dashboardLayoutProfiles: state.dashboardLayoutProfiles,
+        activeDashboardLayoutProfileId: state.activeDashboardLayoutProfileId,
       }),
       storage: createJSONStorage(() => localStorage),
     },

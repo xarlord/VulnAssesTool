@@ -8,9 +8,10 @@ interface SettingsProfileCardProps {
   isActive: boolean
   onSwitch: (profileId: string) => void
   onDelete: (profileId: string) => void
+  onSetDefault: (profileId: string) => void
 }
 
-export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: SettingsProfileCardProps) {
+export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onSetDefault }: SettingsProfileCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const handleConfirmDelete = () => {
@@ -100,6 +101,18 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: S
             Active Profile
           </div>
         )}
+        <button
+          onClick={() => onSetDefault(profile.id)}
+          disabled={profile.isDefault}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            profile.isDefault
+              ? 'cursor-not-allowed bg-muted text-muted-foreground opacity-50'
+              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+          }`}
+          title={profile.isDefault ? 'Already the default profile' : 'Set as default profile'}
+        >
+          Set Default
+        </button>
         <button
           onClick={() => setShowDeleteConfirm(true)}
           disabled={isActive}

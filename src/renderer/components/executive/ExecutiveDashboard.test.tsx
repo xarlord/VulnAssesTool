@@ -11,6 +11,22 @@ const { mockNavigate, mockStoreState, mockCalculateMetrics, mockGenerateSummary 
   mockNavigate: vi.fn(),
   mockStoreState: {
     projects: [] as any[],
+    dashboardLayoutProfiles: [
+      {
+        id: 'default',
+        name: 'Default',
+        widgets: [
+          { id: 'risk-gauge', visible: true, size: 'small' },
+          { id: 'compliance-status', visible: true, size: 'small' },
+          { id: 'team-productivity', visible: true, size: 'small' },
+          { id: 'project-health-comparison', visible: true, size: 'medium' },
+          { id: 'vulnerability-trend-chart', visible: true, size: 'small' },
+          { id: 'top-critical-vulnerabilities', visible: true, size: 'large' },
+          { id: 'action-items', visible: true, size: 'large' },
+        ],
+      },
+    ] as any[],
+    activeDashboardLayoutProfileId: 'default',
   },
   mockCalculateMetrics: vi.fn(),
   mockGenerateSummary: vi.fn(),
@@ -105,6 +121,16 @@ vi.mock('./widgets/ActionItems', () => ({
   ),
 }))
 
+vi.mock('./widgets/TopCriticalVulnerabilities', () => ({
+  TopCriticalVulnerabilities: ({ vulnerabilities }: { vulnerabilities: any[] }) => (
+    <div data-testid="top-critical-vulnerabilities">Top criticals: {vulnerabilities?.length ?? 0}</div>
+  ),
+}))
+
+vi.mock('./widgets/DashboardLayoutEditor', () => ({
+  DashboardLayoutEditor: () => <div data-testid="dashboard-layout-editor">Customize Layout</div>,
+}))
+
 vi.mock('./widgets/DashboardConfig', () => ({
   DashboardConfig: (props: any) => (
     <div data-testid="dashboard-config">
@@ -154,6 +180,7 @@ function createMockMetrics(overrides?: Partial<ExecutiveMetrics>): ExecutiveMetr
       averageHealthScore: 72,
       riskLevel: 'medium',
       vulnerableComponentPercentage: 30,
+      exploitedCount: 0,
     },
     byProject: [
       {
@@ -194,6 +221,7 @@ function createMockMetrics(overrides?: Partial<ExecutiveMetrics>): ExecutiveMetr
       scansThisWeek: 2,
       scansThisMonth: 8,
     },
+    topCriticalVulnerabilities: [],
     ...overrides,
   }
 }
@@ -223,6 +251,23 @@ describe('ExecutiveDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockStoreState.projects = []
+    // Reset to the full default layout so a custom-profile test cannot leak.
+    mockStoreState.dashboardLayoutProfiles = [
+      {
+        id: 'default',
+        name: 'Default',
+        widgets: [
+          { id: 'risk-gauge', visible: true, size: 'small' },
+          { id: 'compliance-status', visible: true, size: 'small' },
+          { id: 'team-productivity', visible: true, size: 'small' },
+          { id: 'project-health-comparison', visible: true, size: 'medium' },
+          { id: 'vulnerability-trend-chart', visible: true, size: 'small' },
+          { id: 'top-critical-vulnerabilities', visible: true, size: 'large' },
+          { id: 'action-items', visible: true, size: 'large' },
+        ],
+      },
+    ]
+    mockStoreState.activeDashboardLayoutProfileId = 'default'
     mockCalculateMetrics.mockReturnValue(createMockMetrics())
     mockGenerateSummary.mockReturnValue(createMockSummary())
   })
@@ -293,6 +338,41 @@ describe('ExecutiveDashboard', () => {
       renderDashboard([createMockProject()])
 
       expect(await screen.findByTestId('action-items')).toBeInTheDocument()
+    })
+
+    it('should show the top critical vulnerabilities widget (FR-06.2)', async () => {
+      renderDashboard([createMockProject()])
+
+      expect(await screen.findByTestId('top-critical-vulnerabilities')).toBeInTheDocument()
+    })
+
+    it('renders only the visible widgets of the active layout profile, in profile order (FR-06.3)', async () => {
+      // Active profile shows only two widgets, in a non-default order. This is the
+      // test that falsifies a regression back to a hardcoded 7-widget grid.
+      mockStoreState.dashboardLayoutProfiles = [
+        {
+          id: 'default',
+          name: 'Default',
+          widgets: [
+            { id: 'action-items', visible: true, size: 'large' },
+            { id: 'risk-gauge', visible: true, size: 'small' },
+            { id: 'compliance-status', visible: false, size: 'small' },
+          ],
+        },
+      ]
+
+      renderDashboard([createMockProject()])
+
+      expect(await screen.findByTestId('action-items')).toBeInTheDocument()
+      expect(screen.getByTestId('risk-gauge')).toBeInTheDocument()
+      // Hidden widget must not render.
+      expect(screen.queryByTestId('compliance-status')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('team-productivity')).not.toBeInTheDocument()
+
+      // DOM order must match the profile order (action-items before risk-gauge).
+      const actionItems = screen.getByTestId('action-items')
+      const riskGauge = screen.getByTestId('risk-gauge')
+      expect(actionItems.compareDocumentPosition(riskGauge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
 
     it('should show the dashboard config widget', async () => {

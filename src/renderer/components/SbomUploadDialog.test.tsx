@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SbomUploadDialog } from './SbomUploadDialog'
+import { useStore } from '@/store/useStore'
 import * as cyclonedxParser from '@/lib/parsers/cyclonedx'
 import * as spdxParser from '@/lib/parsers/spdx'
 import * as cpePipeline from '@/lib/services/cpeEstimationPipeline'
@@ -103,6 +104,13 @@ describe('SbomUploadDialog', () => {
     vi.clearAllMocks()
     mockOnClose.mockReset()
     mockUpdateProject.mockReset()
+    // The store mock's project object is a shared module-level closure that
+    // clearAllMocks does not reset; tests that seed existing components/sbomFiles
+    // must not leak into the next test, so reset the mutable fields here.
+    const project = useStore.getState().projects[0]
+    project.components = []
+    project.vulnerabilities = []
+    project.sbomFiles = []
   })
 
   const renderDialog = (open: boolean = true, projectId?: string) => {
@@ -138,15 +146,17 @@ describe('SbomUploadDialog', () => {
       renderDialog(true)
 
       expect(screen.getByText(/Click to upload or drag and drop/)).toBeInTheDocument()
-      expect(screen.getByText(/CycloneDX or SPDX JSON files/)).toBeInTheDocument()
+      expect(screen.getByText(/CycloneDX or SPDX files/)).toBeInTheDocument()
     })
 
     it('should render supported formats information', () => {
       renderDialog(true)
 
       expect(screen.getByText('Supported formats:')).toBeInTheDocument()
-      expect(screen.getByText(/CycloneDX JSON and XML/)).toBeInTheDocument()
-      expect(screen.getByText('SPDX JSON')).toBeInTheDocument()
+      expect(screen.getByText(/CycloneDX \(JSON, XML\)/)).toBeInTheDocument()
+      // SPDX must be advertised as tag-value and RDF/XML capable, not JSON-only,
+      // now that parseSpdx() accepts those formats (FR-02.2).
+      expect(screen.getByText(/SPDX \(JSON, tag-value, RDF\/XML\)/)).toBeInTheDocument()
     })
 
     it('should render close button', () => {
@@ -190,6 +200,14 @@ describe('SbomUploadDialog', () => {
 
       const fileInput = document.querySelector('input[type="file"]')
       expect(fileInput).toBeTruthy()
+      // The accept filter must offer every extension parseSpdx()/parseCycloneDX()
+      // branch on, or a user cannot pick a .spdx/.rdf file through the native
+      // file-open dialog even though the parser supports it (FR-02.2).
+      const accept = fileInput?.getAttribute('accept')
+      expect(accept).toContain('.spdx')
+      expect(accept).toContain('.tag')
+      expect(accept).toContain('.tv')
+      expect(accept).toContain('.rdf')
     })
   })
 
@@ -396,6 +414,20 @@ describe('SbomUploadDialog', () => {
         metadata: { format: 'cyclonedx', formatVersion: '1.5' },
       })
 
+      // Seed the project with comp-existing-1 already present (no sbomFileId), so
+      // the upload's duplicate of it must be filtered out by the dedup rule.
+      useStore.getState().projects[0].components = [
+        {
+          id: 'comp-existing-1',
+          name: 'existing-component',
+          version: '1.0.0',
+          type: 'library',
+          licenses: [],
+          purl: '',
+          cpe: '',
+        },
+      ]
+
       renderDialog(true, 'test-project-id')
 
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -420,12 +452,18 @@ describe('SbomUploadDialog', () => {
       // Verify the component merging logic:
       // The updateProject call should include logic that filters out duplicate components
       const updateCall = mockUpdateProject.mock.calls[mockUpdateProject.mock.calls.length - 1]
-      const newComponents = updateCall[1].components
+      const mergedComponents = updateCall[1].components
 
-      // The 2 components from the new SBOM should be passed
-      // (The actual deduplication happens inside SbomUploadDialog component)
-      expect(newComponents.length).toBeGreaterThanOrEqual(1)
-      expect(newComponents.some((c: any) => c.id === 'comp-new-1')).toBe(true)
+      // Newly imported components are tagged with an sbomFileId; the seeded
+      // pre-existing one is not. Exactly comp-new-1 should be newly added —
+      // comp-existing-1 must be dropped by dedup, not re-added. This assertion
+      // fails if the dedup filter is removed (comp-existing-1 would appear twice).
+      const addedComponents = mergedComponents.filter((c: any) => c.sbomFileId)
+      expect(addedComponents).toHaveLength(1)
+      expect(addedComponents[0].id).toBe('comp-new-1')
+      expect(addedComponents.some((c: any) => c.id === 'comp-existing-1')).toBe(false)
+      // The pre-existing component survives exactly once (not duplicated).
+      expect(mergedComponents.filter((c: any) => c.id === 'comp-existing-1')).toHaveLength(1)
 
       // Verify vulnerabilities are included in the update
       const updatedVulnerabilities = updateCall[1].vulnerabilities
@@ -595,6 +633,22 @@ describe('SbomUploadDialog', () => {
         metadata: { format: 'cyclonedx', formatVersion: '1.5' },
       })
 
+      // Project already contains comp-1; uploading the same id must not add a
+      // second copy. WHY: re-uploading an overlapping SBOM is a routine action,
+      // and a broken dedup would silently double-count components and inflate the
+      // component total shown on the Overview tab.
+      useStore.getState().projects[0].components = [
+        {
+          id: 'comp-1',
+          name: 'existing-component',
+          version: '1.0.0',
+          type: 'library',
+          licenses: [],
+          purl: '',
+          cpe: '',
+        },
+      ]
+
       renderDialog(true, 'test-project-id')
 
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -602,6 +656,54 @@ describe('SbomUploadDialog', () => {
       await user.upload(fileInput!, file)
 
       await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+
+      const addButton = await screen.findByText('Add to Project')
+      await user.click(addButton)
+
+      const updateCall = mockUpdateProject.mock.calls[mockUpdateProject.mock.calls.length - 1]
+      const mergedComponents = updateCall[1].components
+      // comp-1 must appear exactly once — the uploaded duplicate is filtered out.
+      expect(mergedComponents.filter((c: any) => c.id === 'comp-1')).toHaveLength(1)
+    })
+  })
+
+  describe('SBOM file formatVersion labeling (FR-02.3)', () => {
+    async function uploadAndConfirm(filename: string, content: string) {
+      const user = userEvent.setup({ delay: null })
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      await user.upload(fileInput!, createMockFile(content, filename))
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      const addButton = await screen.findByText('Add to Project')
+      await user.click(addButton)
+      const updateCall = mockUpdateProject.mock.calls[mockUpdateProject.mock.calls.length - 1]
+      const sbomFiles = updateCall[1].sbomFiles
+      return sbomFiles[sbomFiles.length - 1]
+    }
+
+    it('records the real parsed CycloneDX spec version, not a hardcoded 1.5', async () => {
+      // A CycloneDX 1.2 file must be labeled 1.2 in the stored SbomFile metadata.
+      // WHY: the stored formatVersion is what the UI and reports show as the SBOM's
+      // spec version; hardcoding 1.5 misrepresents every non-1.5 CycloneDX file.
+      parseCycloneDXMock.mockResolvedValue({
+        components: [{ id: 'c1', name: 'x', version: '1', type: 'library', licenses: [], purl: '', cpe: '' }],
+        vulnerabilities: [],
+        metadata: { format: 'cyclonedx', formatVersion: '1.2' },
+      })
+
+      const sbomFile = await uploadAndConfirm('bom.json', '{"bomFormat": "CycloneDX"}')
+      expect(sbomFile.formatVersion).toBe('1.2')
+    })
+
+    it('records the real parsed SPDX spec version, not a hardcoded 2.3', async () => {
+      parseSpdxMock.mockResolvedValue({
+        components: [{ id: 's1', name: 'y', version: '1', type: 'library', licenses: [], purl: '', cpe: '' }],
+        vulnerabilities: [],
+        metadata: { format: 'spdx', formatVersion: '2.2' },
+      })
+
+      const sbomFile = await uploadAndConfirm('data.json', '{"spdxVersion": "SPDX-2.2", "SPDXID": "SPDXRef-Document"}')
+      expect(sbomFile.formatVersion).toBe('2.2')
     })
   })
 

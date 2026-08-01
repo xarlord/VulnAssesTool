@@ -76,7 +76,6 @@ export interface PlatformAPI {
   onThemeChange(callback: (theme: string) => void): void
   getSystemTheme(): Promise<string>
   onMenuAction(callback: (action: string) => void): () => void
-  generatePDF(htmlContent: string): Promise<Uint8Array>
 
   database: DatabaseAPI
   secureStorage: SecureStorageAPI

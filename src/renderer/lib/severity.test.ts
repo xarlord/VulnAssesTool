@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { getSeverityClass, getSeverityTextClass, getSeverityLabel, SEVERITY_ORDER, type Severity } from './severity'
+import {
+  getSeverityClass,
+  getSeverityTextClass,
+  getSeverityLabel,
+  compareBySeverity,
+  SEVERITY_ORDER,
+  type Severity,
+} from './severity'
 
 describe('severity utility', () => {
   it('maps every severity to its token class (never a raw palette class)', () => {
@@ -41,5 +48,17 @@ describe('severity utility', () => {
   it('capitalizes labels for display', () => {
     expect(getSeverityLabel('critical')).toBe('Critical')
     expect(getSeverityLabel('none')).toBe('None')
+  })
+
+  it('compareBySeverity orders most-severe first and returns 0 for equal severities', () => {
+    // WHY: a broken comparator would silently bury critical findings below low
+    // ones in every downstream consumer (report table, PDF), misdirecting the
+    // reader toward the wrong fix first.
+    expect(compareBySeverity('critical', 'high')).toBeLessThan(0)
+    expect(compareBySeverity('high', 'medium')).toBeLessThan(0)
+    expect(compareBySeverity('medium', 'low')).toBeLessThan(0)
+    expect(compareBySeverity('low', 'none')).toBeLessThan(0)
+    expect(compareBySeverity('none', 'critical')).toBeGreaterThan(0)
+    expect(compareBySeverity('high', 'high')).toBe(0)
   })
 })

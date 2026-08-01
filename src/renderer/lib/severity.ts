@@ -55,3 +55,12 @@ export function getSeverityTextClass(severity: Severity): string {
 export function getSeverityLabel(severity: Severity): string {
   return severity.charAt(0).toUpperCase() + severity.slice(1)
 }
+
+/**
+ * Comparator that orders severities most-severe first, backed by the single
+ * {@link SEVERITY_ORDER} source of truth (so report tables/PDFs never re-derive a
+ * local severity ranking). Returns <0 if `a` is more severe than `b`, 0 if equal.
+ */
+export function compareBySeverity(a: Severity, b: Severity): number {
+  return SEVERITY_ORDER.indexOf(a) - SEVERITY_ORDER.indexOf(b)
+}

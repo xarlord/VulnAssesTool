@@ -34,6 +34,7 @@ const WIDGET_HEADINGS = [
   'Team Productivity',
   'Project Health Comparison',
   'Vulnerability Trends',
+  'Top Critical Vulnerabilities',
   'Action Items',
 ]
 

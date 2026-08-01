@@ -19,6 +19,7 @@ export function ProfilesSection() {
     createSettingsProfile,
     deleteSettingsProfile,
     switchSettingsProfile,
+    setDefaultSettingsProfile,
   } = useStore()
 
   const [showCreateProfileDialog, setShowCreateProfileDialog] = useState(false)
@@ -57,6 +58,15 @@ export function ProfilesSection() {
     }
   }
 
+  const handleSetDefaultProfile = (profileId: string) => {
+    try {
+      setDefaultSettingsProfile(profileId)
+    } catch (error) {
+      console.error('Failed to set default profile:', error)
+      alert(error instanceof Error ? error.message : 'Failed to set default profile')
+    }
+  }
+
   return (
     <>
       <div id="profiles" className="rounded-lg border border-border bg-card scroll-mt-6">
@@ -88,6 +98,7 @@ export function ProfilesSection() {
                   isActive={profile.id === activeProfileId}
                   onSwitch={handleSwitchProfile}
                   onDelete={handleDeleteProfile}
+                  onSetDefault={handleSetDefaultProfile}
                 />
               ))}
             </div>

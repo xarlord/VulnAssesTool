@@ -113,6 +113,7 @@ vi.mock('lucide-react', async () => {
     'Edit',
     'Calendar',
     'Plus',
+    'UserCircle',
     'Upload',
     'Download',
     'BarChart3',

@@ -75,7 +75,7 @@ function addHeader(doc: jsPDF, title: string, subtitle?: string): void {
 /**
  * Add PDF footer with page numbers
  */
-function addFooter(doc: jsPDF, pageNumber: number, totalPages: number): void {
+export function addFooter(doc: jsPDF, pageNumber: number, totalPages: number): void {
   const pageSize = doc.internal.pageSize
   const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight()
 
@@ -92,7 +92,7 @@ function addFooter(doc: jsPDF, pageNumber: number, totalPages: number): void {
 /**
  * Get severity color for PDF
  */
-function getSeverityColor(severity: string): [number, number, number] {
+export function getSeverityColor(severity: string): [number, number, number] {
   switch (severity.toLowerCase()) {
     case 'critical':
       return [220, 38, 38] // Red-600

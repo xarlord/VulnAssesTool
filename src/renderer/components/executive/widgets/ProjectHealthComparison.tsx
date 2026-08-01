@@ -5,6 +5,7 @@
 
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import type { ProjectMetrics } from '@/lib/analytics'
+import { getHealthCategory, getHealthChartColor } from '@/lib/health'
 
 interface ProjectHealthComparisonProps {
   projectMetrics: ProjectMetrics[]
@@ -20,14 +21,6 @@ export function ProjectHealthComparison({ projectMetrics }: ProjectHealthCompari
     fullName: p.projectName,
     projectId: p.projectId,
   }))
-
-  const getHealthColor = (score: number): string => {
-    if (score >= 90) return '#10b981' // green
-    if (score >= 70) return '#22c55e' // light green
-    if (score >= 50) return '#eab308' // yellow
-    if (score >= 30) return '#f97316' // orange
-    return '#ef4444' // red
-  }
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -74,7 +67,7 @@ export function ProjectHealthComparison({ projectMetrics }: ProjectHealthCompari
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                 <Bar dataKey="healthScore" radius={[0, 4, 4, 0]}>
                   {data.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={getHealthColor(entry.healthScore)} />
+                    <Cell key={`cell-${index}`} fill={getHealthChartColor(getHealthCategory(entry.healthScore))} />
                   ))}
                 </Bar>
               </BarChart>

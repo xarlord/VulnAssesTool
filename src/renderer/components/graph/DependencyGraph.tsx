@@ -196,6 +196,17 @@ export function DependencyGraph({
     }
   }, [])
 
+  // Export the rendered graph as a PNG (FR-11.2-c). Cytoscape ships cy.png(), so
+  // no new dependency is needed; the download trigger mirrors lib/export/json.ts.
+  const handleExportImage = useCallback(() => {
+    if (!cyRef.current) return
+    const dataUrl = cyRef.current.png({ full: true, scale: 2, bg: '#ffffff' })
+    const link = document.createElement('a')
+    link.href = dataUrl
+    link.download = 'dependency-graph.png'
+    link.click()
+  }, [])
+
   // Keyboard navigation: the canvas is opaque to keyboard/AT, so the node list
   // below doubles as a listbox that lets keyboard users move between components
   // (arrow keys) and open a component's details (Enter) — the tap-on-node
@@ -383,6 +394,22 @@ export function DependencyGraph({
                 strokeLinejoin="round"
                 strokeWidth={2}
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={handleExportImage}
+            className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            title="Export as Image"
+            aria-label="Export as Image"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
               />
             </svg>
           </button>

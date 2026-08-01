@@ -225,7 +225,23 @@ const OSV_CACHE_TTL_MS = OSV_CACHE_TTL_HOURS * 60 * 60 * 1000
  * API within the TTL window (FR-03.3). Misses that return no vulnerabilities are cached as
  * an empty array so an unaffected PURL is not re-queried on every scan either.
  */
-async function queryOsvWithCache(purls: string[]): Promise<Map<string, Vulnerability[]>> {
+/**
+ * Union the source attribution and aliases of `incoming` into `entry` when the
+ * same vulnerability id is matched again from a different source. Without this,
+ * a CVE found via local NVD first would silently drop OSV's cross-reference (and
+ * vice-versa), losing the multi-source attribution the UI displays per finding.
+ */
+function mergeSourceAttribution(entry: Vulnerability, incoming: Vulnerability): void {
+  const existingSources = entry.sources ?? (entry.source ? [entry.source] : [])
+  const incomingSources = incoming.sources ?? (incoming.source ? [incoming.source] : [])
+  const mergedSources = Array.from(new Set([...existingSources, ...incomingSources]))
+  if (mergedSources.length > 0) entry.sources = mergedSources
+
+  const mergedAliases = Array.from(new Set([...(entry.aliases ?? []), ...(incoming.aliases ?? [])]))
+  if (mergedAliases.length > 0) entry.aliases = mergedAliases
+}
+
+async function queryOsvWithCache(purls: string[], nvdApiKey?: string): Promise<Map<string, Vulnerability[]>> {
   const cache = getVulnCache()
   const results = new Map<string, Vulnerability[]>()
   const misses: string[] = []
@@ -240,7 +256,9 @@ async function queryOsvWithCache(purls: string[]): Promise<Map<string, Vulnerabi
   }
 
   if (misses.length > 0) {
-    const fetched = await queryByPurls(misses)
+    // Forward the NVD API key so osv.ts can enrich CVE-aliased OSV advisories
+    // with authoritative NVD data (its NVD-over-OSV priority merge is gated on it).
+    const fetched = await queryByPurls(misses, nvdApiKey)
     for (const purl of misses) {
       const vulns = fetched.get(purl) || []
       cache.set(purl, 'osv', vulns, OSV_CACHE_TTL_MS)
@@ -268,19 +286,21 @@ async function queryOsvWithCache(purls: string[]): Promise<Map<string, Vulnerabi
  * other server-backed call.
  *
  * @param component - The component to find vulnerabilities for
- * @param _nvdApiKey - Optional NVD API key (not used, kept for API compatibility)
+ * @param nvdApiKey - Optional NVD API key, forwarded to OSV so CVE-aliased OSV
+ *   advisories are enriched/merged with authoritative NVD data (source priority)
  * @returns Array of vulnerabilities affecting this component
  */
 export async function matchVulnerabilitiesForComponent(
   component: Component,
-  _nvdApiKey?: string,
+  nvdApiKey?: string,
 ): Promise<Vulnerability[]> {
   const vulnerabilities: Vulnerability[] = []
   const seenIds = new Set<string>()
 
   // Push matches for this component, tagging each with how confidently it was matched so the
   // UI/CLI can de-emphasize name-only matches on unversioned components. First tier to find a CVE
-  // wins (tiers run in descending precision), matching the seenIds dedup.
+  // wins (tiers run in descending precision), matching the seenIds dedup — but when a later source
+  // reports the same CVE, its source attribution/aliases are merged into the kept entry.
   const pushMatches = (vulns: Vulnerability[], confidence: MatchConfidence): void => {
     for (const vuln of vulns) {
       if (!seenIds.has(vuln.id)) {
@@ -290,6 +310,9 @@ export async function matchVulnerabilitiesForComponent(
           matchQuality: { [component.id]: confidence },
         })
         seenIds.add(vuln.id)
+      } else {
+        const existing = vulnerabilities.find((v) => v.id === vuln.id)
+        if (existing) mergeSourceAttribution(existing, vuln)
       }
     }
   }
@@ -359,7 +382,7 @@ export async function matchVulnerabilitiesForComponent(
   // Queried via the server's `/api/osv` proxy — see the function documentation above.
   if (component.purl && typeof window !== 'undefined' && getPlatform()?.database) {
     try {
-      const osvResults = await queryOsvWithCache([component.purl])
+      const osvResults = await queryOsvWithCache([component.purl], nvdApiKey)
       const osvVulns = osvResults.get(component.purl) || []
       pushMatches(osvVulns, 'cpe-exact')
     } catch (error) {
@@ -384,12 +407,13 @@ export async function matchVulnerabilitiesForComponent(
  * OSV queries are proxied through the Express server.
  *
  * @param components - Array of components to find vulnerabilities for
- * @param _nvdApiKey - Optional NVD API key (not used, kept for API compatibility)
+ * @param nvdApiKey - Optional NVD API key, forwarded to OSV so CVE-aliased OSV
+ *   advisories are enriched/merged with authoritative NVD data (source priority)
  * @returns Map of component ID to array of vulnerabilities
  */
 export async function matchVulnerabilitiesForComponents(
   components: Component[],
-  _nvdApiKey?: string,
+  nvdApiKey?: string,
   onProgress?: ScanProgressCallback,
 ): Promise<Map<string, Vulnerability[]>> {
   const resultMap = new Map<string, Vulnerability[]>()
@@ -398,16 +422,19 @@ export async function matchVulnerabilitiesForComponents(
 
   // Upsert a batch of matches for one component, tagging each with how confidently it was matched.
   // matchQuality is keyed by component id and MERGED (never overwritten) so a CVE shared across
-  // several components keeps each component's own confidence.
+  // several components keeps each component's own confidence. When the same CVE is re-reported by a
+  // different source (e.g. OSV after a local NVD hit), its source attribution/aliases are unioned in.
   const recordMatch = (vulns: Vulnerability[], componentId: string, confidence: MatchConfidence): void => {
     for (const vuln of vulns) {
-      if (!vulnerabilityMap.has(vuln.id)) {
+      const isNew = !vulnerabilityMap.has(vuln.id)
+      if (isNew) {
         vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [], matchQuality: {} })
       }
       const entry = vulnerabilityMap.get(vuln.id)
       if (entry) {
         if (!entry.affectedComponents.includes(componentId)) entry.affectedComponents.push(componentId)
         entry.matchQuality = { ...entry.matchQuality, [componentId]: confidence }
+        if (!isNew) mergeSourceAttribution(entry, vuln)
       }
     }
   }
@@ -533,7 +560,7 @@ export async function matchVulnerabilitiesForComponents(
       })
     }
     try {
-      const osvResults = await queryOsvWithCache(purls)
+      const osvResults = await queryOsvWithCache(purls, nvdApiKey)
       for (const component of components) {
         if (component.purl) {
           const vulns = osvResults.get(component.purl) || []
