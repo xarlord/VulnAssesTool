@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Shield, ShieldCheck, Search, Loader2, Download, FileText } from 'lucide-react'
+import { Shield, ShieldCheck, Search, Loader2, Download, FileText, RefreshCcw } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { toast } from '@/components/Toaster'
 import { PageHeader } from '@/components/PageHeader'
@@ -213,6 +213,15 @@ export function ProjectDetail() {
                 isRefreshing={isRefreshing}
                 compact
               />
+              <button
+                onClick={() => scan.handleRefreshVulnData(true)}
+                disabled={isRefreshing}
+                className="rounded-md border border-border bg-secondary p-2 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Force refresh vulnerability data (bypass cache)"
+                title="Force refresh — bypass cache and query fresh data"
+              >
+                <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
               {scan.isScanning ? (
                 <div className="flex flex-col gap-1">
                   <button

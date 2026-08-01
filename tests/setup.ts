@@ -78,6 +78,7 @@ vi.mock('lucide-react', async () => {
     'HelpCircle',
     'AlertTriangle',
     'RefreshCw',
+    'RefreshCcw',
     'Home',
     'Bug',
     'Trash2',

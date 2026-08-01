@@ -46,7 +46,7 @@ export function StalenessIndicator({
       </span>
       {isStale && (
         <button
-          onClick={onRefresh}
+          onClick={() => onRefresh?.()}
           disabled={isRefreshing}
           className="ml-1 flex items-center gap-1 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 hover:bg-orange-200 disabled:opacity-50"
         >

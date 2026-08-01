@@ -99,7 +99,7 @@ vi.mock('@/components/StalenessIndicator', () => ({
     <div data-testid="staleness-indicator">
       <span>Stale</span>
       {onRefresh && (
-        <button onClick={onRefresh} disabled={isRefreshing} data-testid="refresh-button">
+        <button onClick={() => onRefresh()} disabled={isRefreshing} data-testid="refresh-button">
           {isRefreshing ? 'Refreshing...' : 'Refresh Now'}
         </button>
       )}
@@ -118,6 +118,7 @@ vi.mock('lucide-react', () => {
     'HelpCircle',
     'AlertTriangle',
     'RefreshCw',
+    'RefreshCcw',
     'Home',
     'Bug',
     'Trash2',
@@ -2015,6 +2016,48 @@ describe('ProjectDetail', () => {
           expect(vi.mocked(refreshVulnerabilityData)).toHaveBeenCalled()
           expect(mockUpdateProject).toHaveBeenCalled()
         },
+        { timeout: 10000 },
+      )
+    })
+
+    it('defaults to a cached refresh (useCache: true) on a normal refresh click', async () => {
+      vi.mocked(refreshVulnerabilityData).mockResolvedValue({
+        success: true,
+        vulnerabilities: [],
+        componentsScanned: 2,
+      })
+
+      renderProjectDetailWithRefresh()
+      fireEvent.click(screen.getByTestId('refresh-button'))
+
+      await waitFor(
+        () =>
+          expect(vi.mocked(refreshVulnerabilityData)).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ useCache: true }),
+          ),
+        { timeout: 10000 },
+      )
+    })
+
+    it('passes useCache: false when the force-refresh button is clicked (FR-03.5)', async () => {
+      vi.mocked(refreshVulnerabilityData).mockResolvedValue({
+        success: true,
+        vulnerabilities: [],
+        componentsScanned: 2,
+      })
+
+      renderProjectDetailWithRefresh()
+      // Why: the PRD asks for a user-facing cache-bypass control. Without pinning this caller-level
+      // contract, a future refactor could silently re-hardcode the cached path and nothing would fail.
+      fireEvent.click(screen.getByLabelText('Force refresh vulnerability data (bypass cache)'))
+
+      await waitFor(
+        () =>
+          expect(vi.mocked(refreshVulnerabilityData)).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ useCache: false }),
+          ),
         { timeout: 10000 },
       )
     })

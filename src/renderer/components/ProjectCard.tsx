@@ -1,5 +1,5 @@
 import React from 'react'
-import { Shield, AlertTriangle, Calendar, Trash2, RefreshCw, Filter } from 'lucide-react'
+import { Shield, AlertTriangle, Calendar, Trash2, RefreshCw, RefreshCcw, Filter } from 'lucide-react'
 import { useSettings, useRefreshingProjectIds } from '@/store/useStore'
 import { StalenessBadge } from './StalenessIndicator'
 import { ConfirmDialog } from './ui/confirm-dialog'
@@ -11,7 +11,7 @@ interface ProjectCardProps {
   project: Project
   onView: (project: Project) => void
   onDelete: (projectId: string) => void
-  onRefresh?: (projectId: string) => void
+  onRefresh?: (projectId: string, force?: boolean) => void
   onFpf?: (projectId: string) => void
 }
 
@@ -144,17 +144,31 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
             </button>
           )}
           {onRefresh && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onRefresh(project.id)
-              }}
-              disabled={isRefreshing}
-              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Refresh vulnerability data"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRefresh(project.id)
+                }}
+                disabled={isRefreshing}
+                className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Refresh vulnerability data"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRefresh(project.id, true)
+                }}
+                disabled={isRefreshing}
+                className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Force refresh vulnerability data (bypass cache)"
+                title="Force refresh — bypass cache and query fresh data"
+              >
+                <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </>
           )}
           <button
             onClick={handleDeleteClick}

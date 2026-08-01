@@ -88,14 +88,16 @@ export function Dashboard() {
   const [isBulkMode, setIsBulkMode] = React.useState(false)
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = React.useState(false)
 
-  // Handle manual refresh of vulnerability data
-  const handleRefreshVulnData = async (projectId: string) => {
+  // Handle manual refresh of vulnerability data. `force` bypasses the vuln cache and re-queries
+  // fresh data (FR-03.5); a normal click keeps the cached, TTL-bounded path.
+  const handleRefreshVulnData = async (projectId: string, force = false) => {
     try {
       const project = projects.find((p) => p.id === projectId)
       if (!project) return
 
       const result = await refreshVulnerabilityData(project.components, {
         cacheTTL: settings.vulnDataCacheTTL,
+        useCache: !force,
         onProgress: (current, total) => {
           console.log(`Refresh progress: ${current}/${total}`)
         },

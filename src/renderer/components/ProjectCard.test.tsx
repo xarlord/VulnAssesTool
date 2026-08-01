@@ -416,6 +416,23 @@ describe('ProjectCard', () => {
       expect(mockOnRefresh).toHaveBeenCalledWith('test-project-id')
     })
 
+    it('calls onRefresh with force=true when the force-refresh button is clicked (FR-03.5)', () => {
+      const mockOnRefresh = vi.fn()
+      render(
+        <ProjectCard
+          project={createMockProject()}
+          onView={mockOnView}
+          onDelete={mockOnDelete}
+          onRefresh={mockOnRefresh}
+        />,
+      )
+
+      // Distinct from the normal refresh click above, which passes only the id (cached path).
+      fireEvent.click(screen.getByLabelText('Force refresh vulnerability data (bypass cache)'))
+
+      expect(mockOnRefresh).toHaveBeenCalledWith('test-project-id', true)
+    })
+
     it('should stop propagation on refresh button click', () => {
       const mockOnRefresh = vi.fn()
       render(

@@ -180,7 +180,9 @@ export function useProjectScan({ project, updateProject, settings }: UseProjectS
     }
   }
 
-  const handleRefreshVulnData = async () => {
+  // `force` bypasses the vuln cache and re-queries fresh data (FR-03.5 "manual refresh"); a normal
+  // click keeps the cached, TTL-bounded path so repeated refreshes don't hammer the APIs.
+  const handleRefreshVulnData = async (force = false) => {
     if (!project) return
     // API key is now fetched from secure storage, not from settings
     const secureKeyService = getSecureKeyService()
@@ -194,6 +196,7 @@ export function useProjectScan({ project, updateProject, settings }: UseProjectS
     try {
       const result = await refreshVulnerabilityData(project.components, {
         cacheTTL: settings.vulnDataCacheTTL,
+        useCache: !force,
         onProgress: (current, total) => {
           console.log(`Refresh progress: ${current}/${total}`)
         },
