@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import request from 'supertest'
-import { rmSync, existsSync } from 'node:fs'
+import { rmSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import type { Express } from 'express'
 import { createTestApp } from '../test-utils/testApp'
@@ -107,4 +107,38 @@ describe('DELETE /api/projects/:projectId', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: true })
   })
+})
+
+describe('NFR-02.1 scale — 1,000+ projects', () => {
+  // WHY (Rule 9): the PRD requires handling 1,000+ projects. GET /api/projects reads and parses
+  // every project file on each call, so this guard fails loudly if a regression introduces an
+  // in-memory/listing cap or an O(n^2) directory scan that drops or loses projects at scale.
+  //
+  // Files are SEEDED DIRECTLY rather than via 1,000 POSTs on purpose: createApp() mounts the real
+  // rate-limiting middleware, so a burst of 1,000 POSTs returns 429 by design (a correct
+  // protection unrelated to storage scale). The POST/write contract is already covered by the
+  // tests above; the scale risk lives in the read/list path exercised here. Assertions are exact
+  // counts / distinct ids, so slowness can only time the test out — never yield a false red.
+  it('lists 1,000 stored projects without loss', async () => {
+    const count = 1000
+    mkdirSync(projectsDir, { recursive: true })
+    for (let i = 0; i < count; i++) {
+      writeFileSync(
+        path.join(projectsDir, `scale-${i}.json`),
+        JSON.stringify({ id: `scale-${i}`, name: `Project ${i}`, vulnerabilities: [], components: [] }),
+        'utf-8',
+      )
+    }
+
+    const listed = await request(app).get('/api/projects')
+    expect(listed.status).toBe(200)
+    // Every stored project must come back — no cap, no lossy directory scan.
+    expect(listed.body.data).toHaveLength(count)
+    // Distinct ids across the full set (and the first/last boundaries) prove nothing was dropped
+    // or coalesced somewhere in the middle of the 1,000-file scan.
+    const ids = new Set((listed.body.data as Array<{ id: string }>).map((p) => p.id))
+    expect(ids.size).toBe(count)
+    expect(ids.has('scale-0')).toBe(true)
+    expect(ids.has('scale-999')).toBe(true)
+  }, 60000)
 })
