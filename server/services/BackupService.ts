@@ -284,7 +284,18 @@ export class BackupService {
   async verifyBackup(backupIdOrPath: string): Promise<'valid' | 'invalid' | 'unknown'> {
     const backups = await this.listBackups()
     const backup = backups.find((b) => b.id === backupIdOrPath)
-    return this.verifyBackupIntegrity(backup ? backup.path : backupIdOrPath)
+    if (backup) {
+      return this.verifyBackupIntegrity(backup.path)
+    }
+
+    // Fallback: treat the value as a path, but confine it to the backup directory so a client
+    // can't probe/read arbitrary host files (an existence + first-16-bytes oracle).
+    const baseResolved = path.resolve(this.backupDir)
+    const resolved = path.resolve(this.backupDir, path.basename(backupIdOrPath))
+    if (resolved !== baseResolved && !resolved.startsWith(baseResolved + path.sep)) {
+      return 'invalid'
+    }
+    return this.verifyBackupIntegrity(resolved)
   }
 
   /**
@@ -328,8 +339,11 @@ export class BackupService {
     try {
       const backups = await this.listBackups()
 
-      if (backups.length > this.config.retentionCount) {
-        const toDelete = backups.slice(this.config.retentionCount)
+      // Clamp: a negative retentionCount would make slice() count from the end and delete the
+      // wrong set (keeping the oldest instead of the newest N).
+      const retention = Math.max(0, Math.trunc(this.config.retentionCount))
+      if (backups.length > retention) {
+        const toDelete = backups.slice(retention)
 
         for (const backup of toDelete) {
           await fs.unlink(backup.path)
@@ -345,6 +359,10 @@ export class BackupService {
    * Update configuration
    */
   updateConfig(newConfig: Partial<BackupConfig>): void {
+    if (newConfig.schedule !== undefined && !['daily', 'weekly', 'manual'].includes(newConfig.schedule)) {
+      throw new Error(`Invalid backup schedule: ${String(newConfig.schedule)}`)
+    }
+
     const wasEnabled = this.config.enabled
     const scheduleChanged = this.config.schedule !== newConfig.schedule
 

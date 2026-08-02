@@ -676,8 +676,9 @@ describe('BackupService', () => {
       })
       await scheduledService.initialize()
 
-      // Force a non-standard schedule to hit the default branch in getNextScheduledTime
-      scheduledService.updateConfig({ schedule: 'monthly' } as unknown as Partial<BackupConfig>)
+      // 'manual' is a valid schedule with no cron, so it exercises the default branch in
+      // getNextScheduledTime. (Invalid values like 'monthly' are now rejected by updateConfig.)
+      scheduledService.updateConfig({ schedule: 'manual' })
 
       const stats = await scheduledService.getStats()
       expect(stats.nextScheduledBackup).toBeUndefined()

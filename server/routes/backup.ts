@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { getBackupService } from '../services/BackupService.js'
+import { closeDatabase, initializeDatabase } from '../database/initialize.js'
 import { broadcast } from '../websocket.js'
 import type { BackupConfig, BackupResult } from '../services/BackupService.js'
 import type {
@@ -86,7 +87,19 @@ router.post('/restore', async (req, res) => {
     }
 
     const backupId = req.body.backupId as string
-    const result = (await service.restoreBackup(backupId)) as BackupResult
+
+    // Close the live DB connection (and the services that share it) before the restore
+    // overwrites the file on disk, then rebuild everything against the restored file.
+    // Writing the DB file under an open connection risks a Windows file-lock failure and
+    // leaves the app's connections pointing at stale/torn state.
+    await closeDatabase()
+    let result: BackupResult
+    try {
+      result = (await service.restoreBackup(backupId)) as BackupResult
+    } finally {
+      await initializeDatabase()
+    }
+
     broadcast('backup-restored', result)
     res.json(result)
   } catch (error) {

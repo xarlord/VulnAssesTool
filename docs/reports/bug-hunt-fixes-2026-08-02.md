@@ -15,14 +15,14 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [~] C6 dbSeedingService.ts:468 prebuilt-DB swap under open handle — SKIPPED (documented in code): safe fix needs orchestration-level teardown/rebuild of ALL db services around the swap (or ATTACH-copy into the live connection), not a local reopen; downloadPrebuilt path has NO production caller (createDbSeedingService unused); an in-service reopen leaves other services on a closed conn and breaks the fs-mocked tests.
 - [~] C7 bulkDatabase.ts:163 fake transaction (rollback no-op) — SKIPPED: legacy sql.js-era abstraction; its only consumer (nvdImportManager) is unwired and doesn't call the txn methods; real fix = rework async upserts into a synchronous better-sqlite3 transaction (feature work). Production sync uses NvdDataImporter (hardened in H15/H16).
 - [x] C8 container.ts:65 command injection via runtime — FIXED: allow-list runtime ('docker'|'podman') at the runCommand execFile chokepoint
-- [ ] C9 BackupService.ts:204 restore overwrites live DB
+- [x] C9 BackupService.ts:204 restore overwrites live DB — FIXED: /restore route closeDatabase() → restore → initializeDatabase() (finally), so the file swap happens with no open connection
 
 ## High
 
 - [ ] H1 config.ts:21 / auth.ts:61 auth fails open (NODE_ENV default)
-- [ ] H2 secureStorage.ts:23 weak key derivation
+- [x] H2 secureStorage.ts:23 weak key derivation — FIXED: 32-byte random key in DATA_DIR/storage-key.bin (mode 600); legacy machine-key kept only as a decrypt fallback for old data
 - [x] H3 ContainerService.ts:316 path traversal via manifest — FIXED: resolveInside() containment check for manifest config/layer paths
-- [ ] H4 backup.ts:135 path traversal via verify
+- [x] H4 backup.ts:135 path traversal via verify — FIXED: confine the path fallback to backupDir (basename + containment)
 - [ ] H5 sbom.ts:57 unrestricted fs scan via localPath
 - [ ] H6 sbom.ts:29 no dedicated rate limit
 - [ ] H7 rateLimit.ts/app.ts dedicated limiters unused
@@ -99,7 +99,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] M41 database.ts:818 PUT /config/storage no-op success
 - [ ] M42 database.ts:831 PUT /config/perf no-op success
 - [ ] M43 EpssService.ts:254 rate-limit check-then-act race
-- [ ] M44 backup.ts:171 schedule not validated
+- [x] M44 backup.ts:171 schedule not validated — FIXED: updateConfig rejects any schedule not in daily|weekly|manual
 - [ ] M45 index.ts:55 shutdown no re-entrancy guard
 - [ ] M46 app.ts:38 CORS wildcard + credentials
 - [ ] M47 config.ts:12 PORT parsed without validation
@@ -136,7 +136,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] L15 database.ts:965 CacheManager endpoints never initialised
 - [ ] L16 EpssService.ts:213 NaN-fail-open expired
 - [ ] L17 KevService.ts:516 NaN-fail-open sync
-- [ ] L18 BackupService.ts:327 retentionCount negative slice
+- [x] L18 BackupService.ts:327 retentionCount negative slice — FIXED: clamp to Math.max(0, trunc(n)) before slice
 - [ ] L19 auth.ts:78 token compared with !== (not constant-time)
 - [ ] L20 auth.ts:59 SKIP_AUTH_PATHS wrong prefix
 - [ ] L21 websocket.ts:33 WS token === timing
