@@ -389,12 +389,20 @@ export class DbSeedingService {
       return
     }
 
+    // Preserve progress from an interrupted run rather than wiping it: a restart that
+    // re-triggers seeding must not re-sync years already completed. runBackgroundSync
+    // reads yearsCompleted from this state to decide where to resume.
+    const existing = this.getBackgroundSyncState()
+    const resumable = existing !== null && (existing.status === 'syncing' || existing.status === 'paused')
+    const yearsCompleted = resumable ? existing.yearsCompleted : []
+    const yearsRemaining = yearsToSync.filter((year) => !yearsCompleted.includes(year))
+
     // Save background sync state
     this.saveBackgroundSyncState({
       status: 'syncing',
       startedAt: new Date().toISOString(),
-      yearsCompleted: [],
-      yearsRemaining: yearsToSync,
+      yearsCompleted,
+      yearsRemaining,
     })
 
     // Start background sync (non-blocking)
@@ -468,6 +476,14 @@ export class DbSeedingService {
         fs.copyFileSync(this.dbPath, `${this.dbPath}.backup`)
       }
 
+      // NOTE (bug-hunt C6): swapping this file while `this.db` (and the app's other
+      // services: deltaSync, cpeSearch, KEV, EPSS) hold an open connection to it is unsafe
+      // — on Windows the rename can fail on the held handle, and elsewhere those
+      // connections keep operating on the orphaned old file. A correct fix requires the
+      // orchestration layer to close+rebuild ALL db-backed services around the swap (or to
+      // ATTACH-and-copy into the live connection), not a local reopen here. This path has no
+      // production caller today (createDbSeedingService is unused), so it is left as-is and
+      // tracked rather than half-fixed. See docs/reports/bug-hunt-fixes-2026-08-02.md (C6).
       fs.renameSync(tempPath, this.dbPath)
 
       // Clean up
@@ -589,7 +605,7 @@ export class DbSeedingService {
     }
 
     const currentYear = new Date().getFullYear()
-    const startYear = Math.max(currentYear - 1, 2024) // 2024 or current year - 1
+    const startYear = this.getRecentImportStartYear()
 
     return this.bulkImporter.startImport({
       startYear,
@@ -685,11 +701,22 @@ export class DbSeedingService {
   /**
    * Get historical years that need syncing
    */
+  /**
+   * The first year the recent-import window covers. Single source of truth so the
+   * historical sweep can start exactly one year below it — otherwise a year between the
+   * two ranges (e.g. currentYear-2) is imported by neither path.
+   */
+  private getRecentImportStartYear(): number {
+    return Math.max(new Date().getFullYear() - 1, 2024)
+  }
+
   private getHistoricalYearsToSync(): number[] {
     const years: number[] = []
 
-    // Start from 2023 (before pre-seed years 2024-2025)
-    for (let year = 2023; year >= SEED_VERSIONS.HISTORICAL_START_YEAR; year--) {
+    // Cover everything below the recent-import window down to the historical start, so no
+    // year falls between the two ranges (the old hardcoded 2023 skipped currentYear-2).
+    const historicalEnd = this.getRecentImportStartYear() - 1
+    for (let year = historicalEnd; year >= SEED_VERSIONS.HISTORICAL_START_YEAR; year--) {
       years.push(year)
     }
 

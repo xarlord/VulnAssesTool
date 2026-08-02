@@ -214,18 +214,28 @@ export class DbVersionManager {
    * Compare seed versions (format: YYYYMMDD or semantic version)
    */
   compareSeedVersions(v1: string, v2: string): VersionComparison {
-    // Handle numeric seed versions (YYYYMMDD format)
-    const num1 = parseInt(v1, 10)
-    const num2 = parseInt(v2, 10)
-
-    if (!isNaN(num1) && !isNaN(num2)) {
+    // Numeric fast-path ONLY when both strings are pure integers (YYYYMMDD format).
+    // parseInt('2.0.0-20250224', 10) returns 2 (it stops at the first '.'), which made
+    // two distinct semver seeds that share a major version wrongly compare as 'same'.
+    if (/^\d+$/.test(v1) && /^\d+$/.test(v2)) {
+      const num1 = parseInt(v1, 10)
+      const num2 = parseInt(v2, 10)
       if (num1 > num2) return 'newer'
       if (num1 < num2) return 'older'
       return 'same'
     }
 
-    // Fall back to semantic version comparison
-    return this.compareVersions(v1, v2)
+    // Semantic ordering for X.Y.Z[-BUILD] seeds. Unlike compareVersions (which reports a
+    // major difference as schema-'incompatible'), a newer major seed is simply 'newer' for
+    // update purposes — and comparing every field, not just parseInt's leading integer,
+    // distinguishes seeds that share a major version (e.g. 2.0.0-20250224 vs 2.0.1-...).
+    const a = this.parseVersion(v1)
+    const b = this.parseVersion(v2)
+    if (a.major !== b.major) return a.major > b.major ? 'newer' : 'older'
+    if (a.minor !== b.minor) return a.minor > b.minor ? 'newer' : 'older'
+    if (a.patch !== b.patch) return a.patch > b.patch ? 'newer' : 'older'
+    if (a.buildDate !== b.buildDate) return a.buildDate > b.buildDate ? 'newer' : 'older'
+    return 'same'
   }
 
   /**

@@ -36,17 +36,20 @@ export async function initializeDatabase(): Promise<void> {
     initializeStorage()
 
     database = getDatabase()
-    await database.initialize()
 
+    // Copy the bundled seed DB into place BEFORE opening the connection. initialize()
+    // creates the file if it's absent, so this existence check has to run first —
+    // otherwise the file always exists by the time we look and the seed never copies.
     const dbPath = database.getDbPath?.()
-    if (dbPath) {
+    if (dbPath && !fs.existsSync(dbPath)) {
       const { hasBundledSeed, copyBundledSeed } = await import('./dbSeedingService.js')
-      if (hasBundledSeed() && !fs.existsSync(dbPath)) {
+      if (hasBundledSeed()) {
         console.log('Bundled seed database found, copying to user data...')
         copyBundledSeed(dbPath)
-        await database.initialize()
       }
     }
+
+    await database.initialize()
 
     const rawDb = database.getRawDb?.()
     if (rawDb) {
