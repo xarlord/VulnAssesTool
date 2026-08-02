@@ -51,6 +51,10 @@ export function parseArgs(args: string[]): CliCommand {
         // Parse numeric values
         if (flagName === 'min-epss') {
           result.flags[camelName] = parseFloat(value)
+        } else if (flagName === 'max-gaps') {
+          // Integer count — must be a number so the `Number.isFinite(flags.maxGaps)` gate in
+          // cli/index.ts actually fires (it never coerces a string).
+          result.flags[camelName] = parseInt(value, 10)
         } else {
           result.flags[camelName] = value
         }

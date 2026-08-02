@@ -267,15 +267,35 @@ export async function scanCommand(
     }
 
     // Scan each component with the provided scanner (defaults to the stub).
-    const allVulnerabilities: Vulnerability[] = []
+    // Dedup by CVE id: a vulnerability affecting N components must be reported once (listing all
+    // N affected components), not counted N times — matching the browser app's
+    // matchVulnerabilitiesForComponents merge.
+    const vulnById = new Map<string, Vulnerability>()
 
     for (const component of components) {
       const purl = component.purl ?? component.cpe ?? `${component.name}@${component.version}`
+      const componentRef = component.purl ?? `${component.name}@${component.version}`
       const scanResult = await scanner.scanComponent(purl, {
         preferLocal: true,
       })
-      allVulnerabilities.push(...scanResult.vulnerabilities)
+      for (const vuln of scanResult.vulnerabilities) {
+        const existing = vulnById.get(vuln.id)
+        if (existing) {
+          const affected = existing.affectedComponents ?? []
+          if (!affected.includes(componentRef)) {
+            existing.affectedComponents = [...affected, componentRef]
+          }
+        } else {
+          const affected = vuln.affectedComponents ?? []
+          vulnById.set(vuln.id, {
+            ...vuln,
+            affectedComponents: affected.includes(componentRef) ? affected : [...affected, componentRef],
+          })
+        }
+      }
     }
+
+    const allVulnerabilities: Vulnerability[] = Array.from(vulnById.values())
 
     // Filter vulnerabilities
     const filteredVulns = filterVulnerabilities(allVulnerabilities, options)

@@ -41,7 +41,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] H20 initialize.ts:44 bundled-seed copy dead code — FIXED: check/copy bundled seed before the first initialize()
 - [x] H21 nvd.ts:118 CVSS v3.1-only extraction — FIXED: v31→v30→v2 fallback (+ shared type extended)
 - [x] H22 csv.ts:78 patch 'none' truthy → Available — FIXED: patchAvailability === 'available'
-- [ ] H23 scan.ts:270 CLI no CVE dedup
+- [x] H23 scan.ts:270 CLI no CVE dedup — FIXED: merge by CVE id into a Map, union affectedComponents
 - [ ] H24 VulnerabilitiesTab.tsx:97 cvssScore===0 bypasses range filter
 - [x] H25 websocket.ts:55 dead-peer leak — FIXED: isAlive/pong tracking; terminate + evict clients that don't pong
 - [x] H26 index.ts:73 startServer no catch — FIXED: startServer().catch(exit 1)
@@ -131,7 +131,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] L10 useStore.ts:66 orphaned notificationPreferences slice
 - [ ] L11 vulnCache.ts:225 shouldRefreshData inverted
 - [ ] L12 excelParser.ts:351 column double-mapped
-- [ ] L13 parser.ts:52 cli --max-gaps gate dead
+- [x] L13 parser.ts:52 cli --max-gaps gate dead — FIXED: parseInt('max-gaps') so Number.isFinite gate fires
 - [x] L14 database.ts:133 CPE total = page length — FIXED: approximate total heuristic (like text/FTS)
 - [x] L15 database.ts:965 CacheManager endpoints never initialised — FIXED: /cache/stats + /cache/clear target the real searchResponseCache (QueryCache)
 - [x] L16 EpssService.ts:213 NaN-fail-open expired — FIXED: Number.isNaN guard treats a corrupt timestamp as expired
