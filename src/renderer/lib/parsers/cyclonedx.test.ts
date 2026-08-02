@@ -546,7 +546,7 @@ describe('Vulnerability Parsing - Severity Coverage', () => {
     expect(result.vulnerabilities[0].severity).toBe('none')
   })
 
-  it('should default to low severity for unknown severity string', async () => {
+  it('should map an unknown/unrated severity string to none', async () => {
     const bom = {
       bomFormat: 'CycloneDX',
       specVersion: '1.5',
@@ -560,7 +560,7 @@ describe('Vulnerability Parsing - Severity Coverage', () => {
       ],
     }
     const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
-    expect(result.vulnerabilities[0].severity).toBe('low')
+    expect(result.vulnerabilities[0].severity).toBe('none')
   })
 
   it('should parse JSON vulnerability with OSV source', async () => {

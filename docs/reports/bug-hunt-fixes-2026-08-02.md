@@ -39,8 +39,8 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] H18 multiThreadedDownloader.ts:432 checksum fails open — FIXED: return false (fail closed) on missing/errored checksum
 - [x] H19 nvdDownloader.ts:218 dead CVSS fallback (=== undefined) — FIXED: guard on === null so v3.0/v2 fallbacks run
 - [x] H20 initialize.ts:44 bundled-seed copy dead code — FIXED: check/copy bundled seed before the first initialize()
-- [ ] H21 nvd.ts:118 CVSS v3.1-only extraction
-- [ ] H22 csv.ts:78 patch 'none' truthy → Available
+- [x] H21 nvd.ts:118 CVSS v3.1-only extraction — FIXED: v31→v30→v2 fallback (+ shared type extended)
+- [x] H22 csv.ts:78 patch 'none' truthy → Available — FIXED: patchAvailability === 'available'
 - [ ] H23 scan.ts:270 CLI no CVE dedup
 - [ ] H24 VulnerabilitiesTab.tsx:97 cvssScore===0 bypasses range filter
 - [x] H25 websocket.ts:55 dead-peer leak — FIXED: isAlive/pong tracking; terminate + evict clients that don't pong
@@ -73,9 +73,9 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] M15 sqlSanitizer.ts:25 denylist reconstruction bypass — FIXED: fixed-point strip loop + defense-in-depth JSDoc
 - [x] M16 cpeLookupCache.ts:479 totalCount from capped result — FIXED: real uncapped COUNT(DISTINCT) for totalCount
 - [x] M17 v2SchemaMigration.ts:419 sync_status UNIQUE mismatch — FIXED: source TEXT NOT NULL UNIQUE
-- [ ] M18 cyclonedx.ts:657 unknown source → broken NVD URL
-- [ ] M19 cyclonedx.ts:655 first rating always wins
-- [ ] M20 cyclonedx.ts:712 unknown severity → low
+- [x] M18 cyclonedx.ts:657 unknown source → broken NVD URL — FIXED: URL chosen by id prefix (CVE→NVD, GHSA→GitHub, else OSV)
+- [x] M19 cyclonedx.ts:655 first rating always wins — FIXED: pick the highest-score rating
+- [x] M20 cyclonedx.ts:712 unknown severity → low — FIXED: unknown/unrated → 'none'
 - [ ] M21 filterAuditLogger.ts:163 hash chain ordered by non-unique created_at
 - [ ] M22 attackGraph.ts:311 blocking edge labels wrong node
 - [ ] M23 DiffEngine.ts:136 hash only sorts vulnerabilities
@@ -121,12 +121,12 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 
 - [ ] L1 SbomUploadDialog.tsx:556 matchType hardcoded token
 - [ ] L2 cpeUtils.ts:397 dead confidence ternary
-- [ ] L3 pdf.ts:344 dead 'Not scanned' fallback
+- [x] L3 pdf.ts:344 dead 'Not scanned' fallback — FIXED: branch on project.lastScanAt directly
 - [ ] L4 ComponentVulnerabilitiesPopup.tsx:83 setTimeout no cleanup
 - [ ] L5 VulnerabilitiesTab.tsx:244 setTimeout no cleanup
 - [ ] L6 VulnerabilityDetailModal.tsx:39 setTimeout no cleanup
 - [ ] L7 reportGenerator.ts:78 NaN% divide by zero
-- [ ] L8 cyclonedx.ts:388 sanitizeVersion doc vs behavior
+- [x] L8 cyclonedx.ts:388 sanitizeVersion doc vs behavior — FIXED: doc corrected (hyphens intentionally preserved for semver)
 - [ ] L9 FalsePositiveFilter.tsx:61 none→low in UI/CSV
 - [ ] L10 useStore.ts:66 orphaned notificationPreferences slice
 - [ ] L11 vulnCache.ts:225 shouldRefreshData inverted

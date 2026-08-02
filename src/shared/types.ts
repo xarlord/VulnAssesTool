@@ -478,6 +478,24 @@ export interface NvdApiCve {
         baseSeverity: string
       }
     }[]
+    // CVSS v3.0 shares v3.1's cvssData shape; v2's cvssData carries baseScore + vectorString.
+    // Only baseScore/vectorString are read from these fallbacks (see convertNvdCveToVulnerability).
+    cvssMetricV30?: {
+      cvssData: {
+        version: string
+        vectorString: string
+        baseScore: number
+        baseSeverity: string
+      }
+    }[]
+    cvssMetricV2?: {
+      cvssData: {
+        version: string
+        vectorString: string
+        baseScore: number
+      }
+      baseSeverity?: string
+    }[]
   }
   weaknesses?: { description: [{ lang: string; value: string }] }[]
   references?: { url: string; source: string; tags?: string[] }[]

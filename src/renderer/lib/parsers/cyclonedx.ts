@@ -381,9 +381,9 @@ function xmlLicensesToArray(
 }
 
 /**
- * Sanitize version string — normalize separators to dots.
- * Converts formats like "2/9/05" → "2.9.05", "2-9-05" → "2.9.05".
- * Preserves semantic versioning patterns (e.g., "1.0.0-beta").
+ * Sanitize version string — normalize slash/backslash separators to dots.
+ * Converts formats like "2/9/05" → "2.9.05". Hyphens are intentionally left intact to preserve
+ * semantic-versioning pre-release/build suffixes (e.g. "1.0.0-beta").
  */
 function sanitizeVersion(version: string): string {
   if (!version) return version
@@ -647,12 +647,29 @@ function extractVulnerabilitiesFromXml(bom: CycloneDXBom): Vulnerability[] {
   )
 }
 
+/** The rating with the highest base score (falls back to the first if no scores are present). */
+function bestCycloneDXRating(
+  ratings: CycloneDXVulnerability['ratings'],
+): { severity?: string; score?: number; vector?: string } | undefined {
+  if (!ratings || ratings.length === 0) return undefined
+  return ratings.reduce((best, r) => ((r.score ?? -1) > (best.score ?? -1) ? r : best))
+}
+
+/** Canonical detail URL + source label for a vulnerability id, chosen by its id prefix. */
+function officialReferenceForVulnId(id: string): { url: string; source: string } {
+  if (/^CVE-/i.test(id)) return { url: `https://nvd.nist.gov/vuln/detail/${id}`, source: 'NVD' }
+  if (/^GHSA-/i.test(id)) return { url: `https://github.com/advisories/${id}`, source: 'GitHub' }
+  return { url: `https://osv.dev/vulnerability/${id}`, source: 'OSV' }
+}
+
 /**
  * Map CycloneDX vulnerability to internal Vulnerability type
  */
 function mapCycloneDXVulnerability(vuln: CycloneDXVulnerability): Vulnerability {
-  // Get the severity from the first rating
-  const severity = vuln.ratings?.[0]?.severity?.toUpperCase() || 'UNKNOWN'
+  // Pick the highest-scoring rating rather than document order — a producer may list a
+  // lower-severity rating first, and CVSS v3.x should win over an older v2 rating.
+  const bestRating = bestCycloneDXRating(vuln.ratings)
+  const severity = bestRating?.severity?.toUpperCase() || 'UNKNOWN'
   const normalizedSeverity = normalizeSeverity(severity)
   const sourceNameRaw = (vuln.source?.name || 'NVD').toLowerCase()
   const validSources: readonly VulnerabilitySource[] = ['nvd', 'osv', 'oss-index', 'github-advisory', 'snyk', 'both']
@@ -677,16 +694,14 @@ function mapCycloneDXVulnerability(vuln: CycloneDXVulnerability): Vulnerability 
     }
   }
 
-  // Add the primary source URL (NVD or OSV) for quick access
-  // This ensures the correct source link is always available
-  const sourceUrl =
-    sourceName === 'nvd' ? `https://nvd.nist.gov/vuln/detail/${sourceId}` : `https://osv.dev/vulnerability/${sourceId}`
-
-  // Add source URL if not already present in references
-  if (!references.some((ref) => ref.url === sourceUrl)) {
+  // Add the canonical detail URL, chosen by the vulnerability id's OWN prefix (CVE→NVD,
+  // GHSA→GitHub, else OSV) rather than the source name — an unknown source used to default to
+  // 'nvd' and build an nvd.nist.gov URL for a non-CVE id (e.g. a GHSA), producing a broken link.
+  const official = officialReferenceForVulnId(sourceId)
+  if (!references.some((ref) => ref.url === official.url)) {
     references.unshift({
-      url: sourceUrl,
-      source: sourceName === 'nvd' ? 'NVD' : 'OSV',
+      url: official.url,
+      source: official.source,
       tags: ['official'],
     })
   }
@@ -695,8 +710,8 @@ function mapCycloneDXVulnerability(vuln: CycloneDXVulnerability): Vulnerability 
     id: vuln.id,
     source: sourceName,
     severity: normalizedSeverity,
-    cvssScore: vuln.ratings?.[0]?.score,
-    cvssVector: vuln.ratings?.[0]?.vector,
+    cvssScore: bestRating?.score,
+    cvssVector: bestRating?.vector,
     description: vuln.description || '',
     references,
     affectedComponents: vuln.affects?.map((a) => a.ref || '').filter(Boolean) || [],
@@ -716,5 +731,5 @@ function normalizeSeverity(severity: string): Vulnerability['severity'] {
   if (normalized === 'MEDIUM') return 'medium'
   if (normalized === 'LOW') return 'low'
   if (normalized === 'NONE') return 'none'
-  return 'low' // Default to low if unknown
+  return 'none' // Unknown/unrated — don't inflate an unrated finding into a concrete severity
 }

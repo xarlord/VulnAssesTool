@@ -75,9 +75,10 @@ export function vulnerabilityToCsvRow(vuln: Vulnerability, componentName?: strin
   // Format CWEs as semicolon-separated list
   const cwes = vuln.cwes?.join('; ') || ''
 
-  // Check patch availability
+  // Check patch availability. patchAvailability is an enum, so a truthy check treats 'none'
+  // (explicitly "no patch") as available — compare to 'available' explicitly.
   const patchAvailable =
-    vuln.patchInfo?.patchAvailability || (vuln.patchedVersions && vuln.patchedVersions.length > 0)
+    vuln.patchInfo?.patchAvailability === 'available' || (vuln.patchedVersions?.length ?? 0) > 0
       ? 'Available'
       : 'Unknown'
 

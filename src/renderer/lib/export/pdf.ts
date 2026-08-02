@@ -341,7 +341,7 @@ export function prepareProjectPdf(project: Project): jsPDF {
     ['Description', project.description || 'N/A'],
     ['Created', formatLocaleDate(project.createdAt)],
     ['Last Updated', formatLocaleDate(project.updatedAt)],
-    ['Last Scan', formatLocaleDate(project.lastScanAt) || 'Not scanned'],
+    ['Last Scan', project.lastScanAt ? formatLocaleDate(project.lastScanAt) : 'Not scanned'],
   ]
 
   autoTable(doc, {

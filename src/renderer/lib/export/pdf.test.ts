@@ -817,7 +817,7 @@ describe('PDF Export', () => {
       expect(descRow[1]).toBe('N/A')
     })
 
-    it('should show N/A when lastScanAt is undefined', () => {
+    it("should show 'Not scanned' when lastScanAt is undefined", () => {
       const project = createMockProject()
       project.lastScanAt = undefined
 
@@ -826,8 +826,8 @@ describe('PDF Export', () => {
       const infoOptions = mockAutoTable.mock.calls[0][0]
       const scanRow = infoOptions.body.find((row: string[]) => row[0] === 'Last Scan')
       expect(scanRow).toBeDefined()
-      // formatLocaleDate(undefined) returns 'N/A'; the || 'Not scanned' is dead code
-      expect(scanRow[1]).toBe('N/A')
+      // lastScanAt is branched on directly now, so an unset value shows the intended label.
+      expect(scanRow[1]).toBe('Not scanned')
     })
 
     it('should handle string dates in project info', () => {
