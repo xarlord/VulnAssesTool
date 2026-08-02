@@ -214,8 +214,10 @@ function parseNVDCVE(json: Record<string, unknown>): Array<{
         severity = cvssV31.cvssData.baseSeverity as string
       }
 
-      // Fall back to CVSS v3.0
-      if (cvss_score === undefined) {
+      // Fall back to CVSS v3.0 (guard on null, not undefined: cvss_score starts as null and
+      // is only ever null or a number, so `=== undefined` never matched and these fallbacks
+      // were dead code — CVEs with only v3.0/v2 data got a null score/severity).
+      if (cvss_score === null) {
         const cvssV30Array = metrics.cvssMetricV30 as Array<Record<string, Record<string, unknown>>> | undefined
         const cvssV30 = cvssV30Array?.[0]
         if (cvssV30?.cvssData) {
@@ -225,8 +227,8 @@ function parseNVDCVE(json: Record<string, unknown>): Array<{
         }
       }
 
-      // Fall back to CVSS v2.0
-      if (cvss_score === undefined) {
+      // Fall back to CVSS v2.0 (guard on null — see the v3.0 fallback above).
+      if (cvss_score === null) {
         const cvssV2Array = metrics.cvssMetricV2 as Array<Record<string, Record<string, unknown>>> | undefined
         const cvssV2 = cvssV2Array?.[0]
         if (cvssV2?.cvssData) {

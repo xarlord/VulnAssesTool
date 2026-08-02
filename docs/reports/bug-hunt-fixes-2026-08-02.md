@@ -13,7 +13,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] C4 v2SchemaMigration.ts:283 migration 4 rename not transactional — FIXED: same central transaction wrap
 - [x] C5 v2SchemaMigration.ts:366 migration 5 rename not transactional — FIXED: same central transaction wrap
 - [~] C6 dbSeedingService.ts:468 prebuilt-DB swap under open handle — SKIPPED (documented in code): safe fix needs orchestration-level teardown/rebuild of ALL db services around the swap (or ATTACH-copy into the live connection), not a local reopen; downloadPrebuilt path has NO production caller (createDbSeedingService unused); an in-service reopen leaves other services on a closed conn and breaks the fs-mocked tests.
-- [ ] C7 bulkDatabase.ts:163 fake transaction (rollback no-op)
+- [~] C7 bulkDatabase.ts:163 fake transaction (rollback no-op) — SKIPPED: legacy sql.js-era abstraction; its only consumer (nvdImportManager) is unwired and doesn't call the txn methods; real fix = rework async upserts into a synchronous better-sqlite3 transaction (feature work). Production sync uses NvdDataImporter (hardened in H15/H16).
 - [ ] C8 container.ts:65 command injection via runtime
 - [ ] C9 BackupService.ts:204 restore overwrites live DB
 
@@ -32,12 +32,12 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] H11 nvdDb.ts:443 upsertCVE skips v2 CVSS columns — FIXED: populate v31/v30/v2 from vector prefix
 - [x] H12 nvdDb.ts:475 insertCPEMatches drops version-range columns — FIXED: insert 4 version-range cols
 - [x] H13 dbSeedingService.ts:592 year coverage gap — FIXED: getRecentImportStartYear() single source of truth; historical sweep ends at recentStart-1
-- [ ] H14 nvdApiV2Client.ts:1113 dates formatted in local time
-- [ ] H15 nvdDataImporter.ts:198 BEGIN-failure assumed in-transaction
-- [ ] H16 nvdDataImporter.ts:230 skipExisting overwrites child rows
-- [ ] H17 bulkDownloadManager.ts:297 downloadYear never persists
-- [ ] H18 multiThreadedDownloader.ts:432 checksum fails open
-- [ ] H19 nvdDownloader.ts:218 dead CVSS fallback (=== undefined)
+- [x] H14 nvdApiV2Client.ts:1113 dates formatted in local time — FIXED: UTC window construction (Date.UTC) + getUTC\* in formatDateForNvd
+- [x] H15 nvdDataImporter.ts:198 BEGIN-failure assumed in-transaction — FIXED: only proceed if db.inTransaction, else rethrow
+- [x] H16 nvdDataImporter.ts:230 skipExisting overwrites child rows — FIXED: child inserts moved into the non-skip branch
+- [~] H17 bulkDownloadManager.ts:297 downloadYear never persists — SKIPPED: explicit "Phase E5" stub (self-documented), no production caller; persisting = implementing the unfinished feature (out of scope)
+- [x] H18 multiThreadedDownloader.ts:432 checksum fails open — FIXED: return false (fail closed) on missing/errored checksum
+- [x] H19 nvdDownloader.ts:218 dead CVSS fallback (=== undefined) — FIXED: guard on === null so v3.0/v2 fallbacks run
 - [x] H20 initialize.ts:44 bundled-seed copy dead code — FIXED: check/copy bundled seed before the first initialize()
 - [ ] H21 nvd.ts:118 CVSS v3.1-only extraction
 - [ ] H22 csv.ts:78 patch 'none' truthy → Available
@@ -64,9 +64,9 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] M6 v2SchemaMigration.ts:644 migration 10 loads whole table — FIXED: page by rowid cursor (5000/batch)
 - [x] M7 dbVersionManager.ts:218 version compare via parseInt — FIXED: numeric fast-path only for pure ints; full field-by-field ordering otherwise
 - [x] M8 dbSeedingService.ts:393 background sync resets progress — FIXED: preserve yearsCompleted from a resumable (syncing/paused) state
-- [ ] M9 nvdApiV2Client.ts:715 fetchModifiedSince no cap
+- [x] M9 nvdApiV2Client.ts:715 fetchModifiedSince no cap — FIXED: 50000 cap + truncated flag (mirrors fetchDateRange)
 - [x] M10 ftsMigration.ts:92 hardcoded version=2 insert collision — FIXED: removed redundant schema_migrations insert
-- [ ] M11 nvdDataImporter.ts:274 redundant full FTS rebuild
+- [x] M11 nvdDataImporter.ts:274 redundant full FTS rebuild — FIXED: full rebuild only when FTS table absent; migration-7 triggers maintain it otherwise
 - [ ] M12 cpeSearch.ts:351 getProductVendors positional LIKE
 - [ ] M13 cpeSearch.ts:239 sanitizeSqlInput mangles tokens
 - [ ] M14 cpeSearch.ts:312 unbounded DISTINCT loads
@@ -114,7 +114,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] M56 DependencyGraphPage.tsx:83 path picker uses unfiltered components
 - [ ] M57 cyclonedxGenerator.ts:454 non-unique bom-ref
 - [ ] M58 httpClient.ts:108 apiPostForm no timeout
-- [ ] M59 multiThreadedDownloader.ts:380 fileStream.close not awaited
+- [x] M59 multiThreadedDownloader.ts:380 fileStream.close not awaited — FIXED: await fileStream.end() (flush) before checksum/extract
 - [ ] M60 serverAdapter.ts:245 handshake failure swallowed in prod
 
 ## Low

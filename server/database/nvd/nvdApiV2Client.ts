@@ -543,8 +543,11 @@ export class NvdApiV2Client {
    * Fetch all CVEs for a specific year
    */
   async fetchYear(options: NvdYearFetchOptions): Promise<NvdFetchResult> {
-    const startDate = new Date(options.year, 0, 1) // January 1st
-    const endDate = new Date(options.year, 11, 31, 23, 59, 59) // December 31st
+    // Construct the year window in UTC so it pairs with the UTC formatting in
+    // formatDateForNvd; a local-time construction would shift the window sent to NVD by the
+    // host's UTC offset and miss/duplicate CVEs near the year boundary.
+    const startDate = new Date(Date.UTC(options.year, 0, 1)) // January 1st 00:00:00 UTC
+    const endDate = new Date(Date.UTC(options.year, 11, 31, 23, 59, 59)) // December 31st 23:59:59 UTC
 
     return this.fetchDateRange({
       ...options,
@@ -717,6 +720,7 @@ export class NvdApiV2Client {
     const allCves: NvdCveV2[] = []
     let totalResults = 0
     let fromCache = false
+    let truncated = false
 
     // Format date for NVD API (ISO 8601, UTC)
     const lastModStartDate = this.formatDateForNvd(options.lastModifiedDate)
@@ -797,6 +801,13 @@ export class NvdApiV2Client {
 
         hasMore = startIndex + response.resultsPerPage < totalResults
         startIndex += response.resultsPerPage
+
+        // Safety cap (mirrors fetchDateRange): a very large "modified since" window — e.g.
+        // after a long outage or an NVD re-index — could otherwise grow allCves without bound.
+        if (allCves.length >= 50000) {
+          truncated = true
+          break
+        }
       }
 
       options.onProgress?.({
@@ -813,7 +824,7 @@ export class NvdApiV2Client {
       return {
         cves: allCves,
         totalResults,
-        truncated: false,
+        truncated,
         durationMs: Date.now() - startTime,
         fromCache,
       }
@@ -1111,12 +1122,15 @@ export class NvdApiV2Client {
    * Format date for NVD API (ISO 8601 without timezone)
    */
   private formatDateForNvd(date: Date): string {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const hours = String(date.getHours()).padStart(2, '0')
-    const minutes = String(date.getMinutes()).padStart(2, '0')
-    const seconds = String(date.getSeconds()).padStart(2, '0')
+    // Use UTC getters: the emitted string is timezone-less and the NVD API treats it as
+    // UTC, so local getters on a non-UTC host would shift the pub/lastMod window by the
+    // local offset and miss or duplicate CVEs near the window boundaries.
+    const year = date.getUTCFullYear()
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(date.getUTCDate()).padStart(2, '0')
+    const hours = String(date.getUTCHours()).padStart(2, '0')
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0')
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0')
 
     return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000`
   }

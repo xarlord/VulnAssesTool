@@ -306,7 +306,7 @@ describe('NvdApiV2Client', () => {
 
       const [url] = mockFetch.mock.calls[0]
       const urlString = decodeURIComponent(url.toString())
-      // Date format is now local time without timezone
+      // Dates are constructed and formatted in UTC (timezone-less string).
       expect(urlString).toContain('pubStartDate=2024-01-01T00:00:00.000')
       expect(urlString).toContain('pubEndDate=2024-12-31T23:59:59.000')
     })
@@ -419,7 +419,8 @@ describe('NvdApiV2Client', () => {
         }),
       })
 
-      const lastModDate = new Date('2024-01-01T00:00:00')
+      // UTC-explicit input (trailing Z): formatDateForNvd emits a UTC timezone-less string.
+      const lastModDate = new Date('2024-01-01T00:00:00Z')
       const result = await client.fetchModifiedSince({
         lastModifiedDate: lastModDate,
       })

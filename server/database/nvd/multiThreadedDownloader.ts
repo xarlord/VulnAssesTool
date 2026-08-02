@@ -377,7 +377,13 @@ export class MultiThreadedDownloader {
         })
       }
 
-      fileStream.close()
+      // Flush and close the write stream before reading the file back for checksum
+      // verification / extraction. close() alone doesn't flush buffered writes, so the
+      // file could otherwise be read truncated.
+      await new Promise<void>((resolve, reject) => {
+        fileStream.on('error', reject)
+        fileStream.end(() => resolve())
+      })
 
       // Verify checksum
       if (this.options.validateChecksums) {
@@ -430,8 +436,10 @@ export class MultiThreadedDownloader {
       })
 
       if (!checksumResponse.ok) {
-        console.warn(`Failed to download checksum for year ${year}, skipping validation`)
-        return true // Skip validation if checksum unavailable
+        // Fail closed: validateChecksums is opt-in, so a caller that enabled it wants the
+        // download rejected when integrity can't be confirmed — not silently accepted.
+        console.warn(`Failed to download checksum for year ${year}; treating as validation failure`)
+        return false
       }
 
       const expectedChecksum = (await checksumResponse.text()).trim().split(/\s+/)[0]
@@ -442,8 +450,9 @@ export class MultiThreadedDownloader {
 
       return expectedChecksum.toLowerCase() === actualChecksum.toLowerCase()
     } catch (error) {
-      console.warn(`Checksum validation failed for year ${year}:`, error)
-      return true // Continue on checksum errors
+      // Fail closed on any validation error (see the missing-checksum case above).
+      console.warn(`Checksum validation error for year ${year}:`, error)
+      return false
     }
   }
 

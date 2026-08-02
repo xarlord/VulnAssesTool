@@ -197,9 +197,16 @@ export class NvdDataImporter {
     try {
       this.db.exec('BEGIN TRANSACTION')
       transactionActive = true
-    } catch {
-      // Transaction might already be active in some edge cases
-      transactionActive = true
+    } catch (error) {
+      // BEGIN throws either because a transaction is already open (fine — reuse it) or
+      // because of a real error (lock/IO). Only proceed if the connection genuinely IS in
+      // a transaction; otherwise abort instead of running unprotected multi-statement
+      // writes that a later ROLLBACK/COMMIT couldn't cover.
+      if (this.db.inTransaction) {
+        transactionActive = true
+      } else {
+        throw error
+      }
     }
 
     try {
@@ -229,19 +236,25 @@ export class NvdDataImporter {
 
             if (existing && options.skipExisting) {
               result.skippedCves++
-            } else if (existing && options.updateExisting) {
-              this.updateCve(transformed)
-              result.updatedCves++
+              // A skipped CVE must be left ENTIRELY untouched — including its CPE/CWE/
+              // reference/CVSS child rows, which the child inserts below delete-and-rewrite.
+              // (Previously these ran unconditionally, so "skip existing" silently
+              // overwrote the child data of records the caller asked to leave alone.)
             } else {
-              this.insertCve(transformed)
-              result.importedCves++
-            }
+              if (existing && options.updateExisting) {
+                this.updateCve(transformed)
+                result.updatedCves++
+              } else {
+                this.insertCve(transformed)
+                result.importedCves++
+              }
 
-            // Insert related data
-            this.insertCweReferences(cve.id, this.extractCweReferences(cve))
-            this.insertCpeMatches(cve.id, this.extractCpeMatches(cve))
-            this.insertReferences(cve.id, this.extractReferences(cve))
-            this.insertCvssMetrics(cve.id, this.extractCvssMetrics(cve))
+              // Insert related data (only when we didn't skip this CVE)
+              this.insertCweReferences(cve.id, this.extractCweReferences(cve))
+              this.insertCpeMatches(cve.id, this.extractCpeMatches(cve))
+              this.insertReferences(cve.id, this.extractReferences(cve))
+              this.insertCvssMetrics(cve.id, this.extractCvssMetrics(cve))
+            }
 
             this.progress.processedCves++
           } catch (error) {
@@ -268,10 +281,16 @@ export class NvdDataImporter {
         transactionActive = false
       }
 
-      // Update FTS index
+      // Update FTS index. FTS is kept in sync incrementally by the migration-7
+      // AFTER-INSERT/UPDATE/DELETE triggers, so a full DELETE+re-INSERT after every import
+      // is redundant O(n) work (and ran post-COMMIT, so a crash could leave it partial).
+      // Only do the full rebuild for initial population, when the table doesn't exist yet.
       this.progress.phase = 'indexing'
       options.onProgress?.(this.getProgress())
-      this.rebuildFtsIndex()
+      const ftsExists = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get()
+      if (!ftsExists) {
+        this.rebuildFtsIndex()
+      }
 
       this.progress.phase = 'complete'
       this.progress.percentage = 100
