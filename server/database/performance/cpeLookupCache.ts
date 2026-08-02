@@ -477,7 +477,7 @@ export async function cachedCPELookup(
   }
 
   sql += ' ORDER BY cve_id LIMIT ?'
-  params.push(5000) // Get up to 5000 for caching
+  params.push(5000) // Cache at most 5000 CVE ids per lookup
 
   const rows = db.prepare(sql).all(...params) as Array<{ cve_id: string }>
   const cveIds: string[] = []
@@ -486,10 +486,25 @@ export async function cachedCPELookup(
     cveIds.push(row.cve_id)
   }
 
+  // Real (uncapped) total, so callers don't under-report when a common vendor/product has
+  // more than the 5000 cached ids. cveIds itself stays capped for cache size; pagination
+  // beyond the cap would need a direct (uncached) query.
+  let countSql = 'SELECT COUNT(DISTINCT cve_id) as n FROM cpe_matches WHERE cpe_vendor = ?'
+  const countParams: (string | number)[] = [vendor]
+  if (product) {
+    countSql += ' AND cpe_product = ?'
+    countParams.push(product)
+  }
+  if (vulnerable) {
+    countSql += ' AND vulnerable = 1'
+  }
+  const countRow = db.prepare(countSql).get(...countParams) as { n: number } | undefined
+  const totalCount = countRow?.n ?? cveIds.length
+
   const lookupResult: CPELookupResult = {
     cveIds,
-    totalCount: cveIds.length,
-    vulnerableCount: cveIds.length, // Already filtered by vulnerable flag
+    totalCount,
+    vulnerableCount: totalCount, // Already filtered by vulnerable flag
   }
 
   // Store in cache

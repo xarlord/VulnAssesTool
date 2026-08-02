@@ -67,11 +67,11 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] M9 nvdApiV2Client.ts:715 fetchModifiedSince no cap — FIXED: 50000 cap + truncated flag (mirrors fetchDateRange)
 - [x] M10 ftsMigration.ts:92 hardcoded version=2 insert collision — FIXED: removed redundant schema_migrations insert
 - [x] M11 nvdDataImporter.ts:274 redundant full FTS rebuild — FIXED: full rebuild only when FTS table absent; migration-7 triggers maintain it otherwise
-- [ ] M12 cpeSearch.ts:351 getProductVendors positional LIKE
-- [ ] M13 cpeSearch.ts:239 sanitizeSqlInput mangles tokens
-- [ ] M14 cpeSearch.ts:312 unbounded DISTINCT loads
-- [ ] M15 sqlSanitizer.ts:25 denylist reconstruction bypass
-- [ ] M16 cpeLookupCache.ts:479 totalCount from capped result
+- [x] M12 cpeSearch.ts:351 getProductVendors positional LIKE — FIXED: exact indexed cpe_product match (JS-verified product in legacy fallback); drop sanitizeSqlInput
+- [x] M13 cpeSearch.ts:239 sanitizeSqlInput mangles tokens — FIXED: parameterized query, lowercase+trim only (no denylist mangling)
+- [x] M14 cpeSearch.ts:312 unbounded DISTINCT loads — FIXED: indexed cpe_product DISTINCT; bounded (LIMIT) legacy fallback
+- [x] M15 sqlSanitizer.ts:25 denylist reconstruction bypass — FIXED: fixed-point strip loop + defense-in-depth JSDoc
+- [x] M16 cpeLookupCache.ts:479 totalCount from capped result — FIXED: real uncapped COUNT(DISTINCT) for totalCount
 - [x] M17 v2SchemaMigration.ts:419 sync_status UNIQUE mismatch — FIXED: source TEXT NOT NULL UNIQUE
 - [ ] M18 cyclonedx.ts:657 unknown source → broken NVD URL
 - [ ] M19 cyclonedx.ts:655 first rating always wins
@@ -140,5 +140,5 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] L19 auth.ts:78 token compared with !== (not constant-time)
 - [ ] L20 auth.ts:59 SKIP_AUTH_PATHS wrong prefix
 - [ ] L21 websocket.ts:33 WS token === timing
-- [ ] L22 cpeSearch.ts:160 product-name cache key not normalized
+- [x] L22 cpeSearch.ts:160 product-name cache key not normalized — FIXED: normalize (lowercase+trim+slice) before building the cache key
       </content>

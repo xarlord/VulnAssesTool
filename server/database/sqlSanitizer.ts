@@ -4,11 +4,14 @@
  */
 
 /**
- * Sanitize user input for SQL queries
- * This prevents SQL injection by escaping special characters
+ * Sanitize user input for SQL queries.
+ *
+ * DEFENSE IN DEPTH ONLY — this denylist must never be the sole protection against SQL
+ * injection. Always bind user input via parameterized `?` placeholders; a denylist can be
+ * bypassed and this function also mangles legitimate input that contains SQL keywords.
  *
  * @param input - Raw user input
- * @returns Sanitized input safe for SQL queries
+ * @returns Sanitized input (best-effort; not a substitute for parameterized queries)
  */
 export function sanitizeSqlInput(input: string): string {
   if (typeof input !== 'string') {
@@ -31,7 +34,13 @@ export function sanitizeSqlInput(input: string): string {
   ]
 
   for (const pattern of sqlPatterns) {
-    sanitized = sanitized.replace(pattern, '')
+    // Re-apply each pattern to a fixed point. A single pass lets a nested payload like
+    // "SELSELECTECT" reassemble into "SELECT" once the inner match is removed.
+    let previous: string
+    do {
+      previous = sanitized
+      sanitized = sanitized.replace(pattern, '')
+    } while (sanitized !== previous)
   }
 
   // Limit length to prevent buffer overflow attacks
