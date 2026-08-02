@@ -231,6 +231,7 @@ describe('POST /api/container/scan', () => {
         },
       ],
       layers: [{ digest: 'sha256:layer1', size: 1234, mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip' }],
+      warnings: [],
     })
 
     const res = await request(app).post('/api/container/scan').send({ imageRef: 'alpine:3.19', runtime: 'docker' })
@@ -310,6 +311,7 @@ describe('POST /api/container/extract', () => {
     containerServiceMock.extractPackages.mockResolvedValue({
       packages: [{ name: 'zlib', version: '1.2.11', manager: 'apk', layerDigest: 'sha256:layer1' }],
       layers: [],
+      warnings: [],
     })
 
     const res = await request(app)

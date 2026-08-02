@@ -14,14 +14,14 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] C5 v2SchemaMigration.ts:366 migration 5 rename not transactional — FIXED: same central transaction wrap
 - [~] C6 dbSeedingService.ts:468 prebuilt-DB swap under open handle — SKIPPED (documented in code): safe fix needs orchestration-level teardown/rebuild of ALL db services around the swap (or ATTACH-copy into the live connection), not a local reopen; downloadPrebuilt path has NO production caller (createDbSeedingService unused); an in-service reopen leaves other services on a closed conn and breaks the fs-mocked tests.
 - [~] C7 bulkDatabase.ts:163 fake transaction (rollback no-op) — SKIPPED: legacy sql.js-era abstraction; its only consumer (nvdImportManager) is unwired and doesn't call the txn methods; real fix = rework async upserts into a synchronous better-sqlite3 transaction (feature work). Production sync uses NvdDataImporter (hardened in H15/H16).
-- [ ] C8 container.ts:65 command injection via runtime
+- [x] C8 container.ts:65 command injection via runtime — FIXED: allow-list runtime ('docker'|'podman') at the runCommand execFile chokepoint
 - [ ] C9 BackupService.ts:204 restore overwrites live DB
 
 ## High
 
 - [ ] H1 config.ts:21 / auth.ts:61 auth fails open (NODE_ENV default)
 - [ ] H2 secureStorage.ts:23 weak key derivation
-- [ ] H3 ContainerService.ts:316 path traversal via manifest
+- [x] H3 ContainerService.ts:316 path traversal via manifest — FIXED: resolveInside() containment check for manifest config/layer paths
 - [ ] H4 backup.ts:135 path traversal via verify
 - [ ] H5 sbom.ts:57 unrestricted fs scan via localPath
 - [ ] H6 sbom.ts:29 no dedicated rate limit
@@ -86,11 +86,11 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] M28 profiles.ts:143 deleteProfile doesn't repoint active id
 - [ ] M29 containerScanner.ts:309 SBOM discarded unless sbomOnly
 - [ ] M30 configService.ts:264 critical-autofilter warning never fires when unset
-- [ ] M31 ContainerService.ts:282 layerDigests filter ignored
-- [ ] M32 container.ts:132 warnings/errors never populated
-- [ ] M33 ContainerService.ts:139 pullImage digest inconsistent
-- [ ] M34 AndroidImageService.ts:123 unbounded stdout
-- [ ] M35 AndroidImageService.ts:126 spawn no timeout
+- [x] M31 ContainerService.ts:282 layerDigests filter ignored — FIXED: skip layers not in the requested digest set
+- [x] M32 container.ts:132 warnings/errors never populated — FIXED: extractPackages returns per-layer warnings; scan route surfaces them
+- [x] M33 ContainerService.ts:139 pullImage digest inconsistent — FIXED: always return the image config Id (inspect) on both paths
+- [x] M34 AndroidImageService.ts:123 unbounded stdout — FIXED: 100MB cap → kill child + reject
+- [x] M35 AndroidImageService.ts:126 spawn no timeout — FIXED: 15-min watchdog kills the child; cleared on close/error
 - [ ] M36 database.ts:882 /rebuild swallows error returns success
 - [ ] M37 database.ts:178 text-search total = whole-DB count
 - [ ] M38 database.ts:667 /sync/auto unvalidated input

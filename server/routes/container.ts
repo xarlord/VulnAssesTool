@@ -169,14 +169,14 @@ router.post('/scan', async (req, res) => {
       message: 'Extracting packages from image layers...',
     })
 
-    const { packages, layers: scannedLayers } = await containerService.extractPackages(
-      request.imageRef,
-      request.runtime,
-      [],
-      (phase) => {
-        broadcast('scan-progress', { phase: 'extract', message: phase })
-      },
-    )
+    const {
+      packages,
+      layers: scannedLayers,
+      warnings: extractWarnings,
+    } = await containerService.extractPackages(request.imageRef, request.runtime, [], (phase) => {
+      broadcast('scan-progress', { phase: 'extract', message: phase })
+    })
+    warnings.push(...extractWarnings)
 
     const image = parseImageRef(request.imageRef)
 

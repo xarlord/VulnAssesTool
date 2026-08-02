@@ -121,12 +121,34 @@ export class AndroidImageService {
     onProgress?.('Starting Android image unpack…')
 
     return new Promise<string>((resolve, reject) => {
+      // Bound both output size and runtime so a runaway or hung unpack can't exhaust memory
+      // or leave the child (and request) alive forever, matching SyftService's limits.
+      const MAX_STDOUT_BYTES = 100 * 1024 * 1024 // 100MB
+      const UNPACK_TIMEOUT_MS = 900_000 // 15 min
       let stdout = ''
+      let stdoutBytes = 0
       let stderrTail = ''
+      let settled = false
       const child = spawn(command, args, { windowsHide: true })
+
+      const timeoutTimer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        child.kill()
+        reject(new AndroidImageError('Android image unpack timed out', 'unpack_failed'))
+      }, UNPACK_TIMEOUT_MS)
 
       child.stdout.setEncoding('utf-8')
       child.stdout.on('data', (chunk: string) => {
+        stdoutBytes += Buffer.byteLength(chunk)
+        if (stdoutBytes > MAX_STDOUT_BYTES) {
+          if (settled) return
+          settled = true
+          clearTimeout(timeoutTimer)
+          child.kill()
+          reject(new AndroidImageError('Android unpack output exceeded the maximum buffer size', 'unpack_failed'))
+          return
+        }
         stdout += chunk
       })
 
@@ -142,6 +164,9 @@ export class AndroidImageService {
       })
 
       child.on('error', (err: NodeJS.ErrnoException) => {
+        clearTimeout(timeoutTimer)
+        if (settled) return
+        settled = true
         if (err.code === 'ENOENT') {
           reject(
             new AndroidImageError(
@@ -157,6 +182,9 @@ export class AndroidImageService {
       })
 
       child.on('close', (exitCode) => {
+        clearTimeout(timeoutTimer)
+        if (settled) return
+        settled = true
         if (exitCode !== 0) {
           reject(
             new AndroidImageError(

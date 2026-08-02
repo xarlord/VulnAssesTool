@@ -58,6 +58,13 @@ export class ContainerService {
    * Execute a container runtime CLI command
    */
   private async runCommand(runtime: ContainerRuntime, args: string[], timeout?: number): Promise<CommandResult> {
+    // Guard the program name: `runtime` originates from request bodies (a compile-time type
+    // only) and becomes the literal executable passed to execFile — an unvalidated value is
+    // arbitrary command execution. Only the two supported CLIs are allowed.
+    const ALLOWED_RUNTIMES = ['docker', 'podman']
+    if (!ALLOWED_RUNTIMES.includes(runtime)) {
+      throw new Error(`Unsupported container runtime: ${String(runtime)}`)
+    }
     try {
       const { stdout, stderr } = await execFileAsync(runtime, args, {
         timeout: timeout || COMMAND_TIMEOUT,
@@ -146,14 +153,21 @@ export class ContainerService {
     }
 
     onProgress?.(`Pulling ${imageRef}...`)
-    const { stdout } = await this.runCommand(runtime, ['pull', imageRef])
-
-    // Try to extract digest from pull output
-    const digestMatch = stdout.match(/Digest:\s*(sha256:[a-f0-9]+)/)
-    const digest = digestMatch ? digestMatch[1] : ''
-
+    await this.runCommand(runtime, ['pull', imageRef])
     onProgress?.('Image pulled successfully')
-    return { digest }
+
+    // Resolve a consistent identifier the same way as the already-local path (the image
+    // config Id), rather than the pull output's manifest "Digest:" — the two are different
+    // concepts and callers shouldn't receive one or the other depending on cache state.
+    try {
+      const inspectResult = await this.inspectImage(imageRef, runtime)
+      if (inspectResult.Id) {
+        return { digest: inspectResult.Id }
+      }
+    } catch {
+      // Fall through to an empty digest if inspect fails.
+    }
+    return { digest: '' }
   }
 
   /**
@@ -284,14 +298,27 @@ export class ContainerService {
     runtime: ContainerRuntime,
     layerDigests: string[],
     onProgress?: (phase: string) => void,
-  ): Promise<{ packages: ContainerPackage[]; layers: ScannedLayer[] }> {
+  ): Promise<{ packages: ContainerPackage[]; layers: ScannedLayer[]; warnings: string[] }> {
     const allPackages: ContainerPackage[] = []
+    // Per-layer failures are non-fatal (we still scan the rest) but must be surfaced to the
+    // caller instead of only logged, so a partially-failed scan doesn't look fully clean.
+    const layerWarnings: string[] = []
     // Layers recovered from the saved image, in filesystem order. Digest here
     // matches the layerDigest stamped on packages below, so the scan route can
     // attribute packages to layers reliably (unlike the multi-arch manifest
     // list, whose per-platform entries aren't filesystem layers at all).
     const scannedLayers: ScannedLayer[] = []
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'vat-container-'))
+    const baseDir = path.resolve(tmpDir)
+    // Resolve a manifest-provided relative path and reject anything that escapes tmpDir —
+    // manifest.json is attacker-controlled if the scanned image is malicious.
+    const resolveInside = (entry: string): string => {
+      const resolved = path.resolve(baseDir, entry)
+      if (resolved !== baseDir && !resolved.startsWith(baseDir + path.sep)) {
+        throw new Error(`Unsafe path in manifest.json: ${entry}`)
+      }
+      return resolved
+    }
 
     try {
       onProgress?.('Saving container image to tar...')
@@ -316,7 +343,7 @@ export class ContainerService {
       const configFile = manifestEntry.Config
       let history: Array<{ createdBy?: string; emptyLayer?: boolean }> = []
       if (configFile) {
-        const configPath = path.join(tmpDir, configFile)
+        const configPath = resolveInside(configFile)
         if (fs.existsSync(configPath)) {
           const configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
           history = configData.history || []
@@ -327,7 +354,7 @@ export class ContainerService {
       let layerIndex = 0
       let nonEmptyHistoryIndex = 0
       for (const layerFile of layerFiles) {
-        const layerPath = path.join(tmpDir, layerFile)
+        const layerPath = resolveInside(layerFile)
         if (!fs.existsSync(layerPath)) {
           layerIndex++
           continue
@@ -345,6 +372,14 @@ export class ContainerService {
         onProgress?.(`Scanning layer ${layerIndex + 1}/${layerFiles.length}...`)
 
         const layerDigest = this.getLayerDigestFromPath(layerFile)
+
+        // Honor the caller's layer filter (the re-scan route passes specific digests);
+        // skip layers that weren't requested so we don't extract/scan them.
+        if (layerDigests.length > 0 && !layerDigests.includes(layerDigest)) {
+          layerIndex++
+          continue
+        }
+
         let layerSize = 0
         try {
           layerSize = fs.statSync(layerPath).size
@@ -368,7 +403,9 @@ export class ContainerService {
           const packages = await this.scanLayerForPackages(layerDir, layerDigest)
           allPackages.push(...packages)
         } catch (err) {
-          console.warn(`[ContainerService] Failed to process layer ${layerIndex}:`, err)
+          const message = `Failed to process layer ${layerIndex}: ${err instanceof Error ? err.message : String(err)}`
+          console.warn(`[ContainerService] ${message}`)
+          layerWarnings.push(message)
         }
 
         layerIndex++
@@ -382,7 +419,7 @@ export class ContainerService {
       }
     }
 
-    return { packages: allPackages, layers: scannedLayers }
+    return { packages: allPackages, layers: scannedLayers, warnings: layerWarnings }
   }
 
   /**
