@@ -1504,3 +1504,68 @@ describe('NvdDatabase fileExists', () => {
     expect(result).toBe(false)
   })
 })
+
+// ===========================================================================
+// Bug-hunt fixes 2026-08-02 — behavioral guards for the nvdDb.ts cluster
+// ===========================================================================
+describe('NvdDatabase bug-hunt fixes (2026-08-02)', () => {
+  let instance: NvdDatabase
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('M2: searchCVEsByText treats % as a literal, not a wildcard', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-1000', description: 'contains a 50% discount bug' }))
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-1001', description: 'a wholly unrelated entry' }))
+
+    // Before the escape fix, '50%' -> LIKE '%50%%' matched EVERY row; now it must
+    // match only the row whose text literally contains "50%".
+    const results = instance.searchCVEsByText('50%')
+    expect(results.map((c) => c.id)).toEqual(['CVE-2024-1000'])
+  })
+
+  it('H12: insertCPEMatches persists version-range bounds so they round-trip', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-2000' }))
+    await instance.insertCPEMatches('CVE-2024-2000', [
+      makeCPEMatch({
+        cve_id: 'CVE-2024-2000',
+        cpe_text: 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*',
+        version_start_including: '1.0.0',
+        version_end_excluding: '2.0.0',
+      }),
+    ])
+
+    const match = instance.getCVEFullDetails('CVE-2024-2000')?.cpeMatches[0]
+    expect(match?.versionStartIncluding).toBe('1.0.0')
+    expect(match?.versionEndExcluding).toBe('2.0.0')
+  })
+
+  it('H11: upsertCVE routes the score into the version its vector prefix names', async () => {
+    await instance.upsertCVE(
+      makeCVE({ id: 'CVE-2024-3000', cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H', cvss_score: 9.8 }),
+    )
+
+    const raw = asAccess(instance).db as InstanceType<typeof Database>
+    const row = raw.prepare('SELECT cvss_v31_score, cvss_v2_score FROM cves WHERE id = ?').get('CVE-2024-3000') as {
+      cvss_v31_score: number | null
+      cvss_v2_score: number | null
+    }
+    expect(row.cvss_v31_score).toBe(9.8)
+    expect(row.cvss_v2_score).toBeNull()
+  })
+
+  it('M1: upsertCVE updates the source column on a re-sync conflict', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-4000', source: 'OSV' }))
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-4000', source: 'NVD' }))
+
+    const raw = asAccess(instance).db as InstanceType<typeof Database>
+    const row = raw.prepare('SELECT source FROM cves WHERE id = ?').get('CVE-2024-4000') as { source: string }
+    expect(row.source).toBe('NVD')
+  })
+})
