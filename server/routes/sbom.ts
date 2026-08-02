@@ -62,21 +62,34 @@ router.post('/generate', uploadArtifact, async (req, res) => {
     if (file) {
       source = { kind: 'file', value: file.path }
     } else if (localPath) {
-      // Scan a file or directory already on the host by path — no upload, so
-      // multi-GB local artifacts (e.g. Android prebuilt images) are viable.
+      // Scan a file or directory already on the host by path — no upload, so multi-GB local
+      // artifacts (e.g. Android prebuilt images) are viable. Confine it to a configured
+      // allow-listed root so a client can't read arbitrary host files; the feature is opt-in
+      // (disabled unless SBOM_LOCAL_SCAN_ROOT is set).
+      const scanRoot = process.env.SBOM_LOCAL_SCAN_ROOT
+      if (!scanRoot) {
+        res.json({ success: false, error: 'Local-path scanning is disabled. Set SBOM_LOCAL_SCAN_ROOT to enable it.' })
+        return
+      }
+      const rootResolved = path.resolve(scanRoot)
+      const resolved = path.resolve(localPath)
+      if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) {
+        res.json({ success: false, error: 'Local path is outside the allowed scan root.' })
+        return
+      }
       let stat: fs.Stats
       try {
-        stat = fs.statSync(localPath)
+        stat = fs.statSync(resolved)
       } catch {
         res.json({ success: false, error: `Path not found on server: ${localPath}` })
         return
       }
       // An Android prebuilt-image directory (super.img/boot.img) can't be read
       // by Syft directly; unpack the sparse/super/EROFS partitions first.
-      if (stat.isDirectory() && isAndroidImageDir(localPath)) {
+      if (stat.isDirectory() && isAndroidImageDir(resolved)) {
         broadcast('sbom-generate-progress', { phase: 'starting', message: 'Detected Android image — unpacking…' })
         const android = new AndroidImageService()
-        const cyclonedxJson = await android.generateSbom(localPath, (message) => {
+        const cyclonedxJson = await android.generateSbom(resolved, (message) => {
           broadcast('sbom-generate-progress', { phase: 'android-unpack', message })
         })
         res.json({
@@ -92,7 +105,7 @@ router.post('/generate', uploadArtifact, async (req, res) => {
         })
         return
       }
-      source = { kind: stat.isDirectory() ? 'dir' : 'file', value: localPath }
+      source = { kind: stat.isDirectory() ? 'dir' : 'file', value: resolved }
     } else if (imageRef) {
       source = { kind: 'image', value: imageRef }
     } else {

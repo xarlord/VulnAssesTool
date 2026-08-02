@@ -23,8 +23,8 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] H2 secureStorage.ts:23 weak key derivation — FIXED: 32-byte random key in DATA_DIR/storage-key.bin (mode 600); legacy machine-key kept only as a decrypt fallback for old data
 - [x] H3 ContainerService.ts:316 path traversal via manifest — FIXED: resolveInside() containment check for manifest config/layer paths
 - [x] H4 backup.ts:135 path traversal via verify — FIXED: confine the path fallback to backupDir (basename + containment)
-- [ ] H5 sbom.ts:57 unrestricted fs scan via localPath
-- [ ] H6 sbom.ts:29 no dedicated rate limit
+- [x] H5 sbom.ts:57 unrestricted fs scan via localPath — FIXED: confine localPath to SBOM_LOCAL_SCAN_ROOT (opt-in; reject if unset or outside)
+- [x] H6 sbom.ts:29 no dedicated rate limit — FIXED: /api/sbom mounted behind containerLimiter (5/min) via H7
 - [x] H7 rateLimit.ts/app.ts dedicated limiters unused — FIXED: container/sbom→containerLimiter, /sync/\*→syncLimiter, /search→searchLimiter
 - [x] H8 database.ts:612 /sync/bulk missing isSyncing guard — FIXED: guard + beginSync('bulk')/endSync (finally)
 - [x] H9 database.ts:599 /sync/cancel cannot stop full sync — FIXED: syncState.kind; cancel refuses full/bulk instead of clearing the flag

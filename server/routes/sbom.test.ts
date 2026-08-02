@@ -79,10 +79,14 @@ beforeAll(async () => {
   // Real files/dirs for the `localPath` branch — the route calls fs.statSync on
   // whatever path it's given, so it needs to resolve against something real.
   scratchDir = mkdtempSync(path.join(tmpdir(), 'vat-sbom-route-test-'))
+  // Local-path scanning is now gated behind an allow-listed root (bug-hunt H5); point it at the
+  // scratch dir so the localPath tests below resolve inside it.
+  process.env.SBOM_LOCAL_SCAN_ROOT = scratchDir
 })
 
 afterAll(() => {
   delete process.env.RATE_LIMIT_MAX
+  delete process.env.SBOM_LOCAL_SCAN_ROOT
   rmSync(dataDir, { recursive: true, force: true })
   rmSync(scratchDir, { recursive: true, force: true })
 })
