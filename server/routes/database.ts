@@ -13,7 +13,6 @@ import { broadcast } from '../websocket.js'
 import { importNvdData, getAvailableNvdYears } from '../database/nvd/index.js'
 import { downloadAndImportNVDData, getAvailableYears } from '../database/nvdDownloader.js'
 import { searchCVEsFTS, getFTSStats } from '../database/ftsMigration.js'
-import { CacheManager } from '../services/CacheManager.js'
 import { QueryCache } from '../database/performance/queryCache.js'
 import { createApiKeyStorage } from '../services/storage/index.js'
 import type {
@@ -29,8 +28,44 @@ import type {
 
 const router = Router()
 
-const syncState = {
+const syncState: {
+  isSyncing: boolean
+  kind: 'delta' | 'full' | 'bulk' | null
+  progress: number
+  total: number
+  currentFile: string | null
+} = {
   isSyncing: false,
+  kind: null,
+  progress: 0,
+  total: 0,
+  currentFile: null,
+}
+
+/** Mark a sync as started. `kind` records whether it can be cancelled (only 'delta' can). */
+function beginSync(kind: 'delta' | 'full' | 'bulk'): void {
+  syncState.isSyncing = true
+  syncState.kind = kind
+  syncState.progress = 0
+  syncState.total = 0
+  syncState.currentFile = null
+}
+
+/** Clear all sync state. */
+function endSync(): void {
+  syncState.isSyncing = false
+  syncState.kind = null
+  syncState.progress = 0
+  syncState.total = 0
+  syncState.currentFile = null
+}
+
+/**
+ * Test-only: force-reset the module-level sync flag. /sync/cancel deliberately refuses to clear a
+ * full/bulk sync (a real one can't be interrupted), so tests that simulate one in flight reset here.
+ */
+export function resetSyncStateForTests(): void {
+  endSync()
 }
 
 /**
@@ -92,9 +127,12 @@ router.post('/search', async (req, res) => {
 
     const responseLimit = validatedRequest.limit || 100
     const responseOffset = validatedRequest.offset || 0
+    // Key the cache on the RAW query, not the sanitized one: the executed query differs by
+    // branch (text uses the raw term), and two distinct raw queries that happen to sanitize to
+    // the same string must not collide and serve each other's cached results.
     const cacheKey = QueryCache.generateKey('search', {
       type: validatedRequest.type,
-      query: sanitizedQuery,
+      query: validatedRequest.query,
       limit: responseLimit,
       offset: responseOffset,
     })
@@ -129,10 +167,15 @@ router.post('/search', async (req, res) => {
         break
       }
 
-      case 'cpe':
-        results = database.searchCVEsByCPE(sanitizedQuery, validatedRequest.limit || 100, validatedRequest.offset || 0)
-        total = results.length
+      case 'cpe': {
+        const limit = validatedRequest.limit || 100
+        const offset = validatedRequest.offset || 0
+        results = database.searchCVEsByCPE(sanitizedQuery, limit, offset)
+        // Approximate "at least this many" (same heuristic as the text/FTS branch) rather than
+        // the page length, which under-reported the total whenever a full page came back.
+        total = results.length < limit ? offset + results.length : offset + limit + 1
         break
+      }
 
       case 'text': {
         // The text search runs entirely through bound parameters (FTS `MATCH ?`
@@ -176,7 +219,9 @@ router.post('/search', async (req, res) => {
         }
 
         results = database.searchCVEsByText(escapeLikePattern(term), limit, offset)
-        total = database.getTotalCVECount()
+        // Approximate matching total (same heuristic as the FTS branch), not the whole-DB CVE
+        // count — getTotalCVECount() reported hundreds of thousands for a handful of matches.
+        total = results.length < limit ? offset + results.length : offset + limit + 1
         break
       }
 
@@ -428,9 +473,9 @@ router.get('/sync/status', async (_req, res) => {
       success: true,
       status: {
         isSyncing: syncState.isSyncing,
-        progress: syncState.isSyncing ? 50 : 0,
-        total: syncState.isSyncing ? 100 : 0,
-        currentFile: syncState.isSyncing ? 'Downloading...' : null,
+        progress: syncState.progress,
+        total: syncState.total,
+        currentFile: syncState.currentFile,
         error: null,
         lastSync: metadata.last_sync_at || null,
       },
@@ -457,7 +502,7 @@ router.post('/sync/start', async (req, res) => {
       return
     }
 
-    syncState.isSyncing = true
+    beginSync('full')
     invalidateSearchResponseCache()
 
     const years = validatedRequest?.years || getAvailableNvdYears(2021, 2026)
@@ -467,6 +512,9 @@ router.post('/sync/start', async (req, res) => {
       batchSize: 1000,
       validateChecksums: true,
       onProgress: (progress) => {
+        syncState.progress = progress.years.completed
+        syncState.total = progress.years.total
+        syncState.currentFile = progress.currentYear ? `Year ${progress.currentYear}` : progress.phase
         broadcast('nvd-sync-progress', {
           year: progress.currentYear,
           status: progress.phase,
@@ -479,7 +527,7 @@ router.post('/sync/start', async (req, res) => {
         })
       },
       onComplete: (result) => {
-        syncState.isSyncing = false
+        endSync()
 
         broadcast('nvd-sync-complete', {
           success: result.success,
@@ -493,7 +541,7 @@ router.post('/sync/start', async (req, res) => {
         })
       },
       onError: (error) => {
-        syncState.isSyncing = false
+        endSync()
 
         broadcast('nvd-sync-error', {
           success: false,
@@ -502,7 +550,7 @@ router.post('/sync/start', async (req, res) => {
         })
       },
     }).catch((error) => {
-      syncState.isSyncing = false
+      endSync()
 
       broadcast('nvd-sync-error', {
         success: false,
@@ -516,7 +564,7 @@ router.post('/sync/start', async (req, res) => {
       message: `Starting NVD sync for years: ${years.join(', ')}`,
     })
   } catch (error) {
-    syncState.isSyncing = false
+    endSync()
     const errorMessage = sanitizeErrorMessage(error)
     res.json({
       success: false,
@@ -560,7 +608,7 @@ router.post('/sync/delta', async (req, res) => {
     return
   }
 
-  syncState.isSyncing = true
+  beginSync('delta')
 
   try {
     const result: DeltaSyncResult = await deltaSync.sync({
@@ -570,14 +618,14 @@ router.post('/sync/delta', async (req, res) => {
       },
     })
 
-    syncState.isSyncing = false
+    endSync()
     invalidateSearchResponseCache()
 
     broadcast('nvd:sync-complete', { type: 'delta-sync', result })
 
     res.json(result)
   } catch (error) {
-    syncState.isSyncing = false
+    endSync()
     const errorMessage = error instanceof Error ? error.message : String(error)
 
     broadcast('nvd:sync-error', { type: 'delta-sync', error: errorMessage })
@@ -598,11 +646,18 @@ router.post('/sync/delta', async (req, res) => {
 
 router.post('/sync/cancel', async (_req, res) => {
   try {
+    // Only a delta sync exposes a cancellation token. A full/bulk import can't be interrupted,
+    // so refuse rather than clearing the busy flag — clearing it would let a second sync start
+    // writing to the database concurrently with the one still running.
+    if (syncState.kind === 'full' || syncState.kind === 'bulk') {
+      res.json({ success: false, error: 'A full or bulk sync is running and cannot be cancelled' })
+      return
+    }
     const deltaSync = getDeltaSync()
     if (deltaSync) {
       deltaSync.cancel()
     }
-    syncState.isSyncing = false
+    endSync()
     res.json({ success: true })
   } catch {
     res.json({ success: false })
@@ -614,6 +669,11 @@ router.post('/sync/bulk', async (req, res) => {
     const database = getDb()
     if (!database) {
       res.json({ success: false, error: 'Database not initialized' })
+      return
+    }
+
+    if (syncState.isSyncing) {
+      res.json({ success: false, error: 'Sync already in progress' })
       return
     }
 
@@ -639,20 +699,29 @@ router.post('/sync/bulk', async (req, res) => {
 
     console.log('Starting bulk download for years:', years)
 
-    const totalCves = 0
+    beginSync('bulk')
+    let totalCves = 0
 
-    await downloadAndImportNVDData(years, apiKey, (progress) => {
-      broadcast('nvd:bulk-download-progress', {
-        year: progress.year,
-        status: progress.status,
-        downloaded: progress.downloaded,
-        total: progress.total,
-        totalYears: progress.totalYears,
-        completedYears: progress.completedYears,
-        totalCves: progress.totalCVEs,
-        processedCves: progress.processedCVEs,
+    try {
+      await downloadAndImportNVDData(years, apiKey, (progress) => {
+        totalCves = progress.processedCVEs ?? totalCves
+        syncState.progress = progress.completedYears ?? 0
+        syncState.total = progress.totalYears ?? 0
+        syncState.currentFile = progress.year ? `Year ${progress.year}` : null
+        broadcast('nvd:bulk-download-progress', {
+          year: progress.year,
+          status: progress.status,
+          downloaded: progress.downloaded,
+          total: progress.total,
+          totalYears: progress.totalYears,
+          completedYears: progress.completedYears,
+          totalCves: progress.totalCVEs,
+          processedCves: progress.processedCVEs,
+        })
       })
-    })
+    } finally {
+      endSync()
+    }
 
     res.json({ success: true, totalCves })
   } catch (error) {
@@ -666,7 +735,19 @@ router.post('/sync/bulk', async (req, res) => {
 
 router.post('/sync/auto', async (req, res) => {
   try {
-    const { enabled, intervalHours } = req.body as { enabled: boolean; intervalHours: number }
+    const { enabled, intervalHours } = req.body as { enabled?: unknown; intervalHours?: unknown }
+    if (
+      typeof enabled !== 'boolean' ||
+      typeof intervalHours !== 'number' ||
+      !Number.isFinite(intervalHours) ||
+      intervalHours < 0
+    ) {
+      res.json({
+        success: false,
+        error: 'Invalid request: enabled must be a boolean and intervalHours a non-negative number',
+      })
+      return
+    }
     const database = getDb()
     if (database) {
       const db = database.getRawDb()
@@ -879,6 +960,8 @@ router.post('/rebuild', async (_req, res) => {
       return
     }
     const db = database.getRawDb()
+    let rebuilt = false
+    let rebuildError: string | undefined
     if (db) {
       try {
         const ftsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get()
@@ -901,12 +984,19 @@ router.post('/rebuild', async (_req, res) => {
           SELECT rowid, id, description FROM cves
         `)
         console.log('FTS index rebuilt successfully')
+        rebuilt = true
       } catch (ftsError) {
-        console.log('FTS rebuild skipped:', ftsError)
+        // Surface the failure instead of swallowing it and reporting success anyway.
+        rebuildError = ftsError instanceof Error ? ftsError.message : String(ftsError)
+        console.error('FTS rebuild failed:', ftsError)
       }
     }
     invalidateSearchResponseCache()
-    res.json({ success: true })
+    if (rebuilt) {
+      res.json({ success: true })
+    } else {
+      res.json({ success: false, error: rebuildError ?? 'FTS rebuild failed (database not available)' })
+    }
   } catch (error) {
     res.json({
       success: false,
@@ -964,8 +1054,9 @@ router.get('/fts/stats', async (_req, res) => {
 
 router.get('/cache/stats', async (_req, res) => {
   try {
-    const cache = CacheManager.getInstance()
-    const stats = cache.getStats()
+    // Report the real search-response cache (QueryCache), not the never-initialized
+    // CacheManager singleton, whose getInstance() returned all-zero stats.
+    const stats = searchResponseCache.getStats()
     res.json({ success: true, stats })
   } catch (error) {
     res.json({ success: false, error: error instanceof Error ? error.message : 'Failed to get cache stats' })
@@ -974,8 +1065,8 @@ router.get('/cache/stats', async (_req, res) => {
 
 router.post('/cache/clear', async (_req, res) => {
   try {
-    const cache = CacheManager.getInstance()
-    cache.clear()
+    // Clear the real search-response cache, not the never-initialized CacheManager (no-op).
+    invalidateSearchResponseCache()
     res.json({ success: true })
   } catch (error) {
     res.json({ success: false, error: error instanceof Error ? error.message : 'Failed to clear cache' })

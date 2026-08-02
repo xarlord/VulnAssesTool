@@ -26,9 +26,9 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] H5 sbom.ts:57 unrestricted fs scan via localPath
 - [ ] H6 sbom.ts:29 no dedicated rate limit
 - [ ] H7 rateLimit.ts/app.ts dedicated limiters unused
-- [ ] H8 database.ts:612 /sync/bulk missing isSyncing guard
-- [ ] H9 database.ts:599 /sync/cancel cannot stop full sync
-- [ ] H10 database.ts:91 search cache poisoning (mangled key)
+- [x] H8 database.ts:612 /sync/bulk missing isSyncing guard — FIXED: guard + beginSync('bulk')/endSync (finally)
+- [x] H9 database.ts:599 /sync/cancel cannot stop full sync — FIXED: syncState.kind; cancel refuses full/bulk instead of clearing the flag
+- [x] H10 database.ts:91 search cache poisoning (mangled key) — FIXED: cache key uses the RAW query, not the sanitized one
 - [x] H11 nvdDb.ts:443 upsertCVE skips v2 CVSS columns — FIXED: populate v31/v30/v2 from vector prefix
 - [x] H12 nvdDb.ts:475 insertCPEMatches drops version-range columns — FIXED: insert 4 version-range cols
 - [x] H13 dbSeedingService.ts:592 year coverage gap — FIXED: getRecentImportStartYear() single source of truth; historical sweep ends at recentStart-1
@@ -91,13 +91,13 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] M33 ContainerService.ts:139 pullImage digest inconsistent — FIXED: always return the image config Id (inspect) on both paths
 - [x] M34 AndroidImageService.ts:123 unbounded stdout — FIXED: 100MB cap → kill child + reject
 - [x] M35 AndroidImageService.ts:126 spawn no timeout — FIXED: 15-min watchdog kills the child; cleared on close/error
-- [ ] M36 database.ts:882 /rebuild swallows error returns success
-- [ ] M37 database.ts:178 text-search total = whole-DB count
-- [ ] M38 database.ts:667 /sync/auto unvalidated input
-- [ ] M39 database.ts:642 /sync/bulk totalCves always 0
-- [ ] M40 database.ts:431 /sync/status fake 50%
-- [ ] M41 database.ts:818 PUT /config/storage no-op success
-- [ ] M42 database.ts:831 PUT /config/perf no-op success
+- [x] M36 database.ts:882 /rebuild swallows error returns success — FIXED: track rebuild success; return success:false + error on failure
+- [x] M37 database.ts:178 text-search total = whole-DB count — FIXED: approximate matching total (same heuristic as FTS branch)
+- [x] M38 database.ts:667 /sync/auto unvalidated input — FIXED: reject non-boolean enabled / non-finite/negative intervalHours
+- [x] M39 database.ts:642 /sync/bulk totalCves always 0 — FIXED: capture progress.processedCVEs
+- [x] M40 database.ts:431 /sync/status fake 50% — FIXED: syncState tracks real progress/total/currentFile
+- [~] M41 database.ts:818 PUT /config/storage no-op success — SKIPPED: unimplemented storage-pruning feature (console.log stub); real fix = build the feature or a success:false contract change with unverifiable UI impact
+- [~] M42 database.ts:831 PUT /config/perf no-op success — SKIPPED: same as M41 (unimplemented perf-config stub)
 - [ ] M43 EpssService.ts:254 rate-limit check-then-act race
 - [x] M44 backup.ts:171 schedule not validated — FIXED: updateConfig rejects any schedule not in daily|weekly|manual
 - [ ] M45 index.ts:55 shutdown no re-entrancy guard
@@ -132,8 +132,8 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] L11 vulnCache.ts:225 shouldRefreshData inverted
 - [ ] L12 excelParser.ts:351 column double-mapped
 - [ ] L13 parser.ts:52 cli --max-gaps gate dead
-- [ ] L14 database.ts:133 CPE total = page length
-- [ ] L15 database.ts:965 CacheManager endpoints never initialised
+- [x] L14 database.ts:133 CPE total = page length — FIXED: approximate total heuristic (like text/FTS)
+- [x] L15 database.ts:965 CacheManager endpoints never initialised — FIXED: /cache/stats + /cache/clear target the real searchResponseCache (QueryCache)
 - [ ] L16 EpssService.ts:213 NaN-fail-open expired
 - [ ] L17 KevService.ts:516 NaN-fail-open sync
 - [x] L18 BackupService.ts:327 retentionCount negative slice — FIXED: clamp to Math.max(0, trunc(n)) before slice

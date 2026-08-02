@@ -3,6 +3,7 @@ import request from 'supertest'
 import { rmSync } from 'node:fs'
 import type { Express } from 'express'
 import { createTestApp } from '../test-utils/testApp'
+import { resetSyncStateForTests } from './database.js'
 import { importNvdData } from '../database/nvd/index.js'
 import type { NvdImportResult } from '../database/nvd/index.js'
 
@@ -56,12 +57,12 @@ beforeEach(() => {
   vi.mocked(importNvdData).mockResolvedValue(mockImportResult)
 })
 
-afterEach(async () => {
-  // /sync/start and /sync/delta share a module-level `syncState.isSyncing` flag that outlives any
-  // single request (it's only flipped back by callbacks the mocked importNvdData never invokes).
-  // Reset it through the real cancel endpoint so a test that leaves it `true` can never leak into
-  // an unrelated later test regardless of run order.
-  await request(app).post('/api/database/sync/cancel')
+afterEach(() => {
+  // /sync/start and /sync/delta share a module-level `syncState` flag that outlives any single
+  // request (only flipped back by callbacks the mocked importNvdData never invokes). /sync/cancel
+  // now (correctly) refuses to clear a full/bulk sync, so reset directly via the test-only hook so
+  // a test that leaves it `true` can never leak into an unrelated later test.
+  resetSyncStateForTests()
 })
 
 describe('POST /api/database/search', () => {
@@ -395,11 +396,16 @@ describe('GET /api/database/fts/stats', () => {
 describe('GET /api/database/cache/stats', () => {
   // The response cache is a standalone singleton that doesn't depend on the NVD DB — this must
   // report real (if empty) stats rather than an error.
-  it('returns cache statistics', async () => {
+  it('returns real cache statistics from the search-response cache', async () => {
     const res = await request(app).get('/api/database/cache/stats')
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
-    expect(res.body.stats).toMatchObject({ hits: 0, misses: 0, entryCount: 0 })
+    // Reports the real QueryCache stats (hits/misses/size), not the never-initialized
+    // CacheManager's all-zero placeholder. Assert the numeric shape rather than exact values,
+    // since the response cache is shared across this file's requests.
+    expect(typeof res.body.stats.hits).toBe('number')
+    expect(typeof res.body.stats.misses).toBe('number')
+    expect(typeof res.body.stats.size).toBe('number')
   })
 })
 
