@@ -175,8 +175,8 @@ describe('Auth Middleware', () => {
 
     // ---- Skip paths ----
 
-    it('should skip auth for /api/health', () => {
-      const req = createMockReq({ path: '/api/health' })
+    it('should skip auth for /health (mount-relative; Express strips the /api prefix)', () => {
+      const req = createMockReq({ path: '/health' })
       const res = createMockRes()
       const next = vi.fn()
 
@@ -186,8 +186,8 @@ describe('Auth Middleware', () => {
       expect(res.status).not.toHaveBeenCalled()
     })
 
-    it('should skip auth for /api/handshake', () => {
-      const req = createMockReq({ path: '/api/handshake' })
+    it('should skip auth for /handshake (mount-relative)', () => {
+      const req = createMockReq({ path: '/handshake' })
       const res = createMockRes()
       const next = vi.fn()
 
@@ -197,7 +197,7 @@ describe('Auth Middleware', () => {
     })
 
     it('should skip auth for sub-paths of skip paths', () => {
-      const req = createMockReq({ path: '/api/health/details' })
+      const req = createMockReq({ path: '/health/details' })
       const res = createMockRes()
       const next = vi.fn()
 
@@ -206,8 +206,8 @@ describe('Auth Middleware', () => {
       expect(next).toHaveBeenCalled()
     })
 
-    it('should skip auth for /api/handshake sub-paths', () => {
-      const req = createMockReq({ path: '/api/handshake/initialize' })
+    it('should skip auth for /handshake sub-paths', () => {
+      const req = createMockReq({ path: '/handshake/initialize' })
       const res = createMockRes()
       const next = vi.fn()
 

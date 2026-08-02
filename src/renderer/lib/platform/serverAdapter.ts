@@ -248,14 +248,16 @@ export async function createServerAdapter(): Promise<PlatformAPI> {
     if (response.success && response.token) {
       setAuthToken(response.token)
     }
-  } catch {
-    // handshake failed — continue without token (dev mode may skip auth)
+  } catch (error) {
+    // In dev the server may skip auth, but elsewhere a failed handshake means every authenticated
+    // call fails with an opaque 401/403 — log it so the real cause is visible, not inferred.
+    console.error('[Auth] Handshake failed; subsequent API calls may be unauthenticated:', error)
   }
 
   wsClient.connect()
 
   return {
-    ping: () => apiGet<string>('/health').then(() => 'pong'),
+    ping: () => apiGet<{ status: string; db: boolean; uptime: number; version: string }>('/health').then(() => 'pong'),
     getAppVersion: () => Promise.resolve('2.0.0-web'),
     getPlatform: () =>
       Promise.resolve(

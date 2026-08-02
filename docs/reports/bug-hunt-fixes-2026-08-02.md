@@ -19,13 +19,13 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 
 ## High
 
-- [ ] H1 config.ts:21 / auth.ts:61 auth fails open (NODE_ENV default)
+- [x] H1 config.ts:21 / auth.ts:61 auth fails open (NODE_ENV default) — FIXED: NODE_ENV defaults to 'production' (auth ON, fail-safe); dev/dev:server set NODE_ENV=development via cross-env
 - [x] H2 secureStorage.ts:23 weak key derivation — FIXED: 32-byte random key in DATA_DIR/storage-key.bin (mode 600); legacy machine-key kept only as a decrypt fallback for old data
 - [x] H3 ContainerService.ts:316 path traversal via manifest — FIXED: resolveInside() containment check for manifest config/layer paths
 - [x] H4 backup.ts:135 path traversal via verify — FIXED: confine the path fallback to backupDir (basename + containment)
 - [ ] H5 sbom.ts:57 unrestricted fs scan via localPath
 - [ ] H6 sbom.ts:29 no dedicated rate limit
-- [ ] H7 rateLimit.ts/app.ts dedicated limiters unused
+- [x] H7 rateLimit.ts/app.ts dedicated limiters unused — FIXED: container/sbom→containerLimiter, /sync/\*→syncLimiter, /search→searchLimiter
 - [x] H8 database.ts:612 /sync/bulk missing isSyncing guard — FIXED: guard + beginSync('bulk')/endSync (finally)
 - [x] H9 database.ts:599 /sync/cancel cannot stop full sync — FIXED: syncState.kind; cancel refuses full/bulk instead of clearing the flag
 - [x] H10 database.ts:91 search cache poisoning (mangled key) — FIXED: cache key uses the RAW query, not the sanitized one
@@ -43,11 +43,11 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] H22 csv.ts:78 patch 'none' truthy → Available
 - [ ] H23 scan.ts:270 CLI no CVE dedup
 - [ ] H24 VulnerabilitiesTab.tsx:97 cvssScore===0 bypasses range filter
-- [ ] H25 websocket.ts:55 dead-peer leak
-- [ ] H26 index.ts:73 startServer no catch
-- [ ] H27 index.ts:46 server.listen no error handler
-- [ ] H28 app.ts error-handling middleware missing / stack leak
-- [ ] H29 app.ts:78 unmatched /api returns 200 HTML (SPA fallback)
+- [x] H25 websocket.ts:55 dead-peer leak — FIXED: isAlive/pong tracking; terminate + evict clients that don't pong
+- [x] H26 index.ts:73 startServer no catch — FIXED: startServer().catch(exit 1)
+- [x] H27 index.ts:46 server.listen no error handler — FIXED: server.on('error') → clear message + exit 1
+- [x] H28 app.ts error-handling middleware missing / stack leak — FIXED: terminal 4-arg handler → sanitized JSON (honors err.status)
+- [x] H29 app.ts:78 unmatched /api returns 200 HTML (SPA fallback) — FIXED: app.use('/api', 404 JSON) before the SPA fallback
 - [x] H30 intelligence.ts raw error.message leak (9 handlers) — FIXED: sanitizeErrorMessage(error) in all 9 catches
 - [ ] H31 useProjectScan.ts:205 refresh overwrites vulns
 - [ ] H32 Dashboard.tsx:106 refresh overwrites vulns
@@ -100,11 +100,11 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [~] M42 database.ts:831 PUT /config/perf no-op success — SKIPPED: same as M41 (unimplemented perf-config stub)
 - [x] M43 EpssService.ts:254 rate-limit check-then-act race — FIXED: reserve the slot synchronously (schedule vs lastRequestTime) before any await
 - [x] M44 backup.ts:171 schedule not validated — FIXED: updateConfig rejects any schedule not in daily|weekly|manual
-- [ ] M45 index.ts:55 shutdown no re-entrancy guard
-- [ ] M46 app.ts:38 CORS wildcard + credentials
-- [ ] M47 config.ts:12 PORT parsed without validation
-- [ ] M48 app.ts:53 /health hardcodes db:false
-- [ ] M49 serverAdapter.ts:258 ping typed as string
+- [x] M45 index.ts:55 shutdown no re-entrancy guard — FIXED: isShuttingDown guard
+- [x] M46 app.ts:38 CORS wildcard + credentials — FIXED: origin:false in production (no cross-origin), only localhost:3000 in dev
+- [x] M47 config.ts:12 PORT parsed without validation — FIXED: parsePort() validates range, falls back to 3001
+- [x] M48 app.ts:53 /health hardcodes db:false — FIXED: db: isDatabaseReady()
+- [x] M49 serverAdapter.ts:258 ping typed as string — FIXED: typed against the real /health response shape
 - [~] M50 intelligence.ts:53 duplicate EpssScore type drift — SKIPPED (documented in type): server-side EpssScore is intentionally Date (EpssService's internal cache rep); res.json serializes to the ISO string the client's ipc.ts EpssScore already declares. No server path deserializes it, so no runtime bug; unifying cascades Date→string through the cache logic.
 - [x] M51 intelligence.ts:22 bodies unvalidated — FIXED: readCveId/readCveIds guards reject missing/non-string(-array) input
 - [x] M52 osv.ts:49 proxy fetch no timeout — FIXED: AbortSignal.timeout(10s) on both OSV fetches
@@ -115,7 +115,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] M57 cyclonedxGenerator.ts:454 non-unique bom-ref
 - [ ] M58 httpClient.ts:108 apiPostForm no timeout
 - [x] M59 multiThreadedDownloader.ts:380 fileStream.close not awaited — FIXED: await fileStream.end() (flush) before checksum/extract
-- [ ] M60 serverAdapter.ts:245 handshake failure swallowed in prod
+- [x] M60 serverAdapter.ts:245 handshake failure swallowed in prod — FIXED: console.error the handshake failure instead of a bare catch
 
 ## Low
 
@@ -137,8 +137,8 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] L16 EpssService.ts:213 NaN-fail-open expired — FIXED: Number.isNaN guard treats a corrupt timestamp as expired
 - [x] L17 KevService.ts:516 NaN-fail-open sync — FIXED: Number.isNaN guard treats a corrupt timestamp as sync-needed
 - [x] L18 BackupService.ts:327 retentionCount negative slice — FIXED: clamp to Math.max(0, trunc(n)) before slice
-- [ ] L19 auth.ts:78 token compared with !== (not constant-time)
-- [ ] L20 auth.ts:59 SKIP_AUTH_PATHS wrong prefix
-- [ ] L21 websocket.ts:33 WS token === timing
+- [x] L19 auth.ts:78 token compared with !== (not constant-time) — FIXED: timingSafeEqual on equal-length buffers
+- [x] L20 auth.ts:59 SKIP_AUTH_PATHS wrong prefix — FIXED: mount-relative paths ['/health','/handshake']
+- [x] L21 websocket.ts:33 WS token === timing — FIXED: tokenMatches() constant-time comparison
 - [x] L22 cpeSearch.ts:160 product-name cache key not normalized — FIXED: normalize (lowercase+trim+slice) before building the cache key
       </content>

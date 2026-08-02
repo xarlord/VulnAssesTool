@@ -72,6 +72,9 @@ let dataDir: string
 let scratchDir: string
 
 beforeAll(async () => {
+  // /api/sbom sits behind the tighter containerLimiter (5/min); this file drives more than that
+  // from one IP, so raise the cap for the controlled run (before createTestApp imports the app).
+  process.env.RATE_LIMIT_MAX = '1000000'
   ;({ app, dataDir } = await createTestApp())
   // Real files/dirs for the `localPath` branch — the route calls fs.statSync on
   // whatever path it's given, so it needs to resolve against something real.
@@ -79,6 +82,7 @@ beforeAll(async () => {
 })
 
 afterAll(() => {
+  delete process.env.RATE_LIMIT_MAX
   rmSync(dataDir, { recursive: true, force: true })
   rmSync(scratchDir, { recursive: true, force: true })
 })

@@ -23,6 +23,11 @@ export function getDb() {
   return database
 }
 
+/** Whether the database connection is initialized and open (for readiness/health checks). */
+export function isDatabaseReady(): boolean {
+  return database !== null && database.isInitialized()
+}
+
 export function getDeltaSync() {
   return deltaSync
 }

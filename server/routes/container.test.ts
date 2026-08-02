@@ -38,10 +38,15 @@ let app: Express
 let dataDir: string
 
 beforeAll(async () => {
+  // /api/container sits behind the tighter containerLimiter (5/min); this file drives more than
+  // that from one IP, so raise the cap for the controlled run (must be set before createTestApp
+  // imports the app + rate limiter).
+  process.env.RATE_LIMIT_MAX = '1000000'
   ;({ app, dataDir } = await createTestApp())
 })
 
 afterAll(() => {
+  delete process.env.RATE_LIMIT_MAX
   rmSync(dataDir, { recursive: true, force: true })
 })
 

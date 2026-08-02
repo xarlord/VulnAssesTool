@@ -15,6 +15,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDev } from './config.js'
 import { authMiddleware, getServerToken } from './middleware/auth.js'
+import { isDatabaseReady } from './database/initialize.js'
+import { sanitizeErrorMessage } from './database/ipcRequestValidator.js'
 import { databaseRouter } from './routes/database.js'
 import { storageRoutes } from './routes/storage.js'
 import { intelligenceRoutes } from './routes/intelligence.js'
@@ -23,7 +25,7 @@ import { containerRoutes } from './routes/container.js'
 import { projectRouter } from './routes/projects.js'
 import { sbomRoutes } from './routes/sbom.js'
 import { osvRoutes } from './routes/osv.js'
-import { defaultLimiter } from './middleware/rateLimit.js'
+import { defaultLimiter, containerLimiter } from './middleware/rateLimit.js'
 
 const currentFilename = fileURLToPath(import.meta.url)
 const currentDirname = path.dirname(currentFilename)
@@ -37,7 +39,10 @@ export function createApp(): express.Express {
   app.use(compression())
   app.use(
     cors({
-      origin: isDev() ? 'http://localhost:3000' : undefined,
+      // In production the app is served same-origin, so disable cross-origin entirely rather than
+      // letting `undefined` fall through to cors' allow-any-origin — which, with credentials:true,
+      // is an invalid and unsafe combination.
+      origin: isDev() ? 'http://localhost:3000' : false,
       credentials: true,
     }),
   )
@@ -53,7 +58,7 @@ export function createApp(): express.Express {
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
-      db: false,
+      db: isDatabaseReady(),
       uptime: process.uptime(),
       version: '2.0.0-web',
     })
@@ -70,12 +75,20 @@ export function createApp(): express.Express {
   app.use('/api/intelligence', defaultLimiter, intelligenceRoutes)
   app.use('/api/storage', defaultLimiter, storageRoutes)
   app.use('/api/backup', defaultLimiter, backupRoutes)
-  app.use('/api/container', defaultLimiter, containerRoutes)
+  // Container scans and Syft SBOM generation are expensive/long-running, so cap them with the
+  // tighter dedicated limiter instead of only the 60/min default.
+  app.use('/api/container', containerLimiter, containerRoutes)
   app.use('/api/projects', defaultLimiter, projectRouter)
-  app.use('/api/sbom', defaultLimiter, sbomRoutes)
+  app.use('/api/sbom', containerLimiter, sbomRoutes)
   app.use('/api/osv', defaultLimiter, osvRoutes)
 
-  // 3. SPA fallback — must be LAST. Serves index.html for all
+  // Unmatched /api/* must be a JSON 404. Otherwise the SPA fallback below serves index.html
+  // (HTTP 200 HTML) for a typo'd/removed endpoint, and the client's response.json() throws on it.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ success: false, error: 'Not found' })
+  })
+
+  // 4. SPA fallback — must be LAST. Serves index.html for all
   //    non-API, non-static GET requests (client-side routing).
   if (!isDev() && existsSync(staticDir)) {
     app.get('/{*path}', (_req, res) => {
@@ -87,6 +100,18 @@ export function createApp(): express.Express {
       }
     })
   }
+
+  // Terminal error handler: turn any uncaught throw or malformed-body error into a sanitized JSON
+  // 500 instead of Express's default HTML page (which leaks the stack trace when not in prod).
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[Server] Unhandled error:', err)
+    if (res.headersSent) return
+    // Honor a status the error carries (e.g. express.json() attaches 400 to a malformed-body
+    // SyntaxError); otherwise treat it as an internal 500.
+    const e = err as { status?: unknown; statusCode?: unknown }
+    const status = typeof e.status === 'number' ? e.status : typeof e.statusCode === 'number' ? e.statusCode : 500
+    res.status(status).json({ success: false, error: sanitizeErrorMessage(err) })
+  })
 
   return app
 }

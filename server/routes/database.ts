@@ -15,6 +15,7 @@ import { downloadAndImportNVDData, getAvailableYears } from '../database/nvdDown
 import { searchCVEsFTS, getFTSStats } from '../database/ftsMigration.js'
 import { QueryCache } from '../database/performance/queryCache.js'
 import { createApiKeyStorage } from '../services/storage/index.js'
+import { syncLimiter, searchLimiter } from '../middleware/rateLimit.js'
 import type {
   Severity,
   NvdSearchRequest,
@@ -93,7 +94,7 @@ function normalizeDisplaySeverity(severity: string | null | undefined): string {
   return severity === 'NONE' || !severity ? 'LOW' : severity
 }
 
-router.post('/search', async (req, res) => {
+router.post('/search', searchLimiter, async (req, res) => {
   const request = req.body as NvdSearchRequest
   try {
     const validatedRequest = validateNvdSearchRequest(request)
@@ -489,7 +490,7 @@ router.get('/sync/status', async (_req, res) => {
   }
 })
 
-router.post('/sync/start', async (req, res) => {
+router.post('/sync/start', syncLimiter, async (req, res) => {
   try {
     const validatedRequest = validateStartSyncRequest(req.body)
 
@@ -574,7 +575,7 @@ router.post('/sync/start', async (req, res) => {
   }
 })
 
-router.post('/sync/delta', async (req, res) => {
+router.post('/sync/delta', syncLimiter, async (req, res) => {
   const force = (req.body as { force?: boolean }).force ?? false
 
   if (syncState.isSyncing) {
@@ -664,7 +665,7 @@ router.post('/sync/cancel', async (_req, res) => {
   }
 })
 
-router.post('/sync/bulk', async (req, res) => {
+router.post('/sync/bulk', syncLimiter, async (req, res) => {
   try {
     const database = getDb()
     if (!database) {

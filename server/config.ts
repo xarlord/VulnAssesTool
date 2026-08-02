@@ -8,8 +8,14 @@
 import * as os from 'node:os'
 import * as path from 'node:path'
 
+/** Parse PORT, falling back to 3001 for a missing/invalid value (e.g. PORT=abc -> NaN). */
+function parsePort(raw: string | undefined): number {
+  const parsed = parseInt(raw || '3001', 10)
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : 3001
+}
+
 export const config = {
-  PORT: parseInt(process.env.PORT || '3001', 10),
+  PORT: parsePort(process.env.PORT),
   HOST: '127.0.0.1',
   DATA_DIR: process.env.DATA_DIR || path.join(os.homedir(), '.vulnassesstool'),
   DB_PATH: '',
@@ -18,7 +24,9 @@ export const config = {
   TOKEN_PATH: '',
   EXPORTED_KEYS_PATH: '',
   CREDENTIALS_PATH: '',
-  NODE_ENV: process.env.NODE_ENV || 'development',
+  // Default to 'production' so a bare `node dist/server/index.js` fails SAFE (auth ON). Dev, e2e,
+  // and tests set NODE_ENV=development explicitly (see the dev npm scripts and createTestApp).
+  NODE_ENV: process.env.NODE_ENV || 'production',
 }
 
 export function initializePaths(): void {

@@ -43,6 +43,17 @@ async function startServer(): Promise<void> {
 
   await initializeDatabase()
 
+  // Without an 'error' listener, a bind failure (e.g. port already in use) is rethrown as an
+  // uncaught exception with a raw stack trace instead of a clear message.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[Server] Port ${config.PORT} is already in use.`)
+    } else {
+      console.error('[Server] Failed to bind:', err)
+    }
+    process.exit(1)
+  })
+
   server.listen(config.PORT, config.HOST, () => {
     console.log(`\n=== VulnAssessTool Web Server ===`)
     console.log(`Environment: ${config.NODE_ENV}`)
@@ -52,7 +63,12 @@ async function startServer(): Promise<void> {
     console.log(`================================\n`)
   })
 
+  let isShuttingDown = false
   const shutdown = async (): Promise<void> => {
+    // Re-entrancy guard: SIGINT+SIGTERM (or a double Ctrl+C) must not run this twice —
+    // that would call closeDatabase() on an already-closing connection and start a second timer.
+    if (isShuttingDown) return
+    isShuttingDown = true
     console.log('\n[Server] Shutting down...')
     shutdownWebSocket()
     await closeDatabase()
@@ -70,4 +86,7 @@ async function startServer(): Promise<void> {
   process.on('SIGTERM', shutdown)
 }
 
-startServer()
+startServer().catch((error) => {
+  console.error('[Server] Failed to start:', error)
+  process.exit(1)
+})
