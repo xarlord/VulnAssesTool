@@ -50,7 +50,11 @@ export interface EpssScore {
   cveId: string
   score: number // 0.0 to 1.0 (probability)
   percentile: number // 0.0 to 1.0 (rank among all CVEs)
-  fetchedAt: Date // Date object
+  // Server-side representation: a Date (the EpssService cache holds/uses Date objects). res.json
+  // serializes this to an ISO 8601 string on the wire, which the client's shared ipc.ts EpssScore
+  // correctly declares as `string`. Keep as Date here so server code stays consistent; no server
+  // path deserializes this back, so the two-sided typing is intentional, not a runtime bug (M50).
+  fetchedAt: Date
 }
 
 /**

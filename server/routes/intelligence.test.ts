@@ -178,7 +178,7 @@ describe('GET /api/intelligence/kev/stats', () => {
     expect(res.body).toEqual({
       success: false,
       stats: { total: 0, ransomwareRelated: 0, lastUpdated: null },
-      error: 'db unavailable',
+      error: 'An unexpected error occurred.',
     })
   })
 })
@@ -304,16 +304,15 @@ describe('POST /api/intelligence/epss/scores', () => {
     expect(res.body.scores['CVE-8100-0001']).toMatchObject({ score: 0.1, percentile: 0.2 })
   })
 
-  // req.body.cveIds is cast to string[] with no runtime check; a missing/non-array value makes
-  // the service's for-of loop throw ("not iterable"), which the route must still turn into a
-  // graceful success:false response instead of an unhandled 500.
-  it('degrades gracefully when cveIds is missing (not an array)', async () => {
+  // M51: a missing/non-array cveIds is rejected up front by input validation with a clear message,
+  // instead of being cast to string[] and blowing up ("not iterable") inside the service.
+  it('rejects a missing/non-array cveIds with a validation message', async () => {
     const res = await request(app).post('/api/intelligence/epss/scores').send({})
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(false)
     expect(res.body.scores).toEqual({})
     expect(typeof res.body.error).toBe('string')
-    expect(res.body.error).toContain('iterable')
+    expect(res.body.error).toContain('cveIds')
   })
 })
 
@@ -376,7 +375,7 @@ describe('GET /api/intelligence/epss/stats', () => {
     expect(res.body).toEqual({
       success: false,
       stats: { cachedCount: 0, avgScore: 0, avgPercentile: 0 },
-      error: 'db unavailable',
+      error: 'An unexpected error occurred.',
     })
   })
 })
@@ -405,6 +404,6 @@ describe('POST /api/intelligence/epss/cleanup', () => {
     vi.spyOn(epssService, 'cleanupCache').mockRejectedValue(new Error('db unavailable'))
     const res = await request(app).post('/api/intelligence/epss/cleanup')
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ success: false, cleanedCount: 0, error: 'db unavailable' })
+    expect(res.body).toEqual({ success: false, cleanedCount: 0, error: 'An unexpected error occurred.' })
   })
 })

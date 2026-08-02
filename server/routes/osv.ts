@@ -50,6 +50,9 @@ export async function handleOsvQuery(req: Request, res: Response): Promise<void>
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(validatedRequest),
+      // Bound the upstream call so a slow/hung OSV endpoint can't keep the request and socket
+      // open indefinitely (the resulting AbortError is handled below as a 502).
+      signal: AbortSignal.timeout(10_000),
     })
 
     const data: unknown = await upstreamResponse.json()
@@ -69,7 +72,9 @@ export async function handleOsvQuery(req: Request, res: Response): Promise<void>
  */
 export async function handleOsvVulnById(req: Request, res: Response): Promise<void> {
   try {
-    const upstreamResponse = await fetch(`${OSV_UPSTREAM_URL}/vulns/${encodeURIComponent(String(req.params.id))}`)
+    const upstreamResponse = await fetch(`${OSV_UPSTREAM_URL}/vulns/${encodeURIComponent(String(req.params.id))}`, {
+      signal: AbortSignal.timeout(10_000),
+    })
     const data: unknown = await upstreamResponse.json()
     res.status(upstreamResponse.status).json(data)
   } catch (error) {

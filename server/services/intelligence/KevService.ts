@@ -514,6 +514,11 @@ export class KevService {
     }
 
     const lastSync = new Date(row.value)
+    // A corrupt/unparseable timestamp yields NaN, and `NaN >= interval` is false — which would
+    // report "sync not needed" forever. Treat it as needing a sync instead (fail-safe).
+    if (Number.isNaN(lastSync.getTime())) {
+      return true
+    }
     const hoursSinceSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60)
 
     return hoursSinceSync >= this.config.syncIntervalHours

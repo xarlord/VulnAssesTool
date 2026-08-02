@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { getKevService } from '../services/intelligence/KevService.js'
 import { getEpssService } from '../services/intelligence/EpssService.js'
 import { broadcast } from '../websocket.js'
+import { sanitizeErrorMessage } from '../database/ipcRequestValidator.js'
 import type { EpssScore } from '../services/intelligence/EpssService.js'
 import type {
   CheckKevResponse,
@@ -16,35 +17,47 @@ import type {
 
 const router = Router()
 
+/** A non-empty string `cveId` from the request body, or null if missing/invalid. */
+function readCveId(body: unknown): string | null {
+  const cveId = (body as { cveId?: unknown } | null | undefined)?.cveId
+  return typeof cveId === 'string' && cveId.trim().length > 0 ? cveId : null
+}
+
+/** An array-of-strings `cveIds` from the request body, or null if missing/invalid. */
+function readCveIds(body: unknown): string[] | null {
+  const cveIds = (body as { cveIds?: unknown } | null | undefined)?.cveIds
+  return Array.isArray(cveIds) && cveIds.every((id) => typeof id === 'string') ? (cveIds as string[]) : null
+}
+
 router.post('/kev/check', async (req, res) => {
   try {
+    const cveId = readCveId(req.body)
+    if (cveId === null) {
+      res.json({ success: false, isKev: false, error: 'cveId is required and must be a non-empty string' })
+      return
+    }
     const kevService = getKevService()
-    const cveId = req.body.cveId as string
     const isKev = kevService.isKev(cveId)
     const response: CheckKevResponse = { success: true, isKev }
     res.json(response)
   } catch (error) {
-    res.json({
-      success: false,
-      isKev: false,
-      error: error instanceof Error ? error.message : 'Failed to check KEV status',
-    })
+    res.json({ success: false, isKev: false, error: sanitizeErrorMessage(error) })
   }
 })
 
 router.post('/kev/details', async (req, res) => {
   try {
+    const cveId = readCveId(req.body)
+    if (cveId === null) {
+      res.json({ success: false, entry: null, error: 'cveId is required and must be a non-empty string' })
+      return
+    }
     const kevService = getKevService()
-    const cveId = req.body.cveId as string
     const entry = kevService.getKevDetails(cveId)
     const response: GetKevDetailsResponse = { success: true, entry }
     res.json(response)
   } catch (error) {
-    res.json({
-      success: false,
-      entry: null,
-      error: error instanceof Error ? error.message : 'Failed to get KEV details',
-    })
+    res.json({ success: false, entry: null, error: sanitizeErrorMessage(error) })
   }
 })
 
@@ -58,7 +71,7 @@ router.get('/kev/stats', async (_req, res) => {
     res.json({
       success: false,
       stats: { total: 0, ransomwareRelated: 0, lastUpdated: null },
-      error: error instanceof Error ? error.message : 'Failed to get KEV stats',
+      error: sanitizeErrorMessage(error),
     })
   }
 })
@@ -71,34 +84,34 @@ router.post('/kev/sync', async (_req, res) => {
     const response: SyncKevResponse = { success: true, result }
     res.json(response)
   } catch (error) {
-    res.json({
-      success: false,
-      result: null,
-      error: error instanceof Error ? error.message : 'Failed to sync KEV catalog',
-    })
+    res.json({ success: false, result: null, error: sanitizeErrorMessage(error) })
   }
 })
 
 router.post('/epss/score', async (req, res) => {
   try {
+    const cveId = readCveId(req.body)
+    if (cveId === null) {
+      res.json({ success: false, score: null, error: 'cveId is required and must be a non-empty string' })
+      return
+    }
     const epssService = getEpssService()
-    const cveId = req.body.cveId as string
     const score = await epssService.getEpssScore(cveId)
     const response: GetEpssScoreResponse = { success: true, score }
     res.json(response)
   } catch (error) {
-    res.json({
-      success: false,
-      score: null,
-      error: error instanceof Error ? error.message : 'Failed to get EPSS score',
-    })
+    res.json({ success: false, score: null, error: sanitizeErrorMessage(error) })
   }
 })
 
 router.post('/epss/scores', async (req, res) => {
   try {
+    const cveIds = readCveIds(req.body)
+    if (cveIds === null) {
+      res.json({ success: false, scores: {}, error: 'cveIds is required and must be an array of strings' })
+      return
+    }
     const epssService = getEpssService()
-    const cveIds = req.body.cveIds as string[]
     const scoreMap = await epssService.getEpssScores(cveIds)
     const scores: Record<string, EpssScore> = {}
     for (const [cveId, score] of scoreMap) {
@@ -107,27 +120,23 @@ router.post('/epss/scores', async (req, res) => {
     const response: GetEpssScoresResponse = { success: true, scores }
     res.json(response)
   } catch (error) {
-    res.json({
-      success: false,
-      scores: {},
-      error: error instanceof Error ? error.message : 'Failed to get EPSS scores',
-    })
+    res.json({ success: false, scores: {}, error: sanitizeErrorMessage(error) })
   }
 })
 
 router.post('/epss/refresh', async (req, res) => {
   try {
+    const cveId = readCveId(req.body)
+    if (cveId === null) {
+      res.json({ success: false, score: null, error: 'cveId is required and must be a non-empty string' })
+      return
+    }
     const epssService = getEpssService()
-    const cveId = req.body.cveId as string
     const score = await epssService.refreshEpssScore(cveId)
     const response: RefreshEpssScoreResponse = { success: true, score }
     res.json(response)
   } catch (error) {
-    res.json({
-      success: false,
-      score: null,
-      error: error instanceof Error ? error.message : 'Failed to refresh EPSS score',
-    })
+    res.json({ success: false, score: null, error: sanitizeErrorMessage(error) })
   }
 })
 
@@ -141,7 +150,7 @@ router.get('/epss/stats', async (_req, res) => {
     res.json({
       success: false,
       stats: { cachedCount: 0, avgScore: 0, avgPercentile: 0 },
-      error: error instanceof Error ? error.message : 'Failed to get EPSS stats',
+      error: sanitizeErrorMessage(error),
     })
   }
 })
@@ -152,11 +161,7 @@ router.post('/epss/cleanup', async (_req, res) => {
     const cleanedCount = await epssService.cleanupCache()
     res.json({ success: true, cleanedCount })
   } catch (error) {
-    res.json({
-      success: false,
-      cleanedCount: 0,
-      error: error instanceof Error ? error.message : 'Failed to cleanup EPSS cache',
-    })
+    res.json({ success: false, cleanedCount: 0, error: sanitizeErrorMessage(error) })
   }
 })
 

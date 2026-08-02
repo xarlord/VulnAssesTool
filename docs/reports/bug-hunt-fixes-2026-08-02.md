@@ -48,7 +48,7 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] H27 index.ts:46 server.listen no error handler
 - [ ] H28 app.ts error-handling middleware missing / stack leak
 - [ ] H29 app.ts:78 unmatched /api returns 200 HTML (SPA fallback)
-- [ ] H30 intelligence.ts raw error.message leak (9 handlers)
+- [x] H30 intelligence.ts raw error.message leak (9 handlers) — FIXED: sanitizeErrorMessage(error) in all 9 catches
 - [ ] H31 useProjectScan.ts:205 refresh overwrites vulns
 - [ ] H32 Dashboard.tsx:106 refresh overwrites vulns
 - [ ] H33 Search.tsx:258 stale-response race
@@ -98,16 +98,16 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] M40 database.ts:431 /sync/status fake 50% — FIXED: syncState tracks real progress/total/currentFile
 - [~] M41 database.ts:818 PUT /config/storage no-op success — SKIPPED: unimplemented storage-pruning feature (console.log stub); real fix = build the feature or a success:false contract change with unverifiable UI impact
 - [~] M42 database.ts:831 PUT /config/perf no-op success — SKIPPED: same as M41 (unimplemented perf-config stub)
-- [ ] M43 EpssService.ts:254 rate-limit check-then-act race
+- [x] M43 EpssService.ts:254 rate-limit check-then-act race — FIXED: reserve the slot synchronously (schedule vs lastRequestTime) before any await
 - [x] M44 backup.ts:171 schedule not validated — FIXED: updateConfig rejects any schedule not in daily|weekly|manual
 - [ ] M45 index.ts:55 shutdown no re-entrancy guard
 - [ ] M46 app.ts:38 CORS wildcard + credentials
 - [ ] M47 config.ts:12 PORT parsed without validation
 - [ ] M48 app.ts:53 /health hardcodes db:false
 - [ ] M49 serverAdapter.ts:258 ping typed as string
-- [ ] M50 intelligence.ts:53 duplicate EpssScore type drift
-- [ ] M51 intelligence.ts:22 bodies unvalidated
-- [ ] M52 osv.ts:49 proxy fetch no timeout
+- [~] M50 intelligence.ts:53 duplicate EpssScore type drift — SKIPPED (documented in type): server-side EpssScore is intentionally Date (EpssService's internal cache rep); res.json serializes to the ISO string the client's ipc.ts EpssScore already declares. No server path deserializes it, so no runtime bug; unifying cascades Date→string through the cache logic.
+- [x] M51 intelligence.ts:22 bodies unvalidated — FIXED: readCveId/readCveIds guards reject missing/non-string(-array) input
+- [x] M52 osv.ts:49 proxy fetch no timeout — FIXED: AbortSignal.timeout(10s) on both OSV fetches
 - [ ] M53 useStore.ts:334 merge never updates existing vulns
 - [ ] M54 OfflineIndicator.tsx:216 queueLength not initialised
 - [ ] M55 falsePositiveFilter.ts:293 none→low in FPF audit
@@ -134,8 +134,8 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [ ] L13 parser.ts:52 cli --max-gaps gate dead
 - [x] L14 database.ts:133 CPE total = page length — FIXED: approximate total heuristic (like text/FTS)
 - [x] L15 database.ts:965 CacheManager endpoints never initialised — FIXED: /cache/stats + /cache/clear target the real searchResponseCache (QueryCache)
-- [ ] L16 EpssService.ts:213 NaN-fail-open expired
-- [ ] L17 KevService.ts:516 NaN-fail-open sync
+- [x] L16 EpssService.ts:213 NaN-fail-open expired — FIXED: Number.isNaN guard treats a corrupt timestamp as expired
+- [x] L17 KevService.ts:516 NaN-fail-open sync — FIXED: Number.isNaN guard treats a corrupt timestamp as sync-needed
 - [x] L18 BackupService.ts:327 retentionCount negative slice — FIXED: clamp to Math.max(0, trunc(n)) before slice
 - [ ] L19 auth.ts:78 token compared with !== (not constant-time)
 - [ ] L20 auth.ts:59 SKIP_AUTH_PATHS wrong prefix
