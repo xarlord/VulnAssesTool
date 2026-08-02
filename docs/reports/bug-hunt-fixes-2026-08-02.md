@@ -9,9 +9,9 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 
 - [x] C1 nvdDb.ts:469 insertCPEMatches no transaction — FIXED: db.transaction(delete+insert)
 - [x] C2 nvdDb.ts:488 insertReferences no transaction — FIXED: db.transaction(delete+insert)
-- [ ] C3 v2SchemaMigration.ts:137 migration 2 rename not transactional
-- [ ] C4 v2SchemaMigration.ts:283 migration 4 rename not transactional
-- [ ] C5 v2SchemaMigration.ts:366 migration 5 rename not transactional
+- [x] C3 v2SchemaMigration.ts:137 migration 2 rename not transactional — FIXED: runner wraps every up()+version-record in db.transaction
+- [x] C4 v2SchemaMigration.ts:283 migration 4 rename not transactional — FIXED: same central transaction wrap
+- [x] C5 v2SchemaMigration.ts:366 migration 5 rename not transactional — FIXED: same central transaction wrap
 - [ ] C6 dbSeedingService.ts:468 prebuilt-DB swap under open handle
 - [ ] C7 bulkDatabase.ts:163 fake transaction (rollback no-op)
 - [ ] C8 container.ts:65 command injection via runtime
@@ -60,19 +60,19 @@ Legend: `[ ]` pending · `[x]` fixed · `[~]` skipped (reason given) · each fix
 - [x] M2 nvdDb.ts:774 searchCVEsByText LIKE unescaped — FIXED: escapeLikePattern + ESCAPE
 - [x] M3 nvdDb.ts:802 searchCVEsByCPE literal LIKE unescaped — FIXED: escapeLikePattern + ESCAPE
 - [x] M4 nvdDb.ts:802 CPE literal query no LIMIT — FIXED: LIMIT 5000 cap
-- [ ] M5 v2SchemaMigration.ts:122 v1→v2 mislabels CVSS as v3.1
-- [ ] M6 v2SchemaMigration.ts:644 migration 10 loads whole table
+- [x] M5 v2SchemaMigration.ts:122 v1→v2 mislabels CVSS as v3.1 — FIXED: leave cvss*v31*\* NULL in generic copy
+- [x] M6 v2SchemaMigration.ts:644 migration 10 loads whole table — FIXED: page by rowid cursor (5000/batch)
 - [ ] M7 dbVersionManager.ts:218 version compare via parseInt
 - [ ] M8 dbSeedingService.ts:393 background sync resets progress
 - [ ] M9 nvdApiV2Client.ts:715 fetchModifiedSince no cap
-- [ ] M10 ftsMigration.ts:92 hardcoded version=2 insert collision
+- [x] M10 ftsMigration.ts:92 hardcoded version=2 insert collision — FIXED: removed redundant schema_migrations insert
 - [ ] M11 nvdDataImporter.ts:274 redundant full FTS rebuild
 - [ ] M12 cpeSearch.ts:351 getProductVendors positional LIKE
 - [ ] M13 cpeSearch.ts:239 sanitizeSqlInput mangles tokens
 - [ ] M14 cpeSearch.ts:312 unbounded DISTINCT loads
 - [ ] M15 sqlSanitizer.ts:25 denylist reconstruction bypass
 - [ ] M16 cpeLookupCache.ts:479 totalCount from capped result
-- [ ] M17 v2SchemaMigration.ts:419 sync_status UNIQUE mismatch
+- [x] M17 v2SchemaMigration.ts:419 sync_status UNIQUE mismatch — FIXED: source TEXT NOT NULL UNIQUE
 - [ ] M18 cyclonedx.ts:657 unknown source → broken NVD URL
 - [ ] M19 cyclonedx.ts:655 first rating always wins
 - [ ] M20 cyclonedx.ts:712 unknown severity → low

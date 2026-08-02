@@ -118,17 +118,18 @@ function migration_2_cve_cvss_v2(): Migration {
         db.exec('CREATE INDEX IF NOT EXISTS idx_cves_v2_v31_score ON cves_v2(cvss_v31_score)')
         db.exec('CREATE INDEX IF NOT EXISTS idx_cves_v2_source ON cves_v2(source)')
 
-        // Migrate existing data from cves to cves_v2
+        // Migrate existing data from cves to cves_v2. Only the legacy cvss_score/vector/
+        // severity are known-good here; the version-specific columns are left NULL rather
+        // than mislabeling an unknown-version legacy score as v3.1 (a later full re-sync
+        // populates the version-specific columns correctly).
         db.exec(`
           INSERT OR IGNORE INTO cves_v2 (
             id, description,
             cvss_score, cvss_vector, severity,
-            cvss_v31_score, cvss_v31_vector, cvss_v31_severity,
             published_at, modified_at, source
           )
           SELECT
             id, description,
-            cvss_score, cvss_vector, severity,
             cvss_score, cvss_vector, severity,
             published_at, modified_at, source
           FROM cves
@@ -416,7 +417,7 @@ function migration_6_sync_status(): Migration {
       db.exec(`
         CREATE TABLE IF NOT EXISTS sync_status (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          source TEXT NOT NULL,
+          source TEXT NOT NULL UNIQUE,
           year INTEGER,
           last_sync_at TEXT NOT NULL,
           total_cves INTEGER DEFAULT 0,
@@ -641,16 +642,24 @@ function migration_10_performance_250k(): Migration {
       // CPE 2.2 format: cpe:/<part>:<vendor>:<product>:<version>:...
       // SQL SUBSTR is unreliable for CPE parsing due to variable-length escaped chars;
       // use JS split(':') then batch-update via prepared statements.
-      const unParsedRows = db
-        .prepare('SELECT rowid, cpe23_uri FROM cpe_matches WHERE cpe23_uri IS NOT NULL AND cpe_part IS NULL')
-        .all() as Array<{ rowid: number; cpe23_uri: string }>
-      if (unParsedRows.length > 0) {
-        const updateStmt = db.prepare(
-          'UPDATE cpe_matches SET cpe_part = ?, cpe_vendor = ?, cpe_product = ?, cpe_version = ? WHERE rowid = ?',
-        )
-        let parsedCount = 0
-        for (const row of unParsedRows) {
-          const rowid = row.rowid
+      // Page through unparsed rows by rowid rather than loading the entire (potentially
+      // multi-million-row) result set into memory at once. The cursor advances past every
+      // row we look at — including URIs that yield no fields — so unparseable rows can't
+      // cause an infinite loop.
+      const CPE_PARSE_BATCH = 5000
+      const selectBatch = db.prepare(
+        'SELECT rowid, cpe23_uri FROM cpe_matches WHERE cpe23_uri IS NOT NULL AND cpe_part IS NULL AND rowid > ? ORDER BY rowid LIMIT ?',
+      )
+      const updateStmt = db.prepare(
+        'UPDATE cpe_matches SET cpe_part = ?, cpe_vendor = ?, cpe_product = ?, cpe_version = ? WHERE rowid = ?',
+      )
+      let lastRowid = 0
+      let parsedCount = 0
+      for (;;) {
+        const batch = selectBatch.all(lastRowid, CPE_PARSE_BATCH) as Array<{ rowid: number; cpe23_uri: string }>
+        if (batch.length === 0) break
+        for (const row of batch) {
+          lastRowid = row.rowid
           const uri = row.cpe23_uri
           let part: string | null = null
           let vendor: string | null = null
@@ -674,14 +683,12 @@ function migration_10_performance_250k(): Migration {
           }
 
           if (part || vendor || product || version) {
-            updateStmt.run(part, vendor, product, version, rowid)
+            updateStmt.run(part, vendor, product, version, row.rowid)
             parsedCount++
           }
         }
-        console.log(`[Migration 10] Parsed ${parsedCount} CPE URIs via JS`)
-      } else {
-        console.log('[Migration 10] No unparsed CPE URIs found')
       }
+      console.log(`[Migration 10] Parsed ${parsedCount} CPE URIs via JS`)
 
       // ========================================
       // 3. Create composite indexes for CPE lookups
@@ -1052,14 +1059,19 @@ export function runMigrations(db: Database, currentVersion: number): MigrationRe
     try {
       console.log(`Applying migration ${migration.version}: ${migration.name}`)
 
-      // Run migration
-      migration.up(db)
-
-      // Record migration
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-        migration.version,
-        new Date().toISOString(),
-      )
+      // Run each migration atomically. SQLite DDL (CREATE/ALTER/RENAME/INSERT) is
+      // transactional, so applying up() and recording its version together means a crash
+      // or error mid-migration rolls the whole step back instead of leaving the schema
+      // half-applied — e.g. a table renamed to *_v1_backup with its replacement not yet
+      // renamed in, which would otherwise make the next run recreate an empty table and
+      // silently orphan all existing data.
+      db.transaction(() => {
+        migration.up(db)
+        db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
+          migration.version,
+          new Date().toISOString(),
+        )
+      })()
 
       result.toVersion = migration.version
       result.migrationsApplied++

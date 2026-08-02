@@ -88,11 +88,10 @@ export async function runFTSMigration(db: BetterDb): Promise<void> {
 
     console.log('[FTS Migration] Created FTS5 sync triggers')
 
-    // Record migration in schema_migrations
-    db.exec(`
-      INSERT INTO schema_migrations (version, applied_at)
-      VALUES (2, datetime('now'))
-    `)
+    // Intentionally do NOT record a schema_migrations row here. Version tracking is owned by
+    // runMigrations() (v2SchemaMigration migration 7 owns FTS5 setup); the old hardcoded
+    // `VALUES (2, ...)` collided with migration 2's own version-2 record on the
+    // schema_migrations primary key. The cves_fts existence check above is the idempotency guard.
 
     console.log('[FTS Migration] FTS5 migration completed successfully')
   } catch (error) {
