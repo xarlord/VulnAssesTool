@@ -181,6 +181,11 @@ export class LocalScanner implements ScannerInstance {
     this.db = new NvdDatabase(dbPath)
   }
 
+  /** The resolved NVD database path this scanner opens. */
+  getDbPath(): string {
+    return this.dbPath
+  }
+
   /** Open the DB. Fails loudly if the file is absent (rather than creating an empty one). */
   async initialize(): Promise<void> {
     if (this.ready) return
@@ -210,11 +215,13 @@ export class LocalScanner implements ScannerInstance {
     // over-matching from broad name/token searches. A vendor:product term keeps the
     // cpe23_uri match (already scoped); a bare product/name/token uses the precise
     // cpe_product cascade instead of a blunt substring, cutting cross-product noise.
+    const matchedTerms: string[] = []
     for (const tier of deriveSearchTiers(identifier)) {
       for (const term of tier.terms) {
         const cves = term.includes(':')
           ? this.db.searchCVEsByCPE(term, SEARCH_LIMIT)
           : this.db.searchCVEsByProduct(term, SEARCH_LIMIT)
+        if (cves.length > 0) matchedTerms.push(term)
         for (const cve of cves) {
           matched.set(cve.id, cve)
         }
@@ -232,7 +239,7 @@ export class LocalScanner implements ScannerInstance {
     const ids = Array.from(matched.keys())
     const details = this.db.getCveListDetails(ids)
     const meta = this.readMeta(ids)
-    const fixed = this.readFixedVersions(ids)
+    const fixed = this.readFixedVersions(ids, matchedTerms)
 
     const vulnerabilities: Vulnerability[] = []
     for (const cve of matched.values()) {
@@ -285,18 +292,29 @@ export class LocalScanner implements ScannerInstance {
     return out
   }
 
-  /** Batch-read first fixed version per CVE from cpe_matches version ranges. */
-  private readFixedVersions(ids: string[]): Map<string, string[]> {
+  /** Batch-read first fixed version per CVE from cpe_matches version ranges, scoped to the product
+   * that actually matched this component. */
+  private readFixedVersions(ids: string[], matchedTerms: string[] = []): Map<string, string[]> {
     const out = new Map<string, string[]>()
     const raw = this.db.getRawDb()
     if (!raw || ids.length === 0) return out
     const placeholders = ids.map(() => '?').join(',')
+
+    // Scope to the matched product(s). A CVE with several product configurations otherwise merges
+    // every product's version_end_excluding into one list, yielding a bogus "upgrade to X". Terms
+    // are pre-sanitized (no LIKE metacharacters) and appear literally in the matching cpe23_uri —
+    // a bare product as ":log4j:" or a vendor:product as "apache:log4j" — so this substring match
+    // re-selects the same rows the CVE search hit rather than every product on the CVE.
+    const terms = matchedTerms.map((t) => t.toLowerCase()).filter(Boolean)
+    const scopeClause = terms.length ? ` AND (${terms.map(() => 'cpe23_uri LIKE ?').join(' OR ')})` : ''
+    const scopeParams = terms.map((t) => `%${t}%`)
+
     const rows = raw
       .prepare(
         `SELECT DISTINCT cve_id, version_end_excluding FROM cpe_matches
-         WHERE cve_id IN (${placeholders}) AND version_end_excluding IS NOT NULL AND version_end_excluding <> ''`,
+         WHERE cve_id IN (${placeholders}) AND version_end_excluding IS NOT NULL AND version_end_excluding <> ''${scopeClause}`,
       )
-      .all(...ids) as Array<{ cve_id: string; version_end_excluding: string }>
+      .all(...ids, ...scopeParams) as Array<{ cve_id: string; version_end_excluding: string }>
     for (const row of rows) {
       const list = out.get(row.cve_id) ?? []
       if (!list.includes(row.version_end_excluding)) list.push(row.version_end_excluding)

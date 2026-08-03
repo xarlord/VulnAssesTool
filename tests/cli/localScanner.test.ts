@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { parseComponentId, deriveSearchTiers, cveToVulnerability } from '../../cli/scanner/localScanner.js'
+import Database from 'better-sqlite3'
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
+import {
+  parseComponentId,
+  deriveSearchTiers,
+  cveToVulnerability,
+  createLocalScanner,
+} from '../../cli/scanner/localScanner.js'
+import { runMigrations } from '../../server/database/migrations/v2SchemaMigration.js'
 import type { CVEWithDetails } from '../../server/database/types.js'
 
 describe('parseComponentId', () => {
@@ -131,5 +141,42 @@ describe('cveToVulnerability', () => {
   it('omits matchQuality when no confidence is supplied', () => {
     const v = cveToVulnerability(baseCve, 'x@1')
     expect(v.matchQuality).toBeUndefined()
+  })
+})
+
+describe('LocalScanner fixed-version scoping (H19)', () => {
+  it('scopes fixed versions to the matched product, not every product on the CVE', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vs-h19-'))
+    const dbPath = path.join(dir, 'nvd-data.db')
+    const seed = new Database(dbPath)
+    seed.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
+    runMigrations(seed, 0)
+    // One CVE that lists two unrelated products with different fixed versions.
+    seed
+      .prepare(
+        `INSERT INTO cves (id, description, cvss_score, severity, published_at, modified_at, source)
+         VALUES (?, ?, ?, ?, ?, ?, 'NVD')`,
+      )
+      .run('CVE-2099-0001', 'multi-product advisory', 9.8, 'CRITICAL', '2099-01-01T00:00:00Z', '2099-01-02T00:00:00Z')
+    const insCpe = seed.prepare(
+      'INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable, version_end_excluding) VALUES (?, ?, 1, ?)',
+    )
+    insCpe.run('CVE-2099-0001', 'cpe:2.3:a:vendora:producta:*:*:*:*:*:*:*:*', '2.15.0')
+    insCpe.run('CVE-2099-0001', 'cpe:2.3:a:vendorb:productb:*:*:*:*:*:*:*:*', '9.9.9')
+    seed.close()
+
+    const scanner = createLocalScanner(dbPath)
+    try {
+      await scanner.initialize()
+      const result = await scanner.scanComponent('producta@1.0.0')
+      const vuln = result.vulnerabilities.find((v) => v.id === 'CVE-2099-0001')
+      expect(vuln).toBeDefined()
+      // WHY: before scoping, readFixedVersions merged BOTH products' version_end_excluding
+      // (['2.15.0','9.9.9']) into producta's advice — a bogus "upgrade to 9.9.9".
+      expect(vuln?.patchedVersions).toEqual(['2.15.0'])
+    } finally {
+      await scanner.close()
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

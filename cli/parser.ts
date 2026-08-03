@@ -39,7 +39,7 @@ export function parseArgs(args: string[]): CliCommand {
       const camelName = kebabToCamel(flagName)
 
       // Boolean flags (no value)
-      const booleanFlags = ['verbose', 'help', 'version', 'check-kev', 'nvd', 'osv', 'json', 'quiet']
+      const booleanFlags = ['verbose', 'help', 'version', 'check-kev', 'nvd', 'osv', 'json', 'quiet', 'exit-code']
 
       if (booleanFlags.includes(flagName)) {
         result.flags[camelName] = true

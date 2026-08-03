@@ -16,6 +16,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { parseArgs } from './parser.js'
+import { getConfigValue, setConfigValue, unsetConfigValue, readConfig, configFilePath } from './config.js'
 import { scanCommand, calculateExitCode, filterVulnerabilities, generateSummary } from './commands/scan.js'
 import type { ScanResult } from './commands/scan.js'
 import { createLocalScanner, DatabaseUnavailableError } from './scanner/localScanner.js'
@@ -74,6 +75,8 @@ Usage:
 Commands:
   scan <file>          Scan a CycloneDX or SPDX SBOM against the local NVD database
   diff <old> <new>     Compare two SBOMs (added/removed/version-changed components)
+  db status            Show the local NVD database path and CVE count
+  config <sub> [args]  Read/write CLI config (get <key> | set <key> <val> | list | unset <key>)
   version              Print the version
   help                 Show this help
 
@@ -158,7 +161,7 @@ async function runScan(sbomPath: string, flags: Record<string, unknown>): Promis
   const vexStatements = loadVexStatements(flags)
   if (vexStatements === 'error') return 3
 
-  const scanner = createLocalScanner(asString(flags.db))
+  const scanner = createLocalScanner(asString(flags.db) ?? getConfigValue('db.path'))
   try {
     await scanner.initialize()
     // Scan without reporting filters so the fail-gate evaluates the full result
@@ -247,6 +250,84 @@ async function runDiff(oldPath: string, newPath: string, flags: Record<string, u
   }
 }
 
+async function runDb(subcommand: string | undefined, flags: Record<string, unknown>): Promise<number> {
+  if (subcommand === 'status') {
+    const scanner = createLocalScanner(asString(flags.db) ?? getConfigValue('db.path'))
+    try {
+      await scanner.initialize()
+      process.stdout.write(`Database: ${scanner.getDbPath()}\n`)
+      process.stdout.write(`CVEs: ${scanner.getStatistics().totalCves}\n`)
+      return 0
+    } catch (error) {
+      process.stderr.write(`Error: ${error instanceof Error ? error.message : String(error)}\n`)
+      return 2
+    } finally {
+      await scanner.close()
+    }
+  }
+
+  if (subcommand === 'sync') {
+    // The full NVD download/import pipeline lives in the server, not the CLI scanner.
+    // Fail honestly instead of pretending to sync.
+    process.stderr.write(
+      'Error: "db sync" is not available in the CLI. Sync CVE data with the VulnAssesTool app/server, ' +
+        'then point --db (or `config set db.path <path>`) at the resulting nvd-data.db.\n',
+    )
+    return 2
+  }
+
+  process.stderr.write(`Error: unknown db subcommand "${subcommand ?? ''}". Try: db status\n`)
+  return 2
+}
+
+function runConfig(subcommand: string | undefined, positional: string[]): number {
+  switch (subcommand) {
+    case 'set': {
+      const [key, value] = positional
+      if (!key || value === undefined) {
+        process.stderr.write('Error: config set requires <key> <value>\n')
+        return 3
+      }
+      setConfigValue(key, value)
+      process.stderr.write(`Set ${key}\n`)
+      return 0
+    }
+    case 'get': {
+      const [key] = positional
+      if (!key) {
+        process.stderr.write('Error: config get requires <key>\n')
+        return 3
+      }
+      const value = getConfigValue(key)
+      if (value === undefined) return 1
+      process.stdout.write(`${value}\n`)
+      return 0
+    }
+    case 'unset': {
+      const [key] = positional
+      if (!key) {
+        process.stderr.write('Error: config unset requires <key>\n')
+        return 3
+      }
+      return unsetConfigValue(key) ? 0 : 1
+    }
+    case 'list':
+    case undefined: {
+      const cfg = readConfig()
+      const keys = Object.keys(cfg).sort()
+      if (keys.length === 0) {
+        process.stderr.write(`No config set (${configFilePath()})\n`)
+        return 0
+      }
+      for (const key of keys) process.stdout.write(`${key}=${cfg[key]}\n`)
+      return 0
+    }
+    default:
+      process.stderr.write(`Error: unknown config subcommand "${subcommand}". Try: get|set|list|unset\n`)
+      return 2
+  }
+}
+
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2))
 
@@ -267,6 +348,14 @@ async function main(): Promise<number> {
       return 3
     }
     return runDiff(oldPath, newPath, parsed.flags)
+  }
+
+  if (parsed.command === 'db') {
+    return runDb(parsed.subcommand, parsed.flags)
+  }
+
+  if (parsed.command === 'config') {
+    return runConfig(parsed.subcommand, parsed.positional)
   }
 
   if (parsed.command !== 'scan') {
