@@ -117,6 +117,13 @@ vi.mock('@/lib/refresh', () => ({
   refreshVulnerabilityData: vi.fn(() => Promise.resolve({ success: true, vulnerabilities: [] })),
 }))
 
+// Identity pass-through: the refresh path now re-enriches merged vulns (KEV/EPSS/risk), but this
+// suite asserts merge + per-severity counting, not enrichment. Real enrichment is covered by
+// enrichVulnerabilities' own tests; here it would only add network coupling and mutate objects.
+vi.mock('@/lib/services/intelligence/enrichVulnerabilities', () => ({
+  enrichVulnerabilities: vi.fn((vulns: unknown) => Promise.resolve(vulns)),
+}))
+
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()

@@ -270,6 +270,7 @@ export function ComponentsTab({ project, onComponentClick }: ComponentsTabProps)
                           setComponentSearch('')
                           setComponentTypeFilter('all')
                           setComponentVulnFilter('all')
+                          setComponentCoverageFilter('all')
                           setComponentLicenseFilter('all')
                           setComponentPatchFilter('all')
                         }}

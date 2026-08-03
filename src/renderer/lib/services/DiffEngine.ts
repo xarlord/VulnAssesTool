@@ -138,7 +138,7 @@ export class DiffEngine {
     for (const field of this.hashFields) {
       const value = component[field]
       if (value !== undefined && value !== null) {
-        hashData[field] = value
+        hashData[field] = Array.isArray(value) ? [...value].sort() : value
       }
     }
 

@@ -551,8 +551,10 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
             cpe: cpe.cpe,
             vendor: cpe.vendor,
             product: cpe.product,
-            version: cpe.product.split(':')[4] || '',
+            version: cpe.cpe.split(':')[5] || '',
             confidence: cpe.matchScore,
+            // CPEMatchResult (excelParser.ts) doesn't carry match-method provenance here, so this
+            // is a placeholder, not a real classification — it can't be determined from this data.
             matchType: 'token' as const,
           })),
         }))}

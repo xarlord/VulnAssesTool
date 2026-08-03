@@ -142,7 +142,7 @@ describe('notificationService', () => {
 
   describe('notifyCriticalVuln', () => {
     it('should add a critical vulnerability notification', () => {
-      const result = notifyCriticalVuln('CVE-2024-1234', 'my-project', 'Critical')
+      const result = notifyCriticalVuln('CVE-2024-1234', 'project-42', 'my-project', 'Critical')
 
       expect(result).not.toBeNull()
       expect(result?.type).toBe('error')
@@ -150,14 +150,15 @@ describe('notificationService', () => {
       expect(result?.title).toBe('Critical Vulnerability Detected')
       expect(result?.message).toContain('CVE-2024-1234')
       expect(result?.message).toContain('my-project')
-      expect(result?.projectId).toBe('my-project')
-      expect(result?.actionUrl).toBe('/project/my-project')
+      // projectId/actionUrl must route by id, not by the (possibly non-unique) display name
+      expect(result?.projectId).toBe('project-42')
+      expect(result?.actionUrl).toBe('/project/project-42')
     })
   })
 
   describe('notifyScanComplete', () => {
     it('should add a scan complete notification', () => {
-      const result = notifyScanComplete('project-x', 5)
+      const result = notifyScanComplete('project-x-id', 'project-x', 5)
 
       expect(result).not.toBeNull()
       expect(result?.type).toBe('success')
@@ -165,11 +166,13 @@ describe('notificationService', () => {
       expect(result?.title).toBe('Scan Complete')
       expect(result?.message).toContain('5')
       expect(result?.message).toContain('project-x')
-      expect(result?.projectId).toBe('project-x')
+      // projectId/actionUrl must route by id, not by the (possibly non-unique) display name
+      expect(result?.projectId).toBe('project-x-id')
+      expect(result?.actionUrl).toBe('/project/project-x-id')
     })
 
     it('should handle zero vulnerabilities', () => {
-      const result = notifyScanComplete('clean-project', 0)
+      const result = notifyScanComplete('clean-project-id', 'clean-project', 0)
 
       expect(result).not.toBeNull()
       expect(result?.message).toContain('0')

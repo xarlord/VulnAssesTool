@@ -13,6 +13,7 @@ import { toast } from '@/components/Toaster'
 import type { SystemConfig, FilterBatchResult, FilterResult, MissFilterDetectionConfig } from '@@/types/fpf'
 import type { Vulnerability, Component } from '@@/types'
 import { FalsePositiveFilter } from '@/lib/services/fpf/falsePositiveFilter'
+import type { Severity } from '@/lib/severity'
 
 type TabType = 'dashboard' | 'review' | 'config' | 'missfilter'
 
@@ -58,8 +59,7 @@ function exportToCsv(items: FilteredVulnerability[]): void {
   URL.revokeObjectURL(url)
 }
 
-function resolveSeverity(vuln: Vulnerability): 'critical' | 'high' | 'medium' | 'low' {
-  if (vuln.severity === 'none') return 'low'
+function resolveSeverity(vuln: Vulnerability): Severity {
   return vuln.severity
 }
 

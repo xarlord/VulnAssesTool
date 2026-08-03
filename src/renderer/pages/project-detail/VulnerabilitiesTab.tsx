@@ -40,6 +40,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
   const [sortField, setSortField] = React.useState<'severity' | 'cvss' | 'date'>('severity')
   const [selectedVulnIds, setSelectedVulnIds] = React.useState<Set<string>>(new Set())
   const [copiedVulnId, setCopiedVulnId] = React.useState<string | null>(null)
+  const copiedVulnIdTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [cvssRange, setCvssRange] = React.useState<[number, number]>([0, 10])
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([])
   const [referenceTagFilter, setReferenceTagFilter] = React.useState<string[]>([])
@@ -94,7 +95,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
       }
 
       // CVSS score range filter
-      if (vuln.cvssScore) {
+      if (vuln.cvssScore !== undefined) {
         const [min, max] = cvssRange
         if (vuln.cvssScore < min || vuln.cvssScore > max) {
           return false
@@ -241,12 +242,20 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
       await navigator.clipboard.writeText(vulnId)
       setCopiedVulnId(vulnId)
       toast.success(`Copied ${vulnId} to clipboard`)
-      setTimeout(() => setCopiedVulnId(null), 2000)
+      if (copiedVulnIdTimerRef.current) clearTimeout(copiedVulnIdTimerRef.current)
+      copiedVulnIdTimerRef.current = setTimeout(() => setCopiedVulnId(null), 2000)
     } catch (error) {
       console.error('Failed to copy:', error)
       toast.error('Failed to copy to clipboard')
     }
   }
+
+  // Clear any pending "Copied" reset on unmount so it never fires setState after unmount.
+  React.useEffect(() => {
+    return () => {
+      if (copiedVulnIdTimerRef.current) clearTimeout(copiedVulnIdTimerRef.current)
+    }
+  }, [])
 
   return (
     <div className="mx-auto max-w-7xl mt-6 space-y-4">

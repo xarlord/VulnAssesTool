@@ -161,12 +161,12 @@ export function deleteProfile(profileId: string): void {
   // If we deleted the default profile, make another one default
   if (profile.isDefault && updatedProfiles.length > 0) {
     updatedProfiles[0].isDefault = true
+  }
 
-    // Update active profile if it was the deleted one
-    const activeId = loadActiveProfileId()
-    if (activeId === profileId) {
-      saveActiveProfileId(updatedProfiles[0].id)
-    }
+  // Update active profile if the deleted profile was active, regardless of isDefault
+  const activeId = loadActiveProfileId()
+  if (activeId === profileId && updatedProfiles.length > 0) {
+    saveActiveProfileId(updatedProfiles[0].id)
   }
 
   saveProfilesToStorage(updatedProfiles)

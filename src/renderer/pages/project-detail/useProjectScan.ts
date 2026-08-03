@@ -203,17 +203,36 @@ export function useProjectScan({ project, updateProject, settings }: UseProjectS
       })
 
       if (result.success) {
-        // Update the project with new vulnerabilities
+        // Merge by id — mirrors handleScan's merge above: replace matched existing entries with
+        // the refreshed version, but KEEP existing entries this refresh didn't rediscover, then
+        // re-enrich so a refresh never drops KEV/EPSS intelligence or previously-known vulns.
+        const existingVulnerabilities = project.vulnerabilities || []
+        const mergedVulnerabilities: Vulnerability[] = []
+
+        for (const existingVuln of existingVulnerabilities) {
+          const refreshedVuln = result.vulnerabilities.find((v) => v.id === existingVuln.id)
+          mergedVulnerabilities.push(refreshedVuln || existingVuln)
+        }
+
+        for (const refreshedVuln of result.vulnerabilities) {
+          if (!existingVulnerabilities.some((v) => v.id === refreshedVuln.id)) {
+            mergedVulnerabilities.push(refreshedVuln)
+          }
+        }
+
+        const enrichedVulnerabilities = await enrichVulnerabilities(mergedVulnerabilities)
+
+        // Update the project with the merged, enriched vulnerabilities
         updateProject(project.id, {
-          vulnerabilities: result.vulnerabilities,
+          vulnerabilities: enrichedVulnerabilities,
           lastVulnDataRefresh: new Date(),
           statistics: {
             ...project.statistics,
-            totalVulnerabilities: result.vulnerabilities.length,
-            criticalCount: result.vulnerabilities.filter((v) => v.severity === 'critical').length,
-            highCount: result.vulnerabilities.filter((v) => v.severity === 'high').length,
-            mediumCount: result.vulnerabilities.filter((v) => v.severity === 'medium').length,
-            lowCount: result.vulnerabilities.filter((v) => v.severity === 'low').length,
+            totalVulnerabilities: enrichedVulnerabilities.length,
+            criticalCount: enrichedVulnerabilities.filter((v) => v.severity === 'critical').length,
+            highCount: enrichedVulnerabilities.filter((v) => v.severity === 'high').length,
+            mediumCount: enrichedVulnerabilities.filter((v) => v.severity === 'medium').length,
+            lowCount: enrichedVulnerabilities.filter((v) => v.severity === 'low').length,
           },
         })
 

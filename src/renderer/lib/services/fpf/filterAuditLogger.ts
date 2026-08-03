@@ -160,7 +160,7 @@ export class FilterAuditLogger {
    */
   private async getLastEventHash(): Promise<string> {
     if (!this.db) return '0'.repeat(64)
-    const result = this.db.exec('SELECT hash FROM fpf_audit_events ORDER BY created_at DESC LIMIT 1')
+    const result = this.db.exec('SELECT hash FROM fpf_audit_events ORDER BY timestamp DESC, id DESC LIMIT 1')
 
     if (result.length === 0 || result[0].values.length === 0) {
       // Genesis hash for first event
@@ -275,7 +275,7 @@ export class FilterAuditLogger {
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE project_id = ?
-       ORDER BY created_at ASC`,
+       ORDER BY timestamp ASC, id ASC`,
       [projectId],
     )
 
@@ -301,7 +301,7 @@ export class FilterAuditLogger {
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE vulnerability_id = ?
-       ORDER BY created_at ASC`,
+       ORDER BY timestamp ASC, id ASC`,
       [cveId],
     )
 
@@ -327,7 +327,7 @@ export class FilterAuditLogger {
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE undone = 0
-       ORDER BY created_at ASC`,
+       ORDER BY timestamp ASC, id ASC`,
     )
 
     if (result.length === 0) {
@@ -358,7 +358,7 @@ export class FilterAuditLogger {
    */
   async verifyIntegrity(): Promise<IntegrityVerificationResult> {
     if (!this.db) return { valid: true, tamperedEvents: [] }
-    const result = this.db.exec('SELECT * FROM fpf_audit_events ORDER BY created_at ASC')
+    const result = this.db.exec('SELECT * FROM fpf_audit_events ORDER BY timestamp ASC, id ASC')
 
     if (result.length === 0) {
       return { valid: true, tamperedEvents: [] }

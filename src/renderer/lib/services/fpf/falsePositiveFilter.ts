@@ -290,7 +290,7 @@ export class FalsePositiveFilter {
       eventType: 'filter_decision',
       vulnerability: {
         cveId: vulnerability.id,
-        severity: vulnerability.severity === 'none' ? 'low' : vulnerability.severity,
+        severity: vulnerability.severity,
         cvssScore: vulnerability.cvssScore || 0,
         component: {
           name: component.name,

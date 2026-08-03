@@ -22,7 +22,7 @@ import {
   ChevronUp,
 } from 'lucide-react'
 import type { FilterAction } from '@@/types/fpf'
-import { getSeverityClass } from '@/lib/severity'
+import { getSeverityClass, type Severity } from '@/lib/severity'
 
 // ============================================================================
 // Types
@@ -38,7 +38,7 @@ export interface FilteredVulnerability {
   cveId: string
 
   /** Severity level */
-  severity: 'critical' | 'high' | 'medium' | 'low'
+  severity: Severity
 
   /** CVSS score */
   cvssScore: number
@@ -99,7 +99,7 @@ export interface FilteredItemsReviewProps {
 // Helper Components
 // ============================================================================
 
-function SeverityBadge({ severity }: { severity: 'critical' | 'high' | 'medium' | 'low' }) {
+function SeverityBadge({ severity }: { severity: Severity }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getSeverityClass(severity)}`}

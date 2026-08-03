@@ -256,6 +256,9 @@ export function Search() {
 
   // NVD Database search using IPC
   useEffect(() => {
+    // Guards against a slow earlier query overwriting the results of a newer one.
+    let ignore = false
+
     const performNvdSearch = async () => {
       if (searchMode === 'nvd' && debouncedQuery && isValidSearchQuery(debouncedQuery)) {
         setNvdLoading(true)
@@ -264,9 +267,11 @@ export function Search() {
         try {
           // Check if Electron API is available
           if (!getPlatform()?.database) {
-            setNvdError('Database API not available. Please make sure you are running in Electron.')
-            setNvdResults([])
-            setNvdLoading(false)
+            if (!ignore) {
+              setNvdError('Database API not available. Please make sure you are running in Electron.')
+              setNvdResults([])
+              setNvdLoading(false)
+            }
             return
           }
 
@@ -292,6 +297,7 @@ export function Search() {
 
           console.log('[NVD Search] Searching:', request)
           const response = await getPlatform().database.search(request)
+          if (ignore) return
 
           if (response.success) {
             setNvdResults(response.results)
@@ -301,21 +307,28 @@ export function Search() {
             setNvdResults([])
           }
         } catch (error) {
+          if (ignore) return
           console.error('[NVD Search] Error:', error)
           setNvdError(error instanceof Error ? error.message : 'An unexpected error occurred')
           setNvdResults([])
         } finally {
-          setNvdLoading(false)
+          if (!ignore) setNvdLoading(false)
         }
       } else {
         // Clear results when not in NVD mode or query is empty
-        setNvdError('')
-        setNvdResults([])
-        setNvdLoading(false)
+        if (!ignore) {
+          setNvdError('')
+          setNvdResults([])
+          setNvdLoading(false)
+        }
       }
     }
 
     performNvdSearch()
+
+    return () => {
+      ignore = true
+    }
   }, [debouncedQuery, searchMode])
 
   // Handle navigation to result

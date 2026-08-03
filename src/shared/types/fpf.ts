@@ -359,7 +359,7 @@ export type AuditEventType = 'filter_decision' | 'config_change' | 'override' | 
  */
 export interface VulnerabilityRef {
   cveId: string
-  severity: 'critical' | 'high' | 'medium' | 'low'
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'none'
   cvssScore: number
   component: {
     name: string
@@ -490,7 +490,7 @@ export interface LLMAnalysisResult {
  */
 export interface VulnerabilitySummary {
   cveId: string
-  severity: 'critical' | 'high' | 'medium' | 'low'
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'none'
   cvssScore: number
   componentName: string
   componentVersion: string

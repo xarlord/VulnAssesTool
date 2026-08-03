@@ -27,9 +27,10 @@ import { ChartCard } from '@/components/charts/ChartCard'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useMenuActionListener } from '@/components/MenuActionListener'
 import { refreshVulnerabilityData } from '@/lib/refresh'
+import { enrichVulnerabilities } from '@/lib/services/intelligence/enrichVulnerabilities'
 import { aggregateProjectStats } from '@/lib/stats/projectAggregates'
 import { getSeverityTextClass } from '@/lib/severity'
-import type { Project } from '@@/types'
+import type { Project, Vulnerability } from '@@/types'
 
 // recharts stays out of the Dashboard chunk until a chart actually renders.
 const SeverityDistributionChart = lazy(() =>
@@ -104,17 +105,37 @@ export function Dashboard() {
       })
 
       if (result.success) {
-        // Update the project with new vulnerabilities and last refresh timestamp
+        // Merge by id — replace matched existing entries with the refreshed version, keep
+        // existing entries this refresh didn't rediscover, then re-enrich so a refresh never
+        // drops KEV/EPSS intelligence or previously-known vulns (mirrors project-detail's
+        // handleScan/handleRefreshVulnData merge).
+        const existingVulnerabilities = project.vulnerabilities || []
+        const mergedVulnerabilities: Vulnerability[] = []
+
+        for (const existingVuln of existingVulnerabilities) {
+          const refreshedVuln = result.vulnerabilities.find((v) => v.id === existingVuln.id)
+          mergedVulnerabilities.push(refreshedVuln || existingVuln)
+        }
+
+        for (const refreshedVuln of result.vulnerabilities) {
+          if (!existingVulnerabilities.some((v) => v.id === refreshedVuln.id)) {
+            mergedVulnerabilities.push(refreshedVuln)
+          }
+        }
+
+        const enrichedVulnerabilities = await enrichVulnerabilities(mergedVulnerabilities)
+
+        // Update the project with the merged, enriched vulnerabilities and last refresh timestamp
         updateProject(projectId, {
-          vulnerabilities: result.vulnerabilities,
+          vulnerabilities: enrichedVulnerabilities,
           lastVulnDataRefresh: new Date(),
           statistics: {
             ...project.statistics,
-            totalVulnerabilities: result.vulnerabilities.length,
-            criticalCount: result.vulnerabilities.filter((v) => v.severity === 'critical').length,
-            highCount: result.vulnerabilities.filter((v) => v.severity === 'high').length,
-            mediumCount: result.vulnerabilities.filter((v) => v.severity === 'medium').length,
-            lowCount: result.vulnerabilities.filter((v) => v.severity === 'low').length,
+            totalVulnerabilities: enrichedVulnerabilities.length,
+            criticalCount: enrichedVulnerabilities.filter((v) => v.severity === 'critical').length,
+            highCount: enrichedVulnerabilities.filter((v) => v.severity === 'high').length,
+            mediumCount: enrichedVulnerabilities.filter((v) => v.severity === 'medium').length,
+            lowCount: enrichedVulnerabilities.filter((v) => v.severity === 'low').length,
           },
         })
 

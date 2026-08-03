@@ -308,8 +308,8 @@ export class AttackGraph {
         if (edgeTypeMap) {
           const edgeType = edgeTypeMap.get(to)
           if (edgeType === 'blocking') {
-            const node = this.nodes.get(to)
-            blockedBy.push(`${node?.name || to} blocks access`)
+            const node = this.nodes.get(from)
+            blockedBy.push(`${node?.name || from} blocks access`)
           }
         }
       }

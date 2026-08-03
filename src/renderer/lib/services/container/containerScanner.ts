@@ -306,9 +306,7 @@ export class ContainerScanner {
         platform: scanData.platform,
         layers: scanData.layers,
         packages: scanData.packages,
-        sbom: this.options.sbomOnly
-          ? this.generateSbom(scanData.image, scanData.packages, scanData.platform)
-          : undefined,
+        sbom: this.generateSbom(scanData.image, scanData.packages, scanData.platform),
         stats: scanData.stats,
         warnings: scanData.warnings,
         errors: scanData.errors,
@@ -358,7 +356,7 @@ export class ContainerScanner {
       },
       layers,
       packages,
-      sbom: this.options.sbomOnly ? sbom : undefined,
+      sbom,
       stats: {
         totalLayers: manifest.layers?.length || 0,
         processedLayers: layers.length,

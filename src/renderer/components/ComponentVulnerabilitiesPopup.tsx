@@ -56,6 +56,7 @@ export function ComponentVulnerabilitiesPopup({
   onViewVulnerability,
 }: ComponentVulnerabilitiesPopupProps) {
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
+  const copiedIdTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Sort vulnerabilities by severity
   const sortedVulnerabilities = React.useMemo(() => {
@@ -80,12 +81,20 @@ export function ComponentVulnerabilitiesPopup({
       await navigator.clipboard.writeText(vulnId)
       setCopiedId(vulnId)
       toast.success(`Copied ${vulnId} to clipboard`)
-      setTimeout(() => setCopiedId(null), 2000)
+      if (copiedIdTimerRef.current) clearTimeout(copiedIdTimerRef.current)
+      copiedIdTimerRef.current = setTimeout(() => setCopiedId(null), 2000)
     } catch (error) {
       console.error('Failed to copy:', error)
       toast.error('Failed to copy to clipboard')
     }
   }
+
+  // Clear any pending "Copied" reset on unmount so it never fires setState after unmount.
+  React.useEffect(() => {
+    return () => {
+      if (copiedIdTimerRef.current) clearTimeout(copiedIdTimerRef.current)
+    }
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>

@@ -96,25 +96,34 @@ export const addNotification = (
  * Convenience functions for common notification types
  */
 
-export const notifyCriticalVuln = (vulnId: string, projectName: string, severity: string): AppNotification | null => {
+export const notifyCriticalVuln = (
+  vulnId: string,
+  projectId: string,
+  projectName: string,
+  severity: string,
+): AppNotification | null => {
   return addNotification({
     type: 'error',
     category: 'critical_vuln',
     title: 'Critical Vulnerability Detected',
     message: `${severity} vulnerability ${vulnId} found in ${projectName}`,
-    projectId: projectName,
-    actionUrl: `/project/${projectName}`,
+    projectId,
+    actionUrl: `/project/${projectId}`,
   })
 }
 
-export const notifyScanComplete = (projectName: string, vulnCount: number): AppNotification | null => {
+export const notifyScanComplete = (
+  projectId: string,
+  projectName: string,
+  vulnCount: number,
+): AppNotification | null => {
   return addNotification({
     type: 'success',
     category: 'scan_complete',
     title: 'Scan Complete',
     message: `Found ${vulnCount} vulnerabilities in ${projectName}`,
-    projectId: projectName,
-    actionUrl: `/project/${projectName}`,
+    projectId,
+    actionUrl: `/project/${projectId}`,
   })
 }
 

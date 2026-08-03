@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { AppSettings, Project, SettingsProfile, NotificationPreferences } from '@@/types'
+import type { AppSettings, Project, SettingsProfile, NotificationPreferences, Vulnerability } from '@@/types'
 import { DEFAULT_SETTINGS } from '@@/constants'
 import { refreshVulnerabilityData as refreshData } from '@/lib/refresh'
 import {
@@ -330,12 +330,17 @@ export const useStore = create<AppState>()(
           })
 
           if (result.success) {
-            // Merge new vulnerabilities with existing ones (deduplicated by ID)
+            // Merge new vulnerabilities with existing ones (deduplicated by ID) — matched existing
+            // entries are replaced by the freshly-fetched version so a refresh reflects changed
+            // fields (e.g. severity/CVSS updates), not just newly-discovered vulns.
             const existingVulnerabilities = project.vulnerabilities || []
+            const mergedExisting: Vulnerability[] = existingVulnerabilities.map(
+              (existingVuln) => result.vulnerabilities.find((v) => v.id === existingVuln.id) || existingVuln,
+            )
             const newVulnerabilities = result.vulnerabilities.filter(
               (newVuln) => !existingVulnerabilities.some((existing) => existing.id === newVuln.id),
             )
-            const allVulnerabilities = [...existingVulnerabilities, ...newVulnerabilities]
+            const allVulnerabilities = [...mergedExisting, ...newVulnerabilities]
 
             // Calculate statistics from all vulnerabilities
             const stats = {
