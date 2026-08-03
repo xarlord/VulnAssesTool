@@ -243,8 +243,8 @@ export class NvdStreamParser {
         severity = cvssV31.cvssData.baseSeverity
       }
 
-      // Fall back to CVSS v3.0
-      if (!cvss_score) {
+      // Fall back to CVSS v3.0 (=== undefined so a real 0.0 v3.1 score is kept)
+      if (cvss_score === undefined) {
         const cvssV30 = metrics.cvssMetricV30?.[0]
         if (cvssV30?.cvssData) {
           cvss_score = cvssV30.cvssData.baseScore
@@ -253,8 +253,8 @@ export class NvdStreamParser {
         }
       }
 
-      // Fall back to CVSS v2.0
-      if (!cvss_score) {
+      // Fall back to CVSS v2.0 (=== undefined so a real 0.0 higher-version score is kept)
+      if (cvss_score === undefined) {
         const cvssV2 = metrics.cvssMetricV2?.[0]
         if (cvssV2?.cvssData) {
           cvss_score = cvssV2.cvssData.baseScore

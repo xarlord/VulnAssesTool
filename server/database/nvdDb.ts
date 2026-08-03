@@ -514,7 +514,7 @@ export class NvdDatabase {
     stmt.run(
       cve.id,
       cve.description,
-      cve.cvss_score || null,
+      cve.cvss_score ?? null,
       cve.cvss_vector || null,
       cve.severity || null,
       cve.published_at,

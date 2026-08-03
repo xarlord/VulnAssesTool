@@ -360,8 +360,8 @@ export class NvdDataImporter {
       transformed.cvss_v30_score = m.cvssData.baseScore
       transformed.cvss_v30_vector = m.cvssData.vectorString
       transformed.cvss_v30_severity = m.cvssData.baseSeverity
-      // Use v3.0 as fallback for primary
-      if (!transformed.cvss_score) {
+      // Use v3.0 as fallback for primary (=== null so a real 0.0 v3.1 score is kept)
+      if (transformed.cvss_score === null) {
         transformed.cvss_score = m.cvssData.baseScore
         transformed.cvss_vector = m.cvssData.vectorString
         transformed.severity = m.cvssData.baseSeverity
@@ -374,8 +374,8 @@ export class NvdDataImporter {
       transformed.cvss_v2_score = m.cvssData.baseScore
       transformed.cvss_v2_vector = m.cvssData.vectorString
       transformed.cvss_v2_severity = m.baseSeverity || null
-      // Use v2.0 as fallback for primary
-      if (!transformed.cvss_score) {
+      // Use v2.0 as fallback for primary (=== null so a real 0.0 higher-version score is kept)
+      if (transformed.cvss_score === null) {
         transformed.cvss_score = m.cvssData.baseScore
         transformed.cvss_vector = m.cvssData.vectorString
         transformed.severity = m.baseSeverity || null

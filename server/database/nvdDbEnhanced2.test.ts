@@ -308,6 +308,20 @@ describe('NvdDatabase Instance Methods', () => {
       expect(rows[0].cvss_vector).toBeNull()
     })
 
+    it('should store a real CVSS score of 0.0 as 0, not null', async () => {
+      // WHY: a legitimate CVSS baseScore of 0.0 is falsy; the old `cvss_score || null`
+      // stored it as NULL, erasing a real "no impact" score. `?? null` preserves 0.0.
+      const cve = makeCVE({ cvss_score: 0, severity: 'NONE' })
+      await instance.upsertCVE(cve)
+
+      const rows = rawDb.prepare('SELECT cvss_score, severity FROM cves WHERE id = ?').all(cve.id) as Record<
+        string,
+        unknown
+      >[]
+      expect(rows[0].cvss_score).toBe(0)
+      expect(rows[0].severity).toBe('NONE')
+    })
+
     it('should throw when database is not initialized', async () => {
       const inst = new NvdDatabase('/no/db.db')
       await expect(inst.upsertCVE(makeCVE())).rejects.toThrow('Database not initialized')
