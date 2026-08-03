@@ -92,13 +92,27 @@ router.post('/restore', async (req, res) => {
     // overwrites the file on disk, then rebuild everything against the restored file.
     // Writing the DB file under an open connection risks a Windows file-lock failure and
     // leaves the app's connections pointing at stale/torn state.
-    await closeDatabase()
-    let result: BackupResult
+    // Close the live DB, restore, then ALWAYS rebuild against the (restored or original)
+    // file. Capture any close/restore failure so a later reinit failure can't mask it (a
+    // throw in a bare `finally` discards the in-flight exception), and so a failed close
+    // still triggers a reinit rather than leaving the DB permanently closed.
+    let restoreError: unknown
+    let result: BackupResult | undefined
     try {
+      await closeDatabase()
       result = (await service.restoreBackup(backupId)) as BackupResult
-    } finally {
-      await initializeDatabase()
+    } catch (error) {
+      restoreError = error
     }
+
+    try {
+      await initializeDatabase()
+    } catch (reinitError) {
+      throw restoreError ?? reinitError
+    }
+
+    if (restoreError) throw restoreError
+    if (!result) throw new Error('Restore returned no result')
 
     broadcast('backup-restored', result)
     res.json(result)

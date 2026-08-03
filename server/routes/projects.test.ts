@@ -44,14 +44,17 @@ describe('POST /api/projects', () => {
     expect(res.body.success).toBe(false)
   })
 
-  it('sanitizes the id so it cannot escape the projects directory', async () => {
-    // "../../etc/passwd" must reduce to a flat, safe filename — never traverse out of projectsDir.
-    await request(app)
+  it('rejects an id with unsafe characters (400) instead of silently rewriting it', async () => {
+    // WHY (L8): the old sanitizeId() STRIPPED disallowed chars, which is lossy and non-injective —
+    // `../../etc/passwd` and `etcpasswd` both collapsed to the same file, silently overwriting each
+    // other. Reject unsafe ids instead of collapsing (this also closes the traversal path).
+    const res = await request(app)
       .post('/api/projects')
       .send({ ...sampleProject, id: '../../etc/passwd' })
-      .expect(200)
-    // The only file written stays inside projectsDir (sanitized to a-zA-Z0-9_-).
-    expect(existsSync(path.join(projectsDir, 'etcpasswd.json'))).toBe(true)
+    expect(res.status).toBe(400)
+    expect(res.body.success).toBe(false)
+    // Nothing is written anywhere — not the collapsed name, not outside the dir.
+    expect(existsSync(path.join(projectsDir, 'etcpasswd.json'))).toBe(false)
     expect(existsSync(path.join(dataDir, '..', 'etc', 'passwd.json'))).toBe(false)
   })
 })
@@ -68,6 +71,12 @@ describe('GET /api/projects/:projectId', () => {
     const res = await request(app).get('/api/projects/missing')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: true, data: null })
+  })
+
+  it('rejects an unsafe id with 400 (L8)', async () => {
+    const res = await request(app).get('/api/projects/bad.id')
+    expect(res.status).toBe(400)
+    expect(res.body.success).toBe(false)
   })
 })
 

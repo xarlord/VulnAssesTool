@@ -17,8 +17,12 @@ function projectPath(projectId: string): string {
   return path.join(PROJECTS_DIR, `${projectId}.json`)
 }
 
-function sanitizeId(id: string): string {
-  return id.replace(/[^a-zA-Z0-9_-]/g, '')
+// A project id is used verbatim as a filename. The old sanitizeId() STRIPPED disallowed
+// characters, which is lossy and non-injective — distinct ids like `a/b` and `ab` (or two
+// ids that reduce to empty) collapsed onto the same file and silently overwrote each other.
+// Validate instead: accept only an already-safe charset, otherwise reject with 400.
+function isSafeId(id: unknown): id is string {
+  return typeof id === 'string' && id.length > 0 && /^[a-zA-Z0-9_-]+$/.test(id)
 }
 
 interface ProjectData {
@@ -42,8 +46,11 @@ projectRouter.post('/', (req: Request, res: Response) => {
       res.status(400).json({ success: false, error: 'Project ID required' })
       return
     }
-    const safeId = sanitizeId(data.id)
-    const filePath = projectPath(safeId)
+    if (!isSafeId(data.id)) {
+      res.status(400).json({ success: false, error: 'Invalid project ID' })
+      return
+    }
+    const filePath = projectPath(data.id)
     writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
     res.json({ success: true })
   } catch (error) {
@@ -57,8 +64,12 @@ projectRouter.post('/', (req: Request, res: Response) => {
 projectRouter.get('/:projectId', (req: Request, res: Response) => {
   try {
     ensureProjectsDir()
-    const safeId = sanitizeId(req.params.projectId as string)
-    const filePath = projectPath(safeId)
+    const projectId = req.params.projectId
+    if (!isSafeId(projectId)) {
+      res.status(400).json({ success: false, error: 'Invalid project ID' })
+      return
+    }
+    const filePath = projectPath(projectId)
     if (!existsSync(filePath)) {
       res.json({ success: true, data: null })
       return
@@ -77,8 +88,12 @@ projectRouter.get('/:projectId', (req: Request, res: Response) => {
 projectRouter.delete('/:projectId', (req: Request, res: Response) => {
   try {
     ensureProjectsDir()
-    const safeId = sanitizeId(req.params.projectId as string)
-    const filePath = projectPath(safeId)
+    const projectId = req.params.projectId
+    if (!isSafeId(projectId)) {
+      res.status(400).json({ success: false, error: 'Invalid project ID' })
+      return
+    }
+    const filePath = projectPath(projectId)
     if (existsSync(filePath)) {
       unlinkSync(filePath)
     }

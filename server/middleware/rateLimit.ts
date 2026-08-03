@@ -26,18 +26,26 @@ export const syncLimiter = rateLimit({
   message: { success: false, error: 'Too many sync requests, please try again later' },
 })
 
-export const containerLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: maxFor(5),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many container scan requests' },
-})
+// Factories, not singletons: the container and default limiters are each mounted on
+// several route groups. A single shared instance keys one IP-based bucket across ALL those
+// groups, so heavy traffic on one feature throttles the others. Call the factory once per
+// mount so each route group gets its own independent bucket.
+export function makeContainerLimiter() {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    max: maxFor(5),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many container scan requests' },
+  })
+}
 
-export const defaultLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: maxFor(60),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many requests, please try again later' },
-})
+export function makeDefaultLimiter() {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    max: maxFor(60),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many requests, please try again later' },
+  })
+}

@@ -25,7 +25,7 @@ import { containerRoutes } from './routes/container.js'
 import { projectRouter } from './routes/projects.js'
 import { sbomRoutes } from './routes/sbom.js'
 import { osvRoutes } from './routes/osv.js'
-import { defaultLimiter, containerLimiter } from './middleware/rateLimit.js'
+import { makeDefaultLimiter, makeContainerLimiter } from './middleware/rateLimit.js'
 
 const currentFilename = fileURLToPath(import.meta.url)
 const currentDirname = path.dirname(currentFilename)
@@ -71,16 +71,18 @@ export function createApp(): express.Express {
   // 3. Protected API routes — auth middleware
   app.use('/api', authMiddleware)
 
-  app.use('/api/database', defaultLimiter, databaseRouter)
-  app.use('/api/intelligence', defaultLimiter, intelligenceRoutes)
-  app.use('/api/storage', defaultLimiter, storageRoutes)
-  app.use('/api/backup', defaultLimiter, backupRoutes)
+  // A fresh limiter per mount (see makeDefaultLimiter/makeContainerLimiter) so each route
+  // group has its own bucket instead of sharing one across all of them.
+  app.use('/api/database', makeDefaultLimiter(), databaseRouter)
+  app.use('/api/intelligence', makeDefaultLimiter(), intelligenceRoutes)
+  app.use('/api/storage', makeDefaultLimiter(), storageRoutes)
+  app.use('/api/backup', makeDefaultLimiter(), backupRoutes)
   // Container scans and Syft SBOM generation are expensive/long-running, so cap them with the
   // tighter dedicated limiter instead of only the 60/min default.
-  app.use('/api/container', containerLimiter, containerRoutes)
-  app.use('/api/projects', defaultLimiter, projectRouter)
-  app.use('/api/sbom', containerLimiter, sbomRoutes)
-  app.use('/api/osv', defaultLimiter, osvRoutes)
+  app.use('/api/container', makeContainerLimiter(), containerRoutes)
+  app.use('/api/projects', makeDefaultLimiter(), projectRouter)
+  app.use('/api/sbom', makeContainerLimiter(), sbomRoutes)
+  app.use('/api/osv', makeDefaultLimiter(), osvRoutes)
 
   // Unmatched /api/* must be a JSON 404. Otherwise the SPA fallback below serves index.html
   // (HTTP 200 HTML) for a typo'd/removed endpoint, and the client's response.json() throws on it.
