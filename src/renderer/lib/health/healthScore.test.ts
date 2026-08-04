@@ -295,7 +295,25 @@ describe('calculateComponentHealth', () => {
 
     const result = calculateComponentHealth(componentWithPatchInfo, [])
 
-    expect(result.factors.versionScore).toBe(10) // 3 versions behind (20 - 17 = 3)
+    expect(result.factors.versionScore).toBe(10) // one minor-version tier behind (4.17 -> 4.20)
+  })
+
+  it('does not penalize a component that is AHEAD of the recommended version (H23)', () => {
+    // WHY: the old score summed per-segment deltas, so 2.1.0 vs recommended 1.9.9 scored 17
+    // "behind" and took max penalty although the higher major version is actually ahead.
+    const aheadComponent: Component = {
+      ...mockComponent,
+      version: '2.1.0',
+      patchInfo: {
+        hasFixAvailable: true,
+        recommendedVersion: '1.9.9',
+        fixedVersions: ['1.9.9'],
+        vulnerableVersions: [],
+      },
+    }
+
+    const result = calculateComponentHealth(aheadComponent, [])
+    expect(result.factors.versionScore).toBe(0)
   })
 
   it('should return correct health category based on score', () => {

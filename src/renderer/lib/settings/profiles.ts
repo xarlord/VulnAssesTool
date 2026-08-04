@@ -131,7 +131,10 @@ export function updateProfile(
     ...profiles[profileIndex],
     ...updates,
     name: updates.name ? updates.name.trim() : profiles[profileIndex].name,
-    description: updates.description?.trim() || undefined,
+    // Only overwrite the description when the caller actually supplied the field. A partial
+    // update that omits `description` must PRESERVE the stored value, not wipe it to undefined.
+    description:
+      'description' in updates ? updates.description?.trim() || undefined : profiles[profileIndex].description,
   }
 
   saveProfilesToStorage(profiles)

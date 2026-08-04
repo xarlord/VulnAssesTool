@@ -263,7 +263,8 @@ export class DiffEngine {
         // cpe:2.3:a:vendor:product -> first 5 parts (includes product but not version)
         return `cpe:${parts.slice(0, 5).join(':')}`
       }
-      return `cpe:${component.cpe}`
+      // A short/partial CPE (<5 parts) can't have its version segment reliably stripped, so a
+      // version bump would change the key and read as remove+add. Fall through to name+type.
     }
 
     // Use name and type as stable identifier

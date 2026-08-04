@@ -202,6 +202,17 @@ describe('Settings Profiles', () => {
       expect(updated?.name).toBe('Updated Name')
       expect(updated?.description).toBe('Updated Description')
     })
+
+    it('preserves the existing description when a partial update omits it (H24)', () => {
+      const profile = createProfile('Test Profile', 'Keep me', mockSettings)
+      // WHY: updateProfile set description unconditionally, so a partial update that omitted the
+      // field wiped the stored value to undefined.
+      updateProfile(profile.id, { name: 'Renamed' })
+
+      const updated = getProfiles().find((p) => p.id === profile.id)
+      expect(updated?.name).toBe('Renamed')
+      expect(updated?.description).toBe('Keep me')
+    })
   })
 
   describe('deleteProfile', () => {

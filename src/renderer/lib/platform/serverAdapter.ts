@@ -90,26 +90,34 @@ function createServerDatabase(): DatabaseAPI {
       apiPost<{ success: boolean }>('/database/sync/auto', { enabled, intervalHours }),
     onSyncProgress: (cb: (progress: DeltaSyncProgress) => void) => {
       const handler = (data: unknown) => cb(data as DeltaSyncProgress)
-      wsClient.on('sync-progress', handler)
-      wsClient.on('delta-sync-progress', handler)
-      return noopCleanup
+      const offA = wsClient.on('sync-progress', handler)
+      const offB = wsClient.on('delta-sync-progress', handler)
+      return () => {
+        offA()
+        offB()
+      }
     },
     onSyncComplete: (cb: (result: DeltaSyncResult) => void) => {
       const handler = (data: unknown) => cb(data as DeltaSyncResult)
-      wsClient.on('sync-complete', handler)
-      wsClient.on('delta-sync-complete', handler)
-      return noopCleanup
+      const offA = wsClient.on('sync-complete', handler)
+      const offB = wsClient.on('delta-sync-complete', handler)
+      return () => {
+        offA()
+        offB()
+      }
     },
     onSyncError: (cb: (error: string) => void) => {
       const handler = (data: unknown) => cb(data as string)
-      wsClient.on('sync-error', handler)
-      wsClient.on('delta-sync-error', handler)
-      return noopCleanup
+      const offA = wsClient.on('sync-error', handler)
+      const offB = wsClient.on('delta-sync-error', handler)
+      return () => {
+        offA()
+        offB()
+      }
     },
     onBulkDownloadProgress: (cb: (progress: BulkDownloadProgress) => void) => {
       const handler = (data: unknown) => cb(data as BulkDownloadProgress)
-      wsClient.on('bulk-download-progress', handler)
-      return noopCleanup
+      return wsClient.on('bulk-download-progress', handler)
     },
     cpeSearch: (request: CPESearchRequest) => apiPost<CPESearchResponse>('/database/cpe/search', request),
     getSyncConfig: () => apiGet<SyncConfigResponse>('/database/config/sync'),
@@ -177,8 +185,7 @@ function createServerIntelligence(): IntelligenceAPI {
       apiPost<{ success: boolean; cleanedCount: number; error?: string }>('/intelligence/epss/cleanup'),
     onKevSynced: (cb) => {
       const handler = (data: unknown) => cb(data as KevSyncResult)
-      wsClient.on('kev-synced', handler)
-      return noopCleanup
+      return wsClient.on('kev-synced', handler)
     },
   }
 }
@@ -201,8 +208,7 @@ function createServerContainer(): ContainerPlatformAPI {
       apiPost<ExtractPackagesResponse>('/container/extract', request, { timeoutMs: CONTAINER_JOB_TIMEOUT_MS }),
     onScanProgress: (cb) => {
       const handler = (data: unknown) => cb(data as ContainerScanProgress)
-      wsClient.on('scan-progress', handler)
-      return noopCleanup
+      return wsClient.on('scan-progress', handler)
     },
   }
 }
@@ -225,8 +231,7 @@ function createServerSbom(): SbomGenerationAPI {
       apiPost<SbomGenerateResult>('/sbom/generate', { localPath }, { timeoutMs: SBOM_JOB_TIMEOUT_MS }),
     onGenerateProgress: (cb) => {
       const handler = (data: unknown) => cb(data as SbomGenerateProgress)
-      wsClient.on('sbom-generate-progress', handler)
-      return noopCleanup
+      return wsClient.on('sbom-generate-progress', handler)
     },
   }
 }

@@ -123,6 +123,10 @@ export interface OfflineQueueEvent {
   result?: RequestResult
   /** For error events: the error message */
   error?: string
+  /** For sync-completed: requests that failed permanently (no handler, or retries exhausted).
+   * Surfaced so callers can dead-letter/report them instead of the queue silently discarding them. */
+  failed?: number
+  failedRequests?: QueuedRequest[]
 }
 
 /**
@@ -570,6 +574,8 @@ export class OfflineQueue {
       total,
       processed,
       progress: 100,
+      failed: permanentlyFailed.length,
+      failedRequests: permanentlyFailed,
     })
 
     this.isProcessing = false

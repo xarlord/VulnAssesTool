@@ -65,13 +65,26 @@ interface MetricCardProps {
 }
 
 function MetricCard({ explanation }: MetricCardProps) {
-  const getValueColor = (_metric: string, value: string): string => {
-    // Higher risk values in red/orange
-    const highRiskValues = ['Network', 'Low', 'None', 'Changed', 'High']
-    if (highRiskValues.includes(value)) {
-      return 'text-red-600'
+  const getValueColor = (metric: string, value: string): string => {
+    // Which value is HIGH risk depends on the metric, not the value string alone: "None" is high
+    // risk for Privileges Required / User Interaction but LOW risk for the C/I/A impacts, and
+    // "High" is high risk for the impacts but LOW risk for Privileges Required. The old blanket
+    // list painted PR:High and Impact:None red, contradicting the implications text below.
+    const base = metric.replace(/\s*\([^)]*\)\s*$/, '').trim() // strip a trailing "(AV)" abbreviation
+    const highRiskByMetric: Record<string, string[]> = {
+      'Attack Vector': ['Network'],
+      'Attack Complexity': ['Low'],
+      'Privileges Required': ['None'],
+      'User Interaction': ['None'],
+      Scope: ['Changed'],
+      Confidentiality: ['High'],
+      Integrity: ['High'],
+      Availability: ['High'],
+      'Confidentiality Impact': ['High'],
+      'Integrity Impact': ['High'],
+      'Availability Impact': ['High'],
     }
-    return 'text-green-600'
+    return highRiskByMetric[base]?.includes(value) ? 'text-red-600' : 'text-green-600'
   }
 
   return (

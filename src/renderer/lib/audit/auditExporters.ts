@@ -136,14 +136,19 @@ async function exportAuditToPdf(events: AuditEvent[], totalCount: number) {
   const stats = useAuditStore.getState().getStatistics()
   doc.text(`Total Events in Log: ${stats.totalEvents}`, 14, 46)
 
+  // Truncate long fields for the fixed-width PDF table, appending '...' ONLY when the value
+  // actually exceeds the bound (a short id/description must not imply it was truncated).
+  const truncate = (value: string, max: number): string =>
+    value.length > max ? value.substring(0, max) + '...' : value
+
   // Table data
   const tableData = events.map((event) => [
-    event.id.substring(0, 8) + '...',
+    truncate(event.id, 8),
     new Date(event.timestamp).toLocaleString(),
     event.actionType,
     event.entityType,
-    event.entityId.substring(0, 20) + '...',
-    (event.metadata?.description || '').substring(0, 50) + '...',
+    truncate(event.entityId, 20),
+    truncate(event.metadata?.description || '', 50),
   ])
 
   // Add table

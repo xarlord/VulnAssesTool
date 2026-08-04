@@ -163,28 +163,25 @@ function calculateVersionScore(component: Component): number {
     const current = component.version
     const recommended = component.patchInfo.recommendedVersion
 
-    // Simple version comparison (works for semver)
-    const currentParts = current.split('.').map(Number)
-    const recommendedParts = recommended.split('.').map(Number)
+    // Hierarchical semver compare: stop at the most-significant segment that differs, instead
+    // of summing unrelated per-segment deltas (which made e.g. 2.1.0 vs 1.9.9 score 17 "behind"
+    // and take max penalty although it is actually AHEAD).
+    const currentParts = current.split('.').map((p) => Number(p) || 0)
+    const recommendedParts = recommended.split('.').map((p) => Number(p) || 0)
 
-    let versionsBehind = 0
     for (let i = 0; i < Math.max(currentParts.length, recommendedParts.length); i++) {
       const curr = currentParts[i] || 0
       const rec = recommendedParts[i] || 0
-      if (rec > curr) {
-        versionsBehind += rec - curr
-      }
+      if (curr === rec) continue
+      // Current is at or ahead of the recommended version at the first differing segment.
+      if (curr > rec) return 0
+      // Behind: the SEGMENT that first differs sets severity (major worst, then minor, then
+      // patch), rather than summing unrelated per-segment deltas.
+      if (i === 0) return 20 // major-version gap
+      if (i === 1) return 10 // minor-version gap
+      return 5 // patch (or deeper) gap
     }
-
-    if (versionsBehind === 0) {
-      return 0
-    } else if (versionsBehind <= 2) {
-      return 5
-    } else if (versionsBehind <= 5) {
-      return 10
-    } else {
-      return 20
-    }
+    return 0 // identical versions
   }
 
   // If no patch info, assume latest (0 penalty)

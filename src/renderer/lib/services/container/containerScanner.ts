@@ -437,12 +437,12 @@ export class ContainerScanner {
     }
   }
 
-  private async executeCommand(_command: string): Promise<Record<string, unknown>> {
-    // This would be implemented via IPC in Electron
-    // For now, return a mock response
-    return {
-      version: '24.0.0',
-    }
+  private async executeCommand(command: string): Promise<Record<string, unknown>> {
+    // The Electron IPC that used to back this was removed in the client/server migration, so this
+    // browser-side scanner cannot run container CLI commands. Fail loudly instead of returning a
+    // fabricated `{version:'24.0.0'}` that would masquerade as a real runtime probe. (This path is
+    // unreachable in the current server-adapter architecture; tests mock executeCommand directly.)
+    throw new Error(`Container command execution is not available in this build: ${command}`)
   }
 
   private async pullImageIfNeeded(image: ImageReference): Promise<void> {

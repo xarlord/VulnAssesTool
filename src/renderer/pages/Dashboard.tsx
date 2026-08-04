@@ -79,6 +79,7 @@ export function Dashboard() {
   const deleteProject = useStore((s) => s.deleteProject)
   const settings = useSettings()
   const updateProject = useStore((s) => s.updateProject)
+  const setRefreshingProject = useStore((s) => s.setRefreshingProject)
   const [showCreateDialog, setShowCreateDialog] = React.useState(false)
   const [showUploadDialog, setShowUploadDialog] = React.useState(false)
   const [showExportDialog, setShowExportDialog] = React.useState(false)
@@ -92,10 +93,13 @@ export function Dashboard() {
   // Handle manual refresh of vulnerability data. `force` bypasses the vuln cache and re-queries
   // fresh data (FR-03.5); a normal click keeps the cached, TTL-bounded path.
   const handleRefreshVulnData = async (projectId: string, force = false) => {
-    try {
-      const project = projects.find((p) => p.id === projectId)
-      if (!project) return
+    const project = projects.find((p) => p.id === projectId)
+    if (!project) return
 
+    // Engage ProjectCard's spinner/disabled state for the whole refresh so overlapping clicks can't
+    // race (the store selector useRefreshingProjectIds drives the card UI off this flag).
+    setRefreshingProject(projectId, true)
+    try {
       const result = await refreshVulnerabilityData(project.components, {
         cacheTTL: settings.vulnDataCacheTTL,
         useCache: !force,
@@ -148,6 +152,8 @@ export function Dashboard() {
       }
     } catch (error) {
       console.error('Failed to refresh vulnerability data:', error)
+    } finally {
+      setRefreshingProject(projectId, false)
     }
   }
 
