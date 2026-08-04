@@ -200,6 +200,12 @@ export interface NvdDateRangeFetchOptions {
  */
 export interface NvdDeltaFetchOptions {
   lastModifiedDate: Date
+  // End of the lastModified window. Defaults to now; delta sync sets it to bound each
+  // sub-range to ≤120 days, the maximum span the NVD API accepts (H25).
+  lastModifiedEndDate?: Date
+  // Zero-based pagination cursor. Defaults to 0; delta sync advances it so a truncated
+  // window resumes where the previous page ended instead of re-fetching from 0 (C3).
+  startIndex?: number
   apiKey?: string
   onProgress?: (progress: NvdDownloadProgress) => void
   signal?: AbortSignal
@@ -389,7 +395,9 @@ class ResponseCache {
 class ConcurrentExecutor {
   private concurrency: number
   private activeCount: number = 0
-  private queue: Array<() => Promise<void>> = []
+  // Queue entries keep their reject handle so clearQueue() can reject still-queued callers
+  // rather than dropping them silently (H26).
+  private queue: Array<{ run: () => void; reject: (error: Error) => void }> = []
 
   constructor(concurrency: number = DEFAULT_CONCURRENCY) {
     this.concurrency = Math.max(1, Math.min(concurrency, 10))
@@ -400,13 +408,12 @@ class ConcurrentExecutor {
    */
   async execute<T>(task: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
-      const wrappedTask = async () => {
+      const run = async () => {
         this.activeCount++
         try {
-          const result = await task()
-          resolve(result)
+          resolve(await task())
         } catch (error) {
-          reject(error)
+          reject(error as Error)
         } finally {
           this.activeCount--
           this.processQueue()
@@ -414,9 +421,9 @@ class ConcurrentExecutor {
       }
 
       if (this.activeCount < this.concurrency) {
-        wrappedTask()
+        run()
       } else {
-        this.queue.push(wrappedTask)
+        this.queue.push({ run, reject })
       }
     })
   }
@@ -428,7 +435,7 @@ class ConcurrentExecutor {
     if (this.queue.length > 0 && this.activeCount < this.concurrency) {
       const next = this.queue.shift()
       if (next) {
-        next()
+        next.run()
       }
     }
   }
@@ -445,10 +452,15 @@ class ConcurrentExecutor {
   }
 
   /**
-   * Clear the queue
+   * Clear the queue, rejecting any still-queued callers so their awaits settle (H26)
+   * instead of hanging when a download is cancelled.
    */
   clearQueue(): void {
+    const pending = this.queue
     this.queue = []
+    for (const item of pending) {
+      item.reject(new Error('NVD request cancelled'))
+    }
   }
 }
 
@@ -458,7 +470,9 @@ class ConcurrentExecutor {
 export class NvdApiV2Client {
   private rateLimiter: RateLimiter
   private apiKey?: string
-  private abortController: AbortController | null = null
+  // Every in-flight fetch registers its controller here so cancel() aborts ALL concurrent
+  // fetches, not just the most recently started one (L7). Each fetch deregisters on finish.
+  private abortControllers: Set<AbortController> = new Set()
   private cache: ResponseCache
   private executor: ConcurrentExecutor
   private bandwidthLimitKBps: number
@@ -575,9 +589,15 @@ export class NvdApiV2Client {
     const resultsPerPage = options.resultsPerPage || DEFAULT_RESULTS_PER_PAGE
     const useCache = options.useCache !== false
 
-    // Create abort controller if not provided
-    this.abortController = new AbortController()
-    const signal = options.signal || this.abortController.signal
+    // Register this fetch's controller so cancel() can abort it (L7); compose any
+    // caller-supplied signal so external aborts still propagate.
+    const controller = new AbortController()
+    this.abortControllers.add(controller)
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort()
+      else options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+    const signal = controller.signal
 
     try {
       let hasMore = true
@@ -709,6 +729,9 @@ export class NvdApiV2Client {
       })
 
       throw error
+    } finally {
+      // Always deregister: a finished/failed fetch's controller must not be aborted by a later cancel().
+      this.abortControllers.delete(controller)
     }
   }
 
@@ -724,14 +747,24 @@ export class NvdApiV2Client {
 
     // Format date for NVD API (ISO 8601, UTC)
     const lastModStartDate = this.formatDateForNvd(options.lastModifiedDate)
-    const lastModEndDate = this.formatDateForNvd(new Date())
+    // Bound the window end (defaults to now) so a caller can chunk a large gap into
+    // ≤120-day sub-ranges the NVD API accepts (H25).
+    const lastModEndDate = this.formatDateForNvd(options.lastModifiedEndDate ?? new Date())
 
-    let startIndex = 0
+    // Resume at the caller's cursor (defaults to 0) so a truncated window continues rather
+    // than restarting from the first page (C3).
+    let startIndex = options.startIndex ?? 0
+    let firstPage = true
     const resultsPerPage = options.resultsPerPage || DEFAULT_RESULTS_PER_PAGE
     const useCache = options.useCache !== false
 
-    this.abortController = new AbortController()
-    const signal = options.signal || this.abortController.signal
+    const controller = new AbortController()
+    this.abortControllers.add(controller)
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort()
+      else options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+    const signal = controller.signal
 
     try {
       let hasMore = true
@@ -792,8 +825,10 @@ export class NvdApiV2Client {
 
         if (!response) break
 
-        if (startIndex === 0) {
+        // Capture the total on the first page regardless of the starting cursor.
+        if (firstPage) {
           totalResults = response.totalResults
+          firstPage = false
         }
 
         const cves = response.vulnerabilities.map((v) => v.cve)
@@ -842,6 +877,8 @@ export class NvdApiV2Client {
       })
 
       throw error
+    } finally {
+      this.abortControllers.delete(controller)
     }
   }
 
@@ -1068,10 +1105,12 @@ export class NvdApiV2Client {
    * Cancel any ongoing download
    */
   cancel(): void {
-    if (this.abortController) {
-      this.abortController.abort()
-      this.abortController = null
+    // Abort every in-flight fetch (L7), then reject anything still queued in the rate
+    // limiter / executor so awaiting callers reject instead of hanging (H26).
+    for (const controller of this.abortControllers) {
+      controller.abort()
     }
+    this.abortControllers.clear()
     this.rateLimiter.reset()
     this.executor.clearQueue()
   }

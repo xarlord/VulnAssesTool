@@ -10,8 +10,12 @@ import {
 } from '../database/ipcRequestValidator.js'
 import { sanitizeSqlInput, isValidCveId, escapeLikePattern } from '../database/sqlSanitizer.js'
 import { broadcast } from '../websocket.js'
-import { importNvdData, getAvailableNvdYears, createBulkDownloadManager } from '../database/nvd/index.js'
-import { downloadAndImportNVDData, getAvailableYears } from '../database/nvdDownloader.js'
+import {
+  importNvdData,
+  getAvailableNvdYears,
+  createBulkDownloadManager,
+  getRecentYearsForDownload,
+} from '../database/nvd/index.js'
 import { searchCVEsFTS, getFTSStats } from '../database/ftsMigration.js'
 import { QueryCache } from '../database/performance/queryCache.js'
 import {
@@ -571,10 +575,13 @@ router.post('/sync/start', syncLimiter, async (req, res) => {
 
     const years = validatedRequest?.years || getAvailableNvdYears(2021, 2026)
 
+    // Fetch through the REST client into the shared DB. getRawDb() may be null before init;
+    // importNvdData then resolves to a not-initialized failure (broadcast via onError) rather
+    // than throwing, preserving this handler's fire-and-forget "started" response.
     importNvdData({
       years,
+      db: getDb()?.getRawDb() ?? null,
       batchSize: 1000,
-      validateChecksums: true,
       onProgress: (progress) => {
         syncState.progress = progress.years.completed
         syncState.total = progress.years.total
@@ -729,24 +736,26 @@ router.post('/sync/cancel', async (_req, res) => {
 })
 
 router.post('/sync/bulk', syncLimiter, async (req, res) => {
+  const database = getDb()
+  const rawDb = database?.getRawDb()
+  if (!rawDb) {
+    res.json({ success: false, error: 'Database not initialized' })
+    return
+  }
+
+  if (syncState.isSyncing) {
+    res.json({ success: false, error: 'Sync already in progress' })
+    return
+  }
+
+  // Claim the sync lock synchronously — BEFORE any await — so two concurrent requests can't
+  // both pass the isSyncing check above and start dueling imports on the same SQLite file (H8).
+  // endSync() runs in finally, covering every path below (including the no-API-key early return).
+  beginSync('bulk')
+
   try {
-    const database = getDb()
-    if (!database) {
-      res.json({ success: false, error: 'Database not initialized' })
-      return
-    }
-
-    if (syncState.isSyncing) {
-      res.json({ success: false, error: 'Sync already in progress' })
-      return
-    }
-
     const nvdStorage = createApiKeyStorage('nvd')
-    let apiKey = await nvdStorage.getApiKey()
-
-    if (!apiKey) {
-      apiKey = process.env.NIST_API_KEY || process.env.NVD_API_KEY || ''
-    }
+    const apiKey = (await nvdStorage.getApiKey()) || process.env.NIST_API_KEY || process.env.NVD_API_KEY || ''
 
     if (!apiKey) {
       res.json({
@@ -757,43 +766,43 @@ router.post('/sync/bulk', syncLimiter, async (req, res) => {
       return
     }
 
-    const availableYears = getAvailableYears()
     const request = req.body as { years?: number[] }
-    const years = request.years || availableYears.slice(-3)
+    const years = request.years || getRecentYearsForDownload(3)
 
     console.log('Starting bulk download for years:', years)
 
-    beginSync('bulk')
-    let totalCves = 0
-
-    try {
-      await downloadAndImportNVDData(years, apiKey, (progress) => {
-        totalCves = progress.processedCVEs ?? totalCves
-        syncState.progress = progress.completedYears ?? 0
-        syncState.total = progress.totalYears ?? 0
-        syncState.currentFile = progress.year ? `Year ${progress.year}` : null
+    const result = await importNvdData({
+      years,
+      db: rawDb,
+      apiKey,
+      batchSize: 1000,
+      onProgress: (progress) => {
+        syncState.progress = progress.years.completed
+        syncState.total = progress.years.total
+        syncState.currentFile = progress.currentYear ? `Year ${progress.currentYear}` : null
         broadcast('nvd:bulk-download-progress', {
-          year: progress.year,
-          status: progress.status,
-          downloaded: progress.downloaded,
-          total: progress.total,
-          totalYears: progress.totalYears,
-          completedYears: progress.completedYears,
-          totalCves: progress.totalCVEs,
-          processedCves: progress.processedCVEs,
+          year: progress.currentYear,
+          status: progress.phase,
+          downloaded: progress.download.downloadedBytes,
+          total: progress.download.totalBytes,
+          totalYears: progress.years.total,
+          completedYears: progress.years.completed,
+          totalCves: progress.import.totalCVEs,
+          processedCves: progress.import.importedCVEs,
         })
-      })
-    } finally {
-      endSync()
-    }
+      },
+    })
 
-    res.json({ success: true, totalCves })
+    invalidateSearchResponseCache()
+    res.json({ success: result.success, totalCves: result.importedCVEs })
   } catch (error) {
     console.error('Bulk download failed:', error)
     res.json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to download NVD data',
     })
+  } finally {
+    endSync()
   }
 })
 

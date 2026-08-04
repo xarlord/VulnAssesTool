@@ -14,6 +14,11 @@ import { NvdDataImporter, createNvdDataImporter } from './nvdDataImporter.js'
 
 type BetterDb = InstanceType<typeof Database>
 
+// Maximum span of a single lastModified query window. The NVD API rejects a range wider
+// than 120 days, so a long gap since the last sync is chunked into windows of this size (H25).
+const MAX_DELTA_WINDOW_DAYS = 120
+const DAY_MS = 24 * 60 * 60 * 1000
+
 /**
  * Sync status information
  */
@@ -295,36 +300,44 @@ export class NvdDeltaSync {
       options.onProgress?.(this.getProgress())
 
       const allCves: NvdCveV2[] = []
-      let hasMore = true
+      // Split the gap since the last sync into ≤120-day windows the NVD API accepts (H25).
+      const windows = this.buildSyncWindows(syncFromDate, new Date())
+      let cancelled = false
 
-      while (hasMore) {
-        if (options.signal?.aborted) {
-          result.success = false
-          result.errors.push('Sync cancelled')
-          break
-        }
+      for (const [windowStart, windowEnd] of windows) {
+        if (cancelled) break
 
-        const fetchResult = await this.apiClient.fetchModifiedSince({
-          lastModifiedDate: syncFromDate,
-          signal: options.signal,
-        })
+        // Page through this window with a cursor that advances by the number of CVEs
+        // returned, so a truncated (>50k) window resumes instead of re-fetching page 0 (C3).
+        let startIndex = 0
+        let windowTruncated = true
 
-        if (!fetchResult.cves || fetchResult.cves.length === 0) {
-          hasMore = false
-          break
-        }
+        while (windowTruncated) {
+          if (options.signal?.aborted) {
+            result.success = false
+            result.errors.push('Sync cancelled')
+            cancelled = true
+            break
+          }
 
-        allCves.push(...fetchResult.cves)
-        this.progress.cvesFetched = allCves.length
-        this.progress.percentage = fetchResult.truncated ? 50 : 100
-        this.progress.elapsedTimeMs = Date.now() - this.startTime
+          const fetchResult = await this.apiClient.fetchModifiedSince({
+            lastModifiedDate: windowStart,
+            lastModifiedEndDate: windowEnd,
+            startIndex,
+            signal: options.signal,
+          })
 
-        options.onProgress?.(this.getProgress())
+          allCves.push(...fetchResult.cves)
+          startIndex += fetchResult.cves.length
 
-        if (fetchResult.truncated) {
-          // Continue fetching next page
-        } else {
-          hasMore = false
+          this.progress.cvesFetched = allCves.length
+          this.progress.percentage = fetchResult.truncated ? 50 : 100
+          this.progress.elapsedTimeMs = Date.now() - this.startTime
+          options.onProgress?.(this.getProgress())
+
+          // Keep paging only while truncated AND still returning rows; the empty guard
+          // prevents an infinite loop on a degenerate truncated-but-empty page.
+          windowTruncated = fetchResult.truncated && fetchResult.cves.length > 0
         }
       }
 
@@ -379,6 +392,32 @@ export class NvdDeltaSync {
     options.onProgress?.(this.getProgress())
 
     return result
+  }
+
+  /**
+   * Split [start, end] into consecutive windows no wider than MAX_DELTA_WINDOW_DAYS. The
+   * NVD API rejects a lastModified range wider than 120 days, so a long gap since the last
+   * successful sync must be chunked rather than sent as one over-wide window (H25).
+   */
+  private buildSyncWindows(start: Date, end: Date): Array<[Date, Date]> {
+    const maxSpanMs = MAX_DELTA_WINDOW_DAYS * DAY_MS
+    const windows: Array<[Date, Date]> = []
+
+    let windowStart = start
+    while (windowStart.getTime() < end.getTime()) {
+      const tentativeEnd = new Date(windowStart.getTime() + maxSpanMs)
+      const windowEnd = tentativeEnd.getTime() < end.getTime() ? tentativeEnd : end
+      windows.push([windowStart, windowEnd])
+      // Step 1s past the boundary so consecutive windows don't overlap on the edge CVE.
+      windowStart = new Date(windowEnd.getTime() + 1000)
+    }
+
+    // Always issue at least one window (e.g. if start >= end from clock skew).
+    if (windows.length === 0) {
+      windows.push([start, end])
+    }
+
+    return windows
   }
 
   /**

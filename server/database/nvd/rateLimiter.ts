@@ -169,12 +169,20 @@ export class RateLimiter {
   }
 
   /**
-   * Reset the rate limiter (clear queue and request history)
+   * Reset the rate limiter (clear queue and request history).
+   *
+   * Callers still waiting for a queued slot are REJECTED before the queue is
+   * cleared — otherwise their promises never settle and the work awaiting them
+   * (e.g. a sync being cancelled) hangs forever (H26).
    */
   reset(): void {
+    const pending = this.queue
     this.queue = []
     this.requests = []
     this.processing = false
+    for (const item of pending) {
+      item.reject(new Error('NVD request cancelled'))
+    }
   }
 
   /**

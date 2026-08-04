@@ -205,7 +205,6 @@ describe('POST /api/database/sync/start', () => {
     expect(vi.mocked(importNvdData).mock.calls[0][0]).toMatchObject({
       years: [2025],
       batchSize: 1000,
-      validateChecksums: true,
     })
   })
 

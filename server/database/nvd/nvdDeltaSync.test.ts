@@ -420,6 +420,118 @@ describe('NvdDeltaSync', () => {
   })
 })
 
+// ===========================================================================
+// B2 — window chunking (H25) + advancing pagination cursor (C3)
+// ===========================================================================
+const DAY_MS = 24 * 60 * 60 * 1000
+
+const sampleDeltaCve = {
+  id: 'CVE-2024-90001',
+  sourceIdentifier: 'test@nvd.nist.gov',
+  published: '2024-01-01T00:00:00.000',
+  lastModified: '2024-01-02T00:00:00.000',
+  vulnStatus: 'ANALYZED',
+  descriptions: [{ lang: 'en', value: 'delta test vuln' }],
+  metrics: {},
+  weaknesses: [],
+  configurations: [],
+  references: [],
+}
+
+function makeDeltaClientMock(
+  fetchModifiedSince: ReturnType<typeof vi.fn>,
+): ReturnType<typeof import('./nvdApiV2Client.js').createNvdApiV2Client> {
+  return {
+    setApiKey: vi.fn(),
+    setBandwidthLimitKBps: vi.fn(),
+    fetchModifiedSince,
+    cancel: vi.fn(),
+    getRateLimiterStatus: vi.fn().mockReturnValue({ queueSize: 0, timeUntilNextRequest: 0 }),
+  } as unknown as ReturnType<typeof import('./nvdApiV2Client.js').createNvdApiV2Client>
+}
+
+function insertLastSync(database: InstanceType<typeof Database>, daysAgo: number): void {
+  const when = new Date(Date.now() - daysAgo * DAY_MS).toISOString()
+  database
+    .prepare(
+      `INSERT INTO sync_status (source, last_sync_at, last_successful_sync_at,
+        total_cves, auto_sync_enabled, auto_sync_interval_hours) VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run('NVD', when, when, 0, 0, 24)
+}
+
+describe('NvdDeltaSync window chunking + cursor (B2: H25, C3)', () => {
+  let db: InstanceType<typeof Database>
+
+  beforeEach(() => {
+    db = createTestDatabase()
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    vi.clearAllMocks()
+  })
+
+  it('resumes a truncated window at the advancing cursor, not page 0 (C3)', async () => {
+    // WHY (C3): a truncated window must continue where the last page ended. The old loop
+    // re-issued the same request (startIndex always 0), so a >50k window looped forever
+    // accumulating duplicates. The second call must resume at the first page's length.
+    const fetchModifiedSince = vi
+      .fn()
+      .mockResolvedValueOnce({
+        cves: [sampleDeltaCve, sampleDeltaCve, sampleDeltaCve],
+        totalResults: 5,
+        truncated: true,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        cves: [sampleDeltaCve, sampleDeltaCve],
+        totalResults: 5,
+        truncated: false,
+        durationMs: 1,
+      })
+
+    const { createNvdApiV2Client } = await import('./nvdApiV2Client.js')
+    vi.mocked(createNvdApiV2Client).mockReturnValueOnce(makeDeltaClientMock(fetchModifiedSince))
+
+    const deltaSync = createNvdDeltaSync(db)
+    insertLastSync(db, 10) // recent → a single ≤120-day window, so cursor advance is isolated
+
+    await deltaSync.sync()
+
+    expect(fetchModifiedSince).toHaveBeenCalledTimes(2)
+    // Second page resumes at the count returned by the first page (3), not 0.
+    expect(fetchModifiedSince.mock.calls[1][0].startIndex).toBe(3)
+  })
+
+  it('chunks a >120-day gap into multiple ≤120-day windows (H25)', async () => {
+    // WHY (H25): the NVD API rejects a lastModified range wider than 120 days. Sending the
+    // whole [lastSync, now] gap as one window failed the sync outright; it must be split.
+    const fetchModifiedSince = vi.fn().mockResolvedValue({
+      cves: [],
+      totalResults: 0,
+      truncated: false,
+      durationMs: 1,
+    })
+
+    const { createNvdApiV2Client } = await import('./nvdApiV2Client.js')
+    vi.mocked(createNvdApiV2Client).mockReturnValueOnce(makeDeltaClientMock(fetchModifiedSince))
+
+    const deltaSync = createNvdDeltaSync(db)
+    insertLastSync(db, 400) // 400-day gap → at least ceil(400/120)=4 windows
+
+    await deltaSync.sync()
+
+    expect(fetchModifiedSince.mock.calls.length).toBeGreaterThanOrEqual(4)
+    for (const [opts] of fetchModifiedSince.mock.calls) {
+      expect(opts.lastModifiedEndDate).toBeInstanceOf(Date)
+      const span = opts.lastModifiedEndDate.getTime() - opts.lastModifiedDate.getTime()
+      // ≤120 days (allow a small slack for the +1s inter-window step).
+      expect(span).toBeLessThanOrEqual(120 * DAY_MS + 2000)
+    }
+  })
+})
+
 describe('createNvdDeltaSync', () => {
   it('should create delta sync instance', () => {
     const testDb = createTestDatabase()
