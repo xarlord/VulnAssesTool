@@ -400,8 +400,9 @@ export class ContainerService {
           // hardlinks that Windows tar can't create, but the regular files we
           // read (the package databases) still extract fine.
           await this.extractTar(layerPath, layerDir, { tolerateErrors: true })
-          const packages = await this.scanLayerForPackages(layerDir, layerDigest)
+          const { packages, warnings } = await this.scanLayerForPackages(layerDir, layerDigest)
           allPackages.push(...packages)
+          layerWarnings.push(...warnings)
         } catch (err) {
           const message = `Failed to process layer ${layerIndex}: ${err instanceof Error ? err.message : String(err)}`
           console.warn(`[ContainerService] ${message}`)
@@ -484,21 +485,23 @@ export class ContainerService {
   /**
    * Scan an extracted layer directory for package databases
    */
-  private async scanLayerForPackages(layerDir: string, layerDigest: string): Promise<ContainerPackage[]> {
+  private async scanLayerForPackages(
+    layerDir: string,
+    layerDigest: string,
+  ): Promise<{ packages: ContainerPackage[]; warnings: string[] }> {
     const packages: ContainerPackage[] = []
+    const warnings: string[] = []
 
     // Check for dpkg database (Debian/Ubuntu)
     const dpkgPath = path.join(layerDir, 'var', 'lib', 'dpkg', 'status')
     if (fs.existsSync(dpkgPath)) {
-      const dpkgPackages = this.parseDpkgStatus(dpkgPath, layerDigest)
-      packages.push(...dpkgPackages)
+      packages.push(...this.parseDpkgStatus(dpkgPath, layerDigest))
     }
 
     // Check for apk database (Alpine)
     const apkPath = path.join(layerDir, 'lib', 'apk', 'db', 'installed')
     if (fs.existsSync(apkPath)) {
-      const apkPackages = this.parseApkInstalled(apkPath, layerDigest)
-      packages.push(...apkPackages)
+      packages.push(...this.parseApkInstalled(apkPath, layerDigest))
     }
 
     // Check for rpm database (RHEL/Fedora/CentOS)
@@ -507,16 +510,30 @@ export class ContainerService {
       path.join(layerDir, 'var', 'lib', 'rpm', 'Packages.db'),
       path.join(layerDir, 'var', 'lib', 'rpm', 'rpmdb.sqlite'),
     ]
-    for (const rpmPath of rpmPaths) {
-      if (fs.existsSync(rpmPath)) {
-        // RPM binary databases require rpm CLI to parse
+    const rpmPath = rpmPaths.find((candidate) => fs.existsSync(candidate))
+    if (rpmPath) {
+      try {
         const rpmPackages = await this.parseRpmPackages(rpmPath, layerDigest)
-        packages.push(...rpmPackages)
-        break
+        if (rpmPackages.length > 0) {
+          packages.push(...rpmPackages)
+        } else {
+          // A present rpm DB that yields nothing is a coverage gap, not a real "0 packages".
+          warnings.push(
+            `RPM database at ${rpmPath} yielded no packages; this RHEL/Fedora/CentOS layer may be under-reported.`,
+          )
+        }
+      } catch (error) {
+        // The rpm CLI is unavailable or failed — never silently report the layer as fully
+        // scanned (C1). Surface a warning so overall coverage is not overstated.
+        const reason = error instanceof Error ? error.message : String(error)
+        warnings.push(
+          `RPM database at ${rpmPath} could not be parsed (${reason}). Install the 'rpm' CLI on the ` +
+            `server to scan RHEL/Fedora/CentOS layers.`,
+        )
       }
     }
 
-    return packages
+    return { packages, warnings }
   }
 
   /**
@@ -610,14 +627,61 @@ export class ContainerService {
   }
 
   /**
-   * Parse RPM packages (requires rpm command)
+   * Parse the rpm database of an extracted layer by shelling to the host `rpm` CLI with
+   * --dbpath pointed at the layer's rpm directory. Throws if rpm is unavailable or fails so
+   * the caller can surface a coverage warning instead of silently reporting zero packages.
    */
-  private async parseRpmPackages(_dbPath: string, _layerDigest: string): Promise<ContainerPackage[]> {
-    // RPM binary database format requires the rpm CLI tool to parse.
-    // Since we're scanning a layer extracted to disk (not inside a container),
-    // we can't easily query it. Return empty for now — the main scan path
-    // would handle this differently by running commands inside the container.
-    return []
+  private async parseRpmPackages(dbPath: string, layerDigest: string): Promise<ContainerPackage[]> {
+    const rpmDbDir = path.dirname(dbPath)
+    const stdout = await this.queryRpmDatabase(rpmDbDir)
+    return this.parseRpmQueryOutput(stdout, layerDigest)
+  }
+
+  /**
+   * Run `rpm -qa` against an extracted layer's rpm database directory. Isolated so it can be
+   * stubbed in tests and so the "rpm not installed" case gets a clear, actionable message.
+   */
+  private async queryRpmDatabase(rpmDbDir: string): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync(
+        'rpm',
+        ['-qa', '--dbpath', rpmDbDir, '--qf', '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}\n'],
+        { timeout: COMMAND_TIMEOUT, maxBuffer: 50 * 1024 * 1024, windowsHide: true },
+      )
+      return stdout
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes('ENOENT') || message.includes('not found') || message.includes('not recognized')) {
+        throw new Error('rpm is not installed or not in PATH')
+      }
+      throw error instanceof Error ? error : new Error(message)
+    }
+  }
+
+  /**
+   * Parse `rpm -qa --qf '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}\n'` output into ContainerPackages.
+   */
+  private parseRpmQueryOutput(stdout: string, layerDigest: string): ContainerPackage[] {
+    const packages: ContainerPackage[] = []
+    for (const line of stdout.split('\n')) {
+      if (!line.trim()) continue
+      const [rawName, rawVersion, rawArch] = line.split('|')
+      const name = rawName?.trim()
+      const version = rawVersion ? this.cleanVersion(rawVersion.trim()) : ''
+      if (!name || !version) continue
+      const archValue = rawArch?.trim()
+      const arch = archValue && archValue !== '(none)' ? archValue : undefined
+      packages.push({
+        name,
+        version,
+        manager: 'rpm',
+        architecture: arch,
+        cpe: `cpe:2.3:a:*:${name}:${version}:*:*:*:*:*:*:*`,
+        purl: `pkg:rpm/${name}@${version}${arch ? `?arch=${arch}` : ''}`,
+        layerDigest,
+      })
+    }
+    return packages
   }
 
   /**
