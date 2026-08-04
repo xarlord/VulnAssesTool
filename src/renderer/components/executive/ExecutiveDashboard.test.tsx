@@ -74,6 +74,7 @@ vi.mock('@/lib/analytics', () => ({
   generateExecutiveSummary: (...args: any[]) => mockGenerateSummary(...args),
   buildExecutiveReport: vi.fn(() => ({})),
   downloadExecutiveReport: vi.fn(),
+  computeNextComplianceReview: vi.fn(() => null),
 }))
 
 // ---------------------------------------------------------------------------

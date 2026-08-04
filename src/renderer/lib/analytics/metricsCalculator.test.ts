@@ -13,6 +13,8 @@ import {
   calculateComplianceMetrics,
   calculateTrendMetrics,
   calculateTopCriticalVulnerabilities,
+  calculateProductivityMetrics,
+  computeNextComplianceReview,
 } from '@/lib/analytics'
 import type { Project, Vulnerability, PatchInfo } from '@@/types'
 
@@ -142,5 +144,77 @@ describe('calculateTopCriticalVulnerabilities (FR-06.2)', () => {
 
     expect(top.filter((t) => t.id === 'CVE-2021-44228')).toHaveLength(1)
     expect(top[0].cvssScore).toBe(10.0)
+  })
+})
+
+describe('calculateComplianceMetrics — date coercion after store rehydration (H6)', () => {
+  it('counts a recently-scanned project even when lastScanAt is an ISO string (post-reload)', () => {
+    // WHY: zustand-persist rehydrates Date fields as ISO strings, so `p.lastScanAt` is a
+    // string at runtime. Comparing a string against a Date object (string >= Date) is a
+    // broken lexicographic compare that zeroed scanCoverage/dataFreshness after every reload.
+    const recentIso = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+    const projects = [
+      {
+        ...project([]),
+        lastScanAt: recentIso as unknown as Date,
+        lastVulnDataRefresh: recentIso as unknown as Date,
+      },
+    ]
+
+    const metrics = calculateComplianceMetrics(projects)
+
+    expect(metrics.scanCoverage).toBe(100)
+    expect(metrics.dataFreshness).toBe(100)
+  })
+})
+
+describe('calculateProductivityMetrics — measured average scan time (M5)', () => {
+  it('averages real per-scan durations instead of a component-count proxy', () => {
+    // Measured durations of 60s and 180s → mean 120s = 2 minutes. The old proxy
+    // (components * 0.5 / 60) was unrelated to how long a scan actually took.
+    const projects = [
+      { ...project([]), sbomFiles: [], lastScanAt: new Date(), lastScanDurationMs: 60_000 },
+      { ...project([]), sbomFiles: [], lastScanAt: new Date(), lastScanDurationMs: 180_000 },
+    ]
+
+    expect(calculateProductivityMetrics(projects).averageScanTime).toBe(2)
+  })
+
+  it('reports 0 average scan time when no scan durations have been recorded', () => {
+    // A large component count would make the OLD proxy (components * 0.5 / 60) report a
+    // fabricated non-zero time; with no measured durations the real average is 0.
+    const projects = [{ ...project([], { totalComponents: 100_000 }), sbomFiles: [], lastScanAt: new Date() }]
+
+    expect(calculateProductivityMetrics(projects).averageScanTime).toBe(0)
+  })
+})
+
+describe('computeNextComplianceReview — real review date (M3)', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  it('anchors the next review to the most recent data refresh plus the interval', () => {
+    // WHY: the widget fabricated "today + 7 days". A real next-review date is derived from
+    // when the assessment data was last refreshed + a defined cadence.
+    const last = new Date('2026-01-01T00:00:00Z')
+    const older = new Date('2025-06-01T00:00:00Z')
+    const projects = [
+      { ...project([]), lastVulnDataRefresh: older },
+      { ...project([]), lastVulnDataRefresh: last },
+    ]
+
+    const next = computeNextComplianceReview(projects, 90)
+
+    expect(next?.getTime()).toBe(last.getTime() + 90 * DAY)
+  })
+
+  it('falls back to lastScanAt when a project has no data-refresh date', () => {
+    const scan = new Date('2026-02-01T00:00:00Z')
+    const projects = [{ ...project([]), lastScanAt: scan }]
+
+    expect(computeNextComplianceReview(projects, 30)?.getTime()).toBe(scan.getTime() + 30 * DAY)
+  })
+
+  it('returns null when nothing has ever been scanned or refreshed (no fabrication)', () => {
+    expect(computeNextComplianceReview([project([])], 90)).toBeNull()
   })
 })

@@ -60,6 +60,10 @@ export function useProjectScan({ project, updateProject, settings }: UseProjectS
       appendLog(event.message)
     }
 
+    // Measure real scan wall-clock time (M5) so the executive "avg scan time" is a measured
+    // value rather than a component-count proxy.
+    const scanStartedAt = Date.now()
+
     try {
       const results = await matchVulnerabilitiesForComponents(
         project.components,
@@ -134,6 +138,7 @@ export function useProjectScan({ project, updateProject, settings }: UseProjectS
       updateProject(project.id, {
         vulnerabilities: enrichedVulnerabilities,
         lastScanAt: new Date(),
+        lastScanDurationMs: Date.now() - scanStartedAt,
         updatedAt: new Date(),
         statistics: {
           ...project.statistics,

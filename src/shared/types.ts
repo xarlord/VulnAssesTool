@@ -93,6 +93,7 @@ export interface Project {
   updatedAt: Date
   lastScanAt?: Date
   lastVulnDataRefresh?: Date // When vulnerability data was last refreshed from API
+  lastScanDurationMs?: number // Measured wall-clock duration of the most recent scan (real avg-scan-time source)
   sbomFiles: SbomFile[]
   components: Component[]
   vulnerabilities: Vulnerability[]

@@ -11,6 +11,7 @@ import {
   generateExecutiveSummary,
   buildExecutiveReport,
   downloadExecutiveReport,
+  computeNextComplianceReview,
 } from '@/lib/analytics'
 const RiskGauge = lazy(() => import('./widgets/RiskGauge').then((m) => ({ default: m.RiskGauge })))
 const ProjectHealthComparison = lazy(() =>
@@ -33,6 +34,10 @@ import { Download, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { WIDGET_SIZE_CLASSES, type DashboardWidgetId } from '@/lib/dashboard/dashboardLayout'
 
+// Compliance-review cadence used to derive the next-review date from the last assessment.
+// A configurable default (quarterly) rather than the fabricated "today + 7 days" (M3).
+const COMPLIANCE_REVIEW_INTERVAL_DAYS = 90
+
 export function ExecutiveDashboard() {
   const navigate = useNavigate()
   const projects = useProjects()
@@ -42,21 +47,32 @@ export function ExecutiveDashboard() {
     end: new Date(),
   })
   const [projectScope, setProjectScope] = useState<'all' | 'selected'>('all')
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Filter projects based on date range and scope
-  const filteredProjects = useMemo(() => {
-    let filtered = projects
-
-    // Filter by date range (projects updated within range)
-    filtered = filtered.filter((p) => {
+  // Projects within the selected date range — the pool the config picker chooses from.
+  const dateFilteredProjects = useMemo(() => {
+    return projects.filter((p) => {
       const updateDate = new Date(p.updatedAt)
       return updateDate >= dateRange.start && updateDate <= dateRange.end
     })
+  }, [projects, dateRange])
 
-    return filtered
-  }, [projects, dateRange, projectScope])
+  // Metrics pool: further narrowed to the chosen projects when scope is 'selected' (H4).
+  const filteredProjects = useMemo(() => {
+    if (projectScope === 'selected') {
+      return dateFilteredProjects.filter((p) => selectedProjectIds.includes(p.id))
+    }
+    return dateFilteredProjects
+  }, [dateFilteredProjects, projectScope, selectedProjectIds])
+
+  // Real next compliance-review date (M3): last assessment + cadence, or null when nothing
+  // has been assessed yet (rendered as "not scheduled" rather than a fabricated date).
+  const nextComplianceReview = useMemo(
+    () => computeNextComplianceReview(filteredProjects, COMPLIANCE_REVIEW_INTERVAL_DAYS),
+    [filteredProjects],
+  )
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -113,7 +129,7 @@ export function ExecutiveDashboard() {
       case 'risk-gauge':
         return <RiskGauge metrics={metrics.overall} />
       case 'compliance-status':
-        return <ComplianceStatus compliance={metrics.compliance} />
+        return <ComplianceStatus compliance={metrics.compliance} nextReviewDate={nextComplianceReview} />
       case 'team-productivity':
         return <TeamProductivity productivity={metrics.productivity} />
       case 'project-health-comparison':
@@ -153,7 +169,9 @@ export function ExecutiveDashboard() {
                 <DashboardConfig
                   dateRange={dateRange}
                   projectScope={projectScope}
-                  projects={filteredProjects}
+                  projects={dateFilteredProjects}
+                  selectedProjectIds={selectedProjectIds}
+                  onSelectedProjectsChange={setSelectedProjectIds}
                   onDateRangeChange={setDateRange}
                   onProjectScopeChange={setProjectScope}
                   onExportReport={handleExportReport}

@@ -310,12 +310,17 @@ export function calculateComplianceMetrics(projects: Project[]): ComplianceMetri
   const slaHigh = totalHigh > 0 ? ((totalHigh - oldHigh) / totalHigh) * 100 : 100
   const slaOverall = slaCritical * 0.6 + slaHigh * 0.4 // Weighted average
 
-  // Scan coverage
-  const projectsScanned = projects.filter((p) => p.lastScanAt && p.lastScanAt >= thirtyDaysAgo).length
+  // Scan coverage. Compare via getTime() because after store rehydration lastScanAt is an
+  // ISO string, and `string >= Date` is a broken lexicographic compare (H6).
+  const projectsScanned = projects.filter(
+    (p) => p.lastScanAt && new Date(p.lastScanAt).getTime() >= thirtyDaysAgo.getTime(),
+  ).length
   const scanCoverage = projects.length > 0 ? (projectsScanned / projects.length) * 100 : 100
 
   // Data freshness
-  const projectsFresh = projects.filter((p) => p.lastVulnDataRefresh && p.lastVulnDataRefresh >= sevenDaysAgo).length
+  const projectsFresh = projects.filter(
+    (p) => p.lastVulnDataRefresh && new Date(p.lastVulnDataRefresh).getTime() >= sevenDaysAgo.getTime(),
+  ).length
   const dataFreshness = projects.length > 0 ? (projectsFresh / projects.length) * 100 : 100
 
   // Remediation rate: percentage of ALL vulnerabilities that are fixable (a patch
@@ -348,6 +353,24 @@ export function calculateComplianceMetrics(projects: Project[]): ComplianceMetri
 }
 
 /**
+ * Compute the next compliance-review date from real assessment activity: the most recent
+ * data-refresh (or scan) across the given projects, plus a review interval. Returns null
+ * when nothing has ever been scanned/refreshed, so the UI can show "not scheduled" instead
+ * of the fabricated "today + 7 days" it used before (M3).
+ */
+export function computeNextComplianceReview(projects: Project[], intervalDays: number): Date | null {
+  const reviewTimestamps = projects
+    .map((p) => p.lastVulnDataRefresh ?? p.lastScanAt)
+    .filter((d): d is Date => d != null)
+    // After store rehydration these are ISO strings; new Date() normalizes both forms.
+    .map((d) => new Date(d).getTime())
+    .filter((t) => Number.isFinite(t))
+  if (reviewTimestamps.length === 0) return null
+  const lastReview = Math.max(...reviewTimestamps)
+  return new Date(lastReview + intervalDays * 24 * 60 * 60 * 1000)
+}
+
+/**
  * Calculate productivity metrics
  */
 export function calculateProductivityMetrics(projects: Project[]): ProductivityMetrics {
@@ -360,14 +383,23 @@ export function calculateProductivityMetrics(projects: Project[]): ProductivityM
   const componentsAnalyzed = projects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
   const vulnerabilitiesAssessed = projects.reduce((sum, p) => sum + p.statistics.totalVulnerabilities, 0)
 
-  const scansThisWeek = projects.filter((p) => p.lastScanAt && p.lastScanAt >= weekAgo).length
-  const scansThisMonth = projects.filter((p) => p.lastScanAt && p.lastScanAt >= monthAgo).length
+  // getTime() compare: lastScanAt is an ISO string after store rehydration (H6).
+  const scansThisWeek = projects.filter(
+    (p) => p.lastScanAt && new Date(p.lastScanAt).getTime() >= weekAgo.getTime(),
+  ).length
+  const scansThisMonth = projects.filter(
+    (p) => p.lastScanAt && new Date(p.lastScanAt).getTime() >= monthAgo.getTime(),
+  ).length
 
-  // Average scan time would need to be tracked during scanning
-  // For now, estimate based on component count
+  // Average scan time measured from real recorded per-scan durations (M5). Projects that
+  // have never recorded a duration are excluded; if none have, report 0 rather than
+  // fabricating a component-count estimate.
+  const scanDurations = projects
+    .map((p) => p.lastScanDurationMs)
+    .filter((ms): ms is number => typeof ms === 'number' && ms > 0)
   const averageScanTime =
-    componentsAnalyzed > 0
-      ? (componentsAnalyzed * 0.5) / 60 // Estimate 0.5 seconds per component
+    scanDurations.length > 0
+      ? scanDurations.reduce((sum, ms) => sum + ms, 0) / scanDurations.length / 1000 / 60 // ms → minutes
       : 0
 
   return {

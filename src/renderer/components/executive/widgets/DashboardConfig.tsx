@@ -12,6 +12,10 @@ interface DashboardConfigProps {
   dateRange: { start: Date; end: Date }
   projectScope: 'all' | 'selected'
   projects: Project[]
+  // Parent-owned selection (H4): the picker reports changes up rather than keeping its own
+  // state that the dashboard never reads, so "Selected Projects" actually filters the view.
+  selectedProjectIds: string[]
+  onSelectedProjectsChange: (ids: string[]) => void
   onDateRangeChange: (range: { start: Date; end: Date }) => void
   onProjectScopeChange: (scope: 'all' | 'selected') => void
   onExportReport: () => void
@@ -30,6 +34,8 @@ export function DashboardConfig({
   dateRange,
   projectScope,
   projects,
+  selectedProjectIds,
+  onSelectedProjectsChange,
   onDateRangeChange,
   onProjectScopeChange,
   onExportReport,
@@ -37,7 +43,6 @@ export function DashboardConfig({
   isRefreshing = false,
 }: Props) {
   const [localOpen, setLocalOpen] = useState(false)
-  const [selectedProjects, setSelectedProjects] = useState<string[]>([])
 
   const isOpen = open !== undefined ? open : localOpen
   const setIsOpen = onClose ? () => onClose() : () => setLocalOpen(false)
@@ -59,13 +64,10 @@ export function DashboardConfig({
   }
 
   const handleToggleProject = (projectId: string) => {
-    setSelectedProjects((prev) => {
-      if (prev.includes(projectId)) {
-        return prev.filter((id) => id !== projectId)
-      } else {
-        return [...prev, projectId]
-      }
-    })
+    const next = selectedProjectIds.includes(projectId)
+      ? selectedProjectIds.filter((id) => id !== projectId)
+      : [...selectedProjectIds, projectId]
+    onSelectedProjectsChange(next)
   }
 
   const handleExport = () => {
@@ -169,7 +171,7 @@ export function DashboardConfig({
                           >
                             <input
                               type="checkbox"
-                              checked={selectedProjects.includes(project.id)}
+                              checked={selectedProjectIds.includes(project.id)}
                               onChange={() => handleToggleProject(project.id)}
                               className="rounded"
                             />
@@ -184,7 +186,7 @@ export function DashboardConfig({
               <p className="text-xs text-muted-foreground">
                 {projectScope === 'all'
                   ? `Showing data from all ${projects.length} project(s)`
-                  : `Showing data from ${selectedProjects.length} selected project(s)`}
+                  : `Showing data from ${selectedProjectIds.length} selected project(s)`}
               </p>
             </div>
           </div>
