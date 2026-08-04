@@ -17,6 +17,7 @@ import type {
   VulnerabilityRef,
   LLMAnalysisResult,
 } from '@@/types/fpf'
+import { sha256Hex } from '@/lib/crypto/sha256'
 
 /**
  * Event input for logging (without generated fields)
@@ -156,21 +157,6 @@ export class FilterAuditLogger {
   }
 
   /**
-   * Compute SHA-256 hash of data
-   */
-  private async sha256(data: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const dataBuffer = encoder.encode(data)
-
-    // Use SubtleCrypto API for hashing
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer)
-
-    // Convert to hex string
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-  }
-
-  /**
    * Get the hash of the last event in the chain
    */
   private async getLastEventHash(): Promise<string> {
@@ -256,7 +242,7 @@ export class FilterAuditLogger {
       event.decision,
       previousHash,
     )
-    const hash = await this.sha256(hashData)
+    const hash = await sha256Hex(hashData)
 
     // Store in hash cache for quick verification
     this.hashCache.set(id, hash)
@@ -416,7 +402,7 @@ export class FilterAuditLogger {
           JSON.parse(event.decision_json) as FilterDecision,
           event.previous_hash,
         )
-        const computedHash = await this.sha256(hashData)
+        const computedHash = await sha256Hex(hashData)
 
         if (computedHash !== event.hash) {
           tamperedEvents.push(event.id)

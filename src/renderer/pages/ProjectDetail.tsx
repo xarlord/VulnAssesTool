@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Shield, ShieldCheck, Search, Loader2, Download, FileText, RefreshCcw } from 'lucide-react'
 import { useStore } from '@/store/useStore'
+import { logSbomRemove } from '@/lib/audit'
 import { toast } from '@/components/Toaster'
 import { PageHeader } from '@/components/PageHeader'
 import { SbomUploadDialog } from '@/components/SbomUploadDialog'
@@ -191,6 +192,9 @@ export function ProjectDetail() {
         vulnerableComponents: vulnerableComponentIds.size,
       },
     })
+
+    // M10: record the SBOM removal in the compliance audit trail.
+    logSbomRemove(currentProjectRef.id, currentProjectRef.name, sbomFile.filename)
 
     toast.success(
       'SBOM Removed',

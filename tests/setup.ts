@@ -157,6 +157,7 @@ vi.mock('lucide-react', async () => {
     'GitCommit',
     'GitPullRequest',
     'Package',
+    'Binary',
     'Inbox',
     'Battery',
     'Sparkles',

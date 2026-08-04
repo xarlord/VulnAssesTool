@@ -81,6 +81,12 @@ export interface CPEMatchResult {
   product: string
   confidence: 'high' | 'medium' | 'low'
   matchScore: number // 0-100 percentage
+  // How the CPE was matched to the component. 'exact' = CPE version equals the
+  // component version; 'token' = vendor/product matched but version is wildcard/
+  // unconfirmed; 'fuzzy' = only an approximate/same-family or guessed match.
+  // Optional so pre-existing result literals stay valid; the estimation service
+  // populates it on every result it produces.
+  matchType?: 'exact' | 'token' | 'fuzzy'
 }
 
 /**

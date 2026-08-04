@@ -5,6 +5,7 @@
 
 import type { SettingsProfile, AppSettings } from '@@/types'
 import { DEFAULT_SEVERITY_THRESHOLDS } from '@/lib/cvss/parser'
+import { logProfileEvent } from '@/lib/audit'
 
 const PROFILES_STORAGE_KEY = 'vuln-assess-settings-profiles'
 const ACTIVE_PROFILE_ID_KEY = 'vuln-assess-active-profile-id'
@@ -100,6 +101,8 @@ export function createProfile(name: string, description: string | undefined, set
     saveActiveProfileId(newProfile.id)
   }
 
+  logProfileEvent('CREATE', newProfile)
+
   return newProfile
 }
 
@@ -126,6 +129,9 @@ export function updateProfile(
     }
   }
 
+  // Capture the pre-edit state for the audit trail before we overwrite the slot.
+  const previousProfile = profiles[profileIndex]
+
   // Update the profile
   profiles[profileIndex] = {
     ...profiles[profileIndex],
@@ -138,6 +144,8 @@ export function updateProfile(
   }
 
   saveProfilesToStorage(profiles)
+
+  logProfileEvent('UPDATE', profiles[profileIndex], previousProfile)
 }
 
 /**
@@ -173,6 +181,9 @@ export function deleteProfile(profileId: string): void {
   }
 
   saveProfilesToStorage(updatedProfiles)
+
+  // Pass the deleted profile as previousState so the audit trail records what was removed.
+  logProfileEvent('DELETE', profile, profile)
 }
 
 /**

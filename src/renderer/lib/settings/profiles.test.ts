@@ -10,6 +10,7 @@ import {
   initializeProfiles,
 } from './profiles'
 import type { AppSettings } from '@@/types'
+import { useAuditStore } from '../audit/auditStore'
 
 const mockSettings: AppSettings = {
   theme: 'dark',
@@ -389,6 +390,44 @@ describe('Settings Profiles', () => {
       const profiles = getProfiles()
       expect(profiles).toHaveLength(1)
       expect(profiles[0].name).toBe('Custom Profile')
+    })
+  })
+
+  // M10: profile create/update/delete were never recorded in the compliance audit
+  // trail even though logProfileEvent existed. Each mutation must emit an event.
+  describe('audit wiring (M10)', () => {
+    beforeEach(() => {
+      useAuditStore.setState({ events: [] })
+    })
+
+    it('records a CREATE audit event when a profile is created', () => {
+      const profile = createProfile('Audited Create', 'desc', mockSettings)
+
+      const event = useAuditStore.getState().events.find((e) => e.entityType === 'profile' && e.entityId === profile.id)
+      expect(event?.actionType).toBe('CREATE')
+    })
+
+    it('records an UPDATE audit event carrying the prior profile state', () => {
+      const profile = createProfile('Before Name', undefined, mockSettings)
+      useAuditStore.setState({ events: [] })
+
+      updateProfile(profile.id, { name: 'After Name' })
+
+      const event = useAuditStore.getState().events.find((e) => e.entityType === 'profile' && e.entityId === profile.id)
+      expect(event?.actionType).toBe('UPDATE')
+      // WHY: the audit trail must capture what the profile looked like before the edit.
+      expect((event?.previousState as { name?: string } | undefined)?.name).toBe('Before Name')
+    })
+
+    it('records a DELETE audit event when a profile is deleted', () => {
+      createProfile('Keeper', undefined, mockSettings)
+      const target = createProfile('Doomed', undefined, mockSettings)
+      useAuditStore.setState({ events: [] })
+
+      deleteProfile(target.id)
+
+      const event = useAuditStore.getState().events.find((e) => e.entityType === 'profile' && e.entityId === target.id)
+      expect(event?.actionType).toBe('DELETE')
     })
   })
 

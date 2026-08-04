@@ -4,6 +4,8 @@ import { useCurrentProject, useStore } from '@/store/useStore'
 import { parseCycloneDX } from '@/lib/parsers/cyclonedx'
 import { parseSpdx } from '@/lib/parsers/spdx'
 import { estimateCpesForComponents, createCpeDatabaseSearchFn } from '@/lib/services/cpeEstimationPipeline'
+import { sha256Hex } from '@/lib/crypto/sha256'
+import { logSbomUpload } from '@/lib/audit'
 import type { SbomFile, Component, Vulnerability } from '@@/types'
 import type { AmbiguousComponent } from '@/lib/generators/excelParser'
 import { CPEMatchDialog } from './CPEMatchDialog'
@@ -68,6 +70,9 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
   // and override ANY of these (not just ambiguous ones) before importing.
   const [reviewableComponents, setReviewableComponents] = useState<AmbiguousComponent[]>([])
   const [showCpeMatchDialog, setShowCpeMatchDialog] = useState(false)
+  // Content-addressable SHA-256 of the uploaded bytes (H5/M2). Computed in the async
+  // file-read step and stashed here because the confirm handler is synchronous.
+  const [fileHash, setFileHash] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const targetProject = projectId ? useStore.getState().projects.find((p) => p.id === projectId) : currentProject
@@ -79,6 +84,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
     setCpeEstimationStats(null)
     setReviewableComponents([])
     setShowCpeMatchDialog(false)
+    setFileHash('')
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -147,6 +153,10 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
 
     try {
       const content = await file.text()
+
+      // Hash the file content now (H5/M2): a real, reproducible SHA-256, so re-uploading
+      // the same bytes yields the same fileHash (the old Date.now()+random did not).
+      setFileHash(await sha256Hex(content))
 
       // Detect format
       const format = detectFormat(content, file.name)
@@ -233,7 +243,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
       format: parsedData.format,
       formatVersion: parsedData.formatVersion,
       uploadedAt: new Date(),
-      fileHash: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      fileHash,
       componentCount: parsedData.components.length,
     }
 
@@ -279,6 +289,15 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
             : targetProject.statistics.vulnerableComponents,
       },
     })
+
+    // M10: record the SBOM upload in the compliance audit trail.
+    logSbomUpload(
+      targetProject.id,
+      targetProject.name,
+      sbomFile.filename,
+      parsedData.format,
+      parsedData.components.length,
+    )
 
     resetState()
     onClose()
@@ -553,9 +572,10 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
             product: cpe.product,
             version: cpe.cpe.split(':')[5] || '',
             confidence: cpe.matchScore,
-            // CPEMatchResult (excelParser.ts) doesn't carry match-method provenance here, so this
-            // is a placeholder, not a real classification — it can't be determined from this data.
-            matchType: 'token' as const,
+            // Real match-method provenance from the estimation service (M4): 'exact'
+            // (version matches), 'token' (product-only) or 'fuzzy' (same-family/guess).
+            // Falls back to 'token' only for a result produced before provenance tracking.
+            matchType: cpe.matchType ?? 'token',
           })),
         }))}
       />

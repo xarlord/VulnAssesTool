@@ -13,6 +13,8 @@ import { getPlatform } from '@/lib/platform'
 import { useCurrentProject, useStore } from '@/store/useStore'
 import { parseCycloneDX } from '@/lib/parsers/cyclonedx'
 import { estimateCpesForComponents, createCpeDatabaseSearchFn } from '@/lib/services/cpeEstimationPipeline'
+import { sha256Hex } from '@/lib/crypto/sha256'
+import { logSbomUpload } from '@/lib/audit'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import type { SbomFile, Component, Vulnerability } from '@@/types'
 
@@ -24,6 +26,8 @@ interface ParsedResult {
   vulnerabilities: Vulnerability[]
   formatVersion: string
   sourceLabel: string
+  // SHA-256 of the generated CycloneDX content (H5/M2) — a real content hash.
+  fileHash: string
 }
 
 interface BinarySbomDialogProps {
@@ -101,12 +105,14 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
       const cpe = await estimateCpesForComponents(parsedResult.components, {
         externalSearchFn: createCpeDatabaseSearchFn(),
       })
+      const fileHash = await sha256Hex(result.cyclonedxJson)
 
       setParsed({
         components: cpe.components,
         vulnerabilities: parsedResult.vulnerabilities || [],
         formatVersion: parsedResult.metadata.formatVersion,
         sourceLabel: mode === 'file' && file ? file.name : mode === 'path' ? localPath.trim() : imageRef.trim(),
+        fileHash,
       })
       setStep('success')
     } catch (err) {
@@ -130,7 +136,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
       format: 'cyclonedx',
       formatVersion: parsed.formatVersion,
       uploadedAt: new Date(),
-      fileHash: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      fileHash: parsed.fileHash,
       componentCount: parsed.components.length,
     }
 
@@ -160,6 +166,9 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
         totalComponents: existingComponents.length + newComponents.length,
       },
     })
+
+    // M10: record the generated-SBOM import in the compliance audit trail.
+    logSbomUpload(targetProject.id, targetProject.name, sbomFile.filename, 'cyclonedx', parsed.components.length)
 
     handleClose()
   }, [parsed, targetProject, updateProject, handleClose])

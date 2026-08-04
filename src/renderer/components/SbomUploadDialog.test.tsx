@@ -6,6 +6,7 @@ import { useStore } from '@/store/useStore'
 import * as cyclonedxParser from '@/lib/parsers/cyclonedx'
 import * as spdxParser from '@/lib/parsers/spdx'
 import * as cpePipeline from '@/lib/services/cpeEstimationPipeline'
+import { sha256Hex } from '@/lib/crypto/sha256'
 
 // Mock parsers
 vi.mock('@/lib/parsers/cyclonedx')
@@ -48,8 +49,14 @@ const createMockFile = (content: string, filename: string, sizeOverride?: number
 }
 
 // Mock the store - use vi.hoisted so the mock fn is available inside vi.mock factory
-const { mockUpdateProject } = vi.hoisted(() => ({
+const { mockUpdateProject, mockLogSbomUpload } = vi.hoisted(() => ({
   mockUpdateProject: vi.fn(),
+  mockLogSbomUpload: vi.fn(),
+}))
+
+// M10: the dialog must record an SBOM-upload audit event on import.
+vi.mock('@/lib/audit', () => ({
+  logSbomUpload: mockLogSbomUpload,
 }))
 
 vi.mock('@/store/useStore', () => {
@@ -704,6 +711,54 @@ describe('SbomUploadDialog', () => {
 
       const sbomFile = await uploadAndConfirm('data.json', '{"spdxVersion": "SPDX-2.2", "SPDXID": "SPDXRef-Document"}')
       expect(sbomFile.formatVersion).toBe('2.2')
+    })
+  })
+
+  describe('SBOM fileHash + audit wiring (H5/M2/M10)', () => {
+    beforeEach(() => {
+      parseCycloneDXMock.mockResolvedValue({
+        components: [{ id: 'c1', name: 'x', version: '1', type: 'library', licenses: [], purl: '', cpe: '' }],
+        vulnerabilities: [],
+        metadata: { format: 'cyclonedx', formatVersion: '1.5' },
+      })
+    })
+
+    async function uploadAndConfirm(content: string, filename = 'bom.json') {
+      const user = userEvent.setup({ delay: null })
+      renderDialog(true, 'test-project-id')
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      await user.upload(fileInput, createMockFile(content, filename))
+      await screen.findByText('Upload Successful', {}, { timeout: 10000 })
+      await user.click(await screen.findByText('Add to Project'))
+      const call = mockUpdateProject.mock.calls[mockUpdateProject.mock.calls.length - 1]
+      const sbomFiles = call[1].sbomFiles
+      return sbomFiles[sbomFiles.length - 1]
+    }
+
+    it('stores the SHA-256 of the file content as fileHash, not a random value', async () => {
+      // WHY: the old code set fileHash to `${Date.now()}-${Math.random()}`, which is
+      // neither a hash nor reproducible — two uploads of the same bytes got different
+      // "hashes". A content hash must be the real SHA-256 hex of the file content.
+      const content = '{"bomFormat": "CycloneDX", "marker": "abc"}'
+      const sbomFile = await uploadAndConfirm(content)
+
+      expect(sbomFile.fileHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(sbomFile.fileHash).toBe(await sha256Hex(content))
+    })
+
+    it('records an SBOM-upload audit event mirroring the stored SBOM file', async () => {
+      // WHY: the audit trail must reflect the actual persisted upload — same filename,
+      // format and component count as the SbomFile written to the project. Previously
+      // logSbomUpload was implemented but never called, so uploads left no audit record.
+      const sbomFile = await uploadAndConfirm('{"bomFormat": "CycloneDX"}', 'my-bom.json')
+
+      expect(mockLogSbomUpload).toHaveBeenCalledWith(
+        'test-project-id',
+        'Test Project',
+        sbomFile.filename,
+        sbomFile.format,
+        sbomFile.componentCount,
+      )
     })
   })
 
