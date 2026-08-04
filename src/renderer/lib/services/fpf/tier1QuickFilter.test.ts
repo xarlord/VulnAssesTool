@@ -374,6 +374,25 @@ describe('Tier1QuickFilter', () => {
       expect(result?.reason).toContain('at or above fixed version')
     })
 
+    it('does not suppress a version on a different release branch than the fix (H11)', () => {
+      const vuln = createMockVulnerability({
+        severity: 'medium',
+        patchInfo: {
+          fixedVersions: ['1.2.5', '2.3.1'],
+          patchLinks: [],
+          remediationAdvice: { priority: 'high', category: 'upgrade', steps: [] },
+          affectedVersionRanges: [],
+          patchAvailability: 'available',
+        },
+      })
+      // 2.0.0 is on the 2.x branch and BELOW its fix (2.3.1). The 1.x fix (1.2.5) is a different
+      // branch, so `2.0.0 >= 1.2.5` must NOT suppress it (the old cross-branch compare did).
+      const component = createMockComponent({ version: '2.0.0' })
+
+      const result = filter.checkVersionMismatch(vuln, component)
+      expect(result).toBeNull()
+    })
+
     it('should filter when component version is outside affected range', () => {
       const vuln = createMockVulnerability({
         severity: 'medium',
@@ -933,7 +952,7 @@ describe('Tier1QuickFilter', () => {
       expect(result.reason).toContain('Requires review')
     })
 
-    it('should filter high severity when confidence is very high (95+)', () => {
+    it('should escalate (not auto-filter) high severity even at 95 confidence (H12)', () => {
       config = createMockConfig({
         filterSettings: {
           ...createMockConfig().filterSettings!,
@@ -956,7 +975,9 @@ describe('Tier1QuickFilter', () => {
 
       const result = filter.filter(vuln, component)
 
-      expect(result.action).toBe('filtered')
+      // WHY (H12): high-severity findings must be reviewed, never auto-filtered — the old `<95`
+      // boundary let a 95-confidence HIGH slip through as 'filtered'. It must now escalate.
+      expect(result.action).toBe('escalated')
     })
 
     it('should auto-filter medium and low severity normally', () => {

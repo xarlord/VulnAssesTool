@@ -82,12 +82,27 @@ interface AuditEventRow {
 export class FilterAuditLogger {
   private db: Database | null
   private hashCache: Map<string, string> = new Map()
+  private noBackendWarned = false
 
   constructor(db?: Database) {
     this.db = db ?? null
     if (this.db) {
       this.initializeSchema()
     }
+  }
+
+  /**
+   * Warn (once) when the logger is used with no persistence backend. Without this the logger
+   * silently no-ops while getAuditLog()/verifyIntegrity() report an empty, "valid" trail — so a
+   * MISSING ISO-21434 audit trail masquerades as a clean, verified one (bug-hunt C2).
+   */
+  private warnNoBackend(operation: string): void {
+    if (this.noBackendWarned) return
+    this.noBackendWarned = true
+    console.warn(
+      `[FilterAuditLogger] No audit database configured — ${operation} is a no-op. FPF filter ` +
+        `decisions are NOT being persisted and the tamper-evident audit trail is unavailable.`,
+    )
   }
 
   /**
@@ -224,7 +239,10 @@ export class FilterAuditLogger {
    * Log a filter audit event with hash chain integrity
    */
   async logEvent(event: AuditEventInput): Promise<void> {
-    if (!this.db) return
+    if (!this.db) {
+      this.warnNoBackend('logEvent')
+      return
+    }
     const id = this.generateEventId()
     const timestamp = new Date().toISOString()
     const previousHash = await this.getLastEventHash()
@@ -357,7 +375,12 @@ export class FilterAuditLogger {
    * Verify the integrity of the audit log hash chain
    */
   async verifyIntegrity(): Promise<IntegrityVerificationResult> {
-    if (!this.db) return { valid: true, tamperedEvents: [] }
+    if (!this.db) {
+      // No backend: there is no trail to verify. Warn rather than silently reporting "valid",
+      // which would falsely imply a checked, intact audit trail exists.
+      this.warnNoBackend('verifyIntegrity')
+      return { valid: true, tamperedEvents: [] }
+    }
     const result = this.db.exec('SELECT * FROM fpf_audit_events ORDER BY timestamp ASC, id ASC')
 
     if (result.length === 0) {

@@ -175,7 +175,9 @@ export function FalsePositiveFilterPage() {
         if (vuln.isKev) reasons.push('Known exploit (CISA KEV)')
 
         return {
-          id: `mf-${idx}`,
+          // Encode the CVE id in the element id so handleMissFlag's `mf-<idx>-` strip yields the
+          // real vulnerabilityId (isFlagged checks that), instead of the synthetic `mf-<idx>`.
+          id: `mf-${idx}-${r.vulnerabilityId}`,
           vulnerabilityId: r.vulnerabilityId,
           cveId: r.vulnerabilityId,
           severity: resolveSeverity(vuln),
@@ -229,6 +231,10 @@ export function FalsePositiveFilterPage() {
       if (result.results.length > 0) {
         setActiveTab('review')
       }
+    } catch (error) {
+      // filterBatch throwing was previously an unhandled rejection: the spinner just stopped
+      // with no feedback. Surface it.
+      toast.error('Filter Failed', error instanceof Error ? error.message : 'Failed to run the false-positive filter.')
     } finally {
       setIsFiltering(false)
     }

@@ -644,7 +644,9 @@ export interface FPFState {
  */
 export const DEFAULT_FILTER_SETTINGS: FilterSettingsConfig = {
   autoFilterConfidenceThreshold: 75,
-  neverAutoFilter: ['critical'],
+  // High-severity findings must be reviewed, never auto-suppressed (matches alwaysEscalateToReview).
+  // Without 'high' here, the orchestrator's auto-filter branch caught HIGH before the escalate branch.
+  neverAutoFilter: ['critical', 'high'],
   alwaysEscalateToReview: ['critical', 'high'],
   missFilterDetection: {
     enabled: true,

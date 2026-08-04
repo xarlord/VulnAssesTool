@@ -60,6 +60,21 @@ vi.stubGlobal('crypto', {
   },
 })
 
+describe('FilterAuditLogger without a backend (C2)', () => {
+  it('warns instead of silently reporting a valid, empty audit trail', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logger = new FilterAuditLogger() // no db configured
+
+    const result = await logger.verifyIntegrity()
+
+    // WHY (C2): a missing ISO-21434 trail must not masquerade as a checked, intact one — the
+    // no-op now warns so the absence is visible instead of silently reporting "valid".
+    expect(warnSpy).toHaveBeenCalled()
+    expect(result.valid).toBe(true) // vacuously valid (there are no events)
+    warnSpy.mockRestore()
+  })
+})
+
 describe('FilterAuditLogger', () => {
   let db: Database
   let logger: FilterAuditLogger

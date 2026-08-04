@@ -148,7 +148,7 @@ export class FalsePositiveFilter {
       if (
         tier1Result.action === 'filtered' &&
         (severity === 'critical' || severity === 'high') &&
-        tier1Result.confidence < 95
+        tier1Result.confidence <= 95
       ) {
         tier1Result.action = 'escalated'
         tier1Result.reason = `${tier1Result.reason} (Escalated: ${severity} severity requires review)`
@@ -175,7 +175,7 @@ export class FalsePositiveFilter {
       if (
         tier2Result.action === 'filtered' &&
         (severity === 'critical' || severity === 'high') &&
-        tier2Result.confidence < 95
+        tier2Result.confidence <= 95
       ) {
         tier2Result.action = 'escalated'
         tier2Result.reason = `${tier2Result.reason} (Escalated: ${severity} severity requires review)`

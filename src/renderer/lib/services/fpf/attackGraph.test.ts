@@ -370,7 +370,9 @@ describe('AttackGraph', () => {
       const graph = new AttackGraph(config)
       const result = graph.isReachableFromExternal('nonexistent')
       expect(result.reachable).toBe(false)
-      expect(result.confidence).toBe(100)
+      // A component absent from the graph is UNKNOWN, not proven-unreachable, so confidence is 0
+      // (H10) — this is what lets Tier 2 escalate rather than auto-suppress unmodeled components.
+      expect(result.confidence).toBe(0)
     })
 
     it('should find component by partial name match', () => {
@@ -431,7 +433,9 @@ describe('Tier2AttackGraphFilter', () => {
       expect(result.action).toBe('filtered')
       expect(result.tier).toBe(2)
       expect(result.filterType).toBe('internal_only')
-      expect(result.confidence).toBeGreaterThan(0)
+      // An unmodeled component yields ZERO confidence now (H10): nominally "filtered" but the
+      // orchestrator escalates it (0 < threshold) rather than auto-suppressing an unknown.
+      expect(result.confidence).toBe(0)
     })
 
     it('should keep reachable vulnerabilities', () => {
