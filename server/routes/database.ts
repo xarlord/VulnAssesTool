@@ -10,10 +10,17 @@ import {
 } from '../database/ipcRequestValidator.js'
 import { sanitizeSqlInput, isValidCveId, escapeLikePattern } from '../database/sqlSanitizer.js'
 import { broadcast } from '../websocket.js'
-import { importNvdData, getAvailableNvdYears } from '../database/nvd/index.js'
+import { importNvdData, getAvailableNvdYears, createBulkDownloadManager } from '../database/nvd/index.js'
 import { downloadAndImportNVDData, getAvailableYears } from '../database/nvdDownloader.js'
 import { searchCVEsFTS, getFTSStats } from '../database/ftsMigration.js'
 import { QueryCache } from '../database/performance/queryCache.js'
+import {
+  getStorageConfig,
+  setStorageConfig,
+  getPerfConfig,
+  setPerfConfig,
+  pruneCvesOlderThan,
+} from '../database/settingsStore.js'
 import { createApiKeyStorage } from '../services/storage/index.js'
 import { syncLimiter, searchLimiter } from '../middleware/rateLimit.js'
 import type {
@@ -86,6 +93,41 @@ const searchResponseCache = new QueryCache<SearchResponsePayload>({
   ttlMs: 60_000,
 })
 
+// Runtime search-performance settings, retuned by PUT /config/perf and rehydrated
+// from the settings table at init. `searchResultLimit === null` means no server-side
+// cap; `searchCacheEnabled === false` bypasses the response cache entirely.
+let searchResultLimit: number | null = null
+let searchCacheEnabled = true
+// Persisted perf config is applied to the runtime once, on the first search after the
+// DB becomes available, so a saved config survives a restart without cross-module wiring.
+let perfConfigHydrated = false
+
+/**
+ * Apply persisted performance config to the live runtime. Called by PUT /config/perf
+ * and at startup so a saved config survives a restart.
+ */
+function applyPerfConfig(cfg: {
+  searchResultLimit?: number
+  enableSearchCache?: boolean
+  cacheSizeMB?: number
+  cacheTTLMinutes?: number
+}): void {
+  if (typeof cfg.searchResultLimit === 'number' && cfg.searchResultLimit > 0) {
+    searchResultLimit = Math.floor(cfg.searchResultLimit)
+  }
+  if (typeof cfg.enableSearchCache === 'boolean') {
+    searchCacheEnabled = cfg.enableSearchCache
+  }
+  searchResponseCache.reconfigure({
+    ...(typeof cfg.cacheTTLMinutes === 'number' && cfg.cacheTTLMinutes > 0
+      ? { ttlMs: cfg.cacheTTLMinutes * 60_000 }
+      : {}),
+    ...(typeof cfg.cacheSizeMB === 'number' && cfg.cacheSizeMB > 0
+      ? { maxMemoryBytes: cfg.cacheSizeMB * 1024 * 1024 }
+      : {}),
+  })
+}
+
 function invalidateSearchResponseCache(): void {
   searchResponseCache.clear()
 }
@@ -98,6 +140,25 @@ router.post('/search', searchLimiter, async (req, res) => {
   const request = req.body as NvdSearchRequest
   try {
     const validatedRequest = validateNvdSearchRequest(request)
+
+    // On the first search after boot, rehydrate persisted perf config into the runtime so
+    // a saved searchResultLimit/cache tuning takes effect without waiting for a re-save.
+    if (!perfConfigHydrated) {
+      const rawDbForConfig = getDb()?.getRawDb()
+      if (rawDbForConfig) {
+        applyPerfConfig(getPerfConfig(rawDbForConfig))
+        perfConfigHydrated = true
+      }
+    }
+
+    // Apply the server-side result cap (PUT /config/perf) uniformly, before any branch
+    // reads validatedRequest.limit — a request over the cap (or with none) is clamped.
+    if (
+      searchResultLimit !== null &&
+      (validatedRequest.limit === undefined || validatedRequest.limit > searchResultLimit)
+    ) {
+      validatedRequest.limit = searchResultLimit
+    }
 
     const database = getDb()
     if (!database || !database.isInitialized()) {
@@ -137,7 +198,7 @@ router.post('/search', searchLimiter, async (req, res) => {
       limit: responseLimit,
       offset: responseOffset,
     })
-    const cachedResponse = searchResponseCache.get(cacheKey)
+    const cachedResponse = searchCacheEnabled ? searchResponseCache.get(cacheKey) : null
     if (cachedResponse) {
       res.json({
         success: true,
@@ -263,7 +324,9 @@ router.post('/search', searchLimiter, async (req, res) => {
       }
     }
 
-    searchResponseCache.set(cacheKey, { results: mappedResults, total })
+    if (searchCacheEnabled) {
+      searchResponseCache.set(cacheKey, { results: mappedResults, total })
+    }
 
     res.json({
       success: true,
@@ -899,9 +962,50 @@ router.put('/config/sync', async (req, res) => {
 
 router.put('/config/storage', async (req, res) => {
   try {
-    const config = req.body as { maxSizeMB?: number; pruneOldCves?: boolean; pruneOlderThanYear?: number }
-    console.log('Update storage config:', config)
-    res.json({ success: true })
+    const body = req.body as { maxSizeMB?: unknown; pruneOldCves?: unknown; pruneOlderThanYear?: unknown }
+
+    // Validate each supplied field before persisting so a malformed body can't corrupt config.
+    const config: { maxSizeMB?: number; pruneOldCves?: boolean; pruneOlderThanYear?: number } = {}
+    if (body.maxSizeMB !== undefined) {
+      if (typeof body.maxSizeMB !== 'number' || body.maxSizeMB <= 0) {
+        res.json({ success: false, error: 'Invalid maxSizeMB' })
+        return
+      }
+      config.maxSizeMB = body.maxSizeMB
+    }
+    if (body.pruneOldCves !== undefined) {
+      if (typeof body.pruneOldCves !== 'boolean') {
+        res.json({ success: false, error: 'Invalid pruneOldCves' })
+        return
+      }
+      config.pruneOldCves = body.pruneOldCves
+    }
+    if (body.pruneOlderThanYear !== undefined) {
+      if (typeof body.pruneOlderThanYear !== 'number' || !Number.isInteger(body.pruneOlderThanYear)) {
+        res.json({ success: false, error: 'Invalid pruneOlderThanYear' })
+        return
+      }
+      config.pruneOlderThanYear = body.pruneOlderThanYear
+    }
+
+    const db = getDb()?.getRawDb()
+    if (!db) {
+      res.json({ success: false, error: 'Database not initialized' })
+      return
+    }
+
+    // Merge over the stored config so a partial update never wipes other fields.
+    setStorageConfig(db, { ...getStorageConfig(db), ...config })
+
+    // Enforce the prune-old-CVEs policy immediately when enabled (H1: persist AND enforce).
+    let pruned = 0
+    const effective = getStorageConfig(db)
+    if (effective.pruneOldCves && typeof effective.pruneOlderThanYear === 'number') {
+      pruned = pruneCvesOlderThan(db, effective.pruneOlderThanYear)
+      if (pruned > 0) invalidateSearchResponseCache()
+    }
+
+    res.json({ success: true, pruned })
   } catch (error) {
     res.json({
       success: false,
@@ -912,13 +1016,59 @@ router.put('/config/storage', async (req, res) => {
 
 router.put('/config/perf', async (req, res) => {
   try {
-    const config = req.body as {
+    const body = req.body as {
+      searchResultLimit?: unknown
+      enableSearchCache?: unknown
+      cacheSizeMB?: unknown
+      cacheTTLMinutes?: unknown
+    }
+
+    const config: {
       searchResultLimit?: number
       enableSearchCache?: boolean
       cacheSizeMB?: number
       cacheTTLMinutes?: number
+    } = {}
+    if (body.searchResultLimit !== undefined) {
+      if (typeof body.searchResultLimit !== 'number' || body.searchResultLimit <= 0) {
+        res.json({ success: false, error: 'Invalid searchResultLimit' })
+        return
+      }
+      config.searchResultLimit = Math.floor(body.searchResultLimit)
     }
-    console.log('Update performance config:', config)
+    if (body.enableSearchCache !== undefined) {
+      if (typeof body.enableSearchCache !== 'boolean') {
+        res.json({ success: false, error: 'Invalid enableSearchCache' })
+        return
+      }
+      config.enableSearchCache = body.enableSearchCache
+    }
+    if (body.cacheSizeMB !== undefined) {
+      if (typeof body.cacheSizeMB !== 'number' || body.cacheSizeMB <= 0) {
+        res.json({ success: false, error: 'Invalid cacheSizeMB' })
+        return
+      }
+      config.cacheSizeMB = body.cacheSizeMB
+    }
+    if (body.cacheTTLMinutes !== undefined) {
+      if (typeof body.cacheTTLMinutes !== 'number' || body.cacheTTLMinutes <= 0) {
+        res.json({ success: false, error: 'Invalid cacheTTLMinutes' })
+        return
+      }
+      config.cacheTTLMinutes = body.cacheTTLMinutes
+    }
+
+    const db = getDb()?.getRawDb()
+    if (!db) {
+      res.json({ success: false, error: 'Database not initialized' })
+      return
+    }
+
+    // Persist merged config, then apply it to the live cache + search runtime (H2).
+    setPerfConfig(db, { ...getPerfConfig(db), ...config })
+    applyPerfConfig(getPerfConfig(db))
+    invalidateSearchResponseCache()
+
     res.json({ success: true })
   } catch (error) {
     res.json({
@@ -1075,11 +1225,30 @@ router.post('/cache/clear', async (_req, res) => {
 })
 
 router.get('/download/queue', async (_req, res) => {
-  res.json({ success: true, queue: [] })
+  try {
+    const db = getDb()?.getRawDb()
+    // No DB yet → the queue is genuinely empty, not an error.
+    if (!db) {
+      res.json({ success: true, queue: [] })
+      return
+    }
+    const queue = createBulkDownloadManager(db).getQueueStatus()
+    res.json({ success: true, queue })
+  } catch (error) {
+    res.json({ success: false, error: error instanceof Error ? error.message : 'Failed to read download queue' })
+  }
 })
 
 router.post('/download/clear', async (_req, res) => {
-  res.json({ success: true })
+  try {
+    const db = getDb()?.getRawDb()
+    if (db) {
+      createBulkDownloadManager(db).clearQueue()
+    }
+    res.json({ success: true })
+  } catch (error) {
+    res.json({ success: false, error: error instanceof Error ? error.message : 'Failed to clear download queue' })
+  }
 })
 
 export { router as databaseRouter }

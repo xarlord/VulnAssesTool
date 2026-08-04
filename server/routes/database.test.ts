@@ -345,18 +345,34 @@ describe('PUT /api/database/config/sync', () => {
 })
 
 describe('PUT /api/database/config/storage', () => {
-  it('accepts a storage config update', async () => {
+  // Validation runs before any DB access — a malformed field is rejected regardless of DB state.
+  it('rejects an invalid maxSizeMB before touching the DB', async () => {
+    const res = await request(app).put('/api/database/config/storage').send({ maxSizeMB: -5 })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Invalid maxSizeMB' })
+  })
+
+  // No longer a no-op: a valid body persists via the settings table, so with no initialized DB it
+  // takes the graceful not-ready fallback instead of a fake success. The real persist+prune
+  // round-trip is covered by server/database/settingsStore.test.ts against a migrated in-memory DB.
+  it('reports not-initialized for a valid update when the DB is not ready', async () => {
     const res = await request(app).put('/api/database/config/storage').send({ maxSizeMB: 100 })
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ success: true })
+    expect(res.body).toEqual({ success: false, error: 'Database not initialized' })
   })
 })
 
 describe('PUT /api/database/config/perf', () => {
-  it('accepts a performance config update', async () => {
+  it('rejects an invalid searchResultLimit before touching the DB', async () => {
+    const res = await request(app).put('/api/database/config/perf').send({ searchResultLimit: 0 })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Invalid searchResultLimit' })
+  })
+
+  it('reports not-initialized for a valid update when the DB is not ready', async () => {
     const res = await request(app).put('/api/database/config/perf').send({ searchResultLimit: 50 })
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ success: true })
+    expect(res.body).toEqual({ success: false, error: 'Database not initialized' })
   })
 })
 

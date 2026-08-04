@@ -1085,6 +1085,28 @@ describe('Settings', () => {
 
       expect(screen.getByText('Prune Old CVEs')).toBeInTheDocument()
     })
+
+    it('reverts the Maximum Database Size change when the server rejects it (H3)', async () => {
+      // WHY: the handler updated local state optimistically and ignored the server's
+      // {success}. A rejected save left the dropdown showing a value that was never
+      // persisted, so the user believed a change took effect when it did not.
+      const { getPlatform } = await import('@/lib/platform')
+      const mockPlatform = vi.mocked(getPlatform)()
+      vi.mocked(mockPlatform.database.updateStorageConfig).mockResolvedValueOnce({ success: false, error: 'nope' })
+
+      renderSettings()
+
+      const select = screen.getByLabelText('Maximum Database Size') as HTMLSelectElement
+      const original = select.value
+      const other = Array.from(select.options).find((option) => option.value !== original)
+      if (!other) throw new Error('expected a second database-size option')
+
+      fireEvent.change(select, { target: { value: other.value } })
+
+      await waitFor(() => {
+        expect((screen.getByLabelText('Maximum Database Size') as HTMLSelectElement).value).toBe(original)
+      })
+    })
   })
 
   describe('Backup & Recovery Section', () => {

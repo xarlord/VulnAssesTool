@@ -55,6 +55,7 @@ export function getMigrations(): Migration[] {
     migration_12_epss_columns(),
     migration_13_cpe_product_index(),
     migration_14_sync_bandwidth_limit(),
+    migration_15_settings(),
   ]
 }
 
@@ -1032,6 +1033,33 @@ function migration_14_sync_bandwidth_limit(): Migration {
       }
     },
     down: (_db: Database) => {},
+  }
+}
+
+/**
+ * Migration 15: settings key-value store
+ *
+ * Persists application/server configuration (storage limits, search-performance
+ * tuning) that the /config/storage and /config/perf endpoints previously accepted
+ * but threw away. Values are JSON-encoded so a single table serves any config shape.
+ */
+function migration_15_settings(): Migration {
+  return {
+    version: 15,
+    name: 'settings',
+    description: 'Add key-value settings table for persisted storage/performance config',
+    up: (db: Database) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `)
+    },
+    down: (db: Database) => {
+      db.exec('DROP TABLE IF EXISTS settings')
+    },
   }
 }
 

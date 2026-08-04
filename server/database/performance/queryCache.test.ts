@@ -303,6 +303,36 @@ describe('CVESearchCache', () => {
   })
 })
 
+// H2: PUT /config/perf retunes the live search-response cache. reconfigure() must
+// apply the new capacity/TTL to an already-constructed cache (the constructor-only
+// options were the reason the endpoint could not honor the setting).
+describe('reconfigure', () => {
+  it('lowers maxSize and evicts LRU entries beyond the new limit', () => {
+    const cache = new QueryCache<number>({ maxSize: 10 })
+    cache.set('a', 1)
+    cache.set('b', 2)
+    cache.set('c', 3)
+
+    cache.reconfigure({ maxSize: 1 })
+
+    expect(cache.size).toBe(1)
+    // 'c' was most-recently inserted, so it survives; 'a' (LRU) is evicted.
+    expect(cache.has('c')).toBe(true)
+    expect(cache.has('a')).toBe(false)
+  })
+
+  it('updates the TTL applied to entries set after the call', () => {
+    const cache = new QueryCache<number>({ ttlMs: 100_000 })
+    cache.reconfigure({ ttlMs: 30_000 })
+
+    cache.set('k', 1)
+
+    const remaining = cache.getRemainingTTL('k')
+    expect(remaining).toBeGreaterThan(0)
+    expect(remaining).toBeLessThanOrEqual(30_000)
+  })
+})
+
 describe('Singleton functions', () => {
   it('should return singleton instance', () => {
     const instance1 = getSearchCache()

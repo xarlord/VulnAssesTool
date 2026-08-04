@@ -81,6 +81,20 @@ export class QueryCache<T> {
   }
 
   /**
+   * Retune the cache at runtime (used by PUT /config/perf). A lowered maxSize
+   * evicts LRU entries immediately so the cache never exceeds the new limit; a new
+   * ttlMs applies to entries set after this call.
+   */
+  reconfigure(options: Partial<Pick<QueryCacheOptions, 'maxSize' | 'ttlMs' | 'maxMemoryBytes'>>): void {
+    if (options.maxSize !== undefined) this.options.maxSize = options.maxSize
+    if (options.ttlMs !== undefined) this.options.ttlMs = options.ttlMs
+    if (options.maxMemoryBytes !== undefined) this.options.maxMemoryBytes = options.maxMemoryBytes
+    while (this.cache.size > this.options.maxSize) {
+      this.evictLRU()
+    }
+  }
+
+  /**
    * Generate a cache key from query parameters
    */
   static generateKey(prefix: string, params: Record<string, unknown>): string {

@@ -528,21 +528,36 @@ export function Settings() {
   }
 
   const handleStorageSettingChange = async (key: keyof DatabaseStorageSettings, value: number | boolean) => {
+    const previous = storageSettings
     const newSettings = { ...storageSettings, [key]: value }
     setStorageSettings(newSettings)
     try {
-      await getPlatform().database.updateStorageConfig(newSettings)
+      // H3: the server persists+enforces this now, so honor its {success}. On a rejection
+      // (or throw) revert the optimistic change instead of leaving the UI showing an
+      // unsaved value the user would believe took effect.
+      const response = await getPlatform().database.updateStorageConfig(newSettings)
+      if (!response?.success) {
+        setStorageSettings(previous)
+        console.error('Failed to update storage settings:', response?.error)
+      }
     } catch (error) {
+      setStorageSettings(previous)
       console.error('Failed to update storage settings:', error)
     }
   }
 
   const handlePerformanceSettingChange = async (key: keyof DatabasePerformanceSettings, value: number | boolean) => {
+    const previous = performanceSettings
     const newSettings = { ...performanceSettings, [key]: value }
     setPerformanceSettings(newSettings)
     try {
-      await getPlatform().database.updatePerformanceConfig(newSettings)
+      const response = await getPlatform().database.updatePerformanceConfig(newSettings)
+      if (!response?.success) {
+        setPerformanceSettings(previous)
+        console.error('Failed to update performance settings:', response?.error)
+      }
     } catch (error) {
+      setPerformanceSettings(previous)
       console.error('Failed to update performance settings:', error)
     }
   }
