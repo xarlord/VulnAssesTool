@@ -206,8 +206,12 @@ describe('FilterAuditLogger', () => {
       const auditLog = await logger.getProjectAuditLog('project-1')
       expect(auditLog).toHaveLength(5)
 
+      // Assert presence of all types, not order: getProjectAuditLog orders by
+      // timestamp, which ties when events are logged within the same millisecond
+      // (fast CI), so insertion order isn't guaranteed here. This test's intent is
+      // "all event types are stored"; ordering is covered by the hash-chain tests.
       const loggedTypes = auditLog.map((e) => e.eventType)
-      expect(loggedTypes).toEqual(eventTypes)
+      expect([...loggedTypes].sort()).toEqual([...eventTypes].sort())
     })
   })
 

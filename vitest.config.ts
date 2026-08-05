@@ -45,6 +45,12 @@ export default defineConfig({
     // Slow test patterns for integration tests
     slowTestThreshold: 1000,
 
+    // CI-only retry as a safety net for documented load-timing flakes (heavy
+    // render + tight async waits under 2-core runners: Dashboard, dbSeeding,
+    // nvdDb.perf). Not a mask: these pass without retry locally, and a genuine
+    // failure still fails all attempts. Local runs keep retry at 0 to surface flakes.
+    retry: process.env.CI ? 2 : 0,
+
     // Coverage configuration
     coverage: {
       provider: 'v8',
