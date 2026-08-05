@@ -32,6 +32,10 @@ function asAccess(instance: NvdDatabase): NvdDatabaseTestAccess {
 /** In-memory DB with the post-migration schema (cpe_matches uses cpe23_uri). */
 function createSchemaDb(): InstanceType<typeof Database> {
   const db = new Database(':memory:')
+  // The versioned CVSS columns are required because the real upsertCVE INSERTs
+  // all of them (nvdDb.ts) — omitting them makes seeding fail with
+  // "table cves has no column named cvss_v31_score". Mirrors the post-migration
+  // schema exercised in nvdDbEnhanced2.test.ts.
   db.exec(`CREATE TABLE IF NOT EXISTS cves (
     id TEXT PRIMARY KEY,
     description TEXT NOT NULL,
@@ -40,7 +44,16 @@ function createSchemaDb(): InstanceType<typeof Database> {
     severity TEXT CHECK(severity IN ('NONE','LOW','MEDIUM','HIGH','CRITICAL')),
     published_at TEXT NOT NULL,
     modified_at TEXT NOT NULL,
-    source TEXT CHECK(source IN ('NVD','OSV')) NOT NULL
+    source TEXT CHECK(source IN ('NVD','OSV')) NOT NULL,
+    cvss_v31_score REAL,
+    cvss_v31_vector TEXT,
+    cvss_v31_severity TEXT,
+    cvss_v30_score REAL,
+    cvss_v30_vector TEXT,
+    cvss_v30_severity TEXT,
+    cvss_v2_score REAL,
+    cvss_v2_vector TEXT,
+    cvss_v2_severity TEXT
   )`)
   db.exec(`CREATE TABLE IF NOT EXISTS cpe_matches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

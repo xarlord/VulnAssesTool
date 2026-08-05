@@ -808,9 +808,19 @@ describe('vulnCache', () => {
     })
 
     it('should handle edge case of exactly interval hours', () => {
-      const lastRefresh = new Date(Date.now() - 24 * 60 * 60 * 1000) // Exactly 24 hours ago
-      // Note: The function uses > not >=, so exactly at interval is not stale
-      expect(shouldRefreshData(lastRefresh, true, 24)).toBe(false)
+      // Freeze time so the test's Date.now() and shouldRefreshData's internal
+      // Date.now() read the SAME instant. Without this the two reads can straddle
+      // a millisecond under load, pushing elapsed strictly past the interval and
+      // flaking the assertion. The function uses > (not >=), so exactly at the
+      // interval is NOT stale — that is the behavior this test pins.
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(new Date('2024-06-01T00:00:00.000Z'))
+        const lastRefresh = new Date(Date.now() - 24 * 60 * 60 * 1000) // Exactly 24 hours ago
+        expect(shouldRefreshData(lastRefresh, true, 24)).toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('should work with Date string', () => {
