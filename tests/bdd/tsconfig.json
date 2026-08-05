@@ -18,7 +18,8 @@
     "emitDecoratorMetadata": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["../../src/*"],
+      "@/*": ["../../src/renderer/*"],
+      "@@/*": ["../../src/shared/*"],
       "@tests/*": ["../../*"],
       "@shared/*": ["../../src/shared/*"]
     }

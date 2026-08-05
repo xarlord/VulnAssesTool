@@ -47,21 +47,25 @@ AfterAll(async () => {
 Before(async function (this: CustomWorld, scenario: any) {
   console.log(`\n--- Starting Scenario: ${scenario.pickle.name} ---`)
 
-  // Initialize browser if needed
-  try {
-    await this.initBrowser()
-  } catch (error) {
-    console.error('Failed to initialize browser:', error)
-    throw error
+  // Store tags first so the browser launch can be conditional on them.
+  const tags = scenario.pickle.tags?.map((tag: any) => tag.name) || []
+  this.setState('tags', tags)
+
+  // Only @ui scenarios drive a real browser; pure-logic scenarios (parsers,
+  // analytics, database, etc.) skip it, so the suite doesn't require Playwright
+  // browsers just to run non-UI features.
+  if (tags.includes('@ui')) {
+    try {
+      await this.initBrowser()
+    } catch (error) {
+      console.error('Failed to initialize browser:', error)
+      throw error
+    }
   }
 
   // Store scenario information
   this.setState('scenarioName', scenario.pickle.name)
   this.setState('featureName', scenario.gherkinDocument.feature?.name || 'Unknown')
-
-  // Store tags
-  const tags = scenario.pickle.tags?.map((tag: any) => tag.name) || []
-  this.setState('tags', tags)
 
   // Check if this is a failing scenario being retried
   if (tags.includes('@retry')) {
