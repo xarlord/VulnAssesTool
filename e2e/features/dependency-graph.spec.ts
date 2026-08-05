@@ -67,7 +67,7 @@ test.describe('Dependency Graph', () => {
     test('should show severity filter dropdown', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await expect(severitySelect).toBeVisible()
     })
 
@@ -76,7 +76,7 @@ test.describe('Dependency Graph', () => {
 
       // Find the severity filter select. PageHeader isn't a <header> element, so
       // scope the same way the sibling "show severity filter dropdown" test does.
-      const severitySelect = page.locator('select').first()
+      const severitySelect = page.locator('select').first().first()
       await expect(severitySelect).toBeVisible()
 
       // <option> elements inside a <select> are not "visible" when dropdown is closed.
@@ -127,8 +127,11 @@ test.describe('Dependency Graph', () => {
       // same three Tailwind classes (flex, items-center, gap-2) alongside extras, and is an
       // ancestor of this row — so a class selector scoped to "div.flex.items-center.gap-2"
       // would strict-mode-match both that wrapper AND this row (both satisfy :has(select)).
-      // There is exactly one <select> on this page, so its direct parent is unambiguous.
-      const filterRow = page.locator('#main-content select').locator('xpath=..')
+      // The page now has three <select>s (severity filter + the two FR-11.2-b path-highlight
+      // pickers), but only the severity filter's row carries the Filter <svg>, so scoping to
+      // the <select> whose parent contains an svg stays unambiguous. .first() is the severity
+      // select (DOM order: it renders before the path pickers).
+      const filterRow = page.locator('#main-content select').first().locator('xpath=..')
       await expect(filterRow.locator('svg')).toBeVisible()
     })
   })
@@ -141,7 +144,7 @@ test.describe('Dependency Graph', () => {
     test('should filter by critical severity', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await severitySelect.selectOption('critical')
       await page.waitForTimeout(E2E_UI_DELAY)
 
@@ -152,7 +155,7 @@ test.describe('Dependency Graph', () => {
     test('should filter by high severity', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await severitySelect.selectOption('high')
       await page.waitForTimeout(E2E_UI_DELAY)
 
@@ -162,7 +165,7 @@ test.describe('Dependency Graph', () => {
     test('should filter by medium severity', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await severitySelect.selectOption('medium')
       await page.waitForTimeout(E2E_UI_DELAY)
 
@@ -172,7 +175,7 @@ test.describe('Dependency Graph', () => {
     test('should filter by low severity', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await severitySelect.selectOption('low')
       await page.waitForTimeout(E2E_UI_DELAY)
 
@@ -182,7 +185,7 @@ test.describe('Dependency Graph', () => {
     test('should reset to all severities', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await severitySelect.selectOption('critical')
       await page.waitForTimeout(E2E_UI_DELAY)
       await severitySelect.selectOption('all')
@@ -223,7 +226,7 @@ test.describe('Dependency Graph', () => {
       await createProjectAndNavigateToGraph(page)
 
       // Apply severity filter
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await severitySelect.selectOption('high')
 
       // Apply vulnerable only
@@ -252,7 +255,7 @@ test.describe('Dependency Graph', () => {
 
       // Selecting a severity that matches zero vulnerabilities filters every component out —
       // proving the footer count is actually driven by the select, not a static snapshot.
-      await page.locator('select').selectOption('critical')
+      await page.locator('select').first().selectOption('critical')
       await page.waitForTimeout(E2E_UI_DELAY)
       await expect(footer.getByText('Showing 0 of 5 components')).toBeVisible()
     })
@@ -396,7 +399,7 @@ test.describe('Dependency Graph', () => {
       await createProjectAndNavigateToGraph(page)
 
       await expect(page.locator('h1:has-text("Dependency Graph")')).toBeVisible()
-      await expect(page.locator('select')).toBeVisible()
+      await expect(page.locator('select').first()).toBeVisible()
       await expect(page.locator('button:has-text("Vulnerable Only")')).toBeVisible()
     })
 
@@ -409,7 +412,7 @@ test.describe('Dependency Graph', () => {
     test('should allow filter interaction on tablet', async ({ page }) => {
       await createProjectAndNavigateToGraph(page)
 
-      const severitySelect = page.locator('select')
+      const severitySelect = page.locator('select').first()
       await severitySelect.selectOption('high')
 
       await expect(severitySelect).toHaveValue('high')
@@ -432,7 +435,7 @@ test.describe('Dependency Graph', () => {
       // unconditionally on every route regardless of this page's own layout. The actual
       // "stacking" concern is PageHeader's flex-wrap row (title + actions) — assert its
       // filter controls are still visible at mobile width rather than an unrelated element.
-      await expect(page.locator('select')).toBeVisible()
+      await expect(page.locator('select').first()).toBeVisible()
       await expect(page.locator('button:has-text("Vulnerable Only")')).toBeVisible()
     })
   })

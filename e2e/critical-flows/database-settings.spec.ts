@@ -264,13 +264,16 @@ test.describe('Database Settings Flow', () => {
       await waitForSettingsLoad(page)
 
       // A full, uninterrupted render produces exactly these section headings, in DOM order
-      // (ProfilesSection, AppearanceSection, then Settings.tsx's api/database/backup/
-      // performance/data-management/threat-intel/danger-zone sections). A missing, reordered,
-      // or renamed entry means a section failed to mount (e.g. a thrown render error).
+      // (ProfilesSection, AppearanceSection, NotificationsSection, CvssSection, then Settings.tsx's
+      // api/database/backup/performance/data-management/threat-intel/danger-zone sections). A
+      // missing, reordered, or renamed entry means a section failed to mount (e.g. a thrown
+      // render error).
       const sectionHeadings = await page.locator('#main-content h2').allTextContents()
       expect(sectionHeadings).toEqual([
         'Settings Profiles',
         'Appearance',
+        'Notifications',
+        'CVSS',
         'API Configuration',
         'Database Management',
         'Backup & Recovery',
