@@ -552,8 +552,10 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
+      // The "Map Columns" heading renders before the mapping selects; wait for the
+      // selects themselves so this doesn't race under CI load.
+      await waitFor(() => expect(document.querySelectorAll('select').length).toBeGreaterThan(0))
       const selects = document.querySelectorAll('select')
-      expect(selects.length).toBeGreaterThan(0)
 
       if (selects.length > 0) {
         fireEvent.change(selects[0], { target: { value: '' } })
