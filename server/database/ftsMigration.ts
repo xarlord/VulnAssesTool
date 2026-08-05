@@ -101,24 +101,14 @@ export async function runFTSMigration(db: BetterDb): Promise<void> {
 }
 
 /**
- * Search CVEs using FTS5
+ * SQL for an FTS5 CVE search, ordered by BM25 relevance.
  *
- * @param db The SQLite database instance
- * @param query The search query
- * @param limit Maximum number of results
- * @param offset Number of results to skip
- * @returns Array of CVE IDs matching the query
+ * The base `cves` table is reached via its `id` PRIMARY KEY (an index SEARCH,
+ * not a full SCAN) so latency stays size-invariant on large databases — the
+ * mechanism NFR-02.5 (10GB+) and NFR-02.3 (1M+ rows) depend on. Exported so the
+ * query plan can be asserted in tests.
  */
-export function searchCVEsFTS(
-  db: BetterDb,
-  query: string,
-  limit = 100,
-  offset = 0,
-): Array<{ id: string; rank: number }> {
-  // Use FTS5 search with BM25 ranking
-  const results = db
-    .prepare(
-      `
+export const FTS_SEARCH_SQL = `
     SELECT
       c.id,
       c.description,
@@ -134,9 +124,45 @@ export function searchCVEsFTS(
     WHERE cves_fts MATCH ?
     ORDER BY search_rank
     LIMIT ? OFFSET ?
-  `,
-    )
-    .all(query, limit, offset) as Array<{ id: string; search_rank: number }>
+  `
+
+/**
+ * Turn arbitrary user text into a safe FTS5 MATCH expression.
+ *
+ * Tokenizes on non-alphanumeric characters (so `buffer-overflow` and `log4j:"()`
+ * become clean tokens), then emits each token double-quoted with a prefix star:
+ * `buffer overflow` -> `"buffer"* "overflow"*`. Quoting neutralizes FTS syntax
+ * characters that would otherwise throw `fts5: syntax error`; the star gives
+ * token-prefix recall; the implicit AND between tokens narrows like the old
+ * LIKE-AND behavior. Returns null when no alphanumeric token survives, signaling
+ * the caller to skip the FTS path.
+ */
+export function buildFtsMatchExpression(query: string): string | null {
+  const tokens = query
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((t) => t.toLowerCase())
+  if (tokens.length === 0) return null
+  return tokens.map((t) => `"${t}"*`).join(' ')
+}
+
+/**
+ * Search CVEs using FTS5
+ *
+ * @param db The SQLite database instance
+ * @param query The search query (already a valid FTS5 MATCH expression)
+ * @param limit Maximum number of results
+ * @param offset Number of results to skip
+ * @returns Array of CVE IDs matching the query
+ */
+export function searchCVEsFTS(
+  db: BetterDb,
+  query: string,
+  limit = 100,
+  offset = 0,
+): Array<{ id: string; rank: number }> {
+  // Use FTS5 search with BM25 ranking
+  const results = db.prepare(FTS_SEARCH_SQL).all(query, limit, offset) as Array<{ id: string; search_rank: number }>
 
   const cves: Array<{ id: string; rank: number }> = []
 

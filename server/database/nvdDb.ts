@@ -13,6 +13,7 @@ import type { CVE, CPEMatch, Reference, CVEWithDetails, DatabaseMetadata } from 
 import type { CveFullDetails, CpeMatchFull, CweReference, ReferenceFull, CvssMetric } from '../types/database.js'
 import { runMigrations as runV2Migrations } from './migrations/v2SchemaMigration.js'
 import { escapeLikePattern } from './sqlSanitizer.js'
+import { isFTSAvailable, searchCVEsFTS, buildFtsMatchExpression } from './ftsMigration.js'
 import { isVersionInRange, type VersionRange } from './versionRange.js'
 
 type BetterDatabase = InstanceType<typeof BetterSqlite3>
@@ -853,11 +854,40 @@ export class NvdDatabase {
   }
 
   /**
-   * Search CVEs by text (description or CVE ID)
+   * Search CVEs by text (description or CVE ID).
+   *
+   * Three tiers: an exact CVE ID resolves via the id primary key; free text goes
+   * through the index-backed FTS5 path (token-prefix matching, size-invariant)
+   * when the cves_fts table is present; otherwise a substring LIKE scan is used
+   * as a fallback (and if the FTS query is ever rejected).
    */
   searchCVEsByText(query: string, limit = 100, offset = 0): CVEWithDetails[] {
     if (!this.db) throw new Error('Database not initialized')
 
+    const hydrate = (ids: string[]): CVEWithDetails[] => {
+      const batchDetails = this.getCVEsByIds(ids)
+      return ids.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+    }
+
+    const trimmed = query.trim()
+
+    // Tier 1: an exact CVE ID resolves directly via the id primary key.
+    if (/^CVE-\d{4}-\d+$/i.test(trimmed)) {
+      return hydrate([trimmed.toUpperCase()])
+    }
+
+    // Tier 2: free text goes through the index-backed FTS5 path when available.
+    const match = buildFtsMatchExpression(trimmed)
+    if (match && isFTSAvailable(this.db)) {
+      try {
+        const ftsHits = searchCVEsFTS(this.db, match, limit, offset)
+        return hydrate(ftsHits.map((r) => r.id))
+      } catch {
+        // FTS rejected the query — fall through to the LIKE scan below.
+      }
+    }
+
+    // Tier 3: substring LIKE fallback (no FTS table, or FTS rejected the query).
     const rows = this.db
       .prepare(
         `
@@ -870,9 +900,7 @@ export class NvdDatabase {
       )
       .all(`%${escapeLikePattern(query)}%`, `%${escapeLikePattern(query)}%`, limit, offset) as CVE[]
 
-    const cveIds = rows.map((cve) => cve.id)
-    const batchDetails = this.getCVEsByIds(cveIds)
-    return cveIds.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+    return hydrate(rows.map((cve) => cve.id))
   }
 
   /**

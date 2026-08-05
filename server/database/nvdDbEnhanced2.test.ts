@@ -1583,3 +1583,75 @@ describe('NvdDatabase bug-hunt fixes (2026-08-02)', () => {
     expect(row.source).toBe('NVD')
   })
 })
+
+// ===========================================================================
+// searchCVEsByText with FTS5 enabled (NFR-02.3 / NFR-02.5)
+//
+// The default test harness omits the cves_fts virtual table, so the existing
+// searchCVEsByText tests above exercise the LIKE fallback tier. These tests run
+// the FTS migration first, proving searchCVEsByText routes free-text through the
+// index-backed FTS path while preserving exact CVE-ID lookup.
+// ===========================================================================
+describe('searchCVEsByText with FTS5', () => {
+  let instance: NvdDatabase
+
+  // Build the FTS index the way production migration_7_fts5_search does (external
+  // content + insert trigger), NOT via the dead/buggy runFTSMigration helper.
+  function enableFts(db: InstanceType<typeof Database>): void {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS cves_fts USING fts5(
+        id, description, content='cves', content_rowid='rowid', tokenize='porter unicode61'
+      )
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS cves_fts_insert AFTER INSERT ON cves BEGIN
+        INSERT INTO cves_fts(rowid, id, description) VALUES (new.rowid, new.id, new.description);
+      END
+    `)
+    db.exec(`INSERT INTO cves_fts(rowid, id, description) SELECT rowid, id, description FROM cves`)
+  }
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    await instance.upsertCVE(
+      makeCVE({ id: 'CVE-2024-0001', description: 'Apache log4j remote code execution', cvss_score: 10.0 }),
+    )
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-0002', description: 'OpenSSL buffer overflow', cvss_score: 7.5 }))
+    await instance.upsertCVE(
+      makeCVE({ id: 'CVE-2024-0003', description: 'nginx buffer information disclosure', cvss_score: 5.0 }),
+    )
+    // Build the FTS index over the seeded rows.
+    enableFts(asAccess(instance).db as InstanceType<typeof Database>)
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('finds CVEs by description token via the FTS path', () => {
+    const results = instance.searchCVEsByText('log4j')
+    expect(results.map((r) => r.id)).toEqual(['CVE-2024-0001'])
+  })
+
+  it('matches multiple CVEs sharing a token', () => {
+    const results = instance.searchCVEsByText('buffer')
+    expect(results.map((r) => r.id).sort()).toEqual(['CVE-2024-0002', 'CVE-2024-0003'])
+  })
+
+  it('preserves exact CVE-ID lookup when FTS is present', () => {
+    const results = instance.searchCVEsByText('CVE-2024-0002')
+    expect(results).toHaveLength(1)
+    expect(results[0]?.id).toBe('CVE-2024-0002')
+  })
+
+  it('does not throw on a query full of FTS syntax characters', () => {
+    // A raw MATCH of this string throws fts5: syntax error; the sanitizer prevents it.
+    expect(() => instance.searchCVEsByText('log4j:"()')).not.toThrow()
+    expect(instance.searchCVEsByText('log4j:"()').map((r) => r.id)).toEqual(['CVE-2024-0001'])
+  })
+
+  it('returns empty for a punctuation-only query rather than erroring', () => {
+    expect(instance.searchCVEsByText('---')).toEqual([])
+  })
+})

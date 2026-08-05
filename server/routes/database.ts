@@ -8,7 +8,7 @@ import {
   validateCpeSearchRequest,
   sanitizeErrorMessage,
 } from '../database/ipcRequestValidator.js'
-import { sanitizeSqlInput, isValidCveId, escapeLikePattern } from '../database/sqlSanitizer.js'
+import { sanitizeSqlInput, isValidCveId } from '../database/sqlSanitizer.js'
 import { broadcast } from '../websocket.js'
 import {
   importNvdData,
@@ -266,27 +266,13 @@ router.post('/search', searchLimiter, async (req, res) => {
           return
         }
 
-        const rawDb = database.getRawDb()
-
-        if (rawDb) {
-          const ftsTable = rawDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cves_fts'").get()
-          if (ftsTable) {
-            // Wrap as an FTS5 phrase so special characters (-, :, *, ") are treated
-            // literally and can't trigger an FTS5 syntax error.
-            const ftsQuery = `"${term.replace(/"/g, '""')}"`
-            const ftsIds = searchCVEsFTS(rawDb, ftsQuery, limit, offset)
-            const batchDetails = database.getCVEsByIds(ftsIds.map((r) => r.id))
-            results = ftsIds
-              .map((f) => batchDetails.get(f.id))
-              .filter((r): r is NonNullable<typeof r> => r !== undefined)
-            total = results.length < limit ? offset + results.length : offset + limit + 1
-            break
-          }
-        }
-
-        results = database.searchCVEsByText(escapeLikePattern(term), limit, offset)
-        // Approximate matching total (same heuristic as the FTS branch), not the whole-DB CVE
-        // count — getTotalCVECount() reported hundreds of thousands for a handful of matches.
+        // searchCVEsByText owns FTS-vs-LIKE routing internally: token-prefix FTS5
+        // when the cves_fts index exists (with MATCH-syntax sanitization), exact
+        // CVE-ID lookup, and a LIKE fallback. Pass the RAW term — it must not be
+        // LIKE-escaped here, since the method handles tokenization and escaping.
+        results = database.searchCVEsByText(term, limit, offset)
+        // Approximate matching total, not the whole-DB CVE count — getTotalCVECount()
+        // reported hundreds of thousands for a handful of matches.
         total = results.length < limit ? offset + results.length : offset + limit + 1
         break
       }
