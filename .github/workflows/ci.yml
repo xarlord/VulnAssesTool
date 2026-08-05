@@ -15,6 +15,10 @@ jobs:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      # Don't cancel the whole matrix when one leg fails — otherwise a single
+      # failure shows up as "operation was canceled" across every other job and
+      # hides the real per-OS/per-node cause.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node-version: [18, 20]
