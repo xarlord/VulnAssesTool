@@ -21,7 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [18, 20]
+        # Node 20 only: vitest 4 needs a Node 20+ built-in (node:inspector/promises),
+        # so the Node 18 legs crashed at startup with ERR_UNKNOWN_BUILTIN_MODULE.
+        # Every other workflow already standardizes on Node 20.
+        node-version: [20]
 
     steps:
       - name: Checkout repository
