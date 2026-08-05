@@ -8,6 +8,8 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    // Generated coverage reports (istanbul HTML/JS) — build artifacts, never linted.
+    'coverage',
     // Claude Code workflow graphs run in the Workflow sandbox (top-level return/await),
     // not as ESM modules — linting them as modules is a parse error. They are tooling,
     // like the config files, so they're exempt from the app lint (see .claude/workflows/).

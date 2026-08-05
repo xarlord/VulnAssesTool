@@ -27,6 +27,8 @@ export function ProfilesSection() {
   // Load profiles on mount
   useEffect(() => {
     loadSettingsProfiles()
+    // Intentional mount-only load; loadSettingsProfiles is a stable store action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleCreateProfile = (name: string, description: string | undefined, profileSettings: AppSettings) => {

@@ -183,6 +183,8 @@ export function Search() {
       cleanupComplete()
       cleanupError()
     }
+    // Intentional mount-only setup; fetchNvdStats is a stable useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Fetch NVD stats

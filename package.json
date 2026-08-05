@@ -22,7 +22,7 @@
     "start": "node dist/server/index.js",
     "cli": "node dist/cli/index.js",
     "cli:dev": "tsx cli/index.ts",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest",
     "test:coverage": "vitest --coverage",

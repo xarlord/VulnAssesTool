@@ -103,6 +103,9 @@ export function ProjectDetail() {
         console.error('[ProjectDetail] Failed to hydrate:', err)
       })
     }
+    // Intentional: hydrate only on projectId change; depending on `project` would
+    // re-trigger the effect on its own update, and hydrateProjectFromServer is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   if (!project) {

@@ -227,6 +227,8 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
     if (open && cveId) {
       fetchCveDetails()
     }
+    // Intentional: re-fetch only when open/cveId change; fetchCveDetails is a stable closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cveId])
 
   const fetchCveDetails = async () => {

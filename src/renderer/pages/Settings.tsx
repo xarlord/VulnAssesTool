@@ -217,6 +217,8 @@ export function Settings() {
     }
 
     loadApiKey()
+    // Intentional mount-only load; secureKeyService is a stable singleton.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Load database settings and size on mount

@@ -18,6 +18,7 @@ interface ToastStore {
   clearToasts: () => void
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- toast store intentionally co-located with the Toaster component (dev-only fast-refresh hint)
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
   addToast: (toast) => {
@@ -51,6 +52,7 @@ export const useToastStore = create<ToastStore>((set) => ({
 }))
 
 // Convenience functions
+// eslint-disable-next-line react-refresh/only-export-components -- toast helpers intentionally co-located with the Toaster component (dev-only fast-refresh hint)
 export const toast = {
   success: (title: string, message?: string) => {
     useToastStore.getState().addToast({ type: 'success', title, message })

@@ -260,6 +260,7 @@ export function OnboardingTour({
 /**
  * Hook to programmatically control tours
  */
+// eslint-disable-next-line react-refresh/only-export-components -- hook intentionally co-located with the tour component (dev-only fast-refresh hint)
 export function useOnboardingTour() {
   const { startTour, skipTour, completeTour, shouldShowTour, getTourStatus, markAsLaunched, hasLaunchedBefore } =
     useTourStore()
