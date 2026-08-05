@@ -50,7 +50,10 @@ function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed
         cn(
           'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
           collapsed && 'justify-center px-2',
-          isActive ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          // Active state keeps the primary tint but uses foreground (not text-primary)
+          // for text: text-primary on bg-primary/15 is only 2.88:1 in dark mode, below
+          // WCAG AA 4.5:1 (NFR-04.5). foreground on this tint is ~14:1.
+          isActive ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )
       }
     >

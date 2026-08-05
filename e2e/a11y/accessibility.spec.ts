@@ -6,10 +6,11 @@ import type { Result } from 'axe-core'
 /**
  * Automated accessibility gate (axe-core, WCAG 2.1 A/AA).
  *
- * Asserts zero *critical*-impact violations on the core pages — the baseline
- * safety net called out in the improvement plan. Serious/moderate violations
- * are attached to the report for triage but do not fail the run yet; tighten
- * this threshold as the Phase-1 chart/graph and modal a11y work lands.
+ * Asserts zero *critical* or *serious* violations on the core pages (NFR-04.5).
+ * The gate was tightened from critical-only to critical+serious once the active
+ * nav-item contrast violation (text-primary on bg-primary/15, 2.88:1) was fixed;
+ * this pins the WCAG AA contrast floor so a regression reddens the gate. Moderate
+ * and minor violations are still attached to the report for triage only.
  */
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 
@@ -26,9 +27,7 @@ async function analyzePage(page: Page): Promise<Result[]> {
 }
 
 function summarize(violations: Result[]): string {
-  return violations
-    .map((v) => `${v.id} (${v.impact}): ${v.help} — ${v.nodes.length} node(s)`)
-    .join('\n')
+  return violations.map((v) => `${v.id} (${v.impact}): ${v.help} — ${v.nodes.length} node(s)`).join('\n')
 }
 
 test.describe('Accessibility — axe-core (WCAG 2.1 AA)', () => {
@@ -37,7 +36,7 @@ test.describe('Accessibility — axe-core (WCAG 2.1 AA)', () => {
   })
 
   for (const target of CORE_PAGES) {
-    test(`${target.name} page has no critical accessibility violations`, async ({ page }, testInfo) => {
+    test(`${target.name} page has no critical or serious accessibility violations`, async ({ page }, testInfo) => {
       await page.goto(target.path, { waitUntil: 'domcontentloaded' })
       await page.waitForSelector('#root:not(:empty)', { timeout: 15000 }).catch(() => {})
       await page.waitForTimeout(500)
@@ -51,8 +50,8 @@ test.describe('Accessibility — axe-core (WCAG 2.1 AA)', () => {
         contentType: 'application/json',
       })
 
-      const critical = violations.filter((v) => v.impact === 'critical')
-      expect(critical, `Critical a11y violations on ${target.path}:\n${summarize(critical)}`).toEqual([])
+      const blocking = violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
+      expect(blocking, `Critical/serious a11y violations on ${target.path}:\n${summarize(blocking)}`).toEqual([])
     })
   }
 })
