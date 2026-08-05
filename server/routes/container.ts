@@ -59,6 +59,11 @@ function parseImageRef(ref: string) {
   }
 }
 
+/**
+ * POST /check-runtime — check whether the requested container runtime (from `req.body.runtime`)
+ * is available on the host, returning its version/availability info. Responds
+ * `{ success: false, error }` if the check itself throws.
+ */
 router.post('/check-runtime', async (req, res) => {
   try {
     const request = req.body as CheckRuntimeRequest
@@ -73,6 +78,11 @@ router.post('/check-runtime', async (req, res) => {
   }
 })
 
+/**
+ * POST /pull — pull `imageRef` using the given `runtime`, broadcasting `scan-progress`
+ * events as the pull proceeds, and return the pulled image's digest. Responds
+ * `{ success: false, error }` if the pull fails.
+ */
 router.post('/pull', async (req, res) => {
   try {
     const request = req.body as PullImageRequest
@@ -89,6 +99,10 @@ router.post('/pull', async (req, res) => {
   }
 })
 
+/**
+ * POST /manifest — fetch the manifest for `imageRef` via the given `runtime`. Responds
+ * `{ success: false, error }` if the manifest lookup fails.
+ */
 router.post('/manifest', async (req, res) => {
   try {
     const request = req.body as GetManifestRequest
@@ -103,6 +117,12 @@ router.post('/manifest', async (req, res) => {
   }
 })
 
+/**
+ * POST /inspect — inspect `imageRef` via the given `runtime` and return its platform
+ * config (os, architecture, variant, created, dockerVersion, labels), defaulting os to
+ * 'linux' and architecture to 'amd64' when unset. Responds `{ success: false, error }`
+ * if the inspection fails.
+ */
 router.post('/inspect', async (req, res) => {
   try {
     const request = req.body as InspectImageRequest
@@ -127,6 +147,13 @@ router.post('/inspect', async (req, res) => {
   }
 })
 
+/**
+ * POST /scan — run a full container image scan for `imageRef`/`runtime`: checks runtime
+ * availability, pulls the image, fetches its manifest, inspects its config, and extracts
+ * packages from its layers, broadcasting `scan-progress` events at each phase. Returns the
+ * consolidated packages, per-layer breakdown, and scan stats/warnings/errors. Responds
+ * `{ success: false, error }` if the runtime is unavailable or any step throws.
+ */
 router.post('/scan', async (req, res) => {
   const startTime = Date.now()
   const warnings: string[] = []
@@ -232,6 +259,11 @@ router.post('/scan', async (req, res) => {
   }
 })
 
+/**
+ * POST /extract — extract packages from the given `imageRef`/`runtime`, optionally scoped
+ * to specific `layerDigests`, broadcasting `scan-progress` events as extraction proceeds.
+ * Responds `{ success: false, error }` if extraction fails.
+ */
 router.post('/extract', async (req, res) => {
   try {
     const request = req.body as ExtractPackagesRequest

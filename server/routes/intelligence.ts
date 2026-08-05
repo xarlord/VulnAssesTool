@@ -29,6 +29,11 @@ function readCveIds(body: unknown): string[] | null {
   return Array.isArray(cveIds) && cveIds.every((id) => typeof id === 'string') ? (cveIds as string[]) : null
 }
 
+/**
+ * POST /kev/check — check whether the `cveId` in the request body is in the CISA KEV
+ * catalog. Responds `{ success: false, isKev: false, error }` if `cveId` is missing/invalid
+ * or the lookup throws.
+ */
 router.post('/kev/check', async (req, res) => {
   try {
     const cveId = readCveId(req.body)
@@ -45,6 +50,11 @@ router.post('/kev/check', async (req, res) => {
   }
 })
 
+/**
+ * POST /kev/details — return the full KEV catalog entry for the `cveId` in the request
+ * body, or `entry: null` if it isn't in the catalog. Responds `{ success: false, entry:
+ * null, error }` if `cveId` is missing/invalid or the lookup throws.
+ */
 router.post('/kev/details', async (req, res) => {
   try {
     const cveId = readCveId(req.body)
@@ -61,6 +71,11 @@ router.post('/kev/details', async (req, res) => {
   }
 })
 
+/**
+ * GET /kev/stats — return aggregate KEV catalog stats (total entries, ransomware-related
+ * count, last-updated timestamp). Responds with all-zero/null stats and an error message
+ * if the lookup throws.
+ */
 router.get('/kev/stats', async (_req, res) => {
   try {
     const kevService = getKevService()
@@ -76,6 +91,11 @@ router.get('/kev/stats', async (_req, res) => {
   }
 })
 
+/**
+ * POST /kev/sync — sync the KEV catalog from CISA's published feed, broadcast a
+ * `kev-synced` event with the result, and return it. Responds `{ success: false, result:
+ * null, error }` if the sync fails.
+ */
 router.post('/kev/sync', async (_req, res) => {
   try {
     const kevService = getKevService()
@@ -88,6 +108,10 @@ router.post('/kev/sync', async (_req, res) => {
   }
 })
 
+/**
+ * POST /epss/score — return the EPSS score for the `cveId` in the request body. Responds
+ * `{ success: false, score: null, error }` if `cveId` is missing/invalid or the lookup throws.
+ */
 router.post('/epss/score', async (req, res) => {
   try {
     const cveId = readCveId(req.body)
@@ -104,6 +128,11 @@ router.post('/epss/score', async (req, res) => {
   }
 })
 
+/**
+ * POST /epss/scores — return a map of CVE ID to EPSS score for the `cveIds` array in the
+ * request body. Responds `{ success: false, scores: {}, error }` if `cveIds` is
+ * missing/invalid (not an array of strings) or the lookup throws.
+ */
 router.post('/epss/scores', async (req, res) => {
   try {
     const cveIds = readCveIds(req.body)
@@ -124,6 +153,11 @@ router.post('/epss/scores', async (req, res) => {
   }
 })
 
+/**
+ * POST /epss/refresh — force a fresh EPSS score lookup (bypassing any cache) for the
+ * `cveId` in the request body. Responds `{ success: false, score: null, error }` if
+ * `cveId` is missing/invalid or the refresh throws.
+ */
 router.post('/epss/refresh', async (req, res) => {
   try {
     const cveId = readCveId(req.body)
@@ -140,6 +174,10 @@ router.post('/epss/refresh', async (req, res) => {
   }
 })
 
+/**
+ * GET /epss/stats — return aggregate EPSS cache stats (cached count, average score,
+ * average percentile). Responds with all-zero stats and an error message if the lookup throws.
+ */
 router.get('/epss/stats', async (_req, res) => {
   try {
     const epssService = getEpssService()
@@ -155,6 +193,10 @@ router.get('/epss/stats', async (_req, res) => {
   }
 })
 
+/**
+ * POST /epss/cleanup — remove stale entries from the EPSS score cache and return how many
+ * were cleaned. Responds `{ success: false, cleanedCount: 0, error }` if cleanup throws.
+ */
 router.post('/epss/cleanup', async (_req, res) => {
   try {
     const epssService = getEpssService()

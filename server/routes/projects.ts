@@ -38,6 +38,12 @@ interface ProjectData {
   allowedLicenses?: string[]
 }
 
+/**
+ * POST / — save a project as `<id>.json` on disk, where `id` comes from the request body.
+ * The id is validated against a safe filename charset (`isSafeId`) rather than sanitized,
+ * since stripping characters is lossy and could let two distinct ids collide on one file.
+ * Responds 400 if `id` is missing or unsafe, 500 if the write fails.
+ */
 projectRouter.post('/', (req: Request, res: Response) => {
   try {
     ensureProjectsDir()
@@ -61,6 +67,11 @@ projectRouter.post('/', (req: Request, res: Response) => {
   }
 })
 
+/**
+ * GET /:projectId — load a project's JSON file from disk. Responds `{ success: true, data:
+ * null }` if the project doesn't exist (not an error), 400 if `projectId` fails the safe-id
+ * check, 500 if reading/parsing the file fails.
+ */
 projectRouter.get('/:projectId', (req: Request, res: Response) => {
   try {
     ensureProjectsDir()
@@ -85,6 +96,11 @@ projectRouter.get('/:projectId', (req: Request, res: Response) => {
   }
 })
 
+/**
+ * DELETE /:projectId — delete a project's JSON file from disk if it exists. Responds 400
+ * if `projectId` fails the safe-id check, 500 if deletion fails; deleting an already-absent
+ * project still succeeds.
+ */
 projectRouter.delete('/:projectId', (req: Request, res: Response) => {
   try {
     ensureProjectsDir()
@@ -106,6 +122,11 @@ projectRouter.delete('/:projectId', (req: Request, res: Response) => {
   }
 })
 
+/**
+ * GET / — list all saved projects by reading every `.json` file in the projects
+ * directory. Files that fail to parse are silently skipped rather than failing the whole
+ * request. Responds 500 if the directory itself can't be read.
+ */
 projectRouter.get('/', (_req: Request, res: Response) => {
   try {
     ensureProjectsDir()

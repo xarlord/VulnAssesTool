@@ -140,6 +140,14 @@ function normalizeDisplaySeverity(severity: string | null | undefined): string {
   return severity === 'NONE' || !severity ? 'LOW' : severity
 }
 
+/**
+ * POST /search — validate the search request (type/query/limit/offset), rehydrate persisted
+ * perf config on first use, clamp `limit` to the server-side cap, and serve from the short-TTL
+ * response cache when possible. Dispatches by `type` to CVE-ID lookup, CPE search, or
+ * text/FTS search, then enriches results with CWE/reference/tag details. Rate-limited by
+ * `searchLimiter`; responds `{ success: false, ... }` (still HTTP 200) for invalid input,
+ * an uninitialized database, or a caught error.
+ */
 router.post('/search', searchLimiter, async (req, res) => {
   const request = req.body as NvdSearchRequest
   try {
@@ -339,6 +347,11 @@ router.post('/search', searchLimiter, async (req, res) => {
   }
 })
 
+/**
+ * POST /cve — validate the request body's `cveId` and return the matching CVE's summary
+ * fields, or `cve: null` if it doesn't exist. Responds `{ success: false, cve: null, error }`
+ * (still HTTP 200) if the database isn't initialized or the lookup throws.
+ */
 router.post('/cve', async (req, res) => {
   try {
     const request = req.body as GetCveRequest
@@ -390,6 +403,12 @@ router.post('/cve', async (req, res) => {
   }
 })
 
+/**
+ * POST /cve/full — validate the request body's `cveId` and return the full CVE record
+ * (all detail fields, not just the summary from POST /cve), or `cve: null` if it doesn't
+ * exist. Responds `{ success: false, cve: null, error }` if the database isn't initialized
+ * or the lookup throws.
+ */
 router.post('/cve/full', async (req, res) => {
   try {
     const request = req.body as GetCveFullRequest
@@ -431,6 +450,12 @@ router.post('/cve/full', async (req, res) => {
   }
 })
 
+/**
+ * GET /stats — return top-level database stats (total CVEs, last sync time, DB file size)
+ * plus the configured DB path. `dbPath` is included even when the database isn't
+ * initialized, since it's a config fact the Settings page shows regardless of DB state.
+ * Responds `{ success: false, stats: null, error }` if reading the stats throws.
+ */
 router.get('/stats', async (_req, res) => {
   try {
     const database = getDb()
@@ -469,6 +494,12 @@ router.get('/stats', async (_req, res) => {
   }
 })
 
+/**
+ * GET /stats/detailed — return extended database stats (CVE/CWE/CPE/reference counts,
+ * oldest/newest CVE, last successful sync, auto-sync config), falling back to metadata
+ * defaults when the delta-sync service has no stats yet. Responds `{ success: false, stats:
+ * null, error }` if the database isn't initialized or the lookup throws.
+ */
 router.get('/stats/detailed', async (_req, res) => {
   try {
     const database = getDb()
@@ -510,6 +541,11 @@ router.get('/stats/detailed', async (_req, res) => {
   }
 })
 
+/**
+ * GET /sync/status — return the current in-memory sync state (isSyncing, progress, total,
+ * currentFile) plus the last successful sync time from metadata. Responds `{ success:
+ * false, status: null, error }` if the database isn't initialized or the lookup throws.
+ */
 router.get('/sync/status', async (_req, res) => {
   try {
     const database = getDb()
@@ -543,6 +579,14 @@ router.get('/sync/status', async (_req, res) => {
   }
 })
 
+/**
+ * POST /sync/start — kick off a full NVD sync for the requested years (or a default
+ * range) as fire-and-forget: marks the sync as in-progress and invalidates the search
+ * cache synchronously, then lets `importNvdData` run in the background, broadcasting
+ * `nvd-sync-progress`/`nvd-sync-complete`/`nvd-sync-error` events as it proceeds. Rate-limited
+ * by `syncLimiter`; responds immediately with `{ success: true, message }` once started, or
+ * `{ success: false, ... }` if one is already running or validation fails.
+ */
 router.post('/sync/start', syncLimiter, async (req, res) => {
   try {
     const validatedRequest = validateStartSyncRequest(req.body)
@@ -631,6 +675,13 @@ router.post('/sync/start', syncLimiter, async (req, res) => {
   }
 })
 
+/**
+ * POST /sync/delta — run a delta (incremental) NVD sync synchronously, optionally forced
+ * to a full resync via `force` in the request body, broadcasting `nvd:sync-progress` /
+ * `nvd:sync-complete` / `nvd:sync-error` events. Rate-limited by `syncLimiter`; responds
+ * with the sync result, or an all-zero result with an error message if a sync is already
+ * running, delta sync isn't initialized, or the sync throws.
+ */
 router.post('/sync/delta', syncLimiter, async (req, res) => {
   const force = (req.body as { force?: boolean }).force ?? false
 
@@ -701,6 +752,11 @@ router.post('/sync/delta', syncLimiter, async (req, res) => {
   }
 })
 
+/**
+ * POST /sync/cancel — cancel an in-progress delta sync. Refuses (`success: false`) when
+ * the running sync is a full or bulk import, since those can't be interrupted safely and
+ * clearing the busy flag would let a second sync start writing concurrently.
+ */
 router.post('/sync/cancel', async (_req, res) => {
   try {
     // Only a delta sync exposes a cancellation token. A full/bulk import can't be interrupted,
@@ -721,6 +777,14 @@ router.post('/sync/cancel', async (_req, res) => {
   }
 })
 
+/**
+ * POST /sync/bulk — run a bulk NVD download/import synchronously for the requested years
+ * (or a default recent range), using a stored or environment-provided NVD API key,
+ * broadcasting `nvd:bulk-download-progress` events. Claims the sync lock synchronously
+ * before any await to prevent two concurrent requests both starting an import against the
+ * same SQLite file. Rate-limited by `syncLimiter`; responds `{ success: false, error }` if
+ * the database isn't initialized, a sync is already running, or no API key is available.
+ */
 router.post('/sync/bulk', syncLimiter, async (req, res) => {
   const database = getDb()
   const rawDb = database?.getRawDb()
@@ -792,6 +856,12 @@ router.post('/sync/bulk', syncLimiter, async (req, res) => {
   }
 })
 
+/**
+ * POST /sync/auto — persist the auto-sync `enabled`/`intervalHours` settings for NVD to
+ * the `sync_status` table. Responds `{ success: false, error }` if the body fails
+ * validation (enabled must be boolean, intervalHours a non-negative finite number) or the
+ * update throws.
+ */
 router.post('/sync/auto', async (req, res) => {
   try {
     const { enabled, intervalHours } = req.body as { enabled?: unknown; intervalHours?: unknown }
@@ -827,6 +897,12 @@ router.post('/sync/auto', async (req, res) => {
   }
 })
 
+/**
+ * POST /cpe/search — search CPEs either by `tokens` or by `productName` from the request
+ * body (tokens take precedence if both are given). Responds `{ success: false, results:
+ * [], error }` if CPE search isn't initialized, validation fails, neither field is
+ * provided, or the search throws.
+ */
 router.post('/cpe/search', async (req, res) => {
   try {
     const request = req.body as CPESearchRequest
@@ -893,6 +969,11 @@ function hoursToSyncInterval(hours: number | undefined): string {
   }
 }
 
+/**
+ * GET /config/sync — return the current NVD sync schedule (mapped from
+ * `autoSyncIntervalHours` via `hoursToSyncInterval`) and bandwidth limit. Responds
+ * `{ success: false, error }` if the lookup throws.
+ */
 router.get('/config/sync', async (_req, res) => {
   try {
     const deltaSync = getDeltaSync()
@@ -912,6 +993,12 @@ router.get('/config/sync', async (_req, res) => {
   }
 })
 
+/**
+ * PUT /config/sync — update the NVD sync schedule (`syncInterval`, mapped to hours via
+ * `SYNC_INTERVAL_HOURS`) and/or `bandwidthLimitKBps` from the request body; both fields are
+ * independently optional. Responds `{ success: false, error }` if either supplied field
+ * fails validation or the delta-sync service isn't initialized.
+ */
 router.put('/config/sync', async (req, res) => {
   try {
     const config = req.body as { syncInterval?: string; bandwidthLimitKBps?: number }
@@ -955,6 +1042,13 @@ router.put('/config/sync', async (req, res) => {
   }
 })
 
+/**
+ * PUT /config/storage — update storage config (`maxSizeMB`, `pruneOldCves`,
+ * `pruneOlderThanYear`) from the request body, merging over the existing stored config so
+ * a partial update doesn't wipe other fields, then immediately enforces the prune-old-CVEs
+ * policy if enabled. Responds `{ success: false, error }` if any supplied field fails
+ * validation or the database isn't initialized.
+ */
 router.put('/config/storage', async (req, res) => {
   try {
     const body = req.body as { maxSizeMB?: unknown; pruneOldCves?: unknown; pruneOlderThanYear?: unknown }
@@ -1009,6 +1103,13 @@ router.put('/config/storage', async (req, res) => {
   }
 })
 
+/**
+ * PUT /config/perf — update search-performance config (`searchResultLimit`,
+ * `enableSearchCache`, `cacheSizeMB`, `cacheTTLMinutes`) from the request body, persist it
+ * merged over the existing stored config, then apply it to the live cache/search runtime
+ * and invalidate the search response cache. Responds `{ success: false, error }` if any
+ * supplied field fails validation or the database isn't initialized.
+ */
 router.put('/config/perf', async (req, res) => {
   try {
     const body = req.body as {
@@ -1073,6 +1174,11 @@ router.put('/config/perf', async (req, res) => {
   }
 })
 
+/**
+ * POST /reset — wipe all CVE data (references, CPE matches, CVEs, CWE references, CVSS
+ * metrics) and invalidate the search response cache. Responds `{ success: false, error }`
+ * if the database isn't initialized or the deletes throw.
+ */
 router.post('/reset', async (_req, res) => {
   try {
     const database = getDb()
@@ -1098,6 +1204,12 @@ router.post('/reset', async (_req, res) => {
   }
 })
 
+/**
+ * POST /rebuild — rebuild the `cves_fts` FTS5 index from the `cves` table, creating the
+ * virtual table first if it doesn't exist, and invalidate the search response cache.
+ * Responds `{ success: false, error }` if the database isn't initialized or the rebuild
+ * throws (the FTS-specific failure is captured and surfaced rather than reporting success).
+ */
 router.post('/rebuild', async (_req, res) => {
   try {
     const database = getDb()
@@ -1151,6 +1263,11 @@ router.post('/rebuild', async (_req, res) => {
   }
 })
 
+/**
+ * POST /fts/search — run a raw FTS5 search for `query` (with optional `limit`, default 50)
+ * against the `cves_fts` table. Responds `{ success: false, error }` if the database/raw
+ * connection isn't available, the FTS index doesn't exist, or the search throws.
+ */
 router.post('/fts/search', async (req, res) => {
   try {
     const database = getDb()
@@ -1178,6 +1295,10 @@ router.post('/fts/search', async (req, res) => {
   }
 })
 
+/**
+ * GET /fts/stats — return FTS5 index stats via `getFTSStats`. Responds `{ success: false,
+ * error }` if the database/raw connection isn't available or the lookup throws.
+ */
 router.get('/fts/stats', async (_req, res) => {
   try {
     const database = getDb()
@@ -1198,6 +1319,11 @@ router.get('/fts/stats', async (_req, res) => {
   }
 })
 
+/**
+ * GET /cache/stats — return stats for the search-response `QueryCache`, not the unused
+ * `CacheManager` singleton (which was never initialized and always reported all-zero
+ * stats). Responds `{ success: false, error }` if reading the stats throws.
+ */
 router.get('/cache/stats', async (_req, res) => {
   try {
     // Report the real search-response cache (QueryCache), not the never-initialized
@@ -1209,6 +1335,11 @@ router.get('/cache/stats', async (_req, res) => {
   }
 })
 
+/**
+ * POST /cache/clear — clear the search-response `QueryCache` (the real cache, not the
+ * unused `CacheManager` singleton, which would be a no-op). Responds `{ success: false,
+ * error }` if clearing throws.
+ */
 router.post('/cache/clear', async (_req, res) => {
   try {
     // Clear the real search-response cache, not the never-initialized CacheManager (no-op).
@@ -1219,6 +1350,11 @@ router.post('/cache/clear', async (_req, res) => {
   }
 })
 
+/**
+ * GET /download/queue — return the current bulk-download queue status. Responds `{
+ * success: true, queue: [] }` (not an error) when there's no database yet, since an empty
+ * queue is a genuine state; responds `{ success: false, error }` if the lookup throws.
+ */
 router.get('/download/queue', async (_req, res) => {
   try {
     const db = getDb()?.getRawDb()
@@ -1234,6 +1370,10 @@ router.get('/download/queue', async (_req, res) => {
   }
 })
 
+/**
+ * POST /download/clear — clear the bulk-download queue if a database is available (a
+ * no-op success if not). Responds `{ success: false, error }` if clearing throws.
+ */
 router.post('/download/clear', async (_req, res) => {
   try {
     const db = getDb()?.getRawDb()
