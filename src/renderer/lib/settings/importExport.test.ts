@@ -17,6 +17,7 @@ const mockSettings: AppSettings = {
   dataRetentionDays: 60,
   autoRefresh: true,
   autoRefreshInterval: 12,
+  pauseOnBattery: true,
   vulnDataCacheTTL: 6,
   vulnProviders: {
     nvd: {

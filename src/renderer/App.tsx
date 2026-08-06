@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { useSettings, useSetSidebarOpen, useSidebarOpen } from './store/useStore'
+import { useStore, useSettings, useSetSidebarOpen, useSidebarOpen } from './store/useStore'
+import { startAutoRefreshScheduler } from './lib/refresh/autoRefreshScheduler'
 import { Toaster } from './components/Toaster'
 import { MenuActionListener } from './components/MenuActionListener'
 // NotificationCenter is used via Toaster notification system
@@ -126,6 +127,17 @@ export function App() {
     const fontSizes = { small: '12px', default: '14px', large: '16px' }
     document.documentElement.style.fontSize = fontSizes[settings.fontSize]
   }, [settings.fontSize])
+
+  // Automatic vulnerability-refresh scheduler (FR-03.6). Started once on mount; it reads live
+  // store state on every tick (via getState) so it reacts to settings/project changes without
+  // re-arming the interval on each render.
+  React.useEffect(() => {
+    return startAutoRefreshScheduler({
+      getProjects: () => useStore.getState().projects,
+      getSettings: () => useStore.getState().settings,
+      updateProject: (id, updates) => useStore.getState().updateProject(id, updates),
+    })
+  }, [])
 
   return (
     <ErrorBoundary>

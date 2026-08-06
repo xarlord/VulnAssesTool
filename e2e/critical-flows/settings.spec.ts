@@ -82,6 +82,30 @@ test.describe('Settings Configuration Flow', () => {
     await expect(html).not.toHaveClass(/dark/)
   })
 
+  test('persists the auto-refresh interval selection across a full page reload (FR-03.6)', async ({ page }) => {
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+    const intervalSelect = main.locator('#auto-refresh-interval')
+
+    // The interval selector is inert until auto-refresh is enabled (so a user can't pick an
+    // interval that would never fire), then becomes selectable.
+    await expect(intervalSelect).toBeDisabled()
+    await main.getByRole('switch', { name: 'Toggle auto-refresh vulnerability data' }).click()
+    await expect(intervalSelect).toBeEnabled()
+
+    // Options come from AUTO_REFRESH_INTERVAL_OPTIONS; pick the non-default Weekly (168h) so the
+    // post-reload assertion proves the *persisted user choice* survived, not the default.
+    await intervalSelect.selectOption('168')
+    await expect(intervalSelect).toHaveValue('168')
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+
+    // The persist middleware rehydrates settings.autoRefresh + autoRefreshInterval, so after
+    // reload the selector is still enabled and still on Weekly.
+    await expect(intervalSelect).toBeEnabled()
+    await expect(intervalSelect).toHaveValue('168')
+  })
+
   test('should navigate back to dashboard from settings', async ({ page }) => {
     await page.getByRole('link', { name: 'Settings' }).click()
     await expect(page).toHaveURL(/\/settings$/)

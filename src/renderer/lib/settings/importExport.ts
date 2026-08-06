@@ -14,6 +14,7 @@ const AppSettingsSchema = z.object({
   dataRetentionDays: z.number(),
   autoRefresh: z.boolean(),
   autoRefreshInterval: z.number(),
+  pauseOnBattery: z.boolean(),
   vulnDataCacheTTL: z.number(),
   vulnProviders: z.object({
     nvd: z.object({

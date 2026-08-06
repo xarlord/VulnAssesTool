@@ -440,6 +440,7 @@ export interface AppSettings {
   dataRetentionDays: number
   autoRefresh: boolean
   autoRefreshInterval: number // hours
+  pauseOnBattery: boolean // skip scheduled auto-refresh while the device runs on battery (FR-03.6)
   vulnDataCacheTTL: number // hours
   // New provider settings
   vulnProviders: ProviderSettings

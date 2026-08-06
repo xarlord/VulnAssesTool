@@ -273,6 +273,7 @@ function getDefaultSettings(): AppSettings {
     dataRetentionDays: 30,
     autoRefresh: false,
     autoRefreshInterval: 24,
+    pauseOnBattery: true,
     vulnDataCacheTTL: 1,
     vulnProviders: {
       nvd: {
