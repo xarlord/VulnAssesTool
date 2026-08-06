@@ -30,7 +30,7 @@ export function sanitizeSqlInput(input: string): string {
     /(;|(\/\*)|(\*\/))/gi, // Multi-line comments and statement separators
     /(\b(ALTER|CREATE|DELETE|DROP|EXEC|EXECUTE|INSERT|INSERT\s+INTO|SELECT|UNION|UPDATE)\b)/gi, // SQL keywords
     /(\b(XP_|SP_)\w+)/gi, // Extended stored procedures
-    /(\b(OR|AND)\s+\s*[\s\d]+=)/gi, // Boolean-based SQL injection
+    /\b(OR|AND)[\s\d]+=/gi, // Boolean-based SQL injection (single class avoids overlapping quantifiers)
   ]
 
   for (const pattern of sqlPatterns) {

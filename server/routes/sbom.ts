@@ -72,7 +72,9 @@ router.post('/generate', uploadArtifact, async (req, res) => {
         return
       }
       const rootResolved = path.resolve(scanRoot)
-      const resolved = path.resolve(localPath)
+      // Resolve the client path anchored to the allow-listed root, then confirm containment.
+      // The resolve-against-base + startsWith(root) pair is the canonical traversal guard.
+      const resolved = path.resolve(rootResolved, localPath)
       if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) {
         res.json({ success: false, error: 'Local path is outside the allowed scan root.' })
         return
@@ -139,7 +141,9 @@ router.post('/generate', uploadArtifact, async (req, res) => {
     })
   } finally {
     if (file) {
-      fs.promises.rm(file.path, { force: true }).catch(() => {
+      // multer writes into uploadDir with a generated name; rebuild the delete target from that
+      // constant base + basename so cleanup is provably confined to the upload dir.
+      fs.promises.rm(path.join(uploadDir, path.basename(file.path)), { force: true }).catch(() => {
         // best-effort temp cleanup
       })
     }

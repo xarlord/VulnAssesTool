@@ -93,7 +93,7 @@ export function createApp(): express.Express {
   // 4. SPA fallback — must be LAST. Serves index.html for all
   //    non-API, non-static GET requests (client-side routing).
   if (!isDev() && existsSync(staticDir)) {
-    app.get('/{*path}', (_req, res) => {
+    app.get('/{*path}', makeDefaultLimiter(), (_req, res) => {
       const indexPath = path.join(staticDir, 'index.html')
       if (existsSync(indexPath)) {
         res.sendFile(indexPath)

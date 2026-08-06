@@ -14,7 +14,10 @@ function ensureProjectsDir(): void {
 }
 
 function projectPath(projectId: string): string {
-  return path.join(PROJECTS_DIR, `${projectId}.json`)
+  // Callers validate with isSafeId first; additionally route the id through path.basename so
+  // the constructed filename is provably free of path-traversal segments (a barrier static
+  // analysis recognizes, not just the charset check it can't trace).
+  return path.join(PROJECTS_DIR, `${path.basename(projectId)}.json`)
 }
 
 // A project id is used verbatim as a filename. The old sanitizeId() STRIPPED disallowed

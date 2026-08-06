@@ -213,7 +213,7 @@ export class NvdImportManager {
           this.progress.years.completed++
           this.progress.years.pending--
         } catch (error) {
-          console.error(`Failed to process year ${year}:`, error)
+          console.error('Failed to process year %s:', year, error)
           yearsFailed.push(year)
           this.progress.years.failed++
           this.progress.years.pending--

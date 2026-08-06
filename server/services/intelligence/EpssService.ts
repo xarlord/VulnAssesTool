@@ -93,7 +93,9 @@ export class EpssService {
       const scores = await this.fetchFromApi([cveId])
       return scores.get(cveId) || null
     } catch (error) {
-      console.error(`[EpssService] Failed to fetch EPSS for ${cveId}:`, error)
+      // cveId is passed as a format argument, not interpolated into the format string, so a
+      // value containing %-specifiers can't be treated as a console format directive.
+      console.error('[EpssService] Failed to fetch EPSS for %s:', cveId, error)
       return null
     }
   }
