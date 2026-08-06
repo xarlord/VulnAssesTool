@@ -72,10 +72,14 @@ router.post('/generate', uploadArtifact, async (req, res) => {
         return
       }
       const rootResolved = path.resolve(scanRoot)
-      // Resolve the client path anchored to the allow-listed root, then confirm containment.
-      // The resolve-against-base + startsWith(root) pair is the canonical traversal guard.
       const resolved = path.resolve(rootResolved, localPath)
-      if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) {
+      // Containment guard. The plain `startsWith(rootResolved)` clause is the form static
+      // analysis recognizes as a path-traversal barrier; the second clause additionally rejects
+      // a sibling that merely shares the root as a string prefix (e.g. /scan vs /scan-evil).
+      if (
+        !resolved.startsWith(rootResolved) ||
+        (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep))
+      ) {
         res.json({ success: false, error: 'Local path is outside the allowed scan root.' })
         return
       }
