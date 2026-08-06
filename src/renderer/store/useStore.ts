@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { AppSettings, Project, SettingsProfile, NotificationPreferences } from '@@/types'
+import type { AppSettings, Project, SettingsProfile, NotificationPreferences, Vulnerability } from '@@/types'
 import { DEFAULT_SETTINGS } from '@@/constants'
 import { refreshVulnerabilityData as refreshData } from '@/lib/refresh'
 import {
@@ -14,7 +14,21 @@ import {
   exportSettingsToFile,
   importSettingsFromFile,
 } from '@/lib/settings'
-import { saveProjectToServer, loadProjectFromServer } from '@/lib/api/projectPersistence'
+import { saveProjectToServer, loadProjectFromServer, deleteProjectFromServer } from '@/lib/api/projectPersistence'
+import {
+  createDefaultDashboardProfile,
+  DEFAULT_DASHBOARD_LAYOUT_PROFILE_ID,
+  type DashboardLayoutProfile,
+  type DashboardWidgetSlot,
+} from '@/lib/dashboard/dashboardLayout'
+import {
+  logProjectCreate,
+  logProjectUpdate,
+  logProjectDelete,
+  logVulnerabilityRefresh,
+  logSettingsChange,
+  logAuditEvent,
+} from '@/lib/audit'
 
 interface AppState {
   // Settings
@@ -53,6 +67,14 @@ interface AppState {
   notificationPreferences: NotificationPreferences
   updateNotificationPreferences: (preferences: Partial<NotificationPreferences>) => void
 
+  // Executive dashboard layout profiles (FR-06.3)
+  dashboardLayoutProfiles: DashboardLayoutProfile[]
+  activeDashboardLayoutProfileId: string
+  addDashboardLayoutProfile: (name: string) => void
+  deleteDashboardLayoutProfile: (id: string) => void
+  setActiveDashboardLayoutProfileId: (id: string) => void
+  updateDashboardLayoutWidgets: (profileId: string, widgets: DashboardWidgetSlot[]) => void
+
   // Test helpers (only exposed in test mode)
   resetStore: () => void
 }
@@ -63,9 +85,11 @@ export const useStore = create<AppState>()(
       // Settings
       settings: DEFAULT_SETTINGS,
       updateSettings: (updates) => {
+        const previousSettings = get().settings
         set((state) => ({
           settings: { ...state.settings, ...updates },
         }))
+        logSettingsChange(previousSettings, updates)
       },
 
       // Settings Profiles
@@ -205,23 +229,33 @@ export const useStore = create<AppState>()(
           throw new Error('No profiles to export')
         }
         exportSettingsToFile(settingsProfiles)
+        logAuditEvent('EXPORT', 'profile', 'bulk', {
+          newState: { count: settingsProfiles.length },
+          metadata: { description: `Exported ${settingsProfiles.length} settings profile(s)` },
+        })
       },
 
       // Projects
       projects: [],
       currentProject: null,
-      addProject: (project) =>
+      addProject: (project) => {
         set((state) => ({
           projects: [...state.projects, project],
-        })),
+        }))
+        logProjectCreate(project)
+      },
       updateProject: (id, updates) => {
+        const previousProject = get().projects.find((p) => p.id === id)
         set((state) => ({
           projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
           currentProject:
             state.currentProject?.id === id ? { ...state.currentProject, ...updates } : state.currentProject,
         }))
         const updated = get().projects.find((p) => p.id === id)
-        if (updated && (updates.vulnerabilities || updates.components)) {
+        if (updated && previousProject) {
+          logProjectUpdate(id, previousProject, updates)
+        }
+        if (updated && (updates.vulnerabilities || updates.components || updates.allowedLicenses)) {
           saveProjectToServer({
             id: updated.id,
             name: updated.name,
@@ -231,17 +265,29 @@ export const useStore = create<AppState>()(
             dependencyGraph: updated.dependencyGraph,
             lastScanAt: updated.lastScanAt?.toString(),
             updatedAt: updated.updatedAt?.toString(),
-            statistics: updated.statistics as Record<string, unknown> | undefined,
+            statistics: updated.statistics,
+            allowedLicenses: updated.allowedLicenses,
           }).catch((err) => {
             console.error('[Store] Failed to persist project to server:', err)
           })
         }
       },
-      deleteProject: (id) =>
+      deleteProject: (id) => {
+        const projectToDelete = get().projects.find((p) => p.id === id)
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           currentProject: state.currentProject?.id === id ? null : state.currentProject,
-        })),
+        }))
+        if (projectToDelete) {
+          logProjectDelete(projectToDelete)
+        }
+        // Cascade the delete to the server-persisted copy (DATA_DIR/projects/<id>.json), else
+        // scan/vulnerability payloads orphan on disk after a UI delete (FR-01.2). Fire-and-forget,
+        // matching updateProject's saveProjectToServer convention; the route is idempotent.
+        deleteProjectFromServer(id).catch((err) => {
+          console.error('[Store] Failed to delete project from server:', err)
+        })
+      },
       setCurrentProject: (project) => set({ currentProject: project }),
       hydrateProjectFromServer: async (projectId: string): Promise<Project | null> => {
         try {
@@ -256,7 +302,8 @@ export const useStore = create<AppState>()(
             dependencyGraph: (data.dependencyGraph as Project['dependencyGraph']) || existing.dependencyGraph,
             lastScanAt: data.lastScanAt ? new Date(data.lastScanAt) : existing.lastScanAt,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : existing.updatedAt,
-            statistics: (data.statistics as Project['statistics']) || existing.statistics,
+            statistics: data.statistics || existing.statistics,
+            allowedLicenses: (data.allowedLicenses as string[]) || existing.allowedLicenses,
           }
           set((state) => ({
             projects: state.projects.map((p) => (p.id === projectId ? merged : p)),
@@ -283,12 +330,17 @@ export const useStore = create<AppState>()(
           })
 
           if (result.success) {
-            // Merge new vulnerabilities with existing ones (deduplicated by ID)
+            // Merge new vulnerabilities with existing ones (deduplicated by ID) — matched existing
+            // entries are replaced by the freshly-fetched version so a refresh reflects changed
+            // fields (e.g. severity/CVSS updates), not just newly-discovered vulns.
             const existingVulnerabilities = project.vulnerabilities || []
+            const mergedExisting: Vulnerability[] = existingVulnerabilities.map(
+              (existingVuln) => result.vulnerabilities.find((v) => v.id === existingVuln.id) || existingVuln,
+            )
             const newVulnerabilities = result.vulnerabilities.filter(
               (newVuln) => !existingVulnerabilities.some((existing) => existing.id === newVuln.id),
             )
-            const allVulnerabilities = [...existingVulnerabilities, ...newVulnerabilities]
+            const allVulnerabilities = [...mergedExisting, ...newVulnerabilities]
 
             // Calculate statistics from all vulnerabilities
             const stats = {
@@ -339,6 +391,7 @@ export const useStore = create<AppState>()(
                   : state.currentProject,
               refreshingProjectIds: new Set([...state.refreshingProjectIds].filter((id) => id !== projectId)),
             }))
+            logVulnerabilityRefresh(projectId, project.name, newVulnerabilities.length)
           }
         } finally {
           // Always clear refreshing state
@@ -379,6 +432,40 @@ export const useStore = create<AppState>()(
           notificationPreferences: { ...state.notificationPreferences, ...preferences },
         })),
 
+      // Executive dashboard layout profiles (FR-06.3)
+      dashboardLayoutProfiles: [createDefaultDashboardProfile()],
+      activeDashboardLayoutProfileId: DEFAULT_DASHBOARD_LAYOUT_PROFILE_ID,
+      addDashboardLayoutProfile: (name) =>
+        set((state) => {
+          // Clone the active profile's slots as the starting point for the new one.
+          const source =
+            state.dashboardLayoutProfiles.find((p) => p.id === state.activeDashboardLayoutProfileId) ??
+            createDefaultDashboardProfile()
+          const newProfile: DashboardLayoutProfile = {
+            id: `dash-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            name,
+            widgets: source.widgets.map((slot) => ({ ...slot })),
+          }
+          // Adding a profile does NOT switch to it (documents intended UX).
+          return { dashboardLayoutProfiles: [...state.dashboardLayoutProfiles, newProfile] }
+        }),
+      deleteDashboardLayoutProfile: (id) =>
+        set((state) => {
+          // Never delete the last profile; the dashboard always needs one.
+          if (state.dashboardLayoutProfiles.length <= 1) return {}
+          const remaining = state.dashboardLayoutProfiles.filter((p) => p.id !== id)
+          const activeDashboardLayoutProfileId =
+            state.activeDashboardLayoutProfileId === id ? remaining[0].id : state.activeDashboardLayoutProfileId
+          return { dashboardLayoutProfiles: remaining, activeDashboardLayoutProfileId }
+        }),
+      setActiveDashboardLayoutProfileId: (id) => set({ activeDashboardLayoutProfileId: id }),
+      updateDashboardLayoutWidgets: (profileId, widgets) =>
+        set((state) => ({
+          dashboardLayoutProfiles: state.dashboardLayoutProfiles.map((profile) =>
+            profile.id === profileId ? { ...profile, widgets } : profile,
+          ),
+        })),
+
       // Test helpers - reset store to initial state
       resetStore: () =>
         set({
@@ -399,6 +486,8 @@ export const useStore = create<AppState>()(
               system: true,
             },
           },
+          dashboardLayoutProfiles: [createDefaultDashboardProfile()],
+          activeDashboardLayoutProfileId: DEFAULT_DASHBOARD_LAYOUT_PROFILE_ID,
         }),
     }),
     {
@@ -412,6 +501,10 @@ export const useStore = create<AppState>()(
           dependencyGraph: undefined,
         })),
         activeProfileId: state.activeProfileId,
+        // FR-06.3: persist saved dashboard layouts so "Save dashboard configurations"
+        // survives reload. Strictly additive to the allowlist.
+        dashboardLayoutProfiles: state.dashboardLayoutProfiles,
+        activeDashboardLayoutProfileId: state.activeDashboardLayoutProfileId,
       }),
       storage: createJSONStorage(() => localStorage),
     },

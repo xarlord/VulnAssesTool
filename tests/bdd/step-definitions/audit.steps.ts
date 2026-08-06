@@ -366,8 +366,9 @@ When('settings are changed to {string}:{string}', function (key: string, value: 
 Then('previous state should indicate {string} changed', function (key: string) {
   const event = getLastAuditEvent()
   expect(event!.previousState).to.be.an('object')
-  expect(event!.previousState).to.have.property('changedFields')
-  expect(event!.previousState!.changedFields).to.include(key)
+  // previousState now records each changed field with its prior value (before/after audit trail),
+  // so the changed field appears as a key rather than inside a `changedFields` name list.
+  expect(event!.previousState).to.have.property(key)
 })
 
 Then('new state should contain new theme value', function () {

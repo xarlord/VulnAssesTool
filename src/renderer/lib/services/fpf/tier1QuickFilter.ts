@@ -84,7 +84,7 @@ export class Tier1QuickFilter {
         if (
           result.action === 'filtered' &&
           this.shouldAlwaysEscalate(vulnerability.severity) &&
-          result.confidence < 95
+          result.confidence <= 95
         ) {
           result.action = 'escalated'
           result.reason = `Requires review (${vulnerability.severity} severity): ${result.reason}`
@@ -219,9 +219,13 @@ export class Tier1QuickFilter {
 
     const { affectedVersionRanges, fixedVersions } = vuln.patchInfo
 
-    // Check if component version is in fixed versions
+    // Check if the component version is at/above a fixed version ON THE SAME RELEASE BRANCH.
+    // Comparing across branches is wrong: 2.0.0 is NOT fixed by a 1.x patch even though 2.0.0 >
+    // 1.2.5, so only a fix sharing the component's major version tells us anything here.
     if (fixedVersions && fixedVersions.length > 0) {
+      const componentMajor = componentVersion.split('.')[0]
       for (const fixedVersion of fixedVersions) {
+        if (fixedVersion.split('.')[0] !== componentMajor) continue
         if (this.compareVersions(componentVersion, fixedVersion) >= 0) {
           return {
             vulnerabilityId: vuln.id,

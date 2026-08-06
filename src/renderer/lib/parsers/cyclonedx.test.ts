@@ -1,130 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { parseCycloneDX, validateCycloneDX, getCycloneDXVersion } from './cyclonedx'
 import type { Component } from '@@/types'
 
-// Helper function to fix component structure for XML parsing
-function fixComponentForXml(comp: any): any {
-  if (!comp) return comp
-
-  const fixed: any = { ...comp }
-
-  // Fix licenses: convert from object to array if needed
-  if (fixed.licenses && !Array.isArray(fixed.licenses)) {
-    if (fixed.licenses.license) {
-      fixed.licenses = [fixed.licenses]
-    } else if (fixed.licenses.expression) {
-      fixed.licenses = [fixed.licenses]
-    } else {
-      fixed.licenses = []
-    }
-  }
-
-  // Fix nested components recursively
-  if (fixed.components && Array.isArray(fixed.components)) {
-    const fixedNested: any[] = []
-    for (const item of fixed.components) {
-      if (item.component && Array.isArray(item.component)) {
-        fixedNested.push(...item.component.map(fixComponentForXml))
-      } else if (item.component) {
-        fixedNested.push(fixComponentForXml(item.component))
-      } else if (item.type && item.name) {
-        fixedNested.push(fixComponentForXml(item))
-      }
-    }
-    fixed.components = fixedNested
-  }
-
-  return fixed
-}
-
-// Helper function to fix vulnerability structure for XML parsing
-function fixVulnerabilityForXml(vuln: any): any {
-  if (!vuln) return vuln
-
-  const fixed: any = { ...vuln }
-
-  // Fix ratings: convert from object to array if needed
-  if (fixed.ratings && !Array.isArray(fixed.ratings)) {
-    if (fixed.ratings.rating) {
-      if (Array.isArray(fixed.ratings.rating)) {
-        fixed.ratings = fixed.ratings.rating
-      } else {
-        fixed.ratings = [fixed.ratings.rating]
-      }
-    } else {
-      fixed.ratings = []
-    }
-  }
-
-  // Fix advisories
-  if (fixed.advisories && !Array.isArray(fixed.advisories)) {
-    if (fixed.advisories.advisory) {
-      if (Array.isArray(fixed.advisories.advisory)) {
-        fixed.advisories = fixed.advisories.advisory
-      } else {
-        fixed.advisories = [fixed.advisories.advisory]
-      }
-    } else {
-      fixed.advisories = []
-    }
-  }
-
-  return fixed
-}
-
-// Mock fast-xml-parser to return the structure expected by the implementation
-vi.mock('fast-xml-parser', () => {
-  return {
-    XMLParser: class MockXMLParser {
-      private realParser: any
-      constructor(options: any) {
-        // Create a real parser with the same options
-
-        const RealParser = require('fast-xml-parser').XMLParser
-        this.realParser = new RealParser(options)
-      }
-      parse(xmlContent: string) {
-        // Use the real parser first
-        const parsed = this.realParser.parse(xmlContent)
-
-        // Fix the components structure to match what the implementation expects
-        // The implementation expects bom.components to be a flat array of components,
-        // but fast-xml-parser creates bom.components = [{ component: [...] }]
-        if (parsed.bom?.components && Array.isArray(parsed.bom.components)) {
-          const fixedComponents: any[] = []
-          for (const item of parsed.bom.components) {
-            if (item.component && Array.isArray(item.component)) {
-              fixedComponents.push(...item.component.map(fixComponentForXml))
-            } else if (item.component) {
-              fixedComponents.push(fixComponentForXml(item.component))
-            } else if (item.type && item.name) {
-              // Already a direct component
-              fixedComponents.push(fixComponentForXml(item))
-            }
-          }
-          parsed.bom.components = fixedComponents
-        }
-
-        // Fix vulnerabilities structure
-        if (parsed.bom?.vulnerabilities && Array.isArray(parsed.bom.vulnerabilities)) {
-          const fixedVulns: any[] = []
-          for (const item of parsed.bom.vulnerabilities) {
-            if (item.vulnerability && Array.isArray(item.vulnerability)) {
-              fixedVulns.push(...item.vulnerability.map(fixVulnerabilityForXml))
-            } else if (item.vulnerability) {
-              fixedVulns.push(fixVulnerabilityForXml(item.vulnerability))
-            } else if (item.id) {
-              fixedVulns.push(fixVulnerabilityForXml(item))
-            }
-          }
-          parsed.bom.vulnerabilities = fixedVulns
-        }
-
-        return parsed
-      }
-    },
-  }
-})
+// fast-xml-parser is intentionally NOT mocked: these tests feed real XML strings through the real
+// parser so the XML path is exercised end-to-end (FR-02.1). The former mock pre-flattened the
+// parser output, which hid the real container-shape bugs — see cyclonedx.xml.test.ts.
 
 describe('parseCycloneDX', () => {
   describe('JSON format', () => {
@@ -572,18 +452,14 @@ describe('parseCycloneDX nested components', () => {
       <name>hashed-lib</name>
       <version>1.0.0</version>
       <hashes>
-        <hash>
-          <alg>SHA-256</alg>
-          <content>abc123def456</content>
-        </hash>
+        <hash alg="SHA-256">abc123def456</hash>
       </hashes>
     </component>
   </components>
 </bom>`
 
     const result = await parseCycloneDX(xmlWithHash, 'bom.xml')
-    // Note: hash extraction from XML requires proper cyclonedx component structure
-    expect(result.components.length).toBeGreaterThanOrEqual(0)
+    expect(result.components[0].hash).toBe('abc123def456')
   })
 
   it('should handle deeply nested component structures (JSON format)', async () => {
@@ -670,7 +546,7 @@ describe('Vulnerability Parsing - Severity Coverage', () => {
     expect(result.vulnerabilities[0].severity).toBe('none')
   })
 
-  it('should default to low severity for unknown severity string', async () => {
+  it('should map an unknown/unrated severity string to none', async () => {
     const bom = {
       bomFormat: 'CycloneDX',
       specVersion: '1.5',
@@ -684,7 +560,7 @@ describe('Vulnerability Parsing - Severity Coverage', () => {
       ],
     }
     const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
-    expect(result.vulnerabilities[0].severity).toBe('low')
+    expect(result.vulnerabilities[0].severity).toBe('none')
   })
 
   it('should parse JSON vulnerability with OSV source', async () => {
@@ -849,5 +725,249 @@ describe('Vulnerability Parsing - Severity Coverage', () => {
     const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
     expect(result.vulnerabilities[0].source).toBe('nvd')
     expect(result.vulnerabilities[0].references[0].source).toBe('NVD')
+  })
+})
+
+describe('parseCycloneDX coverage/provenance', () => {
+  it('reads vat:coverage/source/note properties emitted by the binary catalogers', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'libcrypto',
+          properties: [
+            { name: 'vat:coverage', value: 'gap' },
+            { name: 'vat:source', value: 'elf-inventory,probe' },
+            { name: 'vat:note', value: 'present; version not in binary' },
+          ],
+        },
+      ],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(components[0].coverage).toBe('gap')
+    expect(components[0].provenanceSources).toEqual(['elf-inventory', 'probe'])
+    expect(components[0].coverageNote).toBe('present; version not in binary')
+  })
+
+  it('leaves version empty and derives coverage=gap for a versionless component', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'library', name: 'toybox' }],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    // Not the truthy sentinel 'unknown' — downstream `if (!version)` guards must fire.
+    expect(components[0].version).toBe('')
+    expect(components[0].coverage).toBe('gap')
+  })
+
+  it('derives coverage=identified when a version is present and no property overrides it', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'library', name: 'sqlite', version: '3.44.3' }],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(components[0].coverage).toBe('identified')
+  })
+
+  it('keeps a stable name-unknown id for a purl-less versionless component', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'library', name: 'toybox' }],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    // ID retains the 'unknown' placeholder (VEX affects-refs key off it) even though version is ''.
+    expect(components[0].id).toBe('toybox-unknown')
+  })
+})
+
+describe('component hash extraction (regression: hash must not come from purl)', () => {
+  it('reads hash from the JSON hashes[] array, not the purl version', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'lodash',
+          version: '4.17.21',
+          purl: 'pkg:npm/lodash@4.17.21',
+          hashes: [{ alg: 'SHA-256', content: 'deadbeefcafe' }],
+        },
+      ],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    // Before the fix this evaluated to '4.17.21' (the purl version) instead of a real hash.
+    expect(components[0].hash).toBe('deadbeefcafe')
+    expect(components[0].hash).not.toBe(components[0].version)
+  })
+
+  it('leaves hash undefined when no hashes are present (JSON)', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'lodash',
+          version: '4.17.21',
+          purl: 'pkg:npm/lodash@4.17.21',
+        },
+      ],
+    }
+    const { components } = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(components[0].hash).toBeUndefined()
+  })
+
+  it('reads hash from the XML hashes/hash element, not the purl version', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+      <purl>pkg:npm/lodash@4.17.21</purl>
+      <hashes>
+        <hash alg="SHA-256">deadbeefcafe</hash>
+      </hashes>
+    </component>
+  </components>
+</bom>`
+    const { components } = await parseCycloneDX(xml, 'bom.xml')
+    expect(components[0].hash).toBe('deadbeefcafe')
+    expect(components[0].hash).not.toBe(components[0].version)
+  })
+
+  it('leaves hash undefined when no hashes are present (XML)', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+      <purl>pkg:npm/lodash@4.17.21</purl>
+    </component>
+  </components>
+</bom>`
+    const { components } = await parseCycloneDX(xml, 'bom.xml')
+    expect(components[0].hash).toBeUndefined()
+  })
+})
+
+describe('CycloneDX specVersion support 1.0-1.5 (CR-03.1)', () => {
+  it.each(['1.0', '1.3', '1.5'])('parses JSON components under specVersion %s', async (specVersion) => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion,
+      components: [
+        {
+          type: 'library',
+          name: 'lodash',
+          version: '4.17.21',
+          purl: 'pkg:npm/lodash@4.17.21',
+          licenses: [{ license: { id: 'MIT' } }],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.metadata.formatVersion).toBe(specVersion)
+    expect(result.components[0].name).toBe('lodash')
+    expect(result.components[0].version).toBe('4.17.21')
+    expect(result.components[0].licenses).toContain('MIT')
+  })
+
+  it.each(['1.0', '1.3', '1.5'])('parses XML components under specVersion %s (from xmlns)', async (specVersion) => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/${specVersion}">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+      <purl>pkg:npm/lodash@4.17.21</purl>
+    </component>
+  </components>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    // Regression: formatVersion used to read the `version` attribute on <bom> (the document
+    // revision counter, e.g. "1"), which is a different field from the specVersion namespace.
+    expect(result.metadata.formatVersion).toBe(specVersion)
+    expect(result.components[0].name).toBe('lodash')
+  })
+
+  it('rejects a JSON document declaring an unsupported specVersion', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '99.9',
+      components: [{ type: 'library', name: 'lodash', version: '4.17.21' }],
+    }
+    await expect(parseCycloneDX(JSON.stringify(bom), 'bom.json')).rejects.toThrow(/Unsupported CycloneDX specVersion/)
+  })
+
+  it('rejects an XML document declaring an unsupported specVersion', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/99.9">
+  <components>
+    <component type="library">
+      <name>lodash</name>
+      <version>4.17.21</version>
+    </component>
+  </components>
+</bom>`
+    await expect(parseCycloneDX(xml, 'bom.xml')).rejects.toThrow(/Unsupported CycloneDX specVersion/)
+  })
+})
+
+/**
+ * Build a CycloneDX 1.5 JSON BOM with `count` distinct library components, each carrying the
+ * fields the mapper actually reads (name/version/purl/cpe/licenses/description) so the parse does
+ * representative per-component work, not a trivial pass over near-empty objects.
+ */
+function buildLargeCycloneDXJson(count: number): string {
+  return JSON.stringify({
+    bomFormat: 'CycloneDX',
+    specVersion: '1.5',
+    version: 1,
+    metadata: {
+      timestamp: '2024-01-01T00:00:00Z',
+      component: { type: 'application', name: 'large-app', version: '1.0.0' },
+    },
+    components: Array.from({ length: count }, (_, i) => ({
+      type: 'library',
+      'bom-ref': `pkg:npm/lib-${i}@1.0.0`,
+      name: `lib-${i}`,
+      version: '1.0.0',
+      purl: `pkg:npm/lib-${i}@1.0.0`,
+      cpe: `cpe:2.3:a:vendor:lib-${i}:1.0.0:*:*:*:*:*:*:*`,
+      licenses: [{ license: { id: 'MIT' } }],
+      description: `Component number ${i}`,
+    })),
+  })
+}
+
+/**
+ * NFR-01.2 — SBOM import of 1000 components must complete in under 5 seconds.
+ *
+ * WHY this exists (Rule 9): parseCycloneDX maps every component independently, so a 1000-component
+ * import should be linear and finish in milliseconds. This guard fails if per-component mapping
+ * regresses to O(n^2) (e.g. an accidental nested scan over all components per item) — the 5s ceiling
+ * is the PRD SLA, deliberately generous so normal CI jitter never trips it; only an algorithmic
+ * regression would. The length assertion guarantees the timing reflects real work and not an early
+ * bail-out that returns an empty result quickly.
+ */
+describe('NFR-01.2 performance', () => {
+  it('parses a 1000-component CycloneDX SBOM in under 5 seconds', async () => {
+    const json = buildLargeCycloneDXJson(1000)
+
+    const start = performance.now()
+    const result = await parseCycloneDX(json, 'large-sbom.json')
+    const elapsedMs = performance.now() - start
+
+    // Sanity: all 1000 components were actually produced, so the timing isn't from an early bail-out.
+    expect(result.components).toHaveLength(1000)
+    expect(elapsedMs).toBeLessThan(5000)
   })
 })

@@ -482,14 +482,6 @@ describe('HealthDashboard', () => {
     })
   })
 
-  describe('TC-HD-007: View Health Factors Breakdown', () => {
-    it('should be covered by HealthScoreCard.test.tsx', () => {
-      // This scenario is tested in HealthScoreCard.test.tsx
-      // in the "Rendering - Factor Breakdown" describe block
-      expect(true).toBe(true)
-    })
-  })
-
   describe('TC-HD-008: Navigate from Remediation Queue', () => {
     it('should be covered by RemediationQueue.test.tsx', () => {
       // This scenario is tested in RemediationQueue.test.tsx

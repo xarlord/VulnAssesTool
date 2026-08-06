@@ -1,9 +1,11 @@
 import React from 'react'
-import { X, AlertTriangle, Shield, ExternalLink, Copy, Check } from 'lucide-react'
+import { AlertTriangle, Shield, ExternalLink, Copy, Check } from 'lucide-react'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import type { Component, Vulnerability } from '@@/types'
 import { VirtualList } from './VirtualList'
 import { toast } from './Toaster'
 import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
+import { getSeverityClass } from '@/lib/severity'
 
 interface ComponentVulnerabilitiesPopupProps {
   component: Component
@@ -19,35 +21,30 @@ const severityConfig = {
     color: 'text-red-600',
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
-    badgeColor: 'bg-red-100 text-red-700',
   },
   high: {
     label: 'High',
     color: 'text-orange-700 dark:text-orange-400',
     bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
-    badgeColor: 'bg-orange-100 text-orange-700',
   },
   medium: {
     label: 'Medium',
     color: 'text-amber-700 dark:text-amber-400',
     bgColor: 'bg-yellow-50',
     borderColor: 'border-yellow-200',
-    badgeColor: 'bg-yellow-100 text-amber-700',
   },
   low: {
     label: 'Low',
     color: 'text-blue-700 dark:text-blue-400',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
-    badgeColor: 'bg-blue-100 text-blue-700',
   },
   none: {
     label: 'None',
     color: 'text-gray-600',
     bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
-    badgeColor: 'bg-gray-100 text-gray-700',
   },
 }
 
@@ -59,6 +56,7 @@ export function ComponentVulnerabilitiesPopup({
   onViewVulnerability,
 }: ComponentVulnerabilitiesPopupProps) {
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
+  const copiedIdTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Sort vulnerabilities by severity
   const sortedVulnerabilities = React.useMemo(() => {
@@ -83,37 +81,25 @@ export function ComponentVulnerabilitiesPopup({
       await navigator.clipboard.writeText(vulnId)
       setCopiedId(vulnId)
       toast.success(`Copied ${vulnId} to clipboard`)
-      setTimeout(() => setCopiedId(null), 2000)
+      if (copiedIdTimerRef.current) clearTimeout(copiedIdTimerRef.current)
+      copiedIdTimerRef.current = setTimeout(() => setCopiedId(null), 2000)
     } catch (error) {
       console.error('Failed to copy:', error)
       toast.error('Failed to copy to clipboard')
     }
   }
 
-  // Handle escape key
+  // Clear any pending "Copied" reset on unmount so it never fires setState after unmount.
   React.useEffect(() => {
-    if (!open) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
+    return () => {
+      if (copiedIdTimerRef.current) clearTimeout(copiedIdTimerRef.current)
     }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, onClose])
-
-  if (!open) return null
+  }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-
-      {/* Popup */}
-      <div
-        className="relative z-50 w-full max-w-2xl rounded-lg border border-border bg-card shadow-lg max-h-[85vh] overflow-hidden flex flex-col"
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-0 overflow-hidden bg-card p-0"
         data-testid="vulnerabilities-popup"
       >
         {/* Header */}
@@ -124,8 +110,8 @@ export function ComponentVulnerabilitiesPopup({
                 <Shield className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-foreground truncate">{component.name}</h2>
-                <p className="text-sm text-muted-foreground">
+                <DialogTitle className="truncate">{component.name}</DialogTitle>
+                <DialogDescription>
                   {component.version}
                   <span className="mx-2">-</span>
                   <span className="capitalize">{component.type}</span>
@@ -135,17 +121,10 @@ export function ComponentVulnerabilitiesPopup({
                       <span className="font-mono text-xs">{component.purl}</span>
                     </>
                   )}
-                </p>
+                </DialogDescription>
               </div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-sm p-1 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
-            aria-label="Close popup"
-          >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </button>
         </div>
 
         {/* Severity Summary */}
@@ -156,23 +135,31 @@ export function ComponentVulnerabilitiesPopup({
             </span>
             <div className="flex items-center gap-2">
               {severityCounts.critical > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('critical')}`}
+                >
                   <AlertTriangle className="h-3 w-3" />
                   {severityCounts.critical} Critical
                 </span>
               )}
               {severityCounts.high > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('high')}`}
+                >
                   {severityCounts.high} High
                 </span>
               )}
               {severityCounts.medium > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('medium')}`}
+                >
                   {severityCounts.medium} Medium
                 </span>
               )}
               {severityCounts.low > 0 && (
-                <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                <span
+                  className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('low')}`}
+                >
                   {severityCounts.low} Low
                 </span>
               )}
@@ -207,7 +194,9 @@ export function ComponentVulnerabilitiesPopup({
                               {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
                             </span>
                           )}
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${config.badgeColor}`}>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass(vuln.severity)}`}
+                          >
                             {config.label}
                           </span>
                           {vuln.cvssScore !== undefined && (
@@ -296,7 +285,7 @@ export function ComponentVulnerabilitiesPopup({
             Close
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

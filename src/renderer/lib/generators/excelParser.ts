@@ -11,7 +11,6 @@
  * - Support for multiple sheets
  */
 
-import * as XLSX from 'xlsx'
 import type { Component } from '@@/types'
 
 /**
@@ -82,6 +81,12 @@ export interface CPEMatchResult {
   product: string
   confidence: 'high' | 'medium' | 'low'
   matchScore: number // 0-100 percentage
+  // How the CPE was matched to the component. 'exact' = CPE version equals the
+  // component version; 'token' = vendor/product matched but version is wildcard/
+  // unconfirmed; 'fuzzy' = only an approximate/same-family or guessed match.
+  // Optional so pre-existing result literals stay valid; the estimation service
+  // populates it on every result it produces.
+  matchType?: 'exact' | 'token' | 'fuzzy'
 }
 
 /**
@@ -113,6 +118,10 @@ export interface ComponentWithCPEEstimation extends Component {
  */
 export async function parseExcel(buffer: ArrayBuffer, sheetName?: string): Promise<ExcelRow[]> {
   try {
+    // Loaded on demand: xlsx (~330 kB) is only needed when a user generates an
+    // SBOM from an Excel file, so keep it out of the Dashboard page bundle.
+    const XLSX = await import('xlsx')
+
     // Read the workbook
     const workbook = XLSX.read(buffer, { type: 'array' })
 

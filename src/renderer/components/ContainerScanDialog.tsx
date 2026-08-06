@@ -7,17 +7,8 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { getPlatform } from '@/lib/platform'
-import {
-  X,
-  Container,
-  Loader2,
-  AlertCircle,
-  CheckCircle,
-  ChevronDown,
-  ChevronRight,
-  Package,
-  Layers,
-} from 'lucide-react'
+import { Container, Loader2, AlertCircle, CheckCircle, ChevronDown, ChevronRight, Package, Layers } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useCurrentProject, useStore } from '@/store/useStore'
 import type { Component } from '@@/types'
 
@@ -181,20 +172,28 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
   const handleImport = useCallback(() => {
     if (!scanResult || !targetProject) return
 
-    // Convert scanned packages to project components
-    const newComponents: Component[] = scanResult.packages.map((pkg, index) => ({
-      id: `container-${Date.now()}-${index}`,
-      name: pkg.name,
-      version: pkg.version,
-      type: 'container' as const,
-      purl: pkg.purl,
-      cpe: pkg.cpe,
-      description: `${pkg.manager} package: ${pkg.name}`,
-      licenses: [],
-      vulnerabilities: [],
-      dependencies: [],
-      sbomFileId: undefined,
-    }))
+    // Convert scanned packages to project components. Container scanning builds Component objects
+    // directly (it does not go through parseCycloneDX), so coverage/provenance must be set here too:
+    // a package-manager package with a real version is 'identified', otherwise a 'gap'.
+    const newComponents: Component[] = scanResult.packages.map((pkg, index) => {
+      const hasVersion = !!pkg.version && pkg.version !== 'unknown'
+      return {
+        id: `container-${Date.now()}-${index}`,
+        name: pkg.name,
+        version: hasVersion ? pkg.version : '',
+        type: 'container' as const,
+        purl: pkg.purl,
+        cpe: pkg.cpe,
+        hasMissingCpe: !pkg.cpe,
+        description: `${pkg.manager} package: ${pkg.name}`,
+        licenses: [],
+        coverage: hasVersion ? ('identified' as const) : ('gap' as const),
+        provenanceSources: [pkg.manager],
+        vulnerabilities: [],
+        dependencies: [],
+        sbomFileId: undefined,
+      }
+    })
 
     // Filter out duplicates
     const existingComponents = targetProject.components
@@ -206,6 +205,13 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
     updateProject(targetProject.id, {
       components: [...existingComponents, ...uniqueComponents],
       updatedAt: new Date(),
+      statistics: {
+        ...targetProject.statistics,
+        // Reflect the imported packages in the project totals so the Overview
+        // count updates (otherwise the import looks like a no-op even though
+        // the components appear in the Components tab).
+        totalComponents: existingComponents.length + uniqueComponents.length,
+      },
     })
 
     handleClose()
@@ -236,36 +242,21 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
     return `${Math.round((bytes / Math.pow(k, i)) * 10) / 10} ${sizes[i]}`
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={handleClose} aria-hidden="true" />
-
-      {/* Dialog */}
-      <div className="relative z-50 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-lg">
-        {/* Close Button */}
-        <button
-          onClick={handleClose}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Close dialog"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
+    <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Container className="h-5 w-5" />
             Container Image Scan
-          </h2>
-          <p className="text-sm text-muted-foreground">
+          </DialogTitle>
+          <DialogDescription>
             {targetProject
               ? `Scan and import packages to: ${targetProject.name}`
               : 'Scan container images for packages and vulnerabilities'}
-          </p>
-        </div>
+          </DialogDescription>
+        </DialogHeader>
 
         {/* Input Form */}
         {(step === 'idle' || step === 'error') && (
@@ -488,7 +479,7 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

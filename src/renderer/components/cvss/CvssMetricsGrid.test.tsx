@@ -169,4 +169,18 @@ describe('CvssMetricsGrid', () => {
     const greenElements = container.querySelectorAll('.text-green-600')
     expect(greenElements.length).toBeGreaterThan(0)
   })
+
+  it('colors by metric-relative risk, not the raw value string (H15)', () => {
+    // WHY: the old blanket list painted any 'High'/'None' red, so Privileges Required: High and
+    // C/I/A Impact: None (both LOW risk) rendered as "high risk", contradicting the implications.
+    const breakdown = createMockBreakdown({
+      explanations: [
+        { metric: 'Privileges Required (PR)', value: 'High', description: 'd', implications: 'i', example: 'e' },
+        { metric: 'Confidentiality (C)', value: 'None', description: 'd', implications: 'i', example: 'e' },
+      ],
+    })
+    const { container } = render(<CvssMetricsGrid breakdown={breakdown} expanded={true} />)
+    expect(container.querySelectorAll('.text-red-600').length).toBe(0)
+    expect(container.querySelectorAll('.text-green-600').length).toBeGreaterThan(0)
+  })
 })

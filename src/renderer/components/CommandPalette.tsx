@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -50,10 +50,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Search results
-  const results = useMemo(() => {
-    return searchCommands(query, { enabledOnly: true })
-  }, [query])
+  // Search results. The command registry is a mutable singleton populated by
+  // registerAppCommands() in App's mount effect — which runs AFTER this always-mounted
+  // component first renders. Memoizing on [query] alone therefore captured an empty
+  // registry and never refreshed on open (query stays ''), so the first open, before any
+  // keystroke, showed a stale "No commands found" state. Recompute every render instead;
+  // it is trivially cheap for the ~15 registered commands and always reflects the registry.
+  const results = searchCommands(query, { enabledOnly: true })
 
   // Group results by category
   const groupedResults = useMemo(() => {
@@ -136,6 +139,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 shadow-lg max-w-xl">
+        <DialogTitle className="sr-only">Command palette</DialogTitle>
+        <DialogDescription className="sr-only">Search and run application commands</DialogDescription>
         <div className="flex items-center border-b px-3">
           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
           <Input
@@ -260,7 +265,13 @@ export function useCommandPalette() {
 export function CommandPaletteTrigger({ onTrigger }: { onTrigger: () => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl+Shift+P (Windows/Linux) or Cmd+Shift+P (Mac)
+      // Ctrl/Cmd+K — the primary, advertised shortcut
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        onTrigger()
+        return
+      }
+      // Ctrl+Shift+P (Windows/Linux) or Cmd+Shift+P (Mac) — legacy alias
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
         e.preventDefault()
         onTrigger()

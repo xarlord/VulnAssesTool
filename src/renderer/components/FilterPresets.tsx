@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Save, FolderOpen, Trash2, ChevronDown, Check } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { FilterPreset } from '@@/types'
 
 interface FilterPresetsProps {
@@ -22,6 +23,7 @@ export function FilterPresets({
   const [isOpen, setIsOpen] = useState(false)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [presetName, setPresetName] = useState('')
+  const [presetToDelete, setPresetToDelete] = useState<FilterPreset | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown when clicking outside
@@ -146,9 +148,7 @@ export function FilterPresets({
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm(`Delete preset "${preset.name}"?`)) {
-                            onDeletePreset(preset.id)
-                          }
+                          setPresetToDelete(preset)
                         }}
                         className="opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
                         aria-label={`Delete preset ${preset.name}`}
@@ -163,6 +163,20 @@ export function FilterPresets({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={presetToDelete !== null}
+        title="Delete preset"
+        message={`Delete preset "${presetToDelete?.name ?? ''}"?`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          if (presetToDelete) onDeletePreset(presetToDelete.id)
+          setPresetToDelete(null)
+        }}
+        onCancel={() => setPresetToDelete(null)}
+      />
     </div>
   )
 }

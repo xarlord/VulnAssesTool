@@ -126,6 +126,8 @@ export interface GetStatsResponse {
   success: boolean
   stats: DatabaseStats | null
   error?: string
+  /** Absolute path to the SQLite DB file (FR-10.3). Set via the DATA_DIR env var. */
+  dbPath?: string
 }
 
 export interface SyncStatus {
@@ -641,6 +643,7 @@ export interface UpdateErrorEvent {
 
 export interface SyncConfigUpdate {
   syncInterval?: string
+  bandwidthLimitKBps?: number
 }
 
 export interface StorageConfigUpdate {
@@ -663,6 +666,6 @@ export interface ConfigUpdateResponse {
 
 export interface SyncConfigResponse {
   success: boolean
-  config?: { syncInterval?: string }
+  config?: { syncInterval?: string; bandwidthLimitKBps?: number }
   error?: string
 }

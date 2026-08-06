@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { getBackupService } from '../services/BackupService.js'
+import { closeDatabase, initializeDatabase } from '../database/initialize.js'
 import { broadcast } from '../websocket.js'
 import type { BackupConfig, BackupResult } from '../services/BackupService.js'
 import type {
@@ -11,6 +12,10 @@ import type {
 
 const router = Router()
 
+/**
+ * POST /initialize — initialize the backup service (a no-op success if the service isn't
+ * configured). Always responds 200; failures are reported via `success: false` with a message.
+ */
 router.post('/initialize', async (_req, res) => {
   try {
     const service = getBackupService()
@@ -26,6 +31,10 @@ router.post('/initialize', async (_req, res) => {
   }
 })
 
+/**
+ * POST /shutdown — shut down the backup service if one is running. Always responds 200
+ * with `{ success: true }`, or `{ success: false }` if the service isn't initialized/errors.
+ */
 router.post('/shutdown', async (_req, res) => {
   try {
     const service = getBackupService()
@@ -38,6 +47,11 @@ router.post('/shutdown', async (_req, res) => {
   }
 })
 
+/**
+ * POST /create — trigger an on-demand backup via the backup service, broadcast a
+ * `backup-created` WebSocket event with the result, and return that result. Responds
+ * `{ success: false, error }` if the service isn't initialized or the backup fails.
+ */
 router.post('/create', async (_req, res) => {
   try {
     const service = getBackupService()
@@ -57,6 +71,10 @@ router.post('/create', async (_req, res) => {
   }
 })
 
+/**
+ * GET /list — list existing backups via the backup service. Responds
+ * `{ success: false, backups: [] }` if the service isn't initialized or listing fails.
+ */
 router.get('/list', async (_req, res) => {
   try {
     const service = getBackupService()
@@ -77,6 +95,12 @@ router.get('/list', async (_req, res) => {
   }
 })
 
+/**
+ * POST /restore — restore a backup by `backupId` from the request body. Closes the live
+ * DB connection before the restore overwrites the file on disk, then always reinitializes
+ * the database afterward (restored or original file), surfacing whichever of the
+ * close/restore/reinit steps failed first. On success, broadcasts `backup-restored`.
+ */
 router.post('/restore', async (req, res) => {
   try {
     const service = getBackupService()
@@ -86,7 +110,33 @@ router.post('/restore', async (req, res) => {
     }
 
     const backupId = req.body.backupId as string
-    const result = (await service.restoreBackup(backupId)) as BackupResult
+
+    // Close the live DB connection (and the services that share it) before the restore
+    // overwrites the file on disk, then rebuild everything against the restored file.
+    // Writing the DB file under an open connection risks a Windows file-lock failure and
+    // leaves the app's connections pointing at stale/torn state.
+    // Close the live DB, restore, then ALWAYS rebuild against the (restored or original)
+    // file. Capture any close/restore failure so a later reinit failure can't mask it (a
+    // throw in a bare `finally` discards the in-flight exception), and so a failed close
+    // still triggers a reinit rather than leaving the DB permanently closed.
+    let restoreError: unknown
+    let result: BackupResult | undefined
+    try {
+      await closeDatabase()
+      result = (await service.restoreBackup(backupId)) as BackupResult
+    } catch (error) {
+      restoreError = error
+    }
+
+    try {
+      await initializeDatabase()
+    } catch (reinitError) {
+      throw restoreError ?? reinitError
+    }
+
+    if (restoreError) throw restoreError
+    if (!result) throw new Error('Restore returned no result')
+
     broadcast('backup-restored', result)
     res.json(result)
   } catch (error) {
@@ -97,6 +147,11 @@ router.post('/restore', async (req, res) => {
   }
 })
 
+/**
+ * POST /delete — delete a backup by `backupId` from the request body, broadcast a
+ * `backup-deleted` event with the id and result, and return the result. Responds
+ * `{ success: false, error }` if the service isn't initialized or deletion fails.
+ */
 router.post('/delete', async (req, res) => {
   try {
     const service = getBackupService()
@@ -117,6 +172,12 @@ router.post('/delete', async (req, res) => {
   }
 })
 
+/**
+ * POST /verify — verify a backup's integrity, identified by `backupId` or `backupPath`
+ * in the request body (backupId resolves to a file, same as /restore and /delete; a bare
+ * path is also accepted). Responds `{ success: false, integrity: 'unknown', error }` if the
+ * service isn't initialized or verification fails.
+ */
 router.post('/verify', async (req, res) => {
   try {
     const service = getBackupService()
@@ -130,8 +191,10 @@ router.post('/verify', async (req, res) => {
       return
     }
 
-    const backupPath = (req.body.backupPath || req.body.backupId) as string
-    const integrity = await service.verifyBackupIntegrity(backupPath)
+    // Accept either field. verifyBackup resolves a backupId to its file (like /restore and
+    // /delete) and falls back to treating the value as a path.
+    const backupIdOrPath = (req.body.backupId ?? req.body.backupPath) as string
+    const integrity = await service.verifyBackup(backupIdOrPath)
     const response: VerifyBackupResponse = { success: true, integrity }
     res.json(response)
   } catch (error) {
@@ -143,6 +206,11 @@ router.post('/verify', async (req, res) => {
   }
 })
 
+/**
+ * GET /config — return the backup service's current configuration. If the service isn't
+ * initialized, returns a hardcoded default (`{ enabled: true, schedule: 'daily',
+ * retentionCount: 5 }`) rather than an error, since defaults are always well-defined.
+ */
 router.get('/config', async (_req, res) => {
   try {
     const service = getBackupService()
@@ -166,6 +234,11 @@ router.get('/config', async (_req, res) => {
   }
 })
 
+/**
+ * PUT /config — update the backup service configuration from the request body and
+ * broadcast a `backup-config-updated` event with the new config. Responds
+ * `{ success: false, error }` if the service isn't initialized or the update fails.
+ */
 router.put('/config', async (req, res) => {
   try {
     const service = getBackupService()
@@ -186,6 +259,11 @@ router.put('/config', async (req, res) => {
   }
 })
 
+/**
+ * GET /stats — return backup statistics (total backups, total size) from the backup
+ * service. Responds `{ success: false, stats: { totalBackups: 0, totalSize: 0 }, error }`
+ * if the service isn't initialized or the lookup fails.
+ */
 router.get('/stats', async (_req, res) => {
   try {
     const service = getBackupService()

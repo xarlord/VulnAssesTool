@@ -47,6 +47,17 @@ describe('CLI Argument Parser', () => {
       expect(result.flags.checkKev).toBe(true)
     })
 
+    it('treats --exit-code as boolean and does not swallow the next positional', () => {
+      // WHY: --exit-code was not in booleanFlags, so `diff --exit-code old new` consumed
+      // `old` as the flag value, leaving one positional -> "requires two SBOM file paths".
+      const args = ['diff', '--exit-code', 'old.json', 'new.json']
+      const result = parseArgs(args)
+
+      expect(result.command).toBe('diff')
+      expect(result.flags.exitCode).toBe(true)
+      expect(result.positional).toEqual(['old.json', 'new.json'])
+    })
+
     it('parses db sync command', () => {
       const args = ['db', 'sync', '--nvd']
       const result = parseArgs(args)

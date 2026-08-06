@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Check,
   AlertCircle,
-  ArrowLeft,
 } from 'lucide-react'
 import { getPlatform } from '@/lib/platform'
 import { useProjects } from '@/store/useStore'
@@ -21,11 +20,19 @@ import {
   getSearchResultCounts,
   isValidSearchQuery,
   getSearchSuggestions,
+  getSavedSearches,
+  saveSearch,
+  deleteSavedSearch,
+  type SavedSearch,
 } from '@/lib/search'
+import { SavedSearches } from '@/components/SavedSearches'
 import { VirtualList } from '@/components/VirtualList'
 import { isFtsAvailable } from '@/lib/database/nvdDbFts'
 import { EmptyState } from '@/components/EmptyState'
+import { PageHeader } from '@/components/PageHeader'
 import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
+import { getSeverityTextClass } from '@/lib/severity'
+import type { Severity } from '@/lib/severity'
 import type { CveResult, NvdSearchRequest } from '@@/types'
 
 // Type definitions for Electron API
@@ -87,6 +94,9 @@ export function Search() {
   const [ftsAvailable, setFtsAvailable] = useState(false)
   const [selectedCveId, setSelectedCveId] = useState<string | null>(null)
   const [showCveModal, setShowCveModal] = useState(false)
+
+  // Saved global-search queries (FR-08.1). Persisted in localStorage via lib/search.
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() => getSavedSearches())
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false)
@@ -173,6 +183,8 @@ export function Search() {
       cleanupComplete()
       cleanupError()
     }
+    // Intentional mount-only setup; fetchNvdStats is a stable useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Fetch NVD stats
@@ -246,6 +258,9 @@ export function Search() {
 
   // NVD Database search using IPC
   useEffect(() => {
+    // Guards against a slow earlier query overwriting the results of a newer one.
+    let ignore = false
+
     const performNvdSearch = async () => {
       if (searchMode === 'nvd' && debouncedQuery && isValidSearchQuery(debouncedQuery)) {
         setNvdLoading(true)
@@ -254,9 +269,11 @@ export function Search() {
         try {
           // Check if Electron API is available
           if (!getPlatform()?.database) {
-            setNvdError('Database API not available. Please make sure you are running in Electron.')
-            setNvdResults([])
-            setNvdLoading(false)
+            if (!ignore) {
+              setNvdError('Database API not available. Please make sure you are running in Electron.')
+              setNvdResults([])
+              setNvdLoading(false)
+            }
             return
           }
 
@@ -282,6 +299,7 @@ export function Search() {
 
           console.log('[NVD Search] Searching:', request)
           const response = await getPlatform().database.search(request)
+          if (ignore) return
 
           if (response.success) {
             setNvdResults(response.results)
@@ -291,21 +309,28 @@ export function Search() {
             setNvdResults([])
           }
         } catch (error) {
+          if (ignore) return
           console.error('[NVD Search] Error:', error)
           setNvdError(error instanceof Error ? error.message : 'An unexpected error occurred')
           setNvdResults([])
         } finally {
-          setNvdLoading(false)
+          if (!ignore) setNvdLoading(false)
         }
       } else {
         // Clear results when not in NVD mode or query is empty
-        setNvdError('')
-        setNvdResults([])
-        setNvdLoading(false)
+        if (!ignore) {
+          setNvdError('')
+          setNvdResults([])
+          setNvdLoading(false)
+        }
       }
     }
 
     performNvdSearch()
+
+    return () => {
+      ignore = true
+    }
   }, [debouncedQuery, searchMode])
 
   // Handle navigation to result
@@ -347,6 +372,26 @@ export function Search() {
     setSyncError(null)
   }
 
+  // Saved-search handlers (FR-08.1). saveSearch throws on empty input; the SavedSearches
+  // button already gates on a non-empty query, so a throw here is unexpected — log and ignore.
+  const handleSaveSearch = (name: string) => {
+    try {
+      setSavedSearches(saveSearch(name, query))
+    } catch (error) {
+      console.error('Failed to save search:', error)
+    }
+  }
+
+  const handleLoadSearch = (savedQuery: string) => {
+    setSearchMode('projects')
+    setQuery(savedQuery)
+    setSelectedIndex(-1)
+  }
+
+  const handleDeleteSearch = (id: string) => {
+    setSavedSearches(deleteSavedSearch(id))
+  }
+
   // Handle NVD result click
   const handleNvdResultClick = (cveId: string) => {
     setSelectedCveId(cveId)
@@ -359,15 +404,18 @@ export function Search() {
     setSelectedCveId(null)
   }
 
+  // NVD severities arrive uppercase (CveResult['severity']); the shared helper's
+  // Severity union is lowercase, so normalize (and fall back to 'none' for
+  // unrecognized/missing values) before looking up the color class.
+  const normalizeSeverity = (severity?: string): Severity => {
+    const s = severity?.toLowerCase()
+    if (s === 'critical' || s === 'high' || s === 'medium' || s === 'low' || s === 'none') return s
+    return 'none'
+  }
+
   const ResultIcon = ({ type, severity }: { type: string; severity?: string }) => {
     if (type === 'vulnerability' || severity) {
-      let colorClass = 'text-muted-foreground'
-      if (severity === 'critical' || severity === 'CRITICAL') colorClass = 'text-destructive'
-      else if (severity === 'high' || severity === 'HIGH') colorClass = 'text-orange-700 dark:text-orange-400'
-      else if (severity === 'medium' || severity === 'MEDIUM') colorClass = 'text-amber-700 dark:text-amber-400'
-      else if (severity === 'low' || severity === 'LOW') colorClass = 'text-blue-700 dark:text-blue-400'
-
-      return <AlertTriangle className={`h-5 w-5 ${colorClass}`} />
+      return <AlertTriangle className={`h-5 w-5 ${getSeverityTextClass(normalizeSeverity(severity))}`} />
     }
     switch (type) {
       case 'project':
@@ -379,44 +427,11 @@ export function Search() {
     }
   }
 
-  const getSeverityColor = (severity: string) => {
-    const s = severity?.toLowerCase()
-    switch (s) {
-      case 'critical':
-        return 'text-destructive'
-      case 'high':
-        return 'text-orange-700 dark:text-orange-400'
-      case 'medium':
-        return 'text-amber-700 dark:text-amber-400'
-      case 'low':
-        return 'text-blue-700 dark:text-blue-400'
-      default:
-        return 'text-muted-foreground'
-    }
-  }
-
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="mx-auto max-w-4xl flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold">Search</h1>
-            <p className="text-sm text-muted-foreground">Search across all projects, components, and vulnerabilities</p>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
+    <div className="p-6">
+      <div className="mx-auto max-w-4xl">
+        <PageHeader title="Search" description="Search across all projects, components, and vulnerabilities" />
+        <div className="space-y-6">
           {/* Search Mode Toggle */}
           <div className="flex gap-2 rounded-lg border border-border bg-muted/50 p-1">
             <button
@@ -575,6 +590,17 @@ export function Search() {
               </button>
             )}
           </div>
+
+          {/* Saved searches - only for global project search (FR-08.1) */}
+          {searchMode === 'projects' && (
+            <SavedSearches
+              searches={savedSearches}
+              currentQuery={query}
+              onSave={handleSaveSearch}
+              onLoad={handleLoadSearch}
+              onDelete={handleDeleteSearch}
+            />
+          )}
 
           {/* Suggestions - only for project search */}
           {searchMode === 'projects' &&
@@ -741,13 +767,13 @@ export function Search() {
                                   <span className="font-medium">{vuln.id}</span>
                                   {vuln.cvssScore && (
                                     <span
-                                      className={`text-xs rounded px-1.5 py-0.5 font-medium ${getSeverityColor(vuln.severity)}`}
+                                      className={`text-xs rounded px-1.5 py-0.5 font-medium ${getSeverityTextClass(normalizeSeverity(vuln.severity))}`}
                                     >
                                       CVSS {vuln.cvssScore.toFixed(1)}
                                     </span>
                                   )}
                                   <span
-                                    className={`text-xs uppercase rounded px-1.5 py-0.5 font-medium ${getSeverityColor(vuln.severity)}`}
+                                    className={`text-xs uppercase rounded px-1.5 py-0.5 font-medium ${getSeverityTextClass(normalizeSeverity(vuln.severity))}`}
                                   >
                                     {vuln.severity || 'UNKNOWN'}
                                   </span>
@@ -808,6 +834,11 @@ export function Search() {
                   <>
                     <li>• Search is case-insensitive</li>
                     <li>• Matches project names, component names, vulnerability IDs, and descriptions</li>
+                    <li>
+                      • Combine terms with <strong>AND</strong> / <strong>OR</strong> / <strong>NOT</strong>, or quote
+                      an exact phrase: <code>log4j NOT test</code>, <code>&quot;remote code execution&quot;</code>
+                    </li>
+                    <li>• Save a search to re-run it later</li>
                     <li>• Use arrow keys to navigate results</li>
                     <li>• Press Enter to open selected result</li>
                     <li>• Press Escape to clear search</li>
@@ -824,7 +855,7 @@ export function Search() {
             </div>
           )}
         </div>
-      </main>
+      </div>
 
       {/* CVE Detail Modal */}
       {selectedCveId && <NvdCveDetailModal cveId={selectedCveId} open={showCveModal} onClose={handleCloseCveModal} />}

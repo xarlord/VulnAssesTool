@@ -155,6 +155,26 @@ export function logSbomRemove(
   })
 }
 
+// Settings keys whose VALUES must never reach the audit log. The audit log is a
+// compliance artifact that is viewable in AuditLogPanel and user-exportable as
+// CSV/JSON, so writing a secret there (e.g. the NVD API key) leaks it out of the
+// app — a plaintext-secret violation (SR-01 / NFR-06). Masked, not dropped, so the
+// log still records that the field changed.
+const SECRET_SETTINGS_PATTERN = /(apikey|token|secret|password)/i
+
+/**
+ * Redact secret-like values from a settings object before it is logged. Field
+ * names are preserved (audit still shows WHAT changed); only sensitive values
+ * are replaced with a placeholder.
+ */
+function sanitizeSettings(settings: Partial<AppSettings>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {}
+  for (const key of Object.keys(settings)) {
+    sanitized[key] = SECRET_SETTINGS_PATTERN.test(key) ? '[REDACTED]' : settings[key as keyof AppSettings]
+  }
+  return sanitized
+}
+
 /**
  * Log a settings change event
  */
@@ -163,14 +183,16 @@ export function logSettingsChange(
   newSettings: Partial<AppSettings>,
   metadata?: AuditEventMetadata,
 ): void {
-  // Identify what changed
+  // Identify what changed and capture each changed field's prior value, so the audit trail
+  // records the actual before/after state (PRD "Store before/after state for changes"), not just
+  // which field names changed. Both states run through sanitizeSettings so secrets never leak.
   const changedFields: string[] = []
+  const previousValues: Partial<AppSettings> = {}
   for (const key in newSettings) {
-    if (
-      JSON.stringify(previousSettings[key as keyof AppSettings]) !==
-      JSON.stringify(newSettings[key as keyof AppSettings])
-    ) {
+    const typedKey = key as keyof AppSettings
+    if (JSON.stringify(previousSettings[typedKey]) !== JSON.stringify(newSettings[typedKey])) {
       changedFields.push(key)
+      Object.assign(previousValues, { [typedKey]: previousSettings[typedKey] })
     }
   }
 
@@ -178,8 +200,8 @@ export function logSettingsChange(
     actionType: 'SETTINGS_CHANGE',
     entityType: 'settings',
     entityId: 'global',
-    previousState: { changedFields },
-    newState: newSettings,
+    previousState: sanitizeSettings(previousValues),
+    newState: sanitizeSettings(newSettings),
     metadata: {
       description: `Changed application settings: ${changedFields.join(', ')}`,
       ...metadata,
@@ -295,9 +317,9 @@ function sanitizeProject(project: Project): unknown {
     updatedAt: project.updatedAt,
     lastScanAt: project.lastScanAt,
     lastVulnDataRefresh: project.lastVulnDataRefresh,
-    sbomFileCount: project.sbomFiles.length,
-    componentCount: project.components.length,
-    vulnerabilityCount: project.vulnerabilities.length,
+    sbomFileCount: project.sbomFiles?.length ?? 0,
+    componentCount: project.components?.length ?? 0,
+    vulnerabilityCount: project.vulnerabilities?.length ?? 0,
     statistics: project.statistics,
   }
 }

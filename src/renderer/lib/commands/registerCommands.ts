@@ -16,20 +16,10 @@ import type { Command } from './types'
 function createNavigationCommands(navigate: (path: string) => void): Command[] {
   return [
     {
-      id: 'navigation.home',
-      label: 'Go to Home',
-      category: 'navigation',
-      shortcut: 'Ctrl+Shift+H',
-      icon: 'Home',
-      action: () => navigate('/'),
-      keywords: ['welcome', 'hero', 'start'],
-      priority: 5,
-    },
-    {
       id: 'navigation.dashboard',
       label: 'Go to Dashboard',
       category: 'navigation',
-      shortcut: 'Ctrl+Shift+D',
+      // No shortcut label: Ctrl+Shift+D has no global binding (reachable via Ctrl+K).
       icon: 'LayoutDashboard',
       action: () => navigate('/dashboard'),
       keywords: ['home', 'main', 'start'],
@@ -48,7 +38,8 @@ function createNavigationCommands(navigate: (path: string) => void): Command[] {
       id: 'navigation.search',
       label: 'Go to Search',
       category: 'navigation',
-      shortcut: 'Ctrl+K',
+      // No shortcut label: Ctrl+K opens the command palette (it never actually
+      // navigated to Search — the old label advertised an unbound key).
       icon: 'Search',
       action: () => navigate('/search'),
       keywords: ['find', 'lookup'],
@@ -58,7 +49,7 @@ function createNavigationCommands(navigate: (path: string) => void): Command[] {
       id: 'navigation.settings',
       label: 'Go to Settings',
       category: 'navigation',
-      shortcut: 'Ctrl+,',
+      // No shortcut label: Ctrl+, has no global binding (reachable via Ctrl+K).
       icon: 'Settings',
       action: () => navigate('/settings'),
       keywords: ['preferences', 'config', 'options'],
@@ -76,7 +67,7 @@ function createActionCommands(): Command[] {
       id: 'actions.new-project',
       label: 'Create New Project',
       category: 'actions',
-      shortcut: 'Ctrl+N',
+      // No shortcut label: Ctrl+N is browser-reserved and unbound (reachable via Ctrl+K).
       icon: 'FolderPlus',
       action: () => {
         window.dispatchEvent(new CustomEvent('menu-open-create-project'))
@@ -88,7 +79,7 @@ function createActionCommands(): Command[] {
       id: 'actions.import-sbom',
       label: 'Import SBOM',
       category: 'actions',
-      shortcut: 'Ctrl+I',
+      // No shortcut label: Ctrl+I has no global binding (reachable via Ctrl+K).
       icon: 'Upload',
       action: () => {
         window.dispatchEvent(new CustomEvent('menu-open-upload-sbom'))
@@ -111,7 +102,7 @@ function createActionCommands(): Command[] {
       id: 'actions.export-all',
       label: 'Export All Projects',
       category: 'actions',
-      shortcut: 'Ctrl+E',
+      // No shortcut label: Ctrl+E has no global binding (reachable via Ctrl+K).
       icon: 'Download',
       action: () => {
         window.dispatchEvent(new CustomEvent('menu-open-export'))
@@ -172,7 +163,7 @@ function createHelpCommands(): Command[] {
       id: 'help.show-tour',
       label: 'Show Onboarding Tour',
       category: 'help',
-      shortcut: 'F1',
+      // No shortcut label: F1 is browser-reserved and unbound (reachable via Ctrl+K).
       icon: 'HelpCircle',
       action: () => {
         window.dispatchEvent(new CustomEvent('menu-show-tour'))

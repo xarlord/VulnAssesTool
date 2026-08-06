@@ -136,25 +136,60 @@ export class CPEEstimationService {
               local.confidence = 'high'
               local.matchScore = 90
               local.cpe = dbMatch.cpe
+              // Exact version confirmed, or a version-agnostic (wildcard) product match.
+              local.matchType = dbVersion === normalizedVersion ? 'exact' : 'token'
             } else {
               local.confidence = 'medium'
               local.matchScore = 70
+              // Vendor/product confirmed by the DB, but the version differs.
+              local.matchType = 'token'
             }
           } else {
             local.confidence = 'low'
             local.matchScore = 40
+            // No DB corroboration — the suggestion is an unverified guess.
+            local.matchType = 'fuzzy'
           }
         }
 
+        // Add DB-discovered CPEs as selectable suggestions, deduped by the FULL
+        // CPE so distinct versions (e.g. jasper 2.0.1 vs 2.0.12) are each offered.
+        // Score by version so only an EXACT version match is auto-select-eligible
+        // (>= autoSelectThreshold); everything else is surfaced as a lower-confidence
+        // "partial" for the user to pick from — the whole point when NVD has no
+        // exact-version CPE for the component (e.g. component 2.0 vs NVD 2.0.12).
+        const existingCpes = new Set(results.map((r) => r.cpe))
         for (const db of dbResults) {
-          const isDuplicate = results.some(
-            (r) =>
-              r.vendor.toLowerCase() === db.vendor.toLowerCase() &&
-              r.product.toLowerCase() === db.product.toLowerCase(),
-          )
-          if (!isDuplicate) {
-            results.push({ ...db })
+          if (existingCpes.has(db.cpe)) {
+            continue
           }
+          existingCpes.add(db.cpe)
+
+          const dbVersion = extractCpeVersion(db.cpe).toLowerCase()
+          let confidence: 'high' | 'medium' | 'low' = 'low'
+          let matchScore = 45
+          // Default: a product hit whose version is unrelated to the component's.
+          let matchType: 'exact' | 'token' | 'fuzzy' = 'fuzzy'
+          if (dbVersion && dbVersion === normalizedVersion) {
+            confidence = 'high'
+            matchScore = 95
+            matchType = 'exact'
+          } else if (
+            dbVersion &&
+            dbVersion !== '*' &&
+            (dbVersion.startsWith(`${normalizedVersion}.`) || normalizedVersion.startsWith(`${dbVersion}.`))
+          ) {
+            // Same version family, e.g. component 2.0 vs CPE 2.0.12 — strong partial.
+            confidence = 'medium'
+            matchScore = 75
+            matchType = 'fuzzy'
+          } else if (!dbVersion || dbVersion === '*') {
+            // Version-agnostic CPE.
+            confidence = 'medium'
+            matchScore = 65
+            matchType = 'token'
+          }
+          results.push({ ...db, confidence, matchScore, matchType })
         }
       } catch (error) {
         console.warn('[CPEEstimationService] External search failed:', error)
@@ -258,6 +293,14 @@ export class CPEEstimationService {
       medium: 70,
       low: 40,
     }
+    // Provenance derived from how the suggestion was produced: a curated
+    // vendor/product mapping is an exact identity, a name-normalized guess is a
+    // token match, and a last-resort fallback is fuzzy.
+    const matchTypeMap = {
+      known_mapping: 'exact',
+      inferred: 'token',
+      fallback: 'fuzzy',
+    } as const
 
     return {
       cpe: suggestion.cpe,
@@ -265,6 +308,7 @@ export class CPEEstimationService {
       product: suggestion.product,
       confidence: suggestion.confidence,
       matchScore: scoreMap[suggestion.confidence],
+      matchType: matchTypeMap[suggestion.source],
     }
   }
 }

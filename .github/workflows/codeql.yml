@@ -1,0 +1,50 @@
+# Source-level security SAST for this repo's own TypeScript/JavaScript (SR-02.2).
+# Distinct from sbom-scan.yml (which scans a dependency SBOM) and from ESLint
+# (style/type only). Targets `master` deliberately — ci.yml's `main/develop`
+# filter does not match this repo and never fires.
+#
+# Note: to actually gate releases, make this check a required status check on
+# `master` via branch protection (a GitHub repo setting, not configurable here).
+name: CodeQL
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Mondays 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Install so CodeQL can resolve imported modules for more accurate analysis.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

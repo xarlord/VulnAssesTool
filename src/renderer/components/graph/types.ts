@@ -62,7 +62,18 @@ export interface GraphEdgeData {
   source: string
   /** Target component ID */
   target: string
+  /** True when this edge participates in a circular dependency (FR-11.1-a). */
+  isCycleEdge?: boolean
 }
+
+/**
+ * Maximum number of nodes rendered in the dependency graph (FR-11.1-b).
+ *
+ * fcose's force simulation degrades well before NFR-02.2's 50k-component target,
+ * so the graph truncates to this many components and the page surfaces a banner.
+ * A starting judgment call for keeping fcose responsive on typical hardware.
+ */
+export const MAX_GRAPH_NODES = 500
 
 /**
  * Severity color mapping

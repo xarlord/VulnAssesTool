@@ -20,6 +20,7 @@ vi.mock('lucide-react', () => {
     'Trash2',
     'RotateCcw',
     'Shield',
+    'ShieldAlert',
     'ChevronDown',
     'ChevronUp',
     'ExternalLink',
@@ -121,6 +122,7 @@ const defaultSettings: AppSettings = {
   },
   cvssVersion: '3.1',
   showCvssBreakdown: true,
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 100,
   showVulnerableOnly: false,
 }
@@ -240,25 +242,10 @@ describe('Settings', () => {
       expect(screen.getByText('Settings')).toBeInTheDocument()
     })
 
-    it('should render back button', () => {
-      renderSettings()
-
-      expect(screen.getByText('← Back')).toBeInTheDocument()
-    })
-
-    it('should navigate back when back button is clicked', () => {
-      renderSettings()
-
-      const backButton = screen.getByText('← Back')
-      fireEvent.click(backButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith(-1)
-    })
-
     it('should render Appearance section', () => {
       renderSettings()
 
-      expect(screen.getByText('Appearance')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
     })
 
     it('should render API Configuration section', () => {
@@ -270,13 +257,13 @@ describe('Settings', () => {
     it('should render Data Management section', () => {
       renderSettings()
 
-      expect(screen.getByText('Data Management')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Data Management' })).toBeInTheDocument()
     })
 
     it('should render Danger Zone section', () => {
       renderSettings()
 
-      expect(screen.getByText('Danger Zone')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Danger Zone' })).toBeInTheDocument()
     })
 
     it('should render version info', () => {
@@ -519,41 +506,34 @@ describe('Settings', () => {
       expect(screen.getByText('Reset All Settings to Defaults')).toBeInTheDocument()
     })
 
-    it('should call confirm when reset is clicked', () => {
-      global.confirm = vi.fn(() => true)
-
+    it('should open the reset confirmation dialog when reset is clicked', () => {
       renderSettings()
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
-      fireEvent.click(resetButton)
+      fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
 
-      expect(global.confirm).toHaveBeenCalledWith('Reset all settings to default values?')
+      expect(screen.getByText(/Reset all settings to default values\?/)).toBeInTheDocument()
     })
 
     it('should reset settings when confirm is accepted', () => {
-      global.confirm = vi.fn(() => true)
-
       renderSettings()
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
-      fireEvent.click(resetButton)
+      fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+      // Confirm inside the dialog
+      fireEvent.click(screen.getByText('Reset to Defaults'))
 
       expect(mockUpdateSettings).toHaveBeenCalledWith({
         theme: 'system',
         fontSize: 'default',
-        nvdApiKey: undefined,
         dataRetentionDays: 30,
         autoRefresh: false,
       })
     })
 
     it('should not reset settings when confirm is cancelled', () => {
-      global.confirm = vi.fn(() => false)
-
       renderSettings()
 
-      const resetButton = screen.getByText('Reset All Settings to Defaults')
-      fireEvent.click(resetButton)
+      fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+      fireEvent.click(screen.getByText('Cancel'))
 
       expect(mockUpdateSettings).not.toHaveBeenCalledWith(
         expect.objectContaining({
@@ -568,9 +548,9 @@ describe('Settings', () => {
     it('should render section headers with icons', () => {
       renderSettings()
 
-      expect(screen.getByText('Appearance')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
       expect(screen.getByText('API Configuration')).toBeInTheDocument()
-      expect(screen.getByText('Data Management')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Data Management' })).toBeInTheDocument()
     })
 
     it('should render danger zone with destructive styling', () => {
@@ -791,41 +771,33 @@ describe('Settings', () => {
         expect(screen.getByText('Reset All Settings to Defaults')).toBeInTheDocument()
       })
 
-      it('should call confirm when reset is clicked', () => {
-        global.confirm = vi.fn(() => true)
-
+      it('should open the reset confirmation dialog when reset is clicked', () => {
         renderSettings()
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
-        fireEvent.click(resetButton)
+        fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
 
-        expect(global.confirm).toHaveBeenCalledWith('Reset all settings to default values?')
+        expect(screen.getByText(/Reset all settings to default values\?/)).toBeInTheDocument()
       })
 
       it('should reset settings when confirm is accepted', () => {
-        global.confirm = vi.fn(() => true)
-
         renderSettings()
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
-        fireEvent.click(resetButton)
+        fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+        fireEvent.click(screen.getByText('Reset to Defaults'))
 
         expect(mockUpdateSettings).toHaveBeenCalledWith({
           theme: 'system',
           fontSize: 'default',
-          nvdApiKey: undefined,
           dataRetentionDays: 30,
           autoRefresh: false,
         })
       })
 
       it('should not reset settings when confirm is cancelled', () => {
-        global.confirm = vi.fn(() => false)
-
         renderSettings()
 
-        const resetButton = screen.getByText('Reset All Settings to Defaults')
-        fireEvent.click(resetButton)
+        fireEvent.click(screen.getByText('Reset All Settings to Defaults'))
+        fireEvent.click(screen.getByText('Cancel'))
 
         expect(mockUpdateSettings).not.toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1112,6 +1084,28 @@ describe('Settings', () => {
       renderSettings()
 
       expect(screen.getByText('Prune Old CVEs')).toBeInTheDocument()
+    })
+
+    it('reverts the Maximum Database Size change when the server rejects it (H3)', async () => {
+      // WHY: the handler updated local state optimistically and ignored the server's
+      // {success}. A rejected save left the dropdown showing a value that was never
+      // persisted, so the user believed a change took effect when it did not.
+      const { getPlatform } = await import('@/lib/platform')
+      const mockPlatform = vi.mocked(getPlatform)()
+      vi.mocked(mockPlatform.database.updateStorageConfig).mockResolvedValueOnce({ success: false, error: 'nope' })
+
+      renderSettings()
+
+      const select = screen.getByLabelText('Maximum Database Size') as HTMLSelectElement
+      const original = select.value
+      const other = Array.from(select.options).find((option) => option.value !== original)
+      if (!other) throw new Error('expected a second database-size option')
+
+      fireEvent.change(select, { target: { value: other.value } })
+
+      await waitFor(() => {
+        expect((screen.getByLabelText('Maximum Database Size') as HTMLSelectElement).value).toBe(original)
+      })
     })
   })
 
@@ -1509,6 +1503,40 @@ describe('Settings', () => {
 
       await waitFor(() => {
         expect(platform.database.updateSyncConfig).toHaveBeenCalledWith({ syncInterval: 'daily' })
+      })
+    })
+
+    it('updates the bandwidth limit via updateSyncConfig (FR-10.3)', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      renderSettings()
+
+      // The Settings input is the only client->server path for the update bandwidth
+      // cap; a change must reach updateSyncConfig as a number, not a string.
+      const input = screen.getByLabelText(/bandwidth limit/i)
+      fireEvent.change(input, { target: { value: '500' } })
+
+      await waitFor(() => {
+        expect(platform.database.updateSyncConfig).toHaveBeenCalledWith({ bandwidthLimitKBps: 500 })
+      })
+    })
+
+    it('displays the database storage location from getStats().dbPath (FR-10.3)', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+      vi.mocked(platform.database.getStats).mockResolvedValueOnce({
+        success: true,
+        stats: { totalCves: 0, lastUpdate: null, dbSize: 0, version: 1 },
+        dbPath: 'C:\\vulndata\\nvd-data.db',
+      })
+
+      renderSettings()
+
+      // The user must be able to see where the DB lives; the path comes from the
+      // server config, surfaced via getStats().dbPath.
+      await waitFor(() => {
+        expect(screen.getByText('C:\\vulndata\\nvd-data.db')).toBeInTheDocument()
       })
     })
 

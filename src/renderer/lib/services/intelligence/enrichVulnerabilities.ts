@@ -32,13 +32,17 @@ const DEFAULT_OPTIONS: EnrichmentOptions = {
  */
 export async function enrichVulnerability(
   vuln: Vulnerability,
-  options: EnrichmentOptions = DEFAULT_OPTIONS,
+  options: EnrichmentOptions = {},
 ): Promise<Vulnerability> {
+  // Merge with defaults: a default parameter is replaced wholesale by any explicit
+  // argument, so callers passing a partial object (e.g. just { onProgress }) would
+  // otherwise leave every include* flag undefined and silently disable enrichment.
+  const opts = { ...DEFAULT_OPTIONS, ...options }
   const enriched = { ...vuln }
 
   try {
     // Fetch KEV status
-    if (options.includeKev && !vuln.isKev) {
+    if (opts.includeKev && !vuln.isKev) {
       const kevResponse = await getPlatform().intelligence.checkKev(vuln.id)
       if (kevResponse.success && kevResponse.isKev) {
         enriched.isKev = true
@@ -51,7 +55,7 @@ export async function enrichVulnerability(
     }
 
     // Fetch EPSS score
-    if (options.includeEpss && vuln.epssPercentile === undefined) {
+    if (opts.includeEpss && vuln.epssPercentile === undefined) {
       const epssResponse = await getPlatform().intelligence.getEpssScore(vuln.id)
       if (epssResponse.success && epssResponse.score) {
         enriched.epssScore = epssResponse.score.score
@@ -60,7 +64,7 @@ export async function enrichVulnerability(
     }
 
     // Calculate risk score
-    if (options.includeRiskScore) {
+    if (opts.includeRiskScore) {
       const severity = vuln.severity.toUpperCase() as Severity
       const result = calculateRiskScore({
         isKev: enriched.isKev ?? false,
@@ -82,18 +86,22 @@ export async function enrichVulnerability(
  */
 export async function enrichVulnerabilities(
   vulnerabilities: Vulnerability[],
-  options: EnrichmentOptions = DEFAULT_OPTIONS,
+  options: EnrichmentOptions = {},
 ): Promise<Vulnerability[]> {
   if (vulnerabilities.length === 0) {
     return vulnerabilities
   }
 
+  // Merge with defaults: a default parameter is replaced wholesale by any explicit
+  // argument, so callers passing a partial object (e.g. useProjectScan's { onProgress })
+  // would otherwise leave every include* flag undefined and silently disable enrichment.
+  const opts = { ...DEFAULT_OPTIONS, ...options }
   const cveIds = vulnerabilities.map((v) => v.id)
 
   // Batch fetch EPSS scores for efficiency
   const epssScores: Map<string, { score: number; percentile: number }> = new Map()
-  if (options.includeEpss) {
-    options.onProgress?.(`Fetching EPSS scores for ${cveIds.length} vulnerabilities...`)
+  if (opts.includeEpss) {
+    opts.onProgress?.(`Fetching EPSS scores for ${cveIds.length} vulnerabilities...`)
     try {
       const response = await getPlatform().intelligence.getEpssScores(cveIds)
       if (response.success) {
@@ -107,14 +115,14 @@ export async function enrichVulnerabilities(
   }
 
   // Batch check KEV status (we need to check each individually, but can parallelize)
-  options.onProgress?.(`Checking KEV status for ${vulnerabilities.length} vulnerabilities...`)
+  opts.onProgress?.(`Checking KEV status for ${vulnerabilities.length} vulnerabilities...`)
   const enriched: Vulnerability[] = await Promise.all(
     vulnerabilities.map(async (vuln) => {
       const result = { ...vuln }
 
       try {
         // Get KEV status
-        if (options.includeKev && !vuln.isKev) {
+        if (opts.includeKev && !vuln.isKev) {
           const kevResponse = await getPlatform().intelligence.checkKev(vuln.id)
           if (kevResponse.success && kevResponse.isKev) {
             result.isKev = true
@@ -127,7 +135,7 @@ export async function enrichVulnerabilities(
         }
 
         // Use pre-fetched EPSS score
-        if (options.includeEpss && epssScores.has(vuln.id)) {
+        if (opts.includeEpss && epssScores.has(vuln.id)) {
           const score = epssScores.get(vuln.id)
           if (score) {
             result.epssScore = score.score
@@ -136,7 +144,7 @@ export async function enrichVulnerabilities(
         }
 
         // Calculate risk score
-        if (options.includeRiskScore) {
+        if (opts.includeRiskScore) {
           const severity = vuln.severity.toUpperCase() as Severity
           const riskResult = calculateRiskScore({
             isKev: result.isKev ?? false,

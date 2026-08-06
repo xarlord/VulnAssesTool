@@ -323,6 +323,7 @@ VirtualGrid.displayName = 'VirtualGrid'
 /**
  * Utility hook to create a stable key selector
  */
+// eslint-disable-next-line react-refresh/only-export-components -- helper hook intentionally co-located with the list component (dev-only fast-refresh hint)
 export function useItemKey<T extends Record<string, unknown>>(key: keyof T): (item: T) => string {
   return (item) => {
     const keyValue = item[key]

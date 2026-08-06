@@ -163,28 +163,25 @@ function calculateVersionScore(component: Component): number {
     const current = component.version
     const recommended = component.patchInfo.recommendedVersion
 
-    // Simple version comparison (works for semver)
-    const currentParts = current.split('.').map(Number)
-    const recommendedParts = recommended.split('.').map(Number)
+    // Hierarchical semver compare: stop at the most-significant segment that differs, instead
+    // of summing unrelated per-segment deltas (which made e.g. 2.1.0 vs 1.9.9 score 17 "behind"
+    // and take max penalty although it is actually AHEAD).
+    const currentParts = current.split('.').map((p) => Number(p) || 0)
+    const recommendedParts = recommended.split('.').map((p) => Number(p) || 0)
 
-    let versionsBehind = 0
     for (let i = 0; i < Math.max(currentParts.length, recommendedParts.length); i++) {
       const curr = currentParts[i] || 0
       const rec = recommendedParts[i] || 0
-      if (rec > curr) {
-        versionsBehind += rec - curr
-      }
+      if (curr === rec) continue
+      // Current is at or ahead of the recommended version at the first differing segment.
+      if (curr > rec) return 0
+      // Behind: the SEGMENT that first differs sets severity (major worst, then minor, then
+      // patch), rather than summing unrelated per-segment deltas.
+      if (i === 0) return 20 // major-version gap
+      if (i === 1) return 10 // minor-version gap
+      return 5 // patch (or deeper) gap
     }
-
-    if (versionsBehind === 0) {
-      return 0
-    } else if (versionsBehind <= 2) {
-      return 5
-    } else if (versionsBehind <= 5) {
-      return 10
-    } else {
-      return 20
-    }
+    return 0 // identical versions
   }
 
   // If no patch info, assume latest (0 penalty)
@@ -192,13 +189,16 @@ function calculateVersionScore(component: Component): number {
 }
 
 /**
- * Get health category from score
+ * Get health category from score.
+ * Thresholds follow FR-05.2: Excellent 90-100, Good 75-89, Fair 60-74, Poor 40-59, Critical 0-39.
+ * Exported as the single source of truth for score->category so widgets (e.g.
+ * ProjectHealthComparison, FR-05.3) never re-derive their own boundaries.
  */
-function getHealthCategory(score: number): ComponentHealth['category'] {
+export function getHealthCategory(score: number): ComponentHealth['category'] {
   if (score >= 90) return 'excellent'
   if (score >= 75) return 'good'
-  if (score >= 50) return 'fair'
-  if (score >= 25) return 'poor'
+  if (score >= 60) return 'fair'
+  if (score >= 40) return 'poor'
   return 'critical'
 }
 
@@ -235,11 +235,14 @@ export function calculateProjectHealth(componentHealths: ComponentHealth[]): Pro
     critical: componentHealths.filter((h) => h.category === 'critical').length,
   }
 
-  // Calculate overall trend based on component trends
+  // Calculate overall trend based on component trends. If NO component has a known trend yet
+  // (production never sets previousScore until real history accrues), report 'unknown' rather
+  // than fabricating 'stable' — the dashboard shows a "No Historical Data" banner on 'unknown'.
   const improvingCount = componentHealths.filter((h) => h.trend === 'improving').length
   const degradingCount = componentHealths.filter((h) => h.trend === 'degrading').length
+  const hasKnownTrend = componentHealths.some((h) => h.trend !== 'unknown')
 
-  let trend: ProjectHealthSummary['trend'] = 'stable'
+  let trend: ProjectHealthSummary['trend'] = hasKnownTrend ? 'stable' : 'unknown'
   if (improvingCount > degradingCount * 1.5) {
     trend = 'improving'
   } else if (degradingCount > improvingCount * 1.5) {

@@ -68,6 +68,11 @@ export async function createTestProject(page: Page, name: string): Promise<void>
  */
 export async function createMultipleProjects(page: Page, names: string[]): Promise<void> {
   for (const name of names) {
+    // createTestProject ends on the project detail page, but the "New Project"
+    // button (used by createProjectOnly) lives only on the Dashboard. Since the
+    // AppShell refactor removed the per-page back button, return to the Dashboard
+    // before each creation so subsequent iterations can find that button.
+    await navigateToDashboard(page)
     await createTestProject(page, name)
   }
 }
@@ -79,7 +84,14 @@ export async function createMultipleProjects(page: Page, names: string[]): Promi
  */
 export async function navigateToProjectDetail(page: Page, projectName: string): Promise<void> {
   await page.locator('.group.rounded-lg.border').filter({ hasText: projectName }).first().click()
-  await expect(page.getByRole('heading', { name: new RegExp(projectName, 'i') })).toBeVisible({ timeout: 10000 })
+  // The dashboard project card renders the name in an <h3>, so a name-only heading matcher is
+  // satisfied *before* the SPA route changes — callers then interact with a mid-transition page
+  // and lose clicks (e.g. the Export button). Wait for the project route, then the level-1 detail
+  // title (rendered by PageHeader only on the detail page) so navigation is provably complete.
+  await page.waitForURL(/\/project\/[^/]+$/, { timeout: 10000 })
+  await expect(page.getByRole('heading', { level: 1, name: new RegExp(projectName, 'i') })).toBeVisible({
+    timeout: 10000,
+  })
 }
 
 /**
@@ -199,6 +211,25 @@ export async function navigateToSearch(page: Page): Promise<void> {
     await page.evaluate(() => {
       const nav = (window as unknown as Record<string, unknown>).__navigate
       if (typeof nav === 'function') nav('/search')
+    })
+  }
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForTimeout(E2E_UI_DELAY)
+}
+
+/**
+ * Navigate to the Audit Log page via the sidebar nav link, with an SPA fallback.
+ * @param page - Playwright page object
+ */
+export async function navigateToAuditLog(page: Page): Promise<void> {
+  const auditLink = page.getByRole('link', { name: /audit log/i })
+
+  if (await auditLink.isVisible().catch(() => false)) {
+    await auditLink.click()
+  } else {
+    await page.evaluate(() => {
+      const nav = (window as unknown as Record<string, unknown>).__navigate
+      if (typeof nav === 'function') nav('/audit')
     })
   }
   await page.waitForLoadState('domcontentloaded')
@@ -329,22 +360,32 @@ export async function uploadSbomFile(page: Page, filePath: string, waitForCompon
   const fileInput = dialog.locator('input[type="file"]')
   await fileInput.setInputFiles(filePath)
 
-  // Wait for parsing to complete — the "Add to Project" button only appears on success
+  // Wait for parsing to finish. It can either land directly on the success/error step, or —
+  // when components have ambiguous CPE matches — auto-open the modal "CPE Estimation Required"
+  // dialog on top. Since both are Radix modals, the top dialog makes the underlying
+  // "Add to Project" button inert (aria-hidden), so we can't wait on that button first; we must
+  // resolve whichever of the three appears and dismiss the CPE dialog before proceeding.
   const confirmButton = dialog.getByRole('button', { name: /add to project/i })
   const errorButton = dialog.getByRole('button', { name: /try again/i })
+  const cpeDialog = page.getByRole('dialog', { name: /cpe|match|estimation/i })
   await Promise.race([
     confirmButton.waitFor({ state: 'visible', timeout: 30000 }),
     errorButton.waitFor({ state: 'visible', timeout: 30000 }),
+    cpeDialog.waitFor({ state: 'visible', timeout: 30000 }),
   ])
 
-  // Dismiss CPE match dialog if it appeared (covers the Add to Project button)
-  const cpeDialog = page.getByRole('dialog', { name: /cpe|match/i })
+  // If the CPE match dialog auto-opened (it covers and inerts the Add to Project button),
+  // dismiss it, then wait for the now-interactable success/error button.
   if (await cpeDialog.isVisible().catch(() => false)) {
     const skipButton = cpeDialog.getByRole('button', { name: /skip|cancel|close/i }).first()
     if (await skipButton.isVisible().catch(() => false)) {
       await skipButton.click()
       await page.waitForTimeout(E2E_UI_DELAY)
     }
+    await Promise.race([
+      confirmButton.waitFor({ state: 'visible', timeout: E2E_SELECTOR_TIMEOUT }),
+      errorButton.waitFor({ state: 'visible', timeout: E2E_SELECTOR_TIMEOUT }),
+    ])
   }
 
   // Click "Add to Project" to confirm (only visible in success state)

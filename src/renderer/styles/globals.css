@@ -25,51 +25,71 @@
     --ring: 239 84% 57%;
     --radius: 0.5rem;
 
-    /* Severity Colors - Light Mode */
-    --severity-critical: 0 84.2% 60.2%;
+    /* Severity Colors - Light Mode.
+       Backgrounds tuned so each fg/bg pair meets WCAG AA (>= 4.5:1) for the
+       small badge text they carry; medium keeps its yellow but flips to a dark
+       foreground (white-on-yellow was ~1.9:1). */
+    --severity-critical: 0 74% 48%;
     --severity-critical-foreground: 0 0% 100%;
-    --severity-high: 25 95% 53%;
+    --severity-high: 21 90% 44%;
     --severity-high-foreground: 0 0% 100%;
     --severity-medium: 45 93% 47%;
-    --severity-medium-foreground: 0 0% 100%;
-    --severity-low: 142 71% 45%;
+    --severity-medium-foreground: 28 80% 12%;
+    --severity-low: 142 72% 29%;
     --severity-low-foreground: 0 0% 100%;
-    --severity-none: 220 9% 46%;
+    --severity-none: 220 9% 40%;
     --severity-none-foreground: 0 0% 100%;
+    /* Text-only severity colors — tuned dark so they read AA on the light page */
+    --severity-critical-text: 0 74% 42%;
+    --severity-high-text: 17 88% 40%;
+    --severity-medium-text: 26 90% 37%;
+    --severity-low-text: 142 72% 29%;
+    --severity-none-text: 220 9% 40%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    /* Dark-first surfaces: background sits deepest, card/popover step up in
+       lightness so panels read as elevated instead of blending into the page
+       (previously --card == --background). */
+    --background: 224 71% 4%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 223 41% 9%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 223 41% 8%;
     --popover-foreground: 210 40% 98%;
-    --primary: 239 84% 57%;
+    --primary: 239 84% 62%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 217 33% 15%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 217 33% 15%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 217 33% 15%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 239 84% 57%;
+    --border: 217 33% 15%;
+    --input: 217 33% 17%;
+    --ring: 239 84% 62%;
 
-    /* Severity Colors - Dark Mode */
+    /* Severity Colors - Dark Mode.
+       Bright bgs (high/medium/low/none) carry dark foregrounds; critical keeps
+       white on red. All pairs >= 4.5:1. */
     --severity-critical: 0 72% 51%;
     --severity-critical-foreground: 0 0% 100%;
-    --severity-high: 25 90% 60%;
-    --severity-high-foreground: 0 0% 100%;
-    --severity-medium: 45 90% 55%;
-    --severity-medium-foreground: 0 0% 100%;
-    --severity-low: 142 70% 50%;
-    --severity-low-foreground: 0 0% 100%;
+    --severity-high: 25 95% 58%;
+    --severity-high-foreground: 15 80% 10%;
+    --severity-medium: 45 93% 58%;
+    --severity-medium-foreground: 28 80% 10%;
+    --severity-low: 142 69% 58%;
+    --severity-low-foreground: 144 61% 8%;
     --severity-none: 220 9% 60%;
-    --severity-none-foreground: 0 0% 100%;
+    --severity-none-foreground: 222 47% 8%;
+    /* Text-only severity colors — bright hues read AA on the dark page */
+    --severity-critical-text: 0 72% 51%;
+    --severity-high-text: 25 95% 58%;
+    --severity-medium-text: 45 93% 58%;
+    --severity-low-text: 142 69% 58%;
+    --severity-none-text: 220 9% 60%;
   }
 }
 
@@ -109,6 +129,27 @@
 .severity-none {
   background-color: hsl(var(--severity-none));
   color: hsl(var(--severity-none-foreground));
+}
+
+/* Text-only severity colors (no background) — for colored counts/labels */
+.severity-text-critical {
+  color: hsl(var(--severity-critical-text));
+}
+
+.severity-text-high {
+  color: hsl(var(--severity-high-text));
+}
+
+.severity-text-medium {
+  color: hsl(var(--severity-medium-text));
+}
+
+.severity-text-low {
+  color: hsl(var(--severity-low-text));
+}
+
+.severity-text-none {
+  color: hsl(var(--severity-none-text));
 }
 
 /* Scrollbar styling */

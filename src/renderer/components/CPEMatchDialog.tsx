@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { X, AlertCircle, CheckCircle, HelpCircle } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { AlertCircle, CheckCircle, HelpCircle } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 /**
  * CPE Match result from the NVD matching service
@@ -83,8 +84,6 @@ function getMatchTypeLabel(matchType: CPEMatchResult['matchType']): string {
 export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }: CPEMatchDialogProps) {
   const [selections, setSelections] = useState<Map<string, string>>(new Map())
   const [isLoading, setIsLoading] = useState(false)
-  const modalRef = useRef<HTMLDivElement>(null)
-  const previousActiveElement = useRef<HTMLElement | null>(null)
 
   // Initialize selections with highest confidence CPE for each component
   useEffect(() => {
@@ -105,67 +104,6 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
       setSelections(initialSelections)
     }
   }, [open, ambiguousComponents])
-
-  // Focus trap and keyboard handler for accessibility
-  useEffect(() => {
-    if (!open) return
-
-    // Store the previously focused element
-    previousActiveElement.current = document.activeElement as HTMLElement
-
-    const modalElement = modalRef.current
-    if (!modalElement) return
-
-    // Get all focusable elements
-    const focusableSelectors = [
-      'button:not([disabled])',
-      '[href]',
-      'input:not([disabled])',
-      'select:not([disabled])',
-      'textarea:not([disabled])',
-      '[tabindex]:not([tabindex="-1"])',
-    ].join(', ')
-
-    const getFocusableElements = () => modalElement.querySelectorAll<HTMLElement>(focusableSelectors)
-
-    // Focus the first focusable element
-    const focusableElements = getFocusableElements()
-    if (focusableElements.length > 0) {
-      focusableElements[0].focus()
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Close on Escape
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-        return
-      }
-
-      // Focus trap on Tab
-      if (e.key === 'Tab') {
-        const focusableElements = getFocusableElements()
-        const firstElement = focusableElements[0]
-        const lastElement = focusableElements[focusableElements.length - 1]
-
-        if (e.shiftKey && document.activeElement === firstElement) {
-          e.preventDefault()
-          lastElement?.focus()
-        } else if (!e.shiftKey && document.activeElement === lastElement) {
-          e.preventDefault()
-          firstElement?.focus()
-        }
-      }
-    }
-
-    modalElement.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      modalElement.removeEventListener('keydown', handleKeyDown)
-      // Restore focus to the previously focused element
-      previousActiveElement.current?.focus()
-    }
-  }, [open, onClose])
 
   // Handle CPE selection change
   const handleSelectionChange = useCallback((componentId: string, cpe: string) => {
@@ -219,45 +157,26 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
     }, 0)
   }, [ambiguousComponents])
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-
-      {/* Modal */}
-      <div
-        ref={modalRef}
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
         data-testid="cpe-match-dialog"
-        role="dialog"
         aria-modal="true"
-        aria-labelledby="cpe-dialog-title"
-        className="relative z-50 w-full max-w-4xl rounded-lg border border-border bg-card shadow-lg max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col"
+        className="max-w-4xl max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0"
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-border p-6 bg-gradient-to-r from-muted to-card">
+        <DialogHeader className="flex-row items-start border-b border-border p-6 bg-gradient-to-r from-muted to-card text-left">
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-amber-500" />
-              <h2 id="cpe-dialog-title" className="text-xl font-semibold text-foreground">
-                CPE Estimation Required
-              </h2>
+              <DialogTitle className="text-xl font-semibold text-foreground">CPE Estimation Required</DialogTitle>
             </div>
-            <p className="text-sm text-muted-foreground mt-2">
+            <DialogDescription className="text-sm text-muted-foreground mt-2">
               The following components need CPE confirmation before export. Please review and select the appropriate CPE
               for each component.
-            </p>
+            </DialogDescription>
           </div>
-          <button
-            onClick={onClose}
-            data-testid="cpe-dialog-close"
-            className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Close dialog"
-          >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
@@ -337,8 +256,8 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -249,6 +249,28 @@ export class KevService {
   }
 
   /**
+   * Delete KEV entries and clear their is_kev flag on the cves table. Used to delist
+   * CVEs that were dropped from the latest CISA catalog.
+   */
+  private removeKevEntries(cveIds: string[]): void {
+    if (cveIds.length === 0) return
+
+    this.db.exec('BEGIN TRANSACTION')
+    try {
+      const delCatalog = this.db.prepare('DELETE FROM kev_catalog WHERE cve_id = ?')
+      const clearFlag = this.db.prepare('UPDATE cves SET is_kev = 0 WHERE id = ?')
+      for (const id of cveIds) {
+        delCatalog.run(id)
+        clearFlag.run(id)
+      }
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  /**
    * Sync latest KEV catalog from CISA
    */
   async syncFromCisa(): Promise<KevSyncResult> {
@@ -287,6 +309,12 @@ export class KevService {
 
       // Import new catalog
       const imported = this.importCatalog(catalog, 'CISA')
+
+      // Delist CVEs dropped from the catalog. importCatalog only does INSERT OR REPLACE +
+      // SET is_kev=1, so without this the delisted CVEs keep is_kev=1 and stay in
+      // kev_catalog forever, and the reported `removed` count reflects no real DB change.
+      const delisted = [...currentIds].filter((id) => !newIds.has(id))
+      this.removeKevEntries(delisted)
 
       // Update sync timestamp
       this.updateSyncTimestamp()
@@ -483,14 +511,32 @@ export class KevService {
    */
   private async buildCache(): Promise<void> {
     console.log('[KevService] Building cache...')
+    // Force a fresh DB read: getAllKevIds() short-circuits to the existing cache when set,
+    // so without clearing it first a post-init syncFromCisa()->buildCache() would rebuild
+    // from the stale cache and never reflect newly-synced CVEs until a restart.
+    this.kevCache = null
     this.kevCache = this.getAllKevIds()
     console.log(`[KevService] Cache built with ${this.kevCache.size} entries`)
+  }
+
+  /**
+   * Create the sync_metadata table if it doesn't exist yet. Idempotent — safe to call
+   * before every read/write since a freshly-initialized database has never run a sync.
+   */
+  private ensureSyncMetadataTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `)
   }
 
   /**
    * Check if sync is needed
    */
   private async isSyncNeeded(): Promise<boolean> {
+    this.ensureSyncMetadataTable()
     const row = this.db.prepare("SELECT value FROM sync_metadata WHERE key = 'kev_last_sync'").get() as
       | { value: string }
       | undefined
@@ -500,6 +546,11 @@ export class KevService {
     }
 
     const lastSync = new Date(row.value)
+    // A corrupt/unparseable timestamp yields NaN, and `NaN >= interval` is false — which would
+    // report "sync not needed" forever. Treat it as needing a sync instead (fail-safe).
+    if (Number.isNaN(lastSync.getTime())) {
+      return true
+    }
     const hoursSinceSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60)
 
     return hoursSinceSync >= this.config.syncIntervalHours
@@ -509,12 +560,7 @@ export class KevService {
    * Update sync timestamp
    */
   private updateSyncTimestamp(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sync_metadata (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )
-    `)
+    this.ensureSyncMetadataTable()
 
     this.db
       .prepare(

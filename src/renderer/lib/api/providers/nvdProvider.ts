@@ -527,7 +527,7 @@ export class NvdProvider extends BaseVulnerabilityProvider {
    * Validate NVD API key format
    */
   validateApiKey(apiKey: string): boolean {
-    const uuidRegex = /^[0-9a-f]{8}-[09a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     return uuidRegex.test(apiKey)
   }
 

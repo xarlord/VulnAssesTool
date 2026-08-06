@@ -3,7 +3,8 @@
  * Aggregates and calculates high-level metrics from project data
  */
 
-import type { Project } from '@@/types'
+import type { Project, Vulnerability } from '@@/types'
+import { aggregateProjectStats } from '@/lib/stats/projectAggregates'
 
 export interface ExecutiveMetrics {
   overall: OverallMetrics
@@ -11,6 +12,17 @@ export interface ExecutiveMetrics {
   trends: TrendMetrics
   compliance: ComplianceMetrics
   productivity: ProductivityMetrics
+  topCriticalVulnerabilities: TopVulnerabilityItem[]
+}
+
+/** A single CVE-level entry for the "Top critical vulnerabilities" widget (FR-06.2). */
+export interface TopVulnerabilityItem {
+  id: string
+  severity: Vulnerability['severity']
+  cvssScore?: number
+  projectId: string
+  projectName: string
+  affectedComponentCount: number
 }
 
 export interface OverallMetrics {
@@ -24,6 +36,8 @@ export interface OverallMetrics {
   averageHealthScore: number
   riskLevel: 'critical' | 'high' | 'medium' | 'low' | 'excellent'
   vulnerableComponentPercentage: number
+  /** Count of vulnerabilities in the CISA KEV catalog (isKev) — actively exploited. */
+  exploitedCount: number
 }
 
 export interface ProjectMetrics {
@@ -83,15 +97,18 @@ export interface ProductivityMetrics {
  * Calculate overall metrics from all projects
  */
 export function calculateOverallMetrics(projects: Project[]): OverallMetrics {
-  const totalProjects = projects.length
-  const totalComponents = projects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
-  const totalVulnerabilities = projects.reduce((sum, p) => sum + p.statistics.totalVulnerabilities, 0)
-  const criticalCount = projects.reduce((sum, p) => sum + p.statistics.criticalCount, 0)
-  const highCount = projects.reduce((sum, p) => sum + p.statistics.highCount, 0)
-  const mediumCount = projects.reduce((sum, p) => sum + p.statistics.mediumCount, 0)
-  const lowCount = projects.reduce((sum, p) => sum + p.statistics.lowCount, 0)
+  // Shared roll-up so the Dashboard stat row and these metrics never drift.
+  const {
+    totalProjects,
+    totalComponents,
+    totalVulnerabilities,
+    criticalCount,
+    highCount,
+    mediumCount,
+    lowCount,
+    vulnerableComponents,
+  } = aggregateProjectStats(projects)
 
-  const vulnerableComponents = projects.reduce((sum, p) => sum + p.statistics.vulnerableComponents, 0)
   const vulnerableComponentPercentage = totalComponents > 0 ? (vulnerableComponents / totalComponents) * 100 : 0
 
   // Calculate weighted health score
@@ -105,6 +122,15 @@ export function calculateOverallMetrics(projects: Project[]): OverallMetrics {
     }
   }
   const averageHealthScore = projectsWithHealth > 0 ? totalHealthScore / projectsWithHealth : 100
+
+  // Count actively-exploited vulnerabilities (present in the CISA KEV catalog),
+  // independent of severity — a KEV medium is still exploited-in-the-wild.
+  let exploitedCount = 0
+  for (const project of projects) {
+    for (const vuln of project.vulnerabilities) {
+      if (vuln.isKev) exploitedCount++
+    }
+  }
 
   // Determine risk level based on multiple factors
   const riskLevel = calculateRiskLevel({
@@ -126,6 +152,7 @@ export function calculateOverallMetrics(projects: Project[]): OverallMetrics {
     averageHealthScore: Math.round(averageHealthScore),
     riskLevel,
     vulnerableComponentPercentage: Math.round(vulnerableComponentPercentage),
+    exploitedCount,
   }
 }
 
@@ -163,7 +190,7 @@ export function calculateProjectMetrics(projects: Project[]): ProjectMetrics[] {
 export function calculateTrendMetrics(projects: Project[]): TrendMetrics {
   const now = new Date()
   const periods: TrendPeriod[] = []
-  const weeksToInclude = 12 // Show last 12 weeks
+  const weeksToInclude = 26 // Show last 26 weeks (~6 months) per FR-06.2
 
   // Generate weekly periods
   for (let i = weeksToInclude - 1; i >= 0; i--) {
@@ -283,30 +310,35 @@ export function calculateComplianceMetrics(projects: Project[]): ComplianceMetri
   const slaHigh = totalHigh > 0 ? ((totalHigh - oldHigh) / totalHigh) * 100 : 100
   const slaOverall = slaCritical * 0.6 + slaHigh * 0.4 // Weighted average
 
-  // Scan coverage
-  const projectsScanned = projects.filter((p) => p.lastScanAt && p.lastScanAt >= thirtyDaysAgo).length
+  // Scan coverage. Compare via getTime() because after store rehydration lastScanAt is an
+  // ISO string, and `string >= Date` is a broken lexicographic compare (H6).
+  const projectsScanned = projects.filter(
+    (p) => p.lastScanAt && new Date(p.lastScanAt).getTime() >= thirtyDaysAgo.getTime(),
+  ).length
   const scanCoverage = projects.length > 0 ? (projectsScanned / projects.length) * 100 : 100
 
   // Data freshness
-  const projectsFresh = projects.filter((p) => p.lastVulnDataRefresh && p.lastVulnDataRefresh >= sevenDaysAgo).length
+  const projectsFresh = projects.filter(
+    (p) => p.lastVulnDataRefresh && new Date(p.lastVulnDataRefresh).getTime() >= sevenDaysAgo.getTime(),
+  ).length
   const dataFreshness = projects.length > 0 ? (projectsFresh / projects.length) * 100 : 100
 
-  // Remediation rate (percentage of vulnerabilities with available patches)
-  let totalWithPatchInfo = 0
+  // Remediation rate: percentage of ALL vulnerabilities that are fixable (a patch
+  // is available). The PRD asks for "% of all vulns fixable", so the denominator is
+  // every vulnerability, not only those that happen to carry patch metadata.
+  let totalVulnerabilitiesCounted = 0
   let totalFixable = 0
 
   for (const project of projects) {
     for (const vuln of project.vulnerabilities) {
-      if (vuln.patchInfo) {
-        totalWithPatchInfo++
-        if (vuln.patchInfo.patchAvailability === 'available') {
-          totalFixable++
-        }
+      totalVulnerabilitiesCounted++
+      if (vuln.patchInfo?.patchAvailability === 'available') {
+        totalFixable++
       }
     }
   }
 
-  const remediationRate = totalWithPatchInfo > 0 ? (totalFixable / totalWithPatchInfo) * 100 : 100
+  const remediationRate = totalVulnerabilitiesCounted > 0 ? (totalFixable / totalVulnerabilitiesCounted) * 100 : 100
 
   return {
     slaCompliance: {
@@ -318,6 +350,24 @@ export function calculateComplianceMetrics(projects: Project[]): ComplianceMetri
     dataFreshness: Math.round(dataFreshness),
     remediationRate: Math.round(remediationRate),
   }
+}
+
+/**
+ * Compute the next compliance-review date from real assessment activity: the most recent
+ * data-refresh (or scan) across the given projects, plus a review interval. Returns null
+ * when nothing has ever been scanned/refreshed, so the UI can show "not scheduled" instead
+ * of the fabricated "today + 7 days" it used before (M3).
+ */
+export function computeNextComplianceReview(projects: Project[], intervalDays: number): Date | null {
+  const reviewTimestamps = projects
+    .map((p) => p.lastVulnDataRefresh ?? p.lastScanAt)
+    .filter((d): d is Date => d != null)
+    // After store rehydration these are ISO strings; new Date() normalizes both forms.
+    .map((d) => new Date(d).getTime())
+    .filter((t) => Number.isFinite(t))
+  if (reviewTimestamps.length === 0) return null
+  const lastReview = Math.max(...reviewTimestamps)
+  return new Date(lastReview + intervalDays * 24 * 60 * 60 * 1000)
 }
 
 /**
@@ -333,14 +383,23 @@ export function calculateProductivityMetrics(projects: Project[]): ProductivityM
   const componentsAnalyzed = projects.reduce((sum, p) => sum + p.statistics.totalComponents, 0)
   const vulnerabilitiesAssessed = projects.reduce((sum, p) => sum + p.statistics.totalVulnerabilities, 0)
 
-  const scansThisWeek = projects.filter((p) => p.lastScanAt && p.lastScanAt >= weekAgo).length
-  const scansThisMonth = projects.filter((p) => p.lastScanAt && p.lastScanAt >= monthAgo).length
+  // getTime() compare: lastScanAt is an ISO string after store rehydration (H6).
+  const scansThisWeek = projects.filter(
+    (p) => p.lastScanAt && new Date(p.lastScanAt).getTime() >= weekAgo.getTime(),
+  ).length
+  const scansThisMonth = projects.filter(
+    (p) => p.lastScanAt && new Date(p.lastScanAt).getTime() >= monthAgo.getTime(),
+  ).length
 
-  // Average scan time would need to be tracked during scanning
-  // For now, estimate based on component count
+  // Average scan time measured from real recorded per-scan durations (M5). Projects that
+  // have never recorded a duration are excluded; if none have, report 0 rather than
+  // fabricating a component-count estimate.
+  const scanDurations = projects
+    .map((p) => p.lastScanDurationMs)
+    .filter((ms): ms is number => typeof ms === 'number' && ms > 0)
   const averageScanTime =
-    componentsAnalyzed > 0
-      ? (componentsAnalyzed * 0.5) / 60 // Estimate 0.5 seconds per component
+    scanDurations.length > 0
+      ? scanDurations.reduce((sum, ms) => sum + ms, 0) / scanDurations.length / 1000 / 60 // ms → minutes
       : 0
 
   return {
@@ -364,7 +423,43 @@ export function calculateExecutiveMetrics(projects: Project[]): ExecutiveMetrics
     trends: calculateTrendMetrics(projects),
     compliance: calculateComplianceMetrics(projects),
     productivity: calculateProductivityMetrics(projects),
+    topCriticalVulnerabilities: calculateTopCriticalVulnerabilities(projects),
   }
+}
+
+/**
+ * The most severe individual CVEs across all projects (FR-06.2).
+ *
+ * Flattens every project's critical-severity vulnerabilities, deduplicates by CVE
+ * id (a CVE can affect multiple projects — the highest-CVSS occurrence is kept),
+ * sorts by CVSS descending (unscored entries last), and caps at `limit`.
+ */
+export function calculateTopCriticalVulnerabilities(projects: Project[], limit = 10): TopVulnerabilityItem[] {
+  const byId = new Map<string, TopVulnerabilityItem>()
+
+  for (const project of projects) {
+    for (const vuln of project.vulnerabilities) {
+      if (vuln.severity !== 'critical') continue
+
+      const candidate: TopVulnerabilityItem = {
+        id: vuln.id,
+        severity: vuln.severity,
+        cvssScore: vuln.cvssScore,
+        projectId: project.id,
+        projectName: project.name,
+        affectedComponentCount: vuln.affectedComponents?.length ?? 0,
+      }
+
+      const existing = byId.get(vuln.id)
+      if (!existing || (candidate.cvssScore ?? 0) > (existing.cvssScore ?? 0)) {
+        byId.set(vuln.id, candidate)
+      }
+    }
+  }
+
+  return Array.from(byId.values())
+    .sort((a, b) => (b.cvssScore ?? -1) - (a.cvssScore ?? -1))
+    .slice(0, limit)
 }
 
 /**

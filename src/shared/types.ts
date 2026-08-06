@@ -93,11 +93,15 @@ export interface Project {
   updatedAt: Date
   lastScanAt?: Date
   lastVulnDataRefresh?: Date // When vulnerability data was last refreshed from API
+  lastScanDurationMs?: number // Measured wall-clock duration of the most recent scan (real avg-scan-time source)
   sbomFiles: SbomFile[]
   components: Component[]
   vulnerabilities: Vulnerability[]
   statistics: ProjectStatistics
   dependencyGraph?: DependencyGraph
+  /** SPDX license ids the user has approved for this project — the license
+   * compliance scanner treats these as 'allowed', overriding category rules. */
+  allowedLicenses?: string[]
 }
 
 export interface SbomFile {
@@ -140,7 +144,17 @@ export interface Component {
   sbomFileId?: string // ID of the SBOM file this component was imported from
   suggestedCpes?: CPESuggestion[] // Suggested CPEs for components without a CPE
   hasMissingCpe?: boolean // Flag to indicate if component needs CPE selection
+  // Extraction coverage — how reliably we know WHAT this component is (distinct from
+  // hasMissingCpe, which is about CVE-matching). 'identified' = known name + real version;
+  // 'gap' = present but unversioned / weak evidence (e.g. a stripped RTOS lib). Emitted by the
+  // binary catalogers as the CycloneDX vat:coverage property, else derived from version presence.
+  coverage?: 'identified' | 'gap'
+  provenanceSources?: string[] // vat:source values, e.g. ['syft','probe'] — how it was catalogued
+  coverageNote?: string // vat:note — human-readable reason a component is a gap
 }
+
+/** How a vulnerability was matched to a component, per (vuln, component) edge. */
+export type MatchConfidence = 'cpe-exact' | 'cpe-estimated' | 'name-only'
 
 export interface ComponentPatchInfo {
   hasFixAvailable: boolean
@@ -174,6 +188,9 @@ export interface Vulnerability {
   epssScore?: number // EPSS probability score (0-1)
   epssPercentile?: number // EPSS percentile (0-1)
   riskScore?: number // Composite risk score (0-100)
+  // Match confidence per affected component id. A `name-only` match on an unversioned component is
+  // the dominant noise source, so the UI/CLI can de-emphasize it. undefined (legacy scans) = trusted.
+  matchQuality?: Record<string, MatchConfidence>
 }
 
 /**
@@ -405,6 +422,18 @@ export interface DatabaseSettings {
 }
 
 // Settings Types
+/**
+ * CVSS base-score cutoffs for each severity band (FR-10.5). Defaults match the
+ * CVSS v3.x spec (9.0/7.0/4.0/0.1). Consumed ONLY by the CVSS detail view's
+ * parser call, never by ingestion-time severity or the stored `.severity` field.
+ */
+export interface SeverityThresholds {
+  critical: number
+  high: number
+  medium: number
+  low: number
+}
+
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system'
   fontSize: 'small' | 'default' | 'large'
@@ -417,6 +446,7 @@ export interface AppSettings {
   // CVSS settings
   cvssVersion: '3.0' | '3.1'
   showCvssBreakdown: boolean
+  severityThresholds: SeverityThresholds
   // Graph settings
   maxGraphNodes: number
   showVulnerableOnly: boolean
@@ -448,6 +478,24 @@ export interface NvdApiCve {
         baseScore: number
         baseSeverity: string
       }
+    }[]
+    // CVSS v3.0 shares v3.1's cvssData shape; v2's cvssData carries baseScore + vectorString.
+    // Only baseScore/vectorString are read from these fallbacks (see convertNvdCveToVulnerability).
+    cvssMetricV30?: {
+      cvssData: {
+        version: string
+        vectorString: string
+        baseScore: number
+        baseSeverity: string
+      }
+    }[]
+    cvssMetricV2?: {
+      cvssData: {
+        version: string
+        vectorString: string
+        baseScore: number
+      }
+      baseSeverity?: string
     }[]
   }
   weaknesses?: { description: [{ lang: string; value: string }] }[]
@@ -602,7 +650,11 @@ export interface FilterPreset {
     source?: Vulnerability['source'][]
     cvssRange?: [number, number]
     hasPatch?: boolean
+    exploited?: boolean
     componentType?: Component['type'][]
+    // Component-filter dimensions (FR-08.2); presets are namespaced per-tab by localStorage key.
+    license?: string[]
+    hasVulnerabilities?: boolean
   }
 }
 

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Clock, Trash2, CheckCircle } from 'lucide-react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { SettingsProfile } from '@@/types'
 
 interface SettingsProfileCardProps {
@@ -6,13 +8,15 @@ interface SettingsProfileCardProps {
   isActive: boolean
   onSwitch: (profileId: string) => void
   onDelete: (profileId: string) => void
+  onSetDefault: (profileId: string) => void
 }
 
-export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: SettingsProfileCardProps) {
-  const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete the profile "${profile.name}"?`)) {
-      onDelete(profile.id)
-    }
+export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onSetDefault }: SettingsProfileCardProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  const handleConfirmDelete = () => {
+    onDelete(profile.id)
+    setShowDeleteConfirm(false)
   }
 
   const formatDate = (date: Date | string): string => {
@@ -98,7 +102,19 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: S
           </div>
         )}
         <button
-          onClick={handleDelete}
+          onClick={() => onSetDefault(profile.id)}
+          disabled={profile.isDefault}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            profile.isDefault
+              ? 'cursor-not-allowed bg-muted text-muted-foreground opacity-50'
+              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+          }`}
+          title={profile.isDefault ? 'Already the default profile' : 'Set as default profile'}
+        >
+          Set Default
+        </button>
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
           disabled={isActive}
           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             isActive
@@ -110,6 +126,17 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete }: S
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete profile"
+        message={`Are you sure you want to delete the profile "${profile.name}"?`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

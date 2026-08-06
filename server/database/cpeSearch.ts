@@ -5,7 +5,7 @@
  */
 
 import Database from 'better-sqlite3'
-import { escapeLikePattern, sanitizeSqlInput } from './sqlSanitizer.js'
+import { escapeLikePattern } from './sqlSanitizer.js'
 import type { CacheManager } from '../services/CacheManager.js'
 import { getCacheManager } from '../services/CacheManager.js'
 
@@ -65,6 +65,9 @@ const CACHE_NAMESPACE = 'cpe-search'
 export class CPESearch {
   private db: BetterDb
   private cacheManager: CacheManager | null = null
+  // Lazily-detected: the indexed cpe_product column exists only after the v2
+  // schema migration; older / seed databases fall back to a cpe23_uri substring.
+  private cpeProductColumn: boolean | null = null
 
   /**
    * Create a new CPESearch instance
@@ -152,9 +155,12 @@ export class CPESearch {
     const useCache = options?.useCache !== false && this.cacheManager !== null
     const forceRefresh = options?.forceRefresh === true
 
+    // Normalize the cache key the same way searchByProductNameInternal normalizes the
+    // query, so 'OpenSSL' / 'openssl' / ' openssl ' all resolve to one shared cache entry.
+    const cacheKey = this.getCacheKey('productName', productName.toLowerCase().trim().slice(0, 200), limit)
+
     // Check cache
     if (useCache && !forceRefresh) {
-      const cacheKey = this.getCacheKey('productName', productName, limit)
       const cached = this.cacheManager?.get<CPESearchResult[]>(cacheKey, CACHE_NAMESPACE)
       if (cached) {
         return cached
@@ -166,37 +172,57 @@ export class CPESearch {
 
     // Cache results
     if (useCache) {
-      const cacheKey = this.getCacheKey('productName', productName, limit)
       this.cacheManager?.set(cacheKey, results, CACHE_NAMESPACE)
     }
 
     return results
   }
 
+  /** Whether the indexed cpe_product column exists (added by the v2 migration). */
+  private hasCpeProductColumn(): boolean {
+    if (this.cpeProductColumn === null) {
+      const cols = this.db.prepare('PRAGMA table_info(cpe_matches)').all() as Array<{ name: string }>
+      this.cpeProductColumn = cols.some((c) => c.name === 'cpe_product')
+    }
+    return this.cpeProductColumn
+  }
+
   /**
-   * Internal implementation of search by product name
+   * Internal implementation of search by product name.
+   *
+   * Precision-first against the indexed `cpe_product` column (exact, then
+   * prefix), falling back to a `cpe23_uri` substring only for recall. A bare
+   * `%product%` over the whole CPE string over-matches (e.g. `%openssl%` also
+   * hits other CPE fields — 278 CVEs vs 261 for the real product), so it is the
+   * last resort. The query is fully parameterized, so the SQL-string sanitizer
+   * isn't needed and would mangle legitimate product names
+   * ("update-alternatives" -> "-alternatives", "update" -> "").
    */
   private async searchByProductNameInternal(productName: string, limit?: number): Promise<CPESearchResult[]> {
-    const sanitizedProduct = sanitizeSqlInput(productName.toLowerCase())
-    if (!sanitizedProduct) {
+    const product = productName.toLowerCase().trim().slice(0, 200)
+    if (!product) {
       return []
     }
 
     const actualLimit = Math.min(limit || DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT)
-    const pattern = `%${escapeLikePattern(sanitizedProduct)}%`
+    const run = (where: string, param: string): Array<{ cpe23_uri: string; vulnerable: number }> =>
+      this.db
+        .prepare(
+          `SELECT DISTINCT cpe23_uri, vulnerable FROM cpe_matches
+           WHERE ${where} AND vulnerable = 1 ORDER BY cpe23_uri LIMIT ?`,
+        )
+        .all(param, actualLimit) as Array<{ cpe23_uri: string; vulnerable: number }>
 
-    const query = `
-      SELECT DISTINCT cpe23_uri, vulnerable
-      FROM cpe_matches
-      WHERE cpe23_uri LIKE ?
-        AND vulnerable = 1
-      ORDER BY cpe23_uri
-      LIMIT ?
-    `
+    if (this.hasCpeProductColumn()) {
+      const exact = run('cpe_product = ?', product)
+      if (exact.length > 0) return this.parseSearchResultsFromObjects(exact)
 
-    const results = this.db.prepare(query).all(pattern, actualLimit) as Array<{ cpe23_uri: string; vulnerable: number }>
+      const prefix = run('cpe_product LIKE ?', `${escapeLikePattern(product)}%`)
+      if (prefix.length > 0) return this.parseSearchResultsFromObjects(prefix)
+    }
 
-    return this.parseSearchResultsFromObjects(results)
+    const fallback = run('cpe23_uri LIKE ?', `%${escapeLikePattern(product)}%`)
+    return this.parseSearchResultsFromObjects(fallback)
   }
 
   /**
@@ -210,20 +236,20 @@ export class CPESearch {
       return []
     }
 
-    // Sanitize and filter tokens
-    const sanitizedTokens = tokens
-      .map((token) => sanitizeSqlInput(token.toLowerCase()))
-      .filter((token) => token && token.length > 0)
+    // Lowercase + trim + drop empties. No sanitizeSqlInput: every token is bound as a `?`
+    // parameter below (injection isn't possible), and sanitizeSqlInput would mangle
+    // legitimate tokens containing SQL keywords ("update" -> "", "create-react-app" -> ...).
+    const queryTokens = tokens.map((token) => token.toLowerCase().trim()).filter((token) => token.length > 0)
 
-    if (sanitizedTokens.length === 0) {
+    if (queryTokens.length === 0) {
       return []
     }
 
     const actualLimit = Math.min(limit || DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT)
 
     // Build dynamic WHERE clause for multiple tokens
-    const whereConditions = sanitizedTokens.map(() => 'cpe23_uri LIKE ?').join(' AND ')
-    const likePatterns = sanitizedTokens.map((token) => `%${escapeLikePattern(token)}%`)
+    const whereConditions = queryTokens.map(() => 'cpe23_uri LIKE ?').join(' AND ')
+    const likePatterns = queryTokens.map((token) => `%${escapeLikePattern(token)}%`)
 
     const query = `
       SELECT DISTINCT cpe23_uri, vulnerable
@@ -285,21 +311,32 @@ export class CPESearch {
    * @returns Array of unique product names
    */
   async getAllUniqueProducts(): Promise<string[]> {
-    const query = `
-      SELECT DISTINCT cpe23_uri
-      FROM cpe_matches
-      WHERE cpe23_uri IS NOT NULL
-        AND cpe23_uri LIKE 'cpe:2.3:%'
-        AND vulnerable = 1
-      ORDER BY cpe23_uri
-    `
+    // Prefer the indexed parsed column: SQL does the DISTINCT (bounded to the number of
+    // distinct products) instead of loading and JS-parsing every cpe23_uri row.
+    if (this.hasCpeProductColumn()) {
+      const rows = this.db
+        .prepare(
+          `SELECT DISTINCT cpe_product FROM cpe_matches
+           WHERE cpe_product IS NOT NULL AND cpe_product != '' AND vulnerable = 1
+           ORDER BY cpe_product`,
+        )
+        .all() as Array<{ cpe_product: string }>
+      return rows.map((r) => r.cpe_product)
+    }
 
-    const results = this.db.prepare(query).all() as Array<{ cpe23_uri: string }>
+    // Fallback for legacy DBs without cpe_product: bound the scan so it can't pull an
+    // unbounded number of rows into memory, then parse the product field in JS.
+    const results = this.db
+      .prepare(
+        `SELECT DISTINCT cpe23_uri FROM cpe_matches
+         WHERE cpe23_uri IS NOT NULL AND cpe23_uri LIKE 'cpe:2.3:%' AND vulnerable = 1
+         ORDER BY cpe23_uri LIMIT ?`,
+      )
+      .all(MAX_SEARCH_LIMIT) as Array<{ cpe23_uri: string }>
     const products = new Set<string>()
 
     for (const row of results) {
-      const uri = row.cpe23_uri
-      const parsed = this.parseCPE23Uri(uri)
+      const parsed = this.parseCPE23Uri(row.cpe23_uri)
       if (parsed && parsed.product) {
         products.add(parsed.product)
       }
@@ -318,29 +355,43 @@ export class CPESearch {
       return []
     }
 
-    const sanitizedProduct = sanitizeSqlInput(product.toLowerCase())
-    if (!sanitizedProduct) {
+    const normalized = product.toLowerCase().trim()
+    if (!normalized) {
       return []
     }
 
-    // Search in the product position (4th colon-separated field)
-    const pattern = `cpe:2.3:%:%:${escapeLikePattern(sanitizedProduct)}%:%`
-
-    const query = `
-      SELECT DISTINCT cpe23_uri
-      FROM cpe_matches
-      WHERE cpe23_uri LIKE ?
-        AND vulnerable = 1
-      ORDER BY cpe23_uri
-    `
-
-    const results = this.db.prepare(query).all(pattern) as Array<{ cpe23_uri: string }>
     const vendors = new Set<string>()
 
+    if (this.hasCpeProductColumn()) {
+      // Match the parsed product field exactly (indexed), not a positional LIKE whose `%`
+      // also spans the colon delimiters. Fully parameterized, so no sanitizeSqlInput (which
+      // would mangle product names containing SQL keywords).
+      const rows = this.db
+        .prepare(
+          `SELECT DISTINCT cpe_vendor FROM cpe_matches
+           WHERE cpe_product = ? AND cpe_vendor IS NOT NULL AND vulnerable = 1
+           ORDER BY cpe_vendor`,
+        )
+        .all(normalized) as Array<{ cpe_vendor: string }>
+      for (const row of rows) {
+        if (row.cpe_vendor) vendors.add(row.cpe_vendor)
+      }
+      return Array.from(vendors).sort()
+    }
+
+    // Fallback for legacy DBs: a coarse product-position prefix (bounded), then confirm the
+    // exact product field in JS — a positional LIKE can't reliably anchor to one colon-field.
+    const results = this.db
+      .prepare(
+        `SELECT DISTINCT cpe23_uri FROM cpe_matches
+         WHERE cpe23_uri LIKE ? ESCAPE '\\' AND vulnerable = 1
+         ORDER BY cpe23_uri LIMIT ?`,
+      )
+      .all(`cpe:2.3:%:%:${escapeLikePattern(normalized)}%`, MAX_SEARCH_LIMIT) as Array<{ cpe23_uri: string }>
+
     for (const row of results) {
-      const uri = row.cpe23_uri
-      const parsed = this.parseCPE23Uri(uri)
-      if (parsed && parsed.vendor) {
+      const parsed = this.parseCPE23Uri(row.cpe23_uri)
+      if (parsed && parsed.product === normalized && parsed.vendor) {
         vendors.add(parsed.vendor)
       }
     }

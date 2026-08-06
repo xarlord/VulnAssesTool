@@ -268,6 +268,30 @@ describe('RateLimiter', () => {
       expect(limiter.getQueueSize()).toBe(0)
       expect(limiter.getTimeUntilNextRequest()).toBe(0)
     })
+
+    it('rejects still-queued callers instead of leaving them to hang (H26)', async () => {
+      // WHY (H26): cancel() calls reset() to stop a sync. Anything already awaiting a
+      // queued slot must be REJECTED — otherwise those awaits never settle and the sync
+      // task (and its /sync/cancel caller) hangs forever. A 2s bound turns a regression
+      // (silent hang) into a fast failure rather than a full-timeout stall.
+      const limiter = new RateLimiter({ requestsPerWindow: 1, windowMs: 10000 })
+
+      // First task occupies the single slot and never resolves, so the next queues behind it.
+      limiter.execute(() => new Promise<never>(() => {}))
+      const queued = limiter.execute(() => Promise.resolve('should never run'))
+      expect(limiter.getQueueSize()).toBe(1)
+
+      // Attach the catch synchronously (before reset) so the rejection is never briefly
+      // unhandled — reset() rejects on the same tick.
+      let caught: unknown
+      const settled = queued.catch((error: unknown) => {
+        caught = error
+      })
+      limiter.reset()
+      await settled
+      expect(caught).toBeInstanceOf(Error)
+      expect((caught as Error).message).toMatch(/cancel/i)
+    }, 2000)
   })
 
   describe('getQueueSize', () => {
@@ -279,7 +303,8 @@ describe('RateLimiter', () => {
     it('should return queue length when items are queued', () => {
       const limiter = new RateLimiter({ requestsPerWindow: 1, windowMs: 10000 })
       limiter.execute(() => new Promise(() => {}))
-      limiter.execute(() => new Promise(() => {}))
+      // reset() now rejects the queued caller (H26), so swallow that rejection here.
+      limiter.execute(() => new Promise(() => {})).catch(() => {})
 
       expect(limiter.getQueueSize()).toBe(1)
       limiter.reset()

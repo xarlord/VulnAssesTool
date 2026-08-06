@@ -20,14 +20,42 @@ const IV_LENGTH = 16
 const AUTH_TAG_LENGTH = 16
 const PBKDF2_ITERATIONS = 100_000
 
+/**
+ * Legacy key derived from low-entropy machine identifiers + a hardcoded salt. Kept ONLY to
+ * decrypt data written before the random-key scheme; never used for new encryption.
+ */
 function getMachineKey(): Buffer {
   const machineId = `${os.hostname()}:${os.userInfo().username}:vulnassesstool`
   const salt = 'vulnassesstool-secure-storage-salt-v1'
   return pbkdf2Sync(machineId, salt, PBKDF2_ITERATIONS, KEY_LENGTH, 'sha512')
 }
 
+let cachedStorageKey: Buffer | null = null
+
+/**
+ * The real encryption key: 32 random bytes persisted with owner-only permissions in DATA_DIR,
+ * separate from credentials.json. Unlike the machine-derived key it isn't reconstructible from
+ * public host attributes, so reading credentials.json alone no longer yields the key.
+ */
+function getStorageKey(): Buffer {
+  if (cachedStorageKey) return cachedStorageKey
+  const keyPath = path.join(config.DATA_DIR, 'storage-key.bin')
+  if (existsSync(keyPath)) {
+    const existing = readFileSync(keyPath)
+    if (existing.length === KEY_LENGTH) {
+      cachedStorageKey = existing
+      return existing
+    }
+  }
+  const key = randomBytes(KEY_LENGTH)
+  mkdirSync(path.dirname(keyPath), { recursive: true })
+  writeFileSync(keyPath, key, { mode: 0o600 })
+  cachedStorageKey = key
+  return key
+}
+
 function encrypt(plaintext: string): string {
-  const key = getMachineKey()
+  const key = getStorageKey()
   const iv = randomBytes(IV_LENGTH)
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH })
 
@@ -39,17 +67,24 @@ function encrypt(plaintext: string): string {
 }
 
 function decrypt(ciphertext: string): string {
-  const key = getMachineKey()
   const combined = Buffer.from(ciphertext, 'base64')
-
   const iv = combined.subarray(0, IV_LENGTH)
   const authTag = combined.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH)
   const encrypted = combined.subarray(IV_LENGTH + AUTH_TAG_LENGTH)
 
-  const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH })
-  decipher.setAuthTag(authTag)
-
-  return decipher.update(encrypted) + decipher.final('utf8')
+  // Try the current random key first, then the legacy machine key so entries written before
+  // the migration stay readable (they get re-encrypted with the random key on next save).
+  let lastError: unknown
+  for (const key of [getStorageKey(), getMachineKey()]) {
+    try {
+      const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH })
+      decipher.setAuthTag(authTag)
+      return decipher.update(encrypted) + decipher.final('utf8')
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Failed to decrypt credential')
 }
 
 interface CredentialStore {

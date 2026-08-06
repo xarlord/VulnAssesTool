@@ -8,6 +8,12 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    // Generated coverage reports (istanbul HTML/JS) — build artifacts, never linted.
+    'coverage',
+    // Claude Code workflow graphs run in the Workflow sandbox (top-level return/await),
+    // not as ESM modules — linting them as modules is a parse error. They are tooling,
+    // like the config files, so they're exempt from the app lint (see .claude/workflows/).
+    '.claude/**',
     // Files with React Compiler patterns that are valid React but trigger compiler warnings
     'src/renderer/components/CommandPalette.tsx',
     'src/renderer/components/OfflineIndicator.tsx',
@@ -15,8 +21,6 @@ export default defineConfig([
     'src/renderer/components/charts/CvssHistogram.tsx',
     'src/renderer/components/charts/SeverityDistributionChart.tsx',
     'src/renderer/components/charts/VulnerabilityBarChart.tsx',
-    'src/renderer/components/database/UpdateSettings.tsx',
-    'src/renderer/components/database/SyncProgressModal.tsx',
     'src/renderer/components/executive/widgets/ComplianceStatus.tsx',
     'src/renderer/components/executive/widgets/DashboardConfig.tsx',
     'src/renderer/components/executive/widgets/ProjectHealthComparison.tsx',
@@ -86,12 +90,10 @@ export default defineConfig([
       'src/renderer/components/charts/CvssHistogram.tsx',
       'src/renderer/components/charts/SeverityDistributionChart.tsx',
       'src/renderer/components/charts/VulnerabilityBarChart.tsx',
-      'src/renderer/components/database/UpdateSettings.tsx',
       'src/renderer/components/executive/widgets/ComplianceStatus.tsx',
       'src/renderer/components/executive/widgets/DashboardConfig.tsx',
       'src/renderer/components/executive/widgets/ProjectHealthComparison.tsx',
       'src/renderer/components/executive/widgets/VulnerabilityTrendChart.tsx',
-      'src/renderer/components/database/SyncProgressModal.tsx',
     ],
     rules: {
       // Turn off all rules for these files to avoid React Compiler errors
@@ -109,11 +111,9 @@ export default defineConfig([
     files: [
       '*.config.{ts,js,mjs,cjs}',
       'vite.config.ts',
-      'vite.config.electron.ts',
       'vitest.config.ts',
       'playwright.config.ts',
       'playwright.e2e.config.ts',
-      'watchdog.config.ts',
       'eslint.config.js',
       'commitlint.config.js',
       'postcss.config.js',

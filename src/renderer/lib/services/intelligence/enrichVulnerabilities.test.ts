@@ -188,6 +188,38 @@ describe('enrichVulnerabilities', () => {
       const results = await enrichVulnerabilities([])
       expect(results).toHaveLength(0)
     })
+
+    it('applies default enrichment flags when given a partial options object', async () => {
+      // Reproduces the real scan-flow call: useProjectScan.ts passes only { onProgress }
+      // (no include* flags). A default parameter (`options = DEFAULT_OPTIONS`) is replaced
+      // wholesale by any explicit argument, so a partial object leaves includeKev/includeEpss/
+      // includeRiskScore undefined — silently disabling all enrichment in the running app.
+      // Defaults must therefore be merged, not defaulted-when-absent.
+      const vulns: Vulnerability[] = [
+        {
+          id: 'CVE-2024-0001',
+          source: 'nvd',
+          severity: 'critical',
+          description: 'Vuln 1',
+          references: [],
+          affectedComponents: [],
+        },
+      ]
+
+      vi.mocked(getPlatform().intelligence.checkKev).mockResolvedValue({ success: true, isKev: false })
+      vi.mocked(getPlatform().intelligence.getEpssScores).mockResolvedValue({
+        success: true,
+        scores: { 'CVE-2024-0001': { score: 0.1, percentile: 0.8, fetchedAt: new Date() } },
+      })
+
+      const results = await enrichVulnerabilities(vulns, { onProgress: () => {} })
+
+      // EPSS is network-gated, but the batch fetch must still be attempted (includeEpss on).
+      expect(getPlatform().intelligence.getEpssScores).toHaveBeenCalledTimes(1)
+      expect(results[0].epssPercentile).toBe(0.8)
+      // Risk score is a pure local calculation from severity/KEV/EPSS — it must always populate.
+      expect(results[0].riskScore).toBeGreaterThan(0)
+    })
   })
 
   describe('enrichVulnerabilityMap', () => {

@@ -3,8 +3,31 @@ import {
   createProjectOnly,
   navigateToProjectDetail,
   navigateToExecutiveDashboard,
-  E2E_UI_DELAY,
+  E2E_SELECTOR_TIMEOUT,
 } from '../shared-helpers'
+
+/**
+ * Security Assessment Workflow — content contracts
+ *
+ * The offline seeded environment can drive the full assessment UI, but only the
+ * paths that don't need network threat-intel are deterministic. Every kept test
+ * below asserts designed content (grounded in source) instead of the previous
+ * `if (count > 0)` / regex-OR / `waitFor().catch(() => {})` guards that could never
+ * fail. Grounding:
+ *   - project-detail/VulnerabilitiesTab.tsx — "Vulnerabilities (0)" + empty state
+ *     "No vulnerabilities found" / "Run a vulnerability scan to check for security issues"
+ *   - project-detail/HealthTab.tsx + RemediationQueue.tsx — "Component Health Dashboard",
+ *     "Total Components", "All components are healthy!", "No components require immediate attention"
+ *   - components/ExportDialog.tsx — dialog title "Export Data" + CSV/JSON/PDF format buttons
+ *   - lib/analytics/reportBuilder.ts — executive-report-YYYY-MM-DD.pdf
+ *   - shell/Sidebar.tsx — Search + contextual Dependency Graph links; Search.tsx h1 "Search"
+ *
+ * KEV / EPSS / risk-score / vulnerability-detail / filter / sort / trend tests are skipped
+ * with reasons: they need a scan that produces enriched vulnerabilities, and KEV/EPSS
+ * enrichment requires network catalogs unavailable offline (see the dedicated
+ * kev-epss-intelligence spec). createProjectOnly makes a 0-vulnerability project, so there
+ * is nothing for those views to render.
+ */
 
 test.describe('Security Assessment Workflow', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,442 +35,230 @@ test.describe('Security Assessment Workflow', () => {
     await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
-  // ==========================================================================
-  // Assessment Setup Workflow
-  // ==========================================================================
-
   test.describe('Assessment Setup', () => {
     test('should create assessment project', async ({ page }) => {
       const projectName = 'Security Assessment Project'
       await createProjectOnly(page, projectName)
-
       await expect(page.getByText(projectName)).toBeVisible()
     })
 
     test('should configure project for assessment', async ({ page }) => {
-      const projectName = 'Configured Assessment'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+      await createProjectOnly(page, 'Configured Assessment')
+      await navigateToProjectDetail(page, 'Configured Assessment')
+      const main = page.locator('#main-content')
 
-      // Verify all tabs are accessible
-      const tabs = ['Overview', 'Components', 'Vulnerabilities']
-      for (const tabName of tabs) {
-        const tab = page.getByRole('tab', { name: new RegExp(tabName, 'i') })
-        if ((await tab.count()) > 0) {
-          await tab.click()
-          await page.waitForTimeout(E2E_UI_DELAY)
-        }
-      }
+      // The assessment surface is the four project tabs, defaulting to Overview.
+      const tabNames = await main.getByRole('tab').allTextContents()
+      expect(tabNames.map((t) => t.trim())).toEqual(['Overview', 'Components', 'Vulnerabilities', 'Health'])
+      await expect(main.getByRole('heading', { name: 'Overview' })).toBeVisible()
     })
 
     test('should access executive dashboard', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
-
-      await expect(page.locator('h1:has-text("Executive Dashboard")')).toBeVisible()
+      await expect(page.locator('#main-content').getByRole('heading', { name: 'Reports' })).toBeVisible()
     })
   })
-
-  // ==========================================================================
-  // Vulnerability Scanning Workflow
-  // ==========================================================================
 
   test.describe('Vulnerability Scanning', () => {
-    test('should access vulnerability scan UI', async ({ page }) => {
-      const projectName = 'Scan Test Project'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should show the vulnerability empty state before scanning', async ({ page }) => {
+      await createProjectOnly(page, 'Scan Test Project')
+      await navigateToProjectDetail(page, 'Scan Test Project')
+      const main = page.locator('#main-content')
 
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Should show scan interface
-      const scanUI = page.getByText(/vulnerabilities|CVE/i)
-      await expect(scanUI.first()).toBeVisible()
+      await main.getByRole('tab', { name: 'Vulnerabilities' }).click()
+      await expect(main.getByText('No vulnerabilities found')).toBeVisible()
+      await expect(main.getByText('Run a vulnerability scan to check for security issues')).toBeVisible()
     })
 
-    test('should display vulnerability list', async ({ page }) => {
-      const projectName = 'Vuln List Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should show a zero vulnerability count', async ({ page }) => {
+      await createProjectOnly(page, 'Vuln List Test')
+      await navigateToProjectDetail(page, 'Vuln List Test')
+      const main = page.locator('#main-content')
 
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Should show empty state or list
-      const vulnContent = page.locator('text=/No vulnerabilities|CVE-|Found/i')
-      await expect(vulnContent.first()).toBeVisible()
+      await main.getByRole('tab', { name: 'Vulnerabilities' }).click()
+      await expect(main.getByRole('heading', { name: 'Vulnerabilities (0)' })).toBeVisible()
     })
 
-    test('should filter vulnerabilities', async ({ page }) => {
-      const projectName = 'Filter Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Look for filter controls
-      const filters = page.locator('select, [role="combobox"], button:has-text("Filter")')
-      if ((await filters.count()) > 0) {
-        await filters.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+    test.skip('should filter vulnerabilities', async () => {
+      // Infeasible offline: filtering only exercises anything against a populated vulnerability
+      // table, which requires a scan that matches seeded CVEs to imported components.
     })
 
-    test('should sort vulnerabilities', async ({ page }) => {
-      const projectName = 'Sort Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Click on column headers to sort
-      const headers = page.locator('th:has-text("Severity"), th:has-text("CVSS"), th:has-text("Risk")')
-      if ((await headers.count()) > 0) {
-        await headers.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+    test.skip('should sort vulnerabilities', async () => {
+      // Infeasible offline: sorting needs a populated vulnerability table (see filter note).
     })
   })
-
-  // ==========================================================================
-  // Intelligence Analysis Workflow
-  // ==========================================================================
 
   test.describe('Intelligence Analysis', () => {
-    test('should view KEV intelligence', async ({ page }) => {
-      const projectName = 'KEV Analysis Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Look for KEV indicators
-      const kevIndicators = page.locator('text=/KEV|Known Exploited|CISA/i')
-      // KEV indicators are optional - depend on data availability
-      await kevIndicators
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should view KEV intelligence', async () => {
+      // Infeasible offline: KEV badges need a scanned vuln enriched against the CISA KEV catalog
+      // (network). checkKev returns isKev:false from the never-synced local catalog offline.
     })
 
-    test('should view EPSS scores', async ({ page }) => {
-      const projectName = 'EPSS Analysis Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Look for EPSS indicators
-      const epssIndicators = page.locator('text=/EPSS|%|Exploit Prediction/i')
-      // EPSS indicators are optional - depend on data availability
-      await epssIndicators
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should view EPSS scores', async () => {
+      // Infeasible offline: EPSS scores are fetched from the FIRST.org EPSS API (network).
     })
 
-    test('should view risk scores', async ({ page }) => {
-      const projectName = 'Risk Analysis Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Look for risk indicators
-      const riskIndicators = page.locator('text=/Risk|Score|Priority/i')
-      // Risk indicators are optional - depend on data availability
-      await riskIndicators
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should view risk scores', async () => {
+      // Needs a scanned project: riskScore is computed during enrichVulnerabilities, and
+      // createProjectOnly imports no SBOM, so there are no vulnerabilities to score.
     })
 
-    test('should access vulnerability details', async ({ page }) => {
-      const projectName = 'Vuln Detail Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Click on vulnerability if available
-      const vulnRow = page.locator('tr:has-text("CVE-")').first()
-      if ((await vulnRow.count()) > 0) {
-        await vulnRow.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        // Modal should show details
-        const modal = page.locator('[role="dialog"]')
-        // Modal may or may not appear depending on data
-        const hasModal = await modal.isVisible().catch(() => false)
-
-        if (hasModal) {
-          await page.keyboard.press('Escape')
-        }
-      }
+    test.skip('should access vulnerability details', async () => {
+      // Needs a scanned project: the detail modal opens from a vulnerability row, absent here.
     })
   })
-
-  // ==========================================================================
-  // Health Assessment Workflow
-  // ==========================================================================
 
   test.describe('Health Assessment', () => {
-    test('should view project health', async ({ page }) => {
-      const projectName = 'Health Assessment Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should show the component health dashboard', async ({ page }) => {
+      await createProjectOnly(page, 'Health Assessment Test')
+      await navigateToProjectDetail(page, 'Health Assessment Test')
+      const main = page.locator('#main-content')
 
-      const healthTab = page.getByRole('tab', { name: /health/i })
-      if ((await healthTab.count()) > 0) {
-        await healthTab.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        // Should show health content
-        const healthContent = page.locator('text=/Health|Score|Overview/i')
-        await expect(healthContent.first()).toBeVisible()
-      }
+      await main.getByRole('tab', { name: 'Health' }).click()
+      await expect(main.getByRole('heading', { name: 'Component Health Dashboard' })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
+      await expect(main.getByText('Total Components')).toBeVisible()
     })
 
-    test('should view component health breakdown', async ({ page }) => {
-      const projectName = 'Component Health Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should show the healthy remediation empty state', async ({ page }) => {
+      await createProjectOnly(page, 'Component Health Test')
+      await navigateToProjectDetail(page, 'Component Health Test')
+      const main = page.locator('#main-content')
 
-      const healthTab = page.getByRole('tab', { name: /health/i })
-      if ((await healthTab.count()) > 0) {
-        await healthTab.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        // Should show component health
-        const componentHealth = page.locator('text=/Component|Package|Library/i')
-        // Component health data is optional - depends on project data
-        await componentHealth
-          .first()
-          .waitFor({ state: 'attached', timeout: 5000 })
-          .catch(() => {})
-      }
+      await main.getByRole('tab', { name: 'Health' }).click()
+      // No components ⇒ RemediationQueue renders its all-healthy empty state.
+      await expect(main.getByText('All components are healthy!')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(main.getByText('No components require immediate attention')).toBeVisible()
     })
 
-    test('should view health trends', async ({ page }) => {
-      const projectName = 'Health Trends Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      const healthTab = page.getByRole('tab', { name: /health/i })
-      if ((await healthTab.count()) > 0) {
-        await healthTab.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        // Look for trend indicators
-        const trends = page.locator('text=/Trend|Improving|Declining|History/i')
-        // Trend indicators are optional - depend on data history
-        await trends
-          .first()
-          .waitFor({ state: 'attached', timeout: 5000 })
-          .catch(() => {})
-      }
+    test.skip('should view health trends', async () => {
+      // Infeasible offline: trend direction needs 2+ days of seeded health history; the dedicated
+      // health-dashboard spec covers the no-history fallback content.
     })
   })
-
-  // ==========================================================================
-  // Remediation Planning Workflow
-  // ==========================================================================
 
   test.describe('Remediation Planning', () => {
-    test('should view remediation suggestions', async ({ page }) => {
-      const projectName = 'Remediation Planning Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should show remediation suggestions as all-healthy for a fresh project', async ({ page }) => {
+      await createProjectOnly(page, 'Remediation Planning Test')
+      await navigateToProjectDetail(page, 'Remediation Planning Test')
+      const main = page.locator('#main-content')
 
-      // Check health tab for suggestions
-      const healthTab = page.getByRole('tab', { name: /health/i })
-      if ((await healthTab.count()) > 0) {
-        await healthTab.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        const suggestions = page.locator('text=/Suggestion|Recommendation|Action|Fix/i')
-        // Suggestions are optional - depend on project data
-        await suggestions
-          .first()
-          .waitFor({ state: 'attached', timeout: 5000 })
-          .catch(() => {})
-      }
+      await main.getByRole('tab', { name: 'Health' }).click()
+      await expect(main.getByText('All components are healthy!')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(main.getByText('No components require immediate attention')).toBeVisible()
     })
 
-    test('should view dependency graph for impact analysis', async ({ page }) => {
-      const projectName = 'Impact Analysis Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should open the dependency graph for impact analysis', async ({ page }) => {
+      await createProjectOnly(page, 'Impact Analysis Test')
+      await navigateToProjectDetail(page, 'Impact Analysis Test')
 
-      const graphButton = page.locator('button:has-text("Dependency Graph")')
-      if ((await graphButton.count()) > 0) {
-        await graphButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        await expect(page.locator('h1:has-text("Dependency Graph")')).toBeVisible()
-      }
+      // Contextual project link in the shell sidebar.
+      await page.getByRole('link', { name: 'Dependency Graph' }).click()
+      await expect(page).toHaveURL(/\/project\/[^/]+\/graph$/)
+      await expect(page.getByRole('heading', { level: 1, name: 'Dependency Graph' })).toBeVisible()
     })
 
-    test('should access FPF for filtering', async ({ page }) => {
-      const projectName = 'FPF Planning Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should open the false-positive filter', async ({ page }) => {
+      await createProjectOnly(page, 'FPF Planning Test')
+      await navigateToProjectDetail(page, 'FPF Planning Test')
 
-      const fpfButton = page.locator('button:has-text("False Positive")')
-      if ((await fpfButton.count()) > 0) {
-        await fpfButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        await expect(page.locator('text=/False Positive|Filter/i').first()).toBeVisible()
-      }
+      await page.getByRole('button', { name: 'False Positive Filter' }).click()
+      await expect(page).toHaveURL(/\/project\/[^/]+\/fpf$/)
+      await expect(page.getByRole('heading', { level: 1, name: 'False Positive Filter' })).toBeVisible()
+      await expect(page.getByText('Project: FPF Planning Test')).toBeVisible()
     })
   })
 
-  // ==========================================================================
-  // Report Generation Workflow
-  // ==========================================================================
-
   test.describe('Report Generation', () => {
-    test('should access export functionality', async ({ page }) => {
-      const projectName = 'Export Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
+    test('should open the export dialog', async ({ page }) => {
+      await createProjectOnly(page, 'Export Test')
+      await navigateToProjectDetail(page, 'Export Test')
 
-      const exportButton = page.locator('button:has-text("Export")')
-      if ((await exportButton.count()) > 0) {
-        await exportButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByText('Export Data')).toBeVisible()
+    })
 
-        const dialog = page.locator('[role="dialog"]')
-        await expect(dialog).toBeVisible()
+    test('should offer CSV, JSON and PDF report formats', async ({ page }) => {
+      await createProjectOnly(page, 'Format Test')
+      await navigateToProjectDetail(page, 'Format Test')
 
-        await page.keyboard.press('Escape')
+      await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+      const dialog = page.getByRole('dialog')
+      for (const format of ['CSV', 'JSON', 'PDF']) {
+        await expect(dialog.getByRole('button', { name: format })).toBeVisible()
       }
     })
 
-    test('should generate executive report', async ({ page }) => {
-      // Create a project first so the executive dashboard has data
+    test('should generate an executive PDF report', async ({ page }) => {
       await createProjectOnly(page, 'Report Project')
       await navigateToExecutiveDashboard(page)
 
-      const exportButton = page.locator('button:has-text("Export")')
-      if ((await exportButton.count()) > 0 && (await exportButton.first().isEnabled())) {
-        await exportButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
-    })
+      const exportButton = page.locator('#main-content').getByRole('button', { name: 'Export Report' })
+      await expect(exportButton).toBeEnabled()
 
-    test('should select report format', async ({ page }) => {
-      const projectName = 'Format Test'
-      await createProjectOnly(page, projectName)
-      await navigateToProjectDetail(page, projectName)
-
-      const exportButton = page.locator('button:has-text("Export")')
-      if ((await exportButton.count()) > 0) {
-        await exportButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        // Look for format options
-        const formats = page.locator('text=/PDF|CSV|JSON/i')
-        // Format options are optional - depend on export implementation
-        await formats
-          .first()
-          .waitFor({ state: 'attached', timeout: 5000 })
-          .catch(() => {})
-
-        await page.keyboard.press('Escape')
-      }
+      const downloadPromise = page.waitForEvent('download', { timeout: E2E_SELECTOR_TIMEOUT })
+      await exportButton.click()
+      const download = await downloadPromise
+      expect(download.suggestedFilename()).toMatch(/^executive-report-\d{4}-\d{2}-\d{2}\.pdf$/)
     })
   })
 
-  // ==========================================================================
-  // Complete Assessment Workflow Tests
-  // ==========================================================================
-
   test.describe('Complete Assessment', () => {
-    test('should complete basic assessment workflow', async ({ page }) => {
-      // Step 1: Create project
+    test('should complete the basic assessment workflow', async ({ page }) => {
       const projectName = 'Complete Assessment Test'
       await createProjectOnly(page, projectName)
-
-      // Step 2: Navigate to project
       await navigateToProjectDetail(page, projectName)
+      const main = page.locator('#main-content')
 
-      // Step 3: Check vulnerabilities
-      await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+      // Vulnerabilities: designed empty state.
+      await main.getByRole('tab', { name: 'Vulnerabilities' }).click()
+      await expect(main.getByText('No vulnerabilities found')).toBeVisible()
 
-      // Step 4: Check health
-      const healthTab = page.getByRole('tab', { name: /health/i })
-      if ((await healthTab.count()) > 0) {
-        await healthTab.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
-
-      // Step 5: View executive dashboard
-      await navigateToExecutiveDashboard(page)
-
-      await expect(page.locator('h1:has-text("Executive Dashboard")')).toBeVisible()
-    })
-
-    test('should navigate assessment with search', async ({ page }) => {
-      const projectName = 'Search Assessment Test'
-      await createProjectOnly(page, projectName)
-
-      // Navigate to search page via SPA router
-      await page.evaluate(() => {
-        const nav = (window as unknown as Record<string, unknown>).__navigate
-        if (typeof nav === 'function') nav('/search')
+      // Health: dashboard renders.
+      await main.getByRole('tab', { name: 'Health' }).click()
+      await expect(main.getByRole('heading', { name: 'Component Health Dashboard' })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
       })
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
 
-      // Verify search page loaded
-      const searchHeading = page.getByRole('heading', { name: /search/i })
-      if (await searchHeading.isVisible().catch(() => false)) {
-        await expect(searchHeading).toBeVisible()
-      }
+      // Reports: executive overview.
+      await navigateToExecutiveDashboard(page)
+      await expect(main.getByRole('heading', { name: 'Reports' })).toBeVisible()
     })
 
-    test('should use command palette for quick navigation', async ({ page }) => {
-      const projectName = 'Command Assessment Test'
-      await createProjectOnly(page, projectName)
+    test('should navigate the assessment via the sidebar search link', async ({ page }) => {
+      await createProjectOnly(page, 'Search Assessment Test')
 
-      // Open command palette
+      await page.getByRole('link', { name: 'Search' }).click()
+      await expect(page).toHaveURL(/\/search$/)
+      await expect(page.locator('#main-content').getByRole('heading', { name: 'Search' })).toBeVisible()
+    })
+
+    test('should use the command palette for quick navigation', async ({ page }) => {
+      await createProjectOnly(page, 'Command Assessment Test')
+
       await page.keyboard.press('Control+Shift+P')
-      await page.waitForTimeout(E2E_UI_DELAY)
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
 
-      const dialog = page.locator('[role="dialog"]')
-      if (await dialog.isVisible()) {
-        const input = page.locator('input[placeholder*="Search commands"]')
-        await input.fill('settings')
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        await page.keyboard.press('Escape')
-      }
+      // Filtering to 'settings' leaves exactly the "Go to Settings" command.
+      await dialog.getByRole('combobox').fill('settings')
+      await expect(dialog.locator('[data-index]')).toHaveCount(1)
+      await expect(dialog.locator('[data-index="0"]')).toHaveText(/Go to Settings/)
     })
 
-    test('should complete multi-project assessment', async ({ page }) => {
-      // Create multiple projects
+    test('should aggregate multiple projects in the executive scope', async ({ page }) => {
       for (let i = 1; i <= 3; i++) {
         await createProjectOnly(page, `Assessment Project ${i}`)
-        await page.waitForTimeout(E2E_UI_DELAY)
       }
-
-      // View executive dashboard
       await navigateToExecutiveDashboard(page)
+      await expect(page.locator('#main-content').getByRole('heading', { name: 'Reports' })).toBeVisible()
 
-      await expect(page.locator('h1:has-text("Executive Dashboard")')).toBeVisible()
-
-      // Should show multiple projects
-      const projectCount = page.locator('text=/Assessment Project/i')
-      const count = await projectCount.count()
-      expect(count).toBeGreaterThanOrEqual(0)
+      // All three created projects are counted in the dashboard scope.
+      await page.getByRole('button', { name: 'Dashboard Settings' }).click()
+      await expect(page.getByRole('dialog').getByText('Showing data from all 3 project(s)')).toBeVisible()
     })
   })
 })

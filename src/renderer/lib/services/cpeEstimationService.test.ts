@@ -168,6 +168,47 @@ describe('CPEEstimationService', () => {
       expect(knownMatch?.matchScore).toBe(90)
     })
 
+    it('surfaces version-mismatched product CPEs as selectable partials when NVD has no exact version', async () => {
+      const { suggestCPEs } = await import('../utils/cpeUtils')
+      vi.mocked(suggestCPEs).mockReturnValueOnce([]) // no heuristic mapping (e.g. jasper)
+
+      // NVD has jasper 2.0.1 / 2.0.12 / 1.900.13 / version-agnostic — but no exact "2.0".
+      const externalFn = vi.fn().mockResolvedValue(
+        [
+          'cpe:2.3:a:jasper_project:jasper:2.0.1:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:2.0.12:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:1.900.13:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:*:*:*:*:*:*:*:*',
+        ].map((cpe) => ({
+          cpe,
+          vendor: 'jasper_project',
+          product: 'jasper',
+          confidence: 'high' as const,
+          matchScore: 90,
+        })),
+      )
+
+      const service = new CPEEstimationService({ includeLowConfidence: true, externalSearchFn: externalFn })
+      const result = await service.estimateCPEs('jasper', '2.0')
+
+      // Each distinct version is offered (deduped by full CPE, not just product),
+      // so the user can pick the closest one instead of one being silently chosen.
+      expect(result.map((r) => r.cpe)).toEqual(
+        expect.arrayContaining([
+          'cpe:2.3:a:jasper_project:jasper:2.0.1:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:2.0.12:*:*:*:*:*:*:*',
+          'cpe:2.3:a:jasper_project:jasper:1.900.13:*:*:*:*:*:*:*',
+        ]),
+      )
+      // No exact "2.0" CPE exists, so nothing may be auto-selected (>= 80) — the
+      // matches must be shown for the user to choose from.
+      expect(result.every((r) => r.matchScore < 80)).toBe(true)
+      // Same-family versions (2.0.x) rank above the unrelated 1.900.x.
+      const v2Score = result.find((r) => r.cpe.includes(':2.0.1:'))?.matchScore ?? 0
+      const v1900Score = result.find((r) => r.cpe.includes(':1.900.13:'))?.matchScore ?? 0
+      expect(v2Score).toBeGreaterThan(v1900Score)
+    })
+
     it('gracefully handles external search failure', async () => {
       const { suggestCPEs } = await import('../utils/cpeUtils')
       vi.mocked(suggestCPEs).mockReturnValueOnce([])
@@ -244,6 +285,89 @@ describe('CPEEstimationService', () => {
       const result = await service.estimateCPEs('p', '1.0')
 
       expect(result).toHaveLength(2)
+    })
+  })
+
+  // M4: the SBOM upload dialog previously hardcoded every suggestion's match method to
+  // 'token'. Provenance must reflect how the CPE was actually matched, so the reviewer
+  // can weigh an exact-version hit differently from a fuzzy same-family guess.
+  describe('match provenance / matchType (M4)', () => {
+    it('labels a curated known-mapping suggestion as an exact match', async () => {
+      const { suggestCPEs } = await import('../utils/cpeUtils')
+      vi.mocked(suggestCPEs).mockReturnValueOnce([
+        {
+          cpe: 'cpe:2.3:a:facebook:react:18.0.0:*:*:*:*:*:*:*',
+          vendor: 'facebook',
+          product: 'react',
+          confidence: 'high',
+          source: 'known_mapping',
+        },
+      ])
+
+      const result = await new CPEEstimationService().estimateCPEs('react', '18.0.0')
+
+      expect(result[0].matchType).toBe('exact')
+    })
+
+    it('labels an inferred name-normalized suggestion as a token match', async () => {
+      const { suggestCPEs } = await import('../utils/cpeUtils')
+      vi.mocked(suggestCPEs).mockReturnValueOnce([
+        { cpe: 'cpe:2.3:a:v:p:1.0:*:*:*:*:*:*:*', vendor: 'v', product: 'p', confidence: 'medium', source: 'inferred' },
+      ])
+
+      const result = await new CPEEstimationService().estimateCPEs('p', '1.0')
+
+      expect(result[0].matchType).toBe('token')
+    })
+
+    it('labels a low-confidence fallback guess as a fuzzy match', async () => {
+      const { suggestCPEs } = await import('../utils/cpeUtils')
+      vi.mocked(suggestCPEs).mockReturnValueOnce([
+        { cpe: 'cpe:2.3:a:v:p:1.0:*:*:*:*:*:*:*', vendor: 'v', product: 'p', confidence: 'low', source: 'fallback' },
+      ])
+
+      const result = await new CPEEstimationService({ includeLowConfidence: true }).estimateCPEs('p', '1.0')
+
+      expect(result[0].matchType).toBe('fuzzy')
+    })
+
+    it('labels a DB discovery whose version equals the component version as exact', async () => {
+      const { suggestCPEs } = await import('../utils/cpeUtils')
+      vi.mocked(suggestCPEs).mockReturnValueOnce([])
+      const externalFn = vi.fn().mockResolvedValue([
+        {
+          cpe: 'cpe:2.3:a:acme:widget:2.0:*:*:*:*:*:*:*',
+          vendor: 'acme',
+          product: 'widget',
+          confidence: 'high' as const,
+          matchScore: 90,
+        },
+      ])
+
+      const result = await new CPEEstimationService({ externalSearchFn: externalFn }).estimateCPEs('widget', '2.0')
+
+      expect(result.find((r) => r.cpe.includes(':2.0:'))?.matchType).toBe('exact')
+    })
+
+    it('labels a same-version-family DB discovery (2.0 vs 2.0.12) as fuzzy', async () => {
+      const { suggestCPEs } = await import('../utils/cpeUtils')
+      vi.mocked(suggestCPEs).mockReturnValueOnce([])
+      const externalFn = vi.fn().mockResolvedValue([
+        {
+          cpe: 'cpe:2.3:a:acme:widget:2.0.12:*:*:*:*:*:*:*',
+          vendor: 'acme',
+          product: 'widget',
+          confidence: 'high' as const,
+          matchScore: 90,
+        },
+      ])
+
+      const result = await new CPEEstimationService({
+        includeLowConfidence: true,
+        externalSearchFn: externalFn,
+      }).estimateCPEs('widget', '2.0')
+
+      expect(result.find((r) => r.cpe.includes(':2.0.12:'))?.matchType).toBe('fuzzy')
     })
   })
 

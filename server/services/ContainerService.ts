@@ -26,6 +26,17 @@ interface CommandResult {
 }
 
 /**
+ * A real image layer recovered from the `docker save` tarball, used to build
+ * the scan's layer breakdown. Digest matches the `layerDigest` stamped on
+ * packages, so per-layer attribution lines up.
+ */
+interface ScannedLayer {
+  digest: string
+  size: number
+  mediaType: string
+}
+
+/**
  * Parsed image config from `docker image inspect`
  */
 interface ImageConfig {
@@ -47,6 +58,13 @@ export class ContainerService {
    * Execute a container runtime CLI command
    */
   private async runCommand(runtime: ContainerRuntime, args: string[], timeout?: number): Promise<CommandResult> {
+    // Guard the program name: `runtime` originates from request bodies (a compile-time type
+    // only) and becomes the literal executable passed to execFile — an unvalidated value is
+    // arbitrary command execution. Only the two supported CLIs are allowed.
+    const ALLOWED_RUNTIMES = ['docker', 'podman']
+    if (!ALLOWED_RUNTIMES.includes(runtime)) {
+      throw new Error(`Unsupported container runtime: ${String(runtime)}`)
+    }
     try {
       const { stdout, stderr } = await execFileAsync(runtime, args, {
         timeout: timeout || COMMAND_TIMEOUT,
@@ -135,14 +153,21 @@ export class ContainerService {
     }
 
     onProgress?.(`Pulling ${imageRef}...`)
-    const { stdout } = await this.runCommand(runtime, ['pull', imageRef])
-
-    // Try to extract digest from pull output
-    const digestMatch = stdout.match(/Digest:\s*(sha256:[a-f0-9]+)/)
-    const digest = digestMatch ? digestMatch[1] : ''
-
+    await this.runCommand(runtime, ['pull', imageRef])
     onProgress?.('Image pulled successfully')
-    return { digest }
+
+    // Resolve a consistent identifier the same way as the already-local path (the image
+    // config Id), rather than the pull output's manifest "Digest:" — the two are different
+    // concepts and callers shouldn't receive one or the other depending on cache state.
+    try {
+      const inspectResult = await this.inspectImage(imageRef, runtime)
+      if (inspectResult.Id) {
+        return { digest: inspectResult.Id }
+      }
+    } catch {
+      // Fall through to an empty digest if inspect fails.
+    }
+    return { digest: '' }
   }
 
   /**
@@ -273,9 +298,27 @@ export class ContainerService {
     runtime: ContainerRuntime,
     layerDigests: string[],
     onProgress?: (phase: string) => void,
-  ): Promise<ContainerPackage[]> {
+  ): Promise<{ packages: ContainerPackage[]; layers: ScannedLayer[]; warnings: string[] }> {
     const allPackages: ContainerPackage[] = []
+    // Per-layer failures are non-fatal (we still scan the rest) but must be surfaced to the
+    // caller instead of only logged, so a partially-failed scan doesn't look fully clean.
+    const layerWarnings: string[] = []
+    // Layers recovered from the saved image, in filesystem order. Digest here
+    // matches the layerDigest stamped on packages below, so the scan route can
+    // attribute packages to layers reliably (unlike the multi-arch manifest
+    // list, whose per-platform entries aren't filesystem layers at all).
+    const scannedLayers: ScannedLayer[] = []
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'vat-container-'))
+    const baseDir = path.resolve(tmpDir)
+    // Resolve a manifest-provided relative path and reject anything that escapes tmpDir —
+    // manifest.json is attacker-controlled if the scanned image is malicious.
+    const resolveInside = (entry: string): string => {
+      const resolved = path.resolve(baseDir, entry)
+      if (resolved !== baseDir && !resolved.startsWith(baseDir + path.sep)) {
+        throw new Error(`Unsafe path in manifest.json: ${entry}`)
+      }
+      return resolved
+    }
 
     try {
       onProgress?.('Saving container image to tar...')
@@ -300,7 +343,7 @@ export class ContainerService {
       const configFile = manifestEntry.Config
       let history: Array<{ createdBy?: string; emptyLayer?: boolean }> = []
       if (configFile) {
-        const configPath = path.join(tmpDir, configFile)
+        const configPath = resolveInside(configFile)
         if (fs.existsSync(configPath)) {
           const configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
           history = configData.history || []
@@ -311,7 +354,7 @@ export class ContainerService {
       let layerIndex = 0
       let nonEmptyHistoryIndex = 0
       for (const layerFile of layerFiles) {
-        const layerPath = path.join(tmpDir, layerFile)
+        const layerPath = resolveInside(layerFile)
         if (!fs.existsSync(layerPath)) {
           layerIndex++
           continue
@@ -329,15 +372,41 @@ export class ContainerService {
         onProgress?.(`Scanning layer ${layerIndex + 1}/${layerFiles.length}...`)
 
         const layerDigest = this.getLayerDigestFromPath(layerFile)
+
+        // Honor the caller's layer filter (the re-scan route passes specific digests);
+        // skip layers that weren't requested so we don't extract/scan them.
+        if (layerDigests.length > 0 && !layerDigests.includes(layerDigest)) {
+          layerIndex++
+          continue
+        }
+
+        let layerSize = 0
+        try {
+          layerSize = fs.statSync(layerPath).size
+        } catch {
+          // Non-fatal: size is display-only.
+        }
+        scannedLayers.push({
+          digest: layerDigest,
+          size: layerSize,
+          mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip',
+        })
+
         const layerDir = path.join(tmpDir, `layer-${layerIndex}`)
         await fs.promises.mkdir(layerDir, { recursive: true })
 
         try {
-          await this.extractTar(layerPath, layerDir)
-          const packages = await this.scanLayerForPackages(layerDir, layerDigest)
+          // Tolerate tar's non-zero exit: a Linux rootfs is full of symlinks/
+          // hardlinks that Windows tar can't create, but the regular files we
+          // read (the package databases) still extract fine.
+          await this.extractTar(layerPath, layerDir, { tolerateErrors: true })
+          const { packages, warnings } = await this.scanLayerForPackages(layerDir, layerDigest)
           allPackages.push(...packages)
+          layerWarnings.push(...warnings)
         } catch (err) {
-          console.warn(`[ContainerService] Failed to process layer ${layerIndex}:`, err)
+          const message = `Failed to process layer ${layerIndex}: ${err instanceof Error ? err.message : String(err)}`
+          console.warn(`[ContainerService] ${message}`)
+          layerWarnings.push(message)
         }
 
         layerIndex++
@@ -351,25 +420,46 @@ export class ContainerService {
       }
     }
 
-    return allPackages
+    return { packages: allPackages, layers: scannedLayers, warnings: layerWarnings }
   }
 
   /**
-   * Extract a tar file to a directory
+   * Extract a tar file to a directory.
+   *
+   * @param options.tolerateErrors - When true, a non-zero tar exit is logged
+   *   and swallowed instead of throwing. Container layers are Linux rootfs
+   *   tarballs full of symlinks/hardlinks (busybox applets, shared libs) that
+   *   GNU tar on Windows can't create without privilege, so it exits non-zero
+   *   even though every regular file — including the package databases we read
+   *   — extracted successfully. The outer image tarball (blobs + JSON, no
+   *   links) is extracted strictly so a genuine corruption still surfaces.
    */
-  private async extractTar(tarPath: string, destDir: string): Promise<void> {
-    // Use the `tar` command if available, otherwise skip
-    // On Windows, tar is available by default since Windows 10 1803
-    const tarArgs: [string, string[]] =
-      process.platform === 'win32' ? ['tar', ['-xf', tarPath, '-C', destDir]] : ['tar', ['-xf', tarPath, '-C', destDir]]
-
+  private async extractTar(tarPath: string, destDir: string, options?: { tolerateErrors?: boolean }): Promise<void> {
+    // Extract from within destDir using a path relative to it. Passing an
+    // absolute "C:\..." path to tar on Windows makes it misparse the drive
+    // letter as a remote host ("tar: Cannot connect to C: resolve failed");
+    // a relative archive name + cwd avoids that for both GNU tar and bsdtar.
+    // (tar is available by default on Windows 10 1803+.)
+    const relTar = path.relative(destDir, tarPath) || path.basename(tarPath)
     try {
-      await execFileAsync(tarArgs[0], tarArgs[1], {
-        timeout: 60_000,
+      await execFileAsync('tar', ['-xf', relTar], {
+        cwd: destDir,
+        timeout: 120_000,
         windowsHide: true,
+        // A rootfs layer produces a lot of stderr (one line per uncreatable
+        // link); keep the buffer generous so tar isn't killed mid-extraction.
+        maxBuffer: 64 * 1024 * 1024,
       })
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
+      if (options?.tolerateErrors) {
+        console.warn(
+          `[ContainerService] tar reported errors extracting ${path.basename(tarPath)} (continuing): ${
+            message.split('\n')[0]
+          }`,
+        )
+        return
+      }
       throw new Error(`Failed to extract tar: ${message}`)
     }
   }
@@ -395,21 +485,23 @@ export class ContainerService {
   /**
    * Scan an extracted layer directory for package databases
    */
-  private async scanLayerForPackages(layerDir: string, layerDigest: string): Promise<ContainerPackage[]> {
+  private async scanLayerForPackages(
+    layerDir: string,
+    layerDigest: string,
+  ): Promise<{ packages: ContainerPackage[]; warnings: string[] }> {
     const packages: ContainerPackage[] = []
+    const warnings: string[] = []
 
     // Check for dpkg database (Debian/Ubuntu)
     const dpkgPath = path.join(layerDir, 'var', 'lib', 'dpkg', 'status')
     if (fs.existsSync(dpkgPath)) {
-      const dpkgPackages = this.parseDpkgStatus(dpkgPath, layerDigest)
-      packages.push(...dpkgPackages)
+      packages.push(...this.parseDpkgStatus(dpkgPath, layerDigest))
     }
 
     // Check for apk database (Alpine)
     const apkPath = path.join(layerDir, 'lib', 'apk', 'db', 'installed')
     if (fs.existsSync(apkPath)) {
-      const apkPackages = this.parseApkInstalled(apkPath, layerDigest)
-      packages.push(...apkPackages)
+      packages.push(...this.parseApkInstalled(apkPath, layerDigest))
     }
 
     // Check for rpm database (RHEL/Fedora/CentOS)
@@ -418,16 +510,30 @@ export class ContainerService {
       path.join(layerDir, 'var', 'lib', 'rpm', 'Packages.db'),
       path.join(layerDir, 'var', 'lib', 'rpm', 'rpmdb.sqlite'),
     ]
-    for (const rpmPath of rpmPaths) {
-      if (fs.existsSync(rpmPath)) {
-        // RPM binary databases require rpm CLI to parse
+    const rpmPath = rpmPaths.find((candidate) => fs.existsSync(candidate))
+    if (rpmPath) {
+      try {
         const rpmPackages = await this.parseRpmPackages(rpmPath, layerDigest)
-        packages.push(...rpmPackages)
-        break
+        if (rpmPackages.length > 0) {
+          packages.push(...rpmPackages)
+        } else {
+          // A present rpm DB that yields nothing is a coverage gap, not a real "0 packages".
+          warnings.push(
+            `RPM database at ${rpmPath} yielded no packages; this RHEL/Fedora/CentOS layer may be under-reported.`,
+          )
+        }
+      } catch (error) {
+        // The rpm CLI is unavailable or failed — never silently report the layer as fully
+        // scanned (C1). Surface a warning so overall coverage is not overstated.
+        const reason = error instanceof Error ? error.message : String(error)
+        warnings.push(
+          `RPM database at ${rpmPath} could not be parsed (${reason}). Install the 'rpm' CLI on the ` +
+            `server to scan RHEL/Fedora/CentOS layers.`,
+        )
       }
     }
 
-    return packages
+    return { packages, warnings }
   }
 
   /**
@@ -521,14 +627,61 @@ export class ContainerService {
   }
 
   /**
-   * Parse RPM packages (requires rpm command)
+   * Parse the rpm database of an extracted layer by shelling to the host `rpm` CLI with
+   * --dbpath pointed at the layer's rpm directory. Throws if rpm is unavailable or fails so
+   * the caller can surface a coverage warning instead of silently reporting zero packages.
    */
-  private async parseRpmPackages(_dbPath: string, _layerDigest: string): Promise<ContainerPackage[]> {
-    // RPM binary database format requires the rpm CLI tool to parse.
-    // Since we're scanning a layer extracted to disk (not inside a container),
-    // we can't easily query it. Return empty for now — the main scan path
-    // would handle this differently by running commands inside the container.
-    return []
+  private async parseRpmPackages(dbPath: string, layerDigest: string): Promise<ContainerPackage[]> {
+    const rpmDbDir = path.dirname(dbPath)
+    const stdout = await this.queryRpmDatabase(rpmDbDir)
+    return this.parseRpmQueryOutput(stdout, layerDigest)
+  }
+
+  /**
+   * Run `rpm -qa` against an extracted layer's rpm database directory. Isolated so it can be
+   * stubbed in tests and so the "rpm not installed" case gets a clear, actionable message.
+   */
+  private async queryRpmDatabase(rpmDbDir: string): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync(
+        'rpm',
+        ['-qa', '--dbpath', rpmDbDir, '--qf', '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}\n'],
+        { timeout: COMMAND_TIMEOUT, maxBuffer: 50 * 1024 * 1024, windowsHide: true },
+      )
+      return stdout
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes('ENOENT') || message.includes('not found') || message.includes('not recognized')) {
+        throw new Error('rpm is not installed or not in PATH')
+      }
+      throw error instanceof Error ? error : new Error(message)
+    }
+  }
+
+  /**
+   * Parse `rpm -qa --qf '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}\n'` output into ContainerPackages.
+   */
+  private parseRpmQueryOutput(stdout: string, layerDigest: string): ContainerPackage[] {
+    const packages: ContainerPackage[] = []
+    for (const line of stdout.split('\n')) {
+      if (!line.trim()) continue
+      const [rawName, rawVersion, rawArch] = line.split('|')
+      const name = rawName?.trim()
+      const version = rawVersion ? this.cleanVersion(rawVersion.trim()) : ''
+      if (!name || !version) continue
+      const archValue = rawArch?.trim()
+      const arch = archValue && archValue !== '(none)' ? archValue : undefined
+      packages.push({
+        name,
+        version,
+        manager: 'rpm',
+        architecture: arch,
+        cpe: `cpe:2.3:a:*:${name}:${version}:*:*:*:*:*:*:*`,
+        purl: `pkg:rpm/${name}@${version}${arch ? `?arch=${arch}` : ''}`,
+        layerDigest,
+      })
+    }
+    return packages
   }
 
   /**

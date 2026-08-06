@@ -308,6 +308,20 @@ describe('NvdDatabase Instance Methods', () => {
       expect(rows[0].cvss_vector).toBeNull()
     })
 
+    it('should store a real CVSS score of 0.0 as 0, not null', async () => {
+      // WHY: a legitimate CVSS baseScore of 0.0 is falsy; the old `cvss_score || null`
+      // stored it as NULL, erasing a real "no impact" score. `?? null` preserves 0.0.
+      const cve = makeCVE({ cvss_score: 0, severity: 'NONE' })
+      await instance.upsertCVE(cve)
+
+      const rows = rawDb.prepare('SELECT cvss_score, severity FROM cves WHERE id = ?').all(cve.id) as Record<
+        string,
+        unknown
+      >[]
+      expect(rows[0].cvss_score).toBe(0)
+      expect(rows[0].severity).toBe('NONE')
+    })
+
     it('should throw when database is not initialized', async () => {
       const inst = new NvdDatabase('/no/db.db')
       await expect(inst.upsertCVE(makeCVE())).rejects.toThrow('Database not initialized')
@@ -1502,5 +1516,142 @@ describe('NvdDatabase fileExists', () => {
       '/non/existent/path/file.db',
     )) as boolean
     expect(result).toBe(false)
+  })
+})
+
+// ===========================================================================
+// Bug-hunt fixes 2026-08-02 — behavioral guards for the nvdDb.ts cluster
+// ===========================================================================
+describe('NvdDatabase bug-hunt fixes (2026-08-02)', () => {
+  let instance: NvdDatabase
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('M2: searchCVEsByText treats % as a literal, not a wildcard', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-1000', description: 'contains a 50% discount bug' }))
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-1001', description: 'a wholly unrelated entry' }))
+
+    // Before the escape fix, '50%' -> LIKE '%50%%' matched EVERY row; now it must
+    // match only the row whose text literally contains "50%".
+    const results = instance.searchCVEsByText('50%')
+    expect(results.map((c) => c.id)).toEqual(['CVE-2024-1000'])
+  })
+
+  it('H12: insertCPEMatches persists version-range bounds so they round-trip', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-2000' }))
+    await instance.insertCPEMatches('CVE-2024-2000', [
+      makeCPEMatch({
+        cve_id: 'CVE-2024-2000',
+        cpe_text: 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*',
+        version_start_including: '1.0.0',
+        version_end_excluding: '2.0.0',
+      }),
+    ])
+
+    const match = instance.getCVEFullDetails('CVE-2024-2000')?.cpeMatches[0]
+    expect(match?.versionStartIncluding).toBe('1.0.0')
+    expect(match?.versionEndExcluding).toBe('2.0.0')
+  })
+
+  it('H11: upsertCVE routes the score into the version its vector prefix names', async () => {
+    await instance.upsertCVE(
+      makeCVE({ id: 'CVE-2024-3000', cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H', cvss_score: 9.8 }),
+    )
+
+    const raw = asAccess(instance).db as InstanceType<typeof Database>
+    const row = raw.prepare('SELECT cvss_v31_score, cvss_v2_score FROM cves WHERE id = ?').get('CVE-2024-3000') as {
+      cvss_v31_score: number | null
+      cvss_v2_score: number | null
+    }
+    expect(row.cvss_v31_score).toBe(9.8)
+    expect(row.cvss_v2_score).toBeNull()
+  })
+
+  it('M1: upsertCVE updates the source column on a re-sync conflict', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-4000', source: 'OSV' }))
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-4000', source: 'NVD' }))
+
+    const raw = asAccess(instance).db as InstanceType<typeof Database>
+    const row = raw.prepare('SELECT source FROM cves WHERE id = ?').get('CVE-2024-4000') as { source: string }
+    expect(row.source).toBe('NVD')
+  })
+})
+
+// ===========================================================================
+// searchCVEsByText with FTS5 enabled (NFR-02.3 / NFR-02.5)
+//
+// The default test harness omits the cves_fts virtual table, so the existing
+// searchCVEsByText tests above exercise the LIKE fallback tier. These tests run
+// the FTS migration first, proving searchCVEsByText routes free-text through the
+// index-backed FTS path while preserving exact CVE-ID lookup.
+// ===========================================================================
+describe('searchCVEsByText with FTS5', () => {
+  let instance: NvdDatabase
+
+  // Build the FTS index the way production migration_7_fts5_search does (external
+  // content + insert trigger), NOT via the dead/buggy runFTSMigration helper.
+  function enableFts(db: InstanceType<typeof Database>): void {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS cves_fts USING fts5(
+        id, description, content='cves', content_rowid='rowid', tokenize='porter unicode61'
+      )
+    `)
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS cves_fts_insert AFTER INSERT ON cves BEGIN
+        INSERT INTO cves_fts(rowid, id, description) VALUES (new.rowid, new.id, new.description);
+      END
+    `)
+    db.exec(`INSERT INTO cves_fts(rowid, id, description) SELECT rowid, id, description FROM cves`)
+  }
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    await instance.upsertCVE(
+      makeCVE({ id: 'CVE-2024-0001', description: 'Apache log4j remote code execution', cvss_score: 10.0 }),
+    )
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-0002', description: 'OpenSSL buffer overflow', cvss_score: 7.5 }))
+    await instance.upsertCVE(
+      makeCVE({ id: 'CVE-2024-0003', description: 'nginx buffer information disclosure', cvss_score: 5.0 }),
+    )
+    // Build the FTS index over the seeded rows.
+    enableFts(asAccess(instance).db as InstanceType<typeof Database>)
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('finds CVEs by description token via the FTS path', () => {
+    const results = instance.searchCVEsByText('log4j')
+    expect(results.map((r) => r.id)).toEqual(['CVE-2024-0001'])
+  })
+
+  it('matches multiple CVEs sharing a token', () => {
+    const results = instance.searchCVEsByText('buffer')
+    expect(results.map((r) => r.id).sort()).toEqual(['CVE-2024-0002', 'CVE-2024-0003'])
+  })
+
+  it('preserves exact CVE-ID lookup when FTS is present', () => {
+    const results = instance.searchCVEsByText('CVE-2024-0002')
+    expect(results).toHaveLength(1)
+    expect(results[0]?.id).toBe('CVE-2024-0002')
+  })
+
+  it('does not throw on a query full of FTS syntax characters', () => {
+    // A raw MATCH of this string throws fts5: syntax error; the sanitizer prevents it.
+    expect(() => instance.searchCVEsByText('log4j:"()')).not.toThrow()
+    expect(instance.searchCVEsByText('log4j:"()').map((r) => r.id)).toEqual(['CVE-2024-0001'])
+  })
+
+  it('returns empty for a punctuation-only query rather than erroring', () => {
+    expect(instance.searchCVEsByText('---')).toEqual([])
   })
 })

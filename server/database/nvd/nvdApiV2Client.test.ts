@@ -306,7 +306,7 @@ describe('NvdApiV2Client', () => {
 
       const [url] = mockFetch.mock.calls[0]
       const urlString = decodeURIComponent(url.toString())
-      // Date format is now local time without timezone
+      // Dates are constructed and formatted in UTC (timezone-less string).
       expect(urlString).toContain('pubStartDate=2024-01-01T00:00:00.000')
       expect(urlString).toContain('pubEndDate=2024-12-31T23:59:59.000')
     })
@@ -419,7 +419,8 @@ describe('NvdApiV2Client', () => {
         }),
       })
 
-      const lastModDate = new Date('2024-01-01T00:00:00')
+      // UTC-explicit input (trailing Z): formatDateForNvd emits a UTC timezone-less string.
+      const lastModDate = new Date('2024-01-01T00:00:00Z')
       const result = await client.fetchModifiedSince({
         lastModifiedDate: lastModDate,
       })
@@ -864,6 +865,48 @@ describe('Cancellation', () => {
   })
 })
 
+describe('cancel aborts all in-flight fetches (L7)', () => {
+  let client: NvdApiV2Client
+
+  beforeEach(() => {
+    mockFetch.mockClear()
+    client = createTestNvdApiV2Client()
+  })
+
+  afterEach(() => {
+    client.cancel()
+  })
+
+  it('rejects every concurrent fetch, not just the most recently started', async () => {
+    // WHY (L7): the client tracked a single abortController, so a second concurrent fetch
+    // overwrote the first's controller reference — cancel() then aborted only the latest and
+    // the earlier fetch hung forever. Each fetch here only settles when its OWN signal aborts,
+    // so both must be aborted for this to complete. 3s bound turns a regression into a fast fail.
+    mockFetch.mockImplementation(
+      (_url: string, opts: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted', 'AbortError')),
+          )
+        }),
+    )
+
+    const p1 = client.fetchYear({ year: 2023 }).catch((error: unknown) => error)
+    const p2 = client.fetchYear({ year: 2024 }).catch((error: unknown) => error)
+
+    // Let both fetches start and register their controllers before cancelling.
+    await Promise.resolve()
+    await Promise.resolve()
+
+    client.cancel()
+
+    const [r1, r2] = await Promise.all([p1, p2])
+    // Both settled as rejections (neither hung) and both were aborted by cancel().
+    expect((r1 as { name?: string }).name).toBe('AbortError')
+    expect((r2 as { name?: string }).name).toBe('AbortError')
+  }, 3000)
+})
+
 describe('Retry logic (executeWithRetry)', () => {
   let retryClient: NvdApiV2Client
   let warnSpy: ReturnType<typeof vi.spyOn>
@@ -1185,6 +1228,42 @@ describe('fetchModifiedSince edge cases', () => {
 
     const [url] = mockFetch.mock.calls[0]
     expect(url.toString()).toContain('resultsPerPage=500')
+  })
+
+  it('bounds the window with the provided lastModifiedEndDate instead of now (B2/H25)', async () => {
+    // WHY: delta sync must chunk a large [lastSync, now] gap into ≤120-day windows the NVD
+    // API accepts. That requires bounding the END of each window; hardcoding `now` made every
+    // request span the whole gap and get rejected.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 1, resultsPerPage: 1 }),
+    })
+
+    await modClient.fetchModifiedSince({
+      lastModifiedDate: new Date('2024-01-01T00:00:00Z'),
+      lastModifiedEndDate: new Date('2024-03-01T00:00:00Z'),
+    })
+
+    const urlString = decodeURIComponent(mockFetch.mock.calls[0][0].toString())
+    expect(urlString).toContain('lastModStartDate=2024-01-01T00:00:00.000')
+    expect(urlString).toContain('lastModEndDate=2024-03-01T00:00:00.000')
+  })
+
+  it('begins pagination at the provided startIndex cursor (B2/C3)', async () => {
+    // WHY: a truncated window must resume where the last page ended. Without an advancing
+    // cursor the caller re-requested startIndex=0 forever (infinite loop on >50k windows).
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 2001, resultsPerPage: 2000, startIndex: 2000 }),
+    })
+
+    await modClient.fetchModifiedSince({
+      lastModifiedDate: new Date('2024-01-01T00:00:00Z'),
+      startIndex: 2000,
+      resultsPerPage: 2000,
+    })
+
+    expect(mockFetch.mock.calls[0][0].toString()).toContain('startIndex=2000')
   })
 })
 

@@ -96,7 +96,10 @@ describe('parseSpdx', () => {
       const result = await parseSpdx(JSON.stringify(spdxWithoutVersion), 'spdx.json')
       const component = result.components[0]
 
-      expect(component.version).toBe('unknown')
+      // A missing version is left empty (not the truthy sentinel 'unknown') and flagged as a
+      // coverage gap, so downstream `if (!version)` guards fire and the UI can mark it for review.
+      expect(component.version).toBe('')
+      expect(component.coverage).toBe('gap')
     })
 
     it('should throw error for invalid JSON', async () => {
@@ -133,7 +136,7 @@ describe('parseSpdx', () => {
     })
 
     it('should throw error for unsupported file formats', async () => {
-      await expect(parseSpdx('some content', 'spdx.xml')).rejects.toThrow('Unsupported file format: xml')
+      await expect(parseSpdx('some content', 'spdx.yaml')).rejects.toThrow('Unsupported file format: yaml')
     })
 
     it('should handle empty packages array', async () => {
@@ -168,6 +171,267 @@ describe('parseSpdx', () => {
       const result = await parseSpdx(JSON.stringify(spdxNoVersion), 'spdx.json')
 
       expect(result.metadata.formatVersion).toBe('2.3')
+    })
+  })
+
+  describe('package relationships (FR-02.2)', () => {
+    // Why this matters: the dependency graph (graph/utils.ts) and JSON/CSV exports
+    // read component.dependencies. If SPDX relationships are dropped, an SPDX import
+    // produces a flat component list with no edges even when the SBOM declared them.
+    const spdxWithRelationships = {
+      spdxVersion: 'SPDX-2.3',
+      dataLicense: 'CC0-1.0',
+      SPDXID: 'SPDXRef-DOCUMENT',
+      documentDescribes: ['SPDXRef-Package-app'],
+      packages: [
+        { SPDXID: 'SPDXRef-Package-app', name: 'app', versionInfo: '1.0.0', filesAnalyzed: false },
+        { SPDXID: 'SPDXRef-Package-lodash', name: 'lodash', versionInfo: '4.17.21', filesAnalyzed: false },
+        { SPDXID: 'SPDXRef-Package-react', name: 'react', versionInfo: '18.2.0', filesAnalyzed: false },
+      ],
+      relationships: [
+        { spdxElementId: 'SPDXRef-DOCUMENT', relatedSpdxElement: 'SPDXRef-Package-app', relationshipType: 'DESCRIBES' },
+        {
+          spdxElementId: 'SPDXRef-Package-app',
+          relatedSpdxElement: 'SPDXRef-Package-lodash',
+          relationshipType: 'DEPENDS_ON',
+        },
+        {
+          spdxElementId: 'SPDXRef-Package-react',
+          relatedSpdxElement: 'SPDXRef-Package-app',
+          relationshipType: 'DEPENDENCY_OF',
+        },
+      ],
+    }
+
+    it('maps DEPENDS_ON to the depending component dependencies', async () => {
+      const result = await parseSpdx(JSON.stringify(spdxWithRelationships), 'spdx.json')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+
+      expect(app.dependencies).toContain(lodash.id)
+    })
+
+    it('maps DEPENDENCY_OF as the inverse edge', async () => {
+      const result = await parseSpdx(JSON.stringify(spdxWithRelationships), 'spdx.json')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const react = result.components.find((c) => c.name === 'react') as Component
+
+      // react DEPENDENCY_OF app  ==>  app depends on react
+      expect(app.dependencies).toContain(react.id)
+    })
+
+    it('ignores non-dependency relationships (DESCRIBES) and unresolved endpoints', async () => {
+      const result = await parseSpdx(JSON.stringify(spdxWithRelationships), 'spdx.json')
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      const react = result.components.find((c) => c.name === 'react') as Component
+
+      // Neither leaf gained a dependency; DESCRIBES from the document is not an edge.
+      expect(lodash.dependencies ?? []).toEqual([])
+      expect(react.dependencies ?? []).toEqual([])
+    })
+
+    it('leaves dependencies undefined when the SBOM declares no relationships', async () => {
+      const noRelationships = {
+        spdxVersion: 'SPDX-2.3',
+        dataLicense: 'CC0-1.0',
+        packages: [
+          { SPDXID: 'SPDXRef-Package-a', name: 'a', versionInfo: '1.0.0', filesAnalyzed: false },
+          { SPDXID: 'SPDXRef-Package-b', name: 'b', versionInfo: '2.0.0', filesAnalyzed: false },
+        ],
+      }
+      const result = await parseSpdx(JSON.stringify(noRelationships), 'spdx.json')
+      expect(result.components.every((c) => c.dependencies === undefined)).toBe(true)
+    })
+  })
+
+  describe('tag-value format (FR-02.2)', () => {
+    // SPDX's canonical `.spdx` text format. It must parse into the same Component
+    // shape as JSON (name/version/purl/cpe/hash/licenses) and honor relationships,
+    // including multi-line <text> values.
+    const tagValue = [
+      'SPDXVersion: SPDX-2.3',
+      'DataLicense: CC0-1.0',
+      'SPDXID: SPDXRef-DOCUMENT',
+      'DocumentName: tag-value-test',
+      'DocumentNamespace: https://example.com/tv',
+      '',
+      '# A package',
+      'PackageName: lodash',
+      'SPDXID: SPDXRef-Package-lodash',
+      'PackageVersion: 4.17.21',
+      'PackageDownloadLocation: https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz',
+      'PackageLicenseConcluded: MIT',
+      'PackageLicenseDeclared: MIT',
+      'PackageChecksum: SHA256: abc123def456',
+      'PackageDescription: <text>A modern JavaScript',
+      'utility library</text>',
+      'ExternalRef: PACKAGE-MANAGER purl pkg:npm/lodash@4.17.21',
+      'ExternalRef: SECURITY cpe23Type cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*',
+      '',
+      'PackageName: app',
+      'SPDXID: SPDXRef-Package-app',
+      'PackageVersion: 1.0.0',
+      '',
+      'Relationship: SPDXRef-Package-app DEPENDS_ON SPDXRef-Package-lodash',
+    ].join('\n')
+
+    it('parses packages and maps metadata consistently with the JSON path', async () => {
+      const result = await parseSpdx(tagValue, 'sbom.spdx')
+
+      expect(result.metadata.format).toBe('spdx')
+      expect(result.metadata.formatVersion).toBe('2.3')
+      expect(result.components).toHaveLength(2)
+
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(lodash.version).toBe('4.17.21')
+      expect(lodash.purl).toBe('pkg:npm/lodash@4.17.21')
+      expect(lodash.cpe).toBe('cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*')
+      expect(lodash.licenses).toContain('MIT')
+      expect(lodash.hash).toBe('abc123def456')
+    })
+
+    it('joins multi-line <text> values', async () => {
+      const result = await parseSpdx(tagValue, 'sbom.spdx')
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(lodash.description).toBe('A modern JavaScript\nutility library')
+    })
+
+    it('wires DEPENDS_ON relationships into dependencies', async () => {
+      const result = await parseSpdx(tagValue, 'sbom.spdx')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(app.dependencies).toContain(lodash.id)
+    })
+
+    it('rejects a tag-value document without the SPDX DataLicense', async () => {
+      const noLicense = 'SPDXVersion: SPDX-2.3\nPackageName: x\nSPDXID: SPDXRef-x\n'
+      await expect(parseSpdx(noLicense, 'sbom.spdx')).rejects.toThrow('Invalid SPDX format')
+    })
+
+    it('keeps the first checksum when a package has several (order-independent, not last-wins)', async () => {
+      // Real SPDX tools emit multiple PackageChecksum lines (SHA1, SHA256, …). A last-wins
+      // overwrite would silently discard all but the final digest; the hash must be stable
+      // regardless of line order, so the first checksum is retained.
+      const multiChecksum = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'SPDXID: SPDXRef-DOCUMENT',
+        'DocumentName: multi-checksum',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'PackageVersion: 1.0.0',
+        'PackageChecksum: SHA256: sha256value',
+        'PackageChecksum: SHA1: sha1value',
+      ].join('\n')
+      const result = await parseSpdx(multiChecksum, 'sbom.spdx')
+      const pkg = result.components.find((c) => c.name === 'pkg') as Component
+      expect(pkg.hash).toBe('sha256value')
+    })
+
+    it('is recognized by isSpdxFile and getSpdxVersion', () => {
+      expect(isSpdxFile(tagValue, 'sbom.spdx')).toBe(true)
+      expect(getSpdxVersion(tagValue, 'sbom.spdx')).toBe('2.3')
+    })
+  })
+
+  describe('RDF/XML format (FR-02.2)', () => {
+    // Representative tool-generated SPDX RDF/XML: namespaced tags, licenses/relationship
+    // types as rdf:resource URIs, a nested dependsOn relationship, and a checksum block.
+    const rdfXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument rdf:about="http://example.com/doc#SPDXRef-DOCUMENT">
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:name>rdf-test</spdx:name>
+    <spdx:describesPackage>
+      <spdx:Package rdf:about="#SPDXRef-Package-app">
+        <spdx:name>app</spdx:name>
+        <spdx:versionInfo>1.0.0</spdx:versionInfo>
+        <spdx:licenseConcluded rdf:resource="http://spdx.org/rdf/terms#noassertion"/>
+        <spdx:relationship>
+          <spdx:Relationship>
+            <spdx:relationshipType rdf:resource="http://spdx.org/rdf/terms#relationshipType_dependsOn"/>
+            <spdx:relatedSpdxElement rdf:resource="#SPDXRef-Package-lodash"/>
+          </spdx:Relationship>
+        </spdx:relationship>
+      </spdx:Package>
+    </spdx:describesPackage>
+    <spdx:describesPackage>
+      <spdx:Package rdf:about="#SPDXRef-Package-lodash">
+        <spdx:name>lodash</spdx:name>
+        <spdx:versionInfo>4.17.21</spdx:versionInfo>
+        <spdx:downloadLocation>https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz</spdx:downloadLocation>
+        <spdx:licenseConcluded rdf:resource="http://spdx.org/licenses/MIT"/>
+        <spdx:checksum>
+          <spdx:Checksum>
+            <spdx:algorithm rdf:resource="http://spdx.org/rdf/terms#checksumAlgorithm_sha256"/>
+            <spdx:checksumValue>abc123def456</spdx:checksumValue>
+          </spdx:Checksum>
+        </spdx:checksum>
+        <spdx:externalRef>
+          <spdx:ExternalRef>
+            <spdx:referenceCategory rdf:resource="http://spdx.org/rdf/terms#referenceCategory_packageManager"/>
+            <spdx:referenceType rdf:resource="http://spdx.org/rdf/references#purl"/>
+            <spdx:referenceLocator>pkg:npm/lodash@4.17.21</spdx:referenceLocator>
+          </spdx:ExternalRef>
+        </spdx:externalRef>
+        <spdx:externalRef>
+          <spdx:ExternalRef>
+            <spdx:referenceCategory rdf:resource="http://spdx.org/rdf/terms#referenceCategory_security"/>
+            <spdx:referenceType rdf:resource="http://spdx.org/rdf/references#cpe23Type"/>
+            <spdx:referenceLocator>cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*</spdx:referenceLocator>
+          </spdx:ExternalRef>
+        </spdx:externalRef>
+      </spdx:Package>
+    </spdx:describesPackage>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+    it('parses packages, resolving rdf:resource licenses and referenceTypes', async () => {
+      const result = await parseSpdx(rdfXml, 'sbom.rdf')
+
+      expect(result.metadata.format).toBe('spdx')
+      expect(result.metadata.formatVersion).toBe('2.3')
+      expect(result.components).toHaveLength(2)
+
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(lodash.version).toBe('4.17.21')
+      // referenceType URI ".../references#purl" must reduce to exactly "purl" for the mapper.
+      expect(lodash.purl).toBe('pkg:npm/lodash@4.17.21')
+      // A SECURITY/cpe23Type externalRef must resolve into the cpe field just like the JSON and
+      // tag-value paths — this is the only RDF test guarding normalizeRefType against a cpe URI.
+      expect(lodash.cpe).toBe('cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*')
+      expect(lodash.hasMissingCpe).toBe(false)
+      // license rdf:resource ".../licenses/MIT" must reduce to the SPDX id "MIT".
+      expect(lodash.licenses).toContain('MIT')
+      expect(lodash.hash).toBe('abc123def456')
+    })
+
+    it('does not leak a NOASSERTION license as a raw ontology URI (FR-02.2 cross-format consistency)', async () => {
+      const result = await parseSpdx(rdfXml, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      // app's licenseConcluded is the RDF individual ".../terms#noassertion"; it must be
+      // normalized and filtered exactly as the JSON/tag-value 'NOASSERTION' literal is — never
+      // surfaced as the raw URI. With no asserted license, licenses falls back to ['unknown'].
+      expect(app.licenses).toEqual(['unknown'])
+      expect(app.licenses).not.toContain('http://spdx.org/rdf/terms#noassertion')
+    })
+
+    it('wires a nested dependsOn relationship into dependencies', async () => {
+      const result = await parseSpdx(rdfXml, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lodash = result.components.find((c) => c.name === 'lodash') as Component
+      expect(app.dependencies).toContain(lodash.id)
+    })
+
+    it('is recognized by isSpdxFile and getSpdxVersion via the .xml extension', () => {
+      expect(isSpdxFile(rdfXml, 'sbom.xml')).toBe(true)
+      expect(getSpdxVersion(rdfXml, 'sbom.xml')).toBe('2.3')
+    })
+
+    it('rejects RDF/XML that is not an SPDX document', async () => {
+      const notSpdx = '<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:RDF>'
+      await expect(parseSpdx(notSpdx, 'sbom.rdf')).rejects.toThrow('Invalid SPDX format')
     })
   })
 
@@ -347,7 +611,7 @@ describe('validateSpdx', () => {
   })
 
   it('should return false for unsupported file format', async () => {
-    const result = await validateSpdx('some content', 'spdx.xml')
+    const result = await validateSpdx('some content', 'spdx.yaml')
     expect(result).toBe(false)
   })
 })
@@ -373,7 +637,7 @@ describe('getSpdxVersion', () => {
   })
 
   it('should return null for unsupported file format', () => {
-    expect(getSpdxVersion('some content', 'spdx.xml')).toBe(null)
+    expect(getSpdxVersion('some content', 'spdx.yaml')).toBe(null)
   })
 })
 
@@ -404,7 +668,7 @@ describe('isSpdxFile', () => {
   })
 
   it('should return false for non-JSON files', () => {
-    expect(isSpdxFile('some content', 'spdx.xml')).toBe(false)
+    expect(isSpdxFile('some content', 'spdx.yaml')).toBe(false)
   })
 })
 

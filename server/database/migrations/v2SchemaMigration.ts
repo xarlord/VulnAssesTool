@@ -53,6 +53,9 @@ export function getMigrations(): Migration[] {
     migration_10_performance_250k(),
     migration_11_kev_catalog(),
     migration_12_epss_columns(),
+    migration_13_cpe_product_index(),
+    migration_14_sync_bandwidth_limit(),
+    migration_15_settings(),
   ]
 }
 
@@ -116,17 +119,18 @@ function migration_2_cve_cvss_v2(): Migration {
         db.exec('CREATE INDEX IF NOT EXISTS idx_cves_v2_v31_score ON cves_v2(cvss_v31_score)')
         db.exec('CREATE INDEX IF NOT EXISTS idx_cves_v2_source ON cves_v2(source)')
 
-        // Migrate existing data from cves to cves_v2
+        // Migrate existing data from cves to cves_v2. Only the legacy cvss_score/vector/
+        // severity are known-good here; the version-specific columns are left NULL rather
+        // than mislabeling an unknown-version legacy score as v3.1 (a later full re-sync
+        // populates the version-specific columns correctly).
         db.exec(`
           INSERT OR IGNORE INTO cves_v2 (
             id, description,
             cvss_score, cvss_vector, severity,
-            cvss_v31_score, cvss_v31_vector, cvss_v31_severity,
             published_at, modified_at, source
           )
           SELECT
             id, description,
-            cvss_score, cvss_vector, severity,
             cvss_score, cvss_vector, severity,
             published_at, modified_at, source
           FROM cves
@@ -414,7 +418,7 @@ function migration_6_sync_status(): Migration {
       db.exec(`
         CREATE TABLE IF NOT EXISTS sync_status (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          source TEXT NOT NULL,
+          source TEXT NOT NULL UNIQUE,
           year INTEGER,
           last_sync_at TEXT NOT NULL,
           total_cves INTEGER DEFAULT 0,
@@ -639,16 +643,24 @@ function migration_10_performance_250k(): Migration {
       // CPE 2.2 format: cpe:/<part>:<vendor>:<product>:<version>:...
       // SQL SUBSTR is unreliable for CPE parsing due to variable-length escaped chars;
       // use JS split(':') then batch-update via prepared statements.
-      const unParsedRows = db
-        .prepare('SELECT rowid, cpe23_uri FROM cpe_matches WHERE cpe23_uri IS NOT NULL AND cpe_part IS NULL')
-        .all() as Array<{ rowid: number; cpe23_uri: string }>
-      if (unParsedRows.length > 0) {
-        const updateStmt = db.prepare(
-          'UPDATE cpe_matches SET cpe_part = ?, cpe_vendor = ?, cpe_product = ?, cpe_version = ? WHERE rowid = ?',
-        )
-        let parsedCount = 0
-        for (const row of unParsedRows) {
-          const rowid = row.rowid
+      // Page through unparsed rows by rowid rather than loading the entire (potentially
+      // multi-million-row) result set into memory at once. The cursor advances past every
+      // row we look at — including URIs that yield no fields — so unparseable rows can't
+      // cause an infinite loop.
+      const CPE_PARSE_BATCH = 5000
+      const selectBatch = db.prepare(
+        'SELECT rowid, cpe23_uri FROM cpe_matches WHERE cpe23_uri IS NOT NULL AND cpe_part IS NULL AND rowid > ? ORDER BY rowid LIMIT ?',
+      )
+      const updateStmt = db.prepare(
+        'UPDATE cpe_matches SET cpe_part = ?, cpe_vendor = ?, cpe_product = ?, cpe_version = ? WHERE rowid = ?',
+      )
+      let lastRowid = 0
+      let parsedCount = 0
+      for (;;) {
+        const batch = selectBatch.all(lastRowid, CPE_PARSE_BATCH) as Array<{ rowid: number; cpe23_uri: string }>
+        if (batch.length === 0) break
+        for (const row of batch) {
+          lastRowid = row.rowid
           const uri = row.cpe23_uri
           let part: string | null = null
           let vendor: string | null = null
@@ -672,14 +684,12 @@ function migration_10_performance_250k(): Migration {
           }
 
           if (part || vendor || product || version) {
-            updateStmt.run(part, vendor, product, version, rowid)
+            updateStmt.run(part, vendor, product, version, row.rowid)
             parsedCount++
           }
         }
-        console.log(`[Migration 10] Parsed ${parsedCount} CPE URIs via JS`)
-      } else {
-        console.log('[Migration 10] No unparsed CPE URIs found')
       }
+      console.log(`[Migration 10] Parsed ${parsedCount} CPE URIs via JS`)
 
       // ========================================
       // 3. Create composite indexes for CPE lookups
@@ -793,7 +803,7 @@ function migration_10_performance_250k(): Migration {
       if (ftsExists.length > 0) {
         // Rebuild FTS index for optimal performance with 250K+ records
         try {
-          db.exec('INSERT INTO cves_fts(cves_fts) VALUES("optimize")')
+          db.exec("INSERT INTO cves_fts(cves_fts) VALUES('optimize')")
           console.log('[Migration 10] Optimized FTS5 index')
         } catch (error) {
           console.warn('[Migration 10] FTS5 optimize failed (non-critical):', error)
@@ -969,6 +979,91 @@ function migration_12_epss_columns(): Migration {
 }
 
 /**
+ * Migration 13: cpe_product-leading index for product-name CPE search
+ *
+ * The migration 10 indexes all lead with `cpe_vendor`, so a search that only
+ * knows the product (component name) — `WHERE cpe_product = ? AND vulnerable = 1
+ * ORDER BY cpe23_uri` — can't use them and falls back to a full 3M-row scan of
+ * `idx_cpes_v2_uri` (~2s warm, >30s cold). That blows the SBOM upload dialog's
+ * CPE-estimation budget, so the partial-match dialog never opens. This index
+ * leads with `cpe_product` and covers the query (vulnerable filter + cpe23_uri
+ * ordering + selected columns), turning the scan into a seek.
+ */
+function migration_13_cpe_product_index(): Migration {
+  return {
+    version: 13,
+    name: 'cpe_product_index',
+    description: 'Add cpe_product-leading covering index so product-name CPE search seeks instead of full-scanning',
+    up: (db: Database) => {
+      console.log('[Migration 13] Creating cpe_product covering index...')
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_cpe_product_lookup
+        ON cpe_matches(cpe_product, vulnerable, cpe23_uri)
+      `)
+      // Refresh optimizer stats so the planner picks the new index.
+      db.exec('ANALYZE cpe_matches')
+      console.log('[Migration 13] cpe_product covering index created')
+    },
+    down: (db: Database) => {
+      db.exec('DROP INDEX IF EXISTS idx_cpe_product_lookup')
+    },
+  }
+}
+
+/**
+ * Migration 14: bandwidth limit for NVD updates (FR-10.3)
+ */
+function migration_14_sync_bandwidth_limit(): Migration {
+  return {
+    version: 14,
+    name: 'sync_bandwidth_limit',
+    description: 'Add bandwidth_limit_kbps to sync_status so the update bandwidth cap persists across restarts',
+    up: (db: Database) => {
+      const tableInfo = db.pragma('table_info(sync_status)') as Array<{ name: string }>
+      // sync_status is created by migration 6, so it always exists on a real
+      // upgrade path by the time this runs; guard only so a partial schema
+      // (e.g. a test seeded from a later version) is a safe no-op instead of a throw.
+      if (tableInfo.length === 0) {
+        return
+      }
+      const existingColumns = tableInfo.map((row) => row.name)
+      // Default 0 = unlimited, so an upgraded DB keeps syncing at full speed.
+      if (!existingColumns.includes('bandwidth_limit_kbps')) {
+        db.exec('ALTER TABLE sync_status ADD COLUMN bandwidth_limit_kbps INTEGER DEFAULT 0')
+      }
+    },
+    down: (_db: Database) => {},
+  }
+}
+
+/**
+ * Migration 15: settings key-value store
+ *
+ * Persists application/server configuration (storage limits, search-performance
+ * tuning) that the /config/storage and /config/perf endpoints previously accepted
+ * but threw away. Values are JSON-encoded so a single table serves any config shape.
+ */
+function migration_15_settings(): Migration {
+  return {
+    version: 15,
+    name: 'settings',
+    description: 'Add key-value settings table for persisted storage/performance config',
+    up: (db: Database) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `)
+    },
+    down: (db: Database) => {
+      db.exec('DROP TABLE IF EXISTS settings')
+    },
+  }
+}
+
+/**
  * Run all pending migrations
  */
 export function runMigrations(db: Database, currentVersion: number): MigrationResult {
@@ -992,14 +1087,19 @@ export function runMigrations(db: Database, currentVersion: number): MigrationRe
     try {
       console.log(`Applying migration ${migration.version}: ${migration.name}`)
 
-      // Run migration
-      migration.up(db)
-
-      // Record migration
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-        migration.version,
-        new Date().toISOString(),
-      )
+      // Run each migration atomically. SQLite DDL (CREATE/ALTER/RENAME/INSERT) is
+      // transactional, so applying up() and recording its version together means a crash
+      // or error mid-migration rolls the whole step back instead of leaving the schema
+      // half-applied — e.g. a table renamed to *_v1_backup with its replacement not yet
+      // renamed in, which would otherwise make the next run recreate an empty table and
+      // silently orphan all existing data.
+      db.transaction(() => {
+        migration.up(db)
+        db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
+          migration.version,
+          new Date().toISOString(),
+        )
+      })()
 
       result.toVersion = migration.version
       result.migrationsApplied++

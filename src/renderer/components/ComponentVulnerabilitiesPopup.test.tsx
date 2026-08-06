@@ -219,7 +219,10 @@ describe('ComponentVulnerabilitiesPopup', () => {
   })
 
   describe('Interactions', () => {
-    it('should call onClose when close button is clicked', () => {
+    // The Radix dialog renders two buttons whose accessible name is exactly "Close":
+    // the built-in icon Close button (contains an <svg>) and the footer text Close
+    // button (no icon). Distinguish them by icon presence rather than DOM order.
+    it('should call onClose when the built-in dialog close button is clicked', () => {
       render(
         <ComponentVulnerabilitiesPopup
           component={mockComponent}
@@ -230,7 +233,11 @@ describe('ComponentVulnerabilitiesPopup', () => {
         />,
       )
 
-      fireEvent.click(screen.getByLabelText('Close popup'))
+      const closeButtons = screen.getAllByRole('button', { name: 'Close' })
+      const iconCloseButton = closeButtons.find((button) => button.querySelector('svg'))
+      if (!iconCloseButton) throw new Error('expected the built-in dialog close button to render')
+
+      fireEvent.click(iconCloseButton)
       expect(mockOnClose).toHaveBeenCalledTimes(1)
     })
 
@@ -245,11 +252,15 @@ describe('ComponentVulnerabilitiesPopup', () => {
         />,
       )
 
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+      const closeButtons = screen.getAllByRole('button', { name: 'Close' })
+      const footerCloseButton = closeButtons.find((button) => !button.querySelector('svg'))
+      if (!footerCloseButton) throw new Error('expected the footer close button to render')
+
+      fireEvent.click(footerCloseButton)
       expect(mockOnClose).toHaveBeenCalledTimes(1)
     })
 
-    it('should call onClose when backdrop is clicked', () => {
+    it('should call onClose when Escape key is pressed', () => {
       render(
         <ComponentVulnerabilitiesPopup
           component={mockComponent}
@@ -260,12 +271,23 @@ describe('ComponentVulnerabilitiesPopup', () => {
         />,
       )
 
-      // Click on the backdrop (first child of the container)
-      const backdrop = document.querySelector('[aria-hidden="true"]')
-      if (backdrop) {
-        fireEvent.click(backdrop)
-        expect(mockOnClose).toHaveBeenCalled()
-      }
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(mockOnClose).toHaveBeenCalled()
+    })
+
+    it('should not call onClose when a non-Escape key is pressed', () => {
+      render(
+        <ComponentVulnerabilitiesPopup
+          component={mockComponent}
+          vulnerabilities={mockVulnerabilities}
+          open={true}
+          onClose={mockOnClose}
+          onViewVulnerability={mockOnViewVulnerability}
+        />,
+      )
+
+      fireEvent.keyDown(document, { key: 'a' })
+      expect(mockOnClose).not.toHaveBeenCalled()
     })
 
     it('should call onViewVulnerability when View Details is clicked', () => {
@@ -282,17 +304,6 @@ describe('ComponentVulnerabilitiesPopup', () => {
       const viewDetailsButtons = screen.getAllByRole('button', { name: /view details/i })
       fireEvent.click(viewDetailsButtons[0])
       expect(mockOnViewVulnerability).toHaveBeenCalledWith(mockVulnerabilities[0])
-    })
-
-    // Note: Escape key tests are covered by E2E tests (e2e/critical-flows/component-vulnerabilities-popup.spec.ts)
-    // jsdom doesn't fully support window.dispatchEvent with KeyboardEvent
-    // The component correctly adds window.addEventListener('keydown', ...) which works in real browsers
-    it.skip('should close on Escape key press', () => {
-      // Covered by E2E test: 'should close popup on Escape key press'
-    })
-
-    it.skip('should not close on other key presses', () => {
-      // Covered by E2E test: 'should not close popup on other key presses'
     })
   })
 
@@ -372,7 +383,8 @@ describe('ComponentVulnerabilitiesPopup', () => {
         />,
       )
 
-      expect(screen.getByLabelText('Close popup')).toBeInTheDocument()
+      const closeButtons = screen.getAllByRole('button', { name: 'Close' })
+      expect(closeButtons.some((button) => button.querySelector('svg'))).toBe(true)
     })
 
     it('should have accessible copy buttons', () => {
@@ -657,40 +669,6 @@ describe('ComponentVulnerabilitiesPopup', () => {
 
       expect(screen.getByText('1 Low')).toBeInTheDocument()
       expect(screen.getByText('Low')).toBeInTheDocument()
-    })
-  })
-
-  describe('Escape Key Handler', () => {
-    it('should add and remove keydown listener on open/close', () => {
-      const addSpy = vi.spyOn(window, 'addEventListener')
-      const removeSpy = vi.spyOn(window, 'removeEventListener')
-
-      const { rerender } = render(
-        <ComponentVulnerabilitiesPopup
-          component={mockComponent}
-          vulnerabilities={mockVulnerabilities}
-          open={true}
-          onClose={mockOnClose}
-          onViewVulnerability={mockOnViewVulnerability}
-        />,
-      )
-
-      expect(addSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
-
-      rerender(
-        <ComponentVulnerabilitiesPopup
-          component={mockComponent}
-          vulnerabilities={mockVulnerabilities}
-          open={false}
-          onClose={mockOnClose}
-          onViewVulnerability={mockOnViewVulnerability}
-        />,
-      )
-
-      expect(removeSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
-
-      addSpy.mockRestore()
-      removeSpy.mockRestore()
     })
   })
 })

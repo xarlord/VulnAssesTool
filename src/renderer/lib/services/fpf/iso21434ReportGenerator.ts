@@ -15,6 +15,7 @@ import type {
   FilteredSummary,
   FilterDecision,
 } from '@@/types/fpf'
+import { sha256Hex } from '@/lib/crypto/sha256'
 
 /**
  * Report generation options
@@ -51,15 +52,9 @@ export class ISO21434ReportGenerator {
    * Compute hash of configuration for integrity
    */
   private async computeConfigHash(config: unknown): Promise<string> {
-    const data = JSON.stringify(config)
-    const encoder = new TextEncoder()
-    const dataBuffer = encoder.encode(data)
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
-      .substring(0, 16)
+    // 16-char prefix of the SHA-256 — a short config fingerprint, not the full
+    // tamper-evident chain hash. Shares the one crypto implementation.
+    return (await sha256Hex(JSON.stringify(config))).substring(0, 16)
   }
 
   /**

@@ -17,6 +17,7 @@ import type {
   VulnerabilityRef,
   LLMAnalysisResult,
 } from '@@/types/fpf'
+import { sha256Hex } from '@/lib/crypto/sha256'
 
 /**
  * Event input for logging (without generated fields)
@@ -82,12 +83,27 @@ interface AuditEventRow {
 export class FilterAuditLogger {
   private db: Database | null
   private hashCache: Map<string, string> = new Map()
+  private noBackendWarned = false
 
   constructor(db?: Database) {
     this.db = db ?? null
     if (this.db) {
       this.initializeSchema()
     }
+  }
+
+  /**
+   * Warn (once) when the logger is used with no persistence backend. Without this the logger
+   * silently no-ops while getAuditLog()/verifyIntegrity() report an empty, "valid" trail — so a
+   * MISSING ISO-21434 audit trail masquerades as a clean, verified one (bug-hunt C2).
+   */
+  private warnNoBackend(operation: string): void {
+    if (this.noBackendWarned) return
+    this.noBackendWarned = true
+    console.warn(
+      `[FilterAuditLogger] No audit database configured — ${operation} is a no-op. FPF filter ` +
+        `decisions are NOT being persisted and the tamper-evident audit trail is unavailable.`,
+    )
   }
 
   /**
@@ -141,26 +157,11 @@ export class FilterAuditLogger {
   }
 
   /**
-   * Compute SHA-256 hash of data
-   */
-  private async sha256(data: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const dataBuffer = encoder.encode(data)
-
-    // Use SubtleCrypto API for hashing
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer)
-
-    // Convert to hex string
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-  }
-
-  /**
    * Get the hash of the last event in the chain
    */
   private async getLastEventHash(): Promise<string> {
     if (!this.db) return '0'.repeat(64)
-    const result = this.db.exec('SELECT hash FROM fpf_audit_events ORDER BY created_at DESC LIMIT 1')
+    const result = this.db.exec('SELECT hash FROM fpf_audit_events ORDER BY timestamp DESC, id DESC LIMIT 1')
 
     if (result.length === 0 || result[0].values.length === 0) {
       // Genesis hash for first event
@@ -224,7 +225,10 @@ export class FilterAuditLogger {
    * Log a filter audit event with hash chain integrity
    */
   async logEvent(event: AuditEventInput): Promise<void> {
-    if (!this.db) return
+    if (!this.db) {
+      this.warnNoBackend('logEvent')
+      return
+    }
     const id = this.generateEventId()
     const timestamp = new Date().toISOString()
     const previousHash = await this.getLastEventHash()
@@ -238,7 +242,7 @@ export class FilterAuditLogger {
       event.decision,
       previousHash,
     )
-    const hash = await this.sha256(hashData)
+    const hash = await sha256Hex(hashData)
 
     // Store in hash cache for quick verification
     this.hashCache.set(id, hash)
@@ -275,7 +279,7 @@ export class FilterAuditLogger {
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE project_id = ?
-       ORDER BY created_at ASC`,
+       ORDER BY timestamp ASC, id ASC`,
       [projectId],
     )
 
@@ -301,7 +305,7 @@ export class FilterAuditLogger {
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE vulnerability_id = ?
-       ORDER BY created_at ASC`,
+       ORDER BY timestamp ASC, id ASC`,
       [cveId],
     )
 
@@ -327,7 +331,7 @@ export class FilterAuditLogger {
     const result = this.db.exec(
       `SELECT * FROM fpf_audit_events
        WHERE undone = 0
-       ORDER BY created_at ASC`,
+       ORDER BY timestamp ASC, id ASC`,
     )
 
     if (result.length === 0) {
@@ -357,8 +361,13 @@ export class FilterAuditLogger {
    * Verify the integrity of the audit log hash chain
    */
   async verifyIntegrity(): Promise<IntegrityVerificationResult> {
-    if (!this.db) return { valid: true, tamperedEvents: [] }
-    const result = this.db.exec('SELECT * FROM fpf_audit_events ORDER BY created_at ASC')
+    if (!this.db) {
+      // No backend: there is no trail to verify. Warn rather than silently reporting "valid",
+      // which would falsely imply a checked, intact audit trail exists.
+      this.warnNoBackend('verifyIntegrity')
+      return { valid: true, tamperedEvents: [] }
+    }
+    const result = this.db.exec('SELECT * FROM fpf_audit_events ORDER BY timestamp ASC, id ASC')
 
     if (result.length === 0) {
       return { valid: true, tamperedEvents: [] }
@@ -393,7 +402,7 @@ export class FilterAuditLogger {
           JSON.parse(event.decision_json) as FilterDecision,
           event.previous_hash,
         )
-        const computedHash = await this.sha256(hashData)
+        const computedHash = await sha256Hex(hashData)
 
         if (computedHash !== event.hash) {
           tamperedEvents.push(event.id)

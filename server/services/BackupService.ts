@@ -44,6 +44,27 @@ const DEFAULT_CONFIG: BackupConfig = {
   retentionCount: 5,
 }
 
+/**
+ * Compute the next 02:00 backup time for a daily or weekly schedule, relative to `now`.
+ * Pure and exported so the date math is unit-testable without fake timers. For weekly, the
+ * next run is the coming Sunday at 02:00 — today when it's Sunday before 02:00.
+ */
+export function computeNextBackupTime(schedule: 'daily' | 'weekly', now: Date): Date {
+  const next = new Date(now)
+  next.setHours(2, 0, 0, 0)
+  if (schedule === 'daily') {
+    if (next <= now) next.setDate(next.getDate() + 1)
+    return next
+  }
+  // weekly: advance to this week's Sunday (0 days when today is Sunday), then push a full
+  // week only if that Sunday 02:00 has already passed. The old `(7 - getDay()) % 7 || 7`
+  // forced 7 on Sunday, so a Sunday-before-02:00 run was reported a week late.
+  const daysUntilSunday = (7 - now.getDay()) % 7
+  next.setDate(next.getDate() + daysUntilSunday)
+  if (next <= now) next.setDate(next.getDate() + 7)
+  return next
+}
+
 export class BackupService {
   private config: BackupConfig
   private backupDir: string
@@ -275,6 +296,30 @@ export class BackupService {
   }
 
   /**
+   * Verify a backup addressed by its id — the same way /restore and /delete accept a backupId —
+   * resolving it to the backup's file via listBackups() before checking integrity. Falls back to
+   * treating the argument as a filesystem path so callers that pass an absolute path still work.
+   * Without this, /verify received a backupId and checked `existsSync(<id>)`, always returning
+   * 'invalid' for real UI usage.
+   */
+  async verifyBackup(backupIdOrPath: string): Promise<'valid' | 'invalid' | 'unknown'> {
+    const backups = await this.listBackups()
+    const backup = backups.find((b) => b.id === backupIdOrPath)
+    if (backup) {
+      return this.verifyBackupIntegrity(backup.path)
+    }
+
+    // Fallback: treat the value as a path, but confine it to the backup directory so a client
+    // can't probe/read arbitrary host files (an existence + first-16-bytes oracle).
+    const baseResolved = path.resolve(this.backupDir)
+    const resolved = path.resolve(this.backupDir, path.basename(backupIdOrPath))
+    if (resolved !== baseResolved && !resolved.startsWith(baseResolved + path.sep)) {
+      return 'invalid'
+    }
+    return this.verifyBackupIntegrity(resolved)
+  }
+
+  /**
    * Verify backup integrity
    */
   async verifyBackupIntegrity(backupPath: string): Promise<'valid' | 'invalid' | 'unknown'> {
@@ -315,8 +360,11 @@ export class BackupService {
     try {
       const backups = await this.listBackups()
 
-      if (backups.length > this.config.retentionCount) {
-        const toDelete = backups.slice(this.config.retentionCount)
+      // Clamp: a negative retentionCount would make slice() count from the end and delete the
+      // wrong set (keeping the oldest instead of the newest N).
+      const retention = Math.max(0, Math.trunc(this.config.retentionCount))
+      if (backups.length > retention) {
+        const toDelete = backups.slice(retention)
 
         for (const backup of toDelete) {
           await fs.unlink(backup.path)
@@ -332,6 +380,10 @@ export class BackupService {
    * Update configuration
    */
   updateConfig(newConfig: Partial<BackupConfig>): void {
+    if (newConfig.schedule !== undefined && !['daily', 'weekly', 'manual'].includes(newConfig.schedule)) {
+      throw new Error(`Invalid backup schedule: ${String(newConfig.schedule)}`)
+    }
+
     const wasEnabled = this.config.enabled
     const scheduleChanged = this.config.schedule !== newConfig.schedule
 
@@ -385,30 +437,10 @@ export class BackupService {
       return undefined
     }
 
-    // Calculate next run time based on schedule
-    const now = new Date()
-
-    switch (this.config.schedule) {
-      case 'daily': {
-        // Next 2 AM
-        const next = new Date(now)
-        next.setHours(2, 0, 0, 0)
-        if (next <= now) {
-          next.setDate(next.getDate() + 1)
-        }
-        return next
-      }
-      case 'weekly': {
-        // Next Sunday 2 AM
-        const next = new Date(now)
-        next.setHours(2, 0, 0, 0)
-        const daysUntilSunday = (7 - now.getDay()) % 7 || 7
-        next.setDate(next.getDate() + daysUntilSunday)
-        return next
-      }
-      default:
-        return undefined
+    if (this.config.schedule === 'daily' || this.config.schedule === 'weekly') {
+      return computeNextBackupTime(this.config.schedule, new Date())
     }
+    return undefined
   }
 
   /**

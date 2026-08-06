@@ -12,6 +12,7 @@ import { CPESearch } from './cpeSearch.js'
 import { initializeBackupService, type BackupConfig } from '../services/BackupService.js'
 import { initializeStorage } from '../services/storage/index.js'
 import { getKevService } from '../services/intelligence/KevService.js'
+import { getEpssService } from '../services/intelligence/EpssService.js'
 import { config } from '../config.js'
 
 let database: ReturnType<typeof getDatabase> | null = null
@@ -20,6 +21,11 @@ let cpeSearch: CPESearch | null = null
 
 export function getDb() {
   return database
+}
+
+/** Whether the database connection is initialized and open (for readiness/health checks). */
+export function isDatabaseReady(): boolean {
+  return database !== null && database.isInitialized()
 }
 
 export function getDeltaSync() {
@@ -35,17 +41,20 @@ export async function initializeDatabase(): Promise<void> {
     initializeStorage()
 
     database = getDatabase()
-    await database.initialize()
 
+    // Copy the bundled seed DB into place BEFORE opening the connection. initialize()
+    // creates the file if it's absent, so this existence check has to run first —
+    // otherwise the file always exists by the time we look and the seed never copies.
     const dbPath = database.getDbPath?.()
-    if (dbPath) {
+    if (dbPath && !fs.existsSync(dbPath)) {
       const { hasBundledSeed, copyBundledSeed } = await import('./dbSeedingService.js')
-      if (hasBundledSeed() && !fs.existsSync(dbPath)) {
+      if (hasBundledSeed()) {
         console.log('Bundled seed database found, copying to user data...')
         copyBundledSeed(dbPath)
-        await database.initialize()
       }
     }
+
+    await database.initialize()
 
     const rawDb = database.getRawDb?.()
     if (rawDb) {
@@ -60,6 +69,13 @@ export async function initializeDatabase(): Promise<void> {
         console.error('[Init] KEV service initialization failed:', err)
       })
       console.log('KEV service initializing')
+
+      // Prime the EPSS singleton against the shared DB. EpssService has no async init (it reads and
+      // caches scores in the cves table on demand), but the intelligence routes reach it via a
+      // no-arg getEpssService(), which throws unless the singleton was already created with a db —
+      // so this call is what makes /api/intelligence/epss/* work in production.
+      getEpssService(rawDb)
+      console.log('EPSS service initialized')
     }
 
     if (rawDb) {

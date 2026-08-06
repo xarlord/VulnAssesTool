@@ -1,6 +1,17 @@
 import type { OsvVulnerability, Vulnerability } from '@@/types'
 import { OSV_API_BASE_URL, HIGH_SCORE_THRESHOLD, MEDIUM_SCORE_THRESHOLD, CRITICAL_SCORE_THRESHOLD } from '@@/constants'
 import { getCveById } from './nvd'
+import { getStoredToken } from '@/lib/platform/httpClient'
+
+/**
+ * Build request headers, attaching the server auth token (when one has been
+ * issued via the platform handshake) so the same-origin `/api/osv` proxy
+ * accepts the request in production, where auth is enforced.
+ */
+function buildOsvHeaders(base: Record<string, string> = {}): Record<string, string> {
+  const token = getStoredToken()
+  return token ? { ...base, Authorization: `Bearer ${token}` } : base
+}
 
 /**
  * Extract CVSS score from a CVSS vector string or numeric score.
@@ -233,9 +244,7 @@ export async function queryByPurl(purl: string, nvdApiKey?: string): Promise<Vul
   try {
     const response = await fetch(url.toString(), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: buildOsvHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(requestBody),
     })
 
@@ -269,7 +278,7 @@ export async function getVulnerabilityById(vulnId: string, nvdApiKey?: string): 
   const url = new URL(`${OSV_API_BASE_URL}/vulns/${vulnId}`)
 
   try {
-    const response = await fetch(url.toString())
+    const response = await fetch(url.toString(), { headers: buildOsvHeaders() })
 
     if (!response.ok) {
       if (response.status === 404) {

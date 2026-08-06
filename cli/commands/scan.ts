@@ -7,8 +7,9 @@ import type { Vulnerability, Component } from '../../src/shared/types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 import { parseCycloneDX } from '../../src/renderer/lib/parsers/cyclonedx.js'
-import { parseSPDX } from '../../src/renderer/lib/parsers/spdx.js'
+import { parseSpdx } from '../../src/renderer/lib/parsers/spdx.js'
 import { getHybridScanner } from '../../src/renderer/lib/database/hybridScanner.js'
+import type { ScannerInstance } from '../../src/renderer/lib/database/hybridScanner.js'
 
 export interface ScanCommandOptions {
   sbomPath: string
@@ -24,6 +25,8 @@ export interface ScanResult {
   success: boolean
   vulnerabilities: Vulnerability[]
   componentsScanned: number
+  /** Components present but not reliably versioned (coverage: 'gap') — their matches are low-confidence. */
+  gapComponents?: number
   scanDuration: number
   format: 'cyclonedx' | 'spdx' | 'sarif' | 'json' | 'junit' | 'console' | 'unknown'
   error?: string
@@ -196,7 +199,11 @@ export function generateSummary(vulnerabilities: Vulnerability[]): ScanSummary {
 /**
  * Main scan command function
  */
-export async function scanCommand(sbomPath: string, options: ScanCommandOptions): Promise<ScanResult> {
+export async function scanCommand(
+  sbomPath: string,
+  options: ScanCommandOptions,
+  scanner: ScannerInstance = getHybridScanner(),
+): Promise<ScanResult> {
   const startTime = Date.now()
 
   try {
@@ -234,18 +241,18 @@ export async function scanCommand(sbomPath: string, options: ScanCommandOptions)
       }
     }
 
-    // Parse SBOM
+    // Parse SBOM. The parsers are async and infer json/xml from the filename
+    // extension, so pass a synthetic name matching the determined format.
     let components: Component[] = []
-    let parseWarnings: string[] = []
+    const parseWarnings: string[] = []
+    const parserFilename = format.includes('xml') ? 'sbom.xml' : 'sbom.json'
 
     if (format.includes('cyclonedx')) {
-      const parseResult = parseCycloneDX(content)
+      const parseResult = await parseCycloneDX(content, parserFilename)
       components = parseResult.components
-      parseWarnings = parseResult.warnings ?? []
     } else if (format.includes('spdx')) {
-      const parseResult = parseSPDX(content)
+      const parseResult = await parseSpdx(content, parserFilename)
       components = parseResult.components
-      parseWarnings = parseResult.warnings ?? []
     } else {
       return {
         success: false,
@@ -259,17 +266,36 @@ export async function scanCommand(sbomPath: string, options: ScanCommandOptions)
       }
     }
 
-    // Get scanner and scan components
-    const scanner = getHybridScanner()
-    const allVulnerabilities: Vulnerability[] = []
+    // Scan each component with the provided scanner (defaults to the stub).
+    // Dedup by CVE id: a vulnerability affecting N components must be reported once (listing all
+    // N affected components), not counted N times — matching the browser app's
+    // matchVulnerabilitiesForComponents merge.
+    const vulnById = new Map<string, Vulnerability>()
 
     for (const component of components) {
       const purl = component.purl ?? component.cpe ?? `${component.name}@${component.version}`
+      const componentRef = component.purl ?? `${component.name}@${component.version}`
       const scanResult = await scanner.scanComponent(purl, {
         preferLocal: true,
       })
-      allVulnerabilities.push(...scanResult.vulnerabilities)
+      for (const vuln of scanResult.vulnerabilities) {
+        const existing = vulnById.get(vuln.id)
+        if (existing) {
+          const affected = existing.affectedComponents ?? []
+          if (!affected.includes(componentRef)) {
+            existing.affectedComponents = [...affected, componentRef]
+          }
+        } else {
+          const affected = vuln.affectedComponents ?? []
+          vulnById.set(vuln.id, {
+            ...vuln,
+            affectedComponents: affected.includes(componentRef) ? affected : [...affected, componentRef],
+          })
+        }
+      }
     }
+
+    const allVulnerabilities: Vulnerability[] = Array.from(vulnById.values())
 
     // Filter vulnerabilities
     const filteredVulns = filterVulnerabilities(allVulnerabilities, options)
@@ -285,6 +311,7 @@ export async function scanCommand(sbomPath: string, options: ScanCommandOptions)
       success: true,
       vulnerabilities: filteredVulns,
       componentsScanned: components.length,
+      gapComponents: components.filter((c) => c.coverage === 'gap').length,
       scanDuration: duration,
       format: format.includes('cyclonedx') ? 'cyclonedx' : format.includes('spdx') ? 'spdx' : 'unknown',
       warnings: parseWarnings,

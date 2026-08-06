@@ -1,20 +1,16 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store/useStore'
 import { getPlatform } from '@/lib/platform'
 import { isValidNvdApiKey } from '@/lib/api/nvd'
 import { getSecureKeyService } from '@/lib/storage'
 import {
   Shield,
-  Palette,
   FileText,
   Database,
   RotateCw,
   Key,
-  Plus,
   Download,
   Upload,
-  UserCircle,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -41,8 +37,12 @@ import {
   DEFAULT_DATABASE_SETTINGS,
 } from '@@/constants'
 import type { SyncSchedule, DatabaseStorageSettings, DatabasePerformanceSettings } from '@@/types'
-import { SettingsProfileCard } from '@/components/SettingsProfileCard'
-import { CreateProfileDialog } from '@/components/CreateProfileDialog'
+import { PageHeader } from '@/components/PageHeader'
+import { SettingsNav } from './settings/SettingsNav'
+import { ProfilesSection } from './settings/ProfilesSection'
+import { AppearanceSection } from './settings/AppearanceSection'
+import { NotificationsSection } from './settings/NotificationsSection'
+import { CvssSection } from './settings/CvssSection'
 // DatabaseStatus removed - unused
 
 /**
@@ -108,19 +108,7 @@ function ConfirmDialog({
 }
 
 export function Settings() {
-  const navigate = useNavigate()
-  const {
-    settings,
-    updateSettings,
-    settingsProfiles,
-    activeProfileId,
-    loadSettingsProfiles,
-    createSettingsProfile,
-    deleteSettingsProfile,
-    switchSettingsProfile,
-    exportSettingsProfiles,
-    importSettingsProfiles,
-  } = useStore()
+  const { settings, updateSettings, settingsProfiles, exportSettingsProfiles, importSettingsProfiles } = useStore()
 
   // Local state for API key management (using secure storage)
   const [nvdApiKeyInput, setNvdApiKeyInput] = useState('')
@@ -133,8 +121,7 @@ export function Settings() {
   // Initialize secure key service
   const secureKeyService = getSecureKeyService()
 
-  // Profile dialog state
-  const [showCreateProfileDialog, setShowCreateProfileDialog] = useState(false)
+  // Profile import/export state
   const [importError, setImportError] = useState('')
   const [importSuccess, setImportSuccess] = useState(false)
 
@@ -148,10 +135,13 @@ export function Settings() {
   const [cveCount, setCveCount] = useState<number>(0)
   const [cpeCount, setCpeCount] = useState<number>(0)
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const [bandwidthLimit, setBandwidthLimit] = useState<number>(0)
+  const [dbPath, setDbPath] = useState<string | null>(null)
 
   // Confirmation dialogs state
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [showRebuildDialog, setShowRebuildDialog] = useState(false)
+  const [showResetSettingsDialog, setShowResetSettingsDialog] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [isRebuilding, setIsRebuilding] = useState(false)
 
@@ -207,11 +197,6 @@ export function Settings() {
   const [kevSyncError, setKevSyncError] = useState<string | null>(null)
   const [kevSyncSuccess, setKevSyncSuccess] = useState<string | null>(null)
 
-  // Load profiles on mount
-  useEffect(() => {
-    loadSettingsProfiles()
-  }, [])
-
   // Load API key from secure storage on mount
   useEffect(() => {
     const loadApiKey = async () => {
@@ -232,6 +217,8 @@ export function Settings() {
     }
 
     loadApiKey()
+    // Intentional mount-only load; secureKeyService is a stable singleton.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Load database settings and size on mount
@@ -242,6 +229,8 @@ export function Settings() {
         // Load database stats
         const statsResponse = await getPlatform().database.getStats()
         console.log('[Settings] Stats response:', statsResponse)
+        // dbPath is a config fact, present even when the DB itself isn't ready yet.
+        setDbPath(statsResponse.dbPath ?? null)
         if (statsResponse.success && statsResponse.stats) {
           const stats = statsResponse.stats
           setDatabaseSize(stats.dbSize || 0)
@@ -269,6 +258,7 @@ export function Settings() {
           if (configResponse.config.syncInterval) {
             setSyncSchedule(configResponse.config.syncInterval as SyncSchedule)
           }
+          setBandwidthLimit(configResponse.config.bandwidthLimitKBps ?? 0)
         }
       } catch (error) {
         console.error('[Settings] Failed to load database settings:', error)
@@ -506,18 +496,17 @@ export function Settings() {
     }
   }
 
-  const handleResetToDefaults = () => {
-    if (confirm('Reset all settings to default values?')) {
-      updateSettings({
-        theme: 'system',
-        fontSize: 'default',
-        dataRetentionDays: 30,
-        autoRefresh: false,
-      })
-      // Note: API key is NOT reset as it's stored in secure storage
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 2000)
-    }
+  const handleConfirmResetSettings = () => {
+    setShowResetSettingsDialog(false)
+    updateSettings({
+      theme: 'system',
+      fontSize: 'default',
+      dataRetentionDays: 30,
+      autoRefresh: false,
+    })
+    // Note: API key is NOT reset as it's stored in secure storage
+    setSaveSuccess(true)
+    setTimeout(() => setSaveSuccess(false), 2000)
   }
 
   // Database settings handlers
@@ -530,22 +519,47 @@ export function Settings() {
     }
   }
 
+  const handleBandwidthLimitChange = async (value: number) => {
+    const normalized = Number.isFinite(value) && value > 0 ? value : 0
+    setBandwidthLimit(normalized)
+    try {
+      await getPlatform().database.updateSyncConfig({ bandwidthLimitKBps: normalized })
+    } catch (error) {
+      console.error('Failed to update bandwidth limit:', error)
+    }
+  }
+
   const handleStorageSettingChange = async (key: keyof DatabaseStorageSettings, value: number | boolean) => {
+    const previous = storageSettings
     const newSettings = { ...storageSettings, [key]: value }
     setStorageSettings(newSettings)
     try {
-      await getPlatform().database.updateStorageConfig(newSettings)
+      // H3: the server persists+enforces this now, so honor its {success}. On a rejection
+      // (or throw) revert the optimistic change instead of leaving the UI showing an
+      // unsaved value the user would believe took effect.
+      const response = await getPlatform().database.updateStorageConfig(newSettings)
+      if (!response?.success) {
+        setStorageSettings(previous)
+        console.error('Failed to update storage settings:', response?.error)
+      }
     } catch (error) {
+      setStorageSettings(previous)
       console.error('Failed to update storage settings:', error)
     }
   }
 
   const handlePerformanceSettingChange = async (key: keyof DatabasePerformanceSettings, value: number | boolean) => {
+    const previous = performanceSettings
     const newSettings = { ...performanceSettings, [key]: value }
     setPerformanceSettings(newSettings)
     try {
-      await getPlatform().database.updatePerformanceConfig(newSettings)
+      const response = await getPlatform().database.updatePerformanceConfig(newSettings)
+      if (!response?.success) {
+        setPerformanceSettings(previous)
+        console.error('Failed to update performance settings:', response?.error)
+      }
     } catch (error) {
+      setPerformanceSettings(previous)
       console.error('Failed to update performance settings:', error)
     }
   }
@@ -702,36 +716,6 @@ export function Settings() {
     }
   }
 
-  // Profile handlers
-  const handleCreateProfile = (name: string, description: string | undefined, profileSettings: typeof settings) => {
-    try {
-      createSettingsProfile(name, description, profileSettings)
-    } catch (error) {
-      console.error('Failed to create profile:', error)
-      alert(error instanceof Error ? error.message : 'Failed to create profile')
-    }
-  }
-
-  const handleDeleteProfile = (profileId: string) => {
-    try {
-      deleteSettingsProfile(profileId)
-    } catch (error) {
-      console.error('Failed to delete profile:', error)
-      alert(error instanceof Error ? error.message : 'Failed to delete profile')
-    }
-  }
-
-  const handleSwitchProfile = (profileId: string) => {
-    try {
-      switchSettingsProfile(profileId)
-      // Note: API key is NOT synced from profiles anymore
-      // It remains in secure storage
-    } catch (error) {
-      console.error('Failed to switch profile:', error)
-      alert(error instanceof Error ? error.message : 'Failed to switch profile')
-    }
-  }
-
   const handleExportProfiles = () => {
     try {
       exportSettingsProfiles()
@@ -777,341 +761,790 @@ export function Settings() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-background px-6 py-4">
-        <div className="flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="text-sm text-muted-foreground hover:text-foreground">
-            ← Back
-          </button>
-          <h1 className="text-xl font-bold">Settings</h1>
-          <div className="w-12" />
-        </div>
-      </header>
+    <div className="p-6">
+      <div className="mx-auto max-w-6xl">
+        <PageHeader title="Settings" />
+        <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
+          <SettingsNav />
+          <div className="min-w-0 space-y-6">
+            <ProfilesSection />
+            <AppearanceSection />
+            <NotificationsSection />
+            <CvssSection />
 
-      {/* Main Content */}
-      <main className="flex-1 p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
-          {/* Settings Profiles Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between border-b border-border p-4">
-              <div className="flex items-center gap-3">
-                <UserCircle className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">Settings Profiles</h2>
-              </div>
-              <button
-                onClick={() => setShowCreateProfileDialog(true)}
-                className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                Create New Profile
-              </button>
-            </div>
-            <div className="p-4">
-              {settingsProfiles.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <UserCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p className="text-sm">No settings profiles yet. Create your first profile to get started!</p>
+            {/* API Configuration Section */}
+            <div id="api" className="rounded-lg border border-border bg-card scroll-mt-6">
+              <div className="flex items-center justify-between border-b border-border p-4">
+                <div className="flex items-center gap-3">
+                  <Key className="h-5 w-5 text-muted-foreground" />
+                  <h2 className="font-semibold">API Configuration</h2>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {settingsProfiles.map((profile) => (
-                    <SettingsProfileCard
-                      key={profile.id}
-                      profile={profile}
-                      isActive={profile.id === activeProfileId}
-                      onSwitch={handleSwitchProfile}
-                      onDelete={handleDeleteProfile}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Appearance Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center gap-3 border-b border-border p-4">
-              <Palette className="h-5 w-5 text-muted-foreground" />
-              <h2 className="font-semibold">Appearance</h2>
-            </div>
-            <div className="p-4 space-y-6">
-              {/* Theme */}
-              <div>
-                <label className="mb-3 block text-sm font-medium">Theme</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {(['light', 'dark', 'system'] as const).map((theme) => (
-                    <button
-                      key={theme}
-                      onClick={() => updateSettings({ theme })}
-                      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                        settings.theme === theme ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'
-                      }`}
-                    >
-                      <div
-                        className={`h-8 w-8 rounded-full ${
-                          theme === 'light'
-                            ? 'bg-white border-2 border-gray-300'
-                            : theme === 'dark'
-                              ? 'bg-gray-900 border-2 border-gray-700'
-                              : 'bg-gradient-to-r from-white to-gray-900'
-                        }`}
-                      />
-                      <span className="text-sm capitalize">{theme}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {settings.theme === 'system'
-                    ? 'Follows your system theme preference'
-                    : `Always use ${settings.theme} theme`}
-                </p>
-              </div>
-
-              {/* Font Size */}
-              <div>
-                <label className="mb-3 block text-sm font-medium">Font Size</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {(['small', 'default', 'large'] as const).map((size) => (
-                    <button
-                      key={size}
-                      onClick={() => updateSettings({ fontSize: size })}
-                      className={`rounded-lg border-2 p-3 transition-colors ${
-                        settings.fontSize === size ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'
-                      }`}
-                    >
-                      <span
-                        className={`block ${size === 'small' ? 'text-xs' : size === 'large' ? 'text-lg' : 'text-sm'}`}
-                      >
-                        Aa
-                      </span>
-                      <span className="text-xs capitalize">{size}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">Adjust the text size throughout the application</p>
-              </div>
-            </div>
-          </div>
-
-          {/* API Configuration Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between border-b border-border p-4">
-              <div className="flex items-center gap-3">
-                <Key className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">API Configuration</h2>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                {isApiKeyAvailable ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    Secure Storage Enabled
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-4 w-4 text-yellow-600" />
-                    Secure Storage Unavailable
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* NVD API Key */}
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  NVD API Key <span className="text-muted-foreground font-normal">(Optional)</span>
-                </label>
-                <div className="relative">
-                  {isLoadingKey ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading API key from secure storage...
-                    </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {isApiKeyAvailable ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Secure Storage Enabled
+                    </>
                   ) : (
                     <>
-                      <input
-                        type="text"
-                        id="nvd-api-key"
-                        name="nvdApiKey"
-                        value={nvdApiKeyInput}
-                        onChange={(e) => handleApiKeyChange(e.target.value)}
-                        onBlur={handleApiKeyBlur}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.currentTarget.blur()
-                          }
-                        }}
-                        disabled={!isApiKeyAvailable || isSavingKey}
-                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                        aria-label="NVD API Key"
-                        className={`w-full rounded-md border bg-background px-3 py-2 pr-20 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
-                          apiKeyError ? 'border-destructive' : 'border-border'
-                        } ${!isApiKeyAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      />
-                      {isSavingKey && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        </div>
-                      )}
-                      {saveSuccess && !isSavingKey && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-green-600">Saved</div>
-                      )}
+                      <XCircle className="h-4 w-4 text-yellow-600" />
+                      Secure Storage Unavailable
                     </>
                   )}
                 </div>
-                {apiKeyError && <p className="mt-1 text-xs text-destructive">{apiKeyError}</p>}
-                <div className="mt-2 flex items-center gap-4">
-                  <p className="text-xs text-muted-foreground">
-                    Get your free API key from{' '}
-                    <a
-                      href="https://nvd.nist.gov/developers/request-an-api-key"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      NIST
-                    </a>{' '}
-                    for higher rate limits (5 requests/rolling 30 seconds instead of default)
-                  </p>
-                  {nvdApiKeyInput && isApiKeyAvailable && (
-                    <button
-                      onClick={handleDeleteApiKey}
-                      disabled={isSavingKey}
-                      className="text-xs text-destructive hover:underline disabled:opacity-50"
-                    >
-                      Delete Key
-                    </button>
+              </div>
+              <div className="p-4 space-y-4">
+                {/* NVD API Key */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    NVD API Key <span className="text-muted-foreground font-normal">(Optional)</span>
+                  </label>
+                  <div className="relative">
+                    {isLoadingKey ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading API key from secure storage...
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          id="nvd-api-key"
+                          name="nvdApiKey"
+                          value={nvdApiKeyInput}
+                          onChange={(e) => handleApiKeyChange(e.target.value)}
+                          onBlur={handleApiKeyBlur}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.blur()
+                            }
+                          }}
+                          disabled={!isApiKeyAvailable || isSavingKey}
+                          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                          aria-label="NVD API Key"
+                          className={`w-full rounded-md border bg-background px-3 py-2 pr-20 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
+                            apiKeyError ? 'border-destructive' : 'border-border'
+                          } ${!isApiKeyAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        />
+                        {isSavingKey && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                        {saveSuccess && !isSavingKey && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-green-600">Saved</div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {apiKeyError && <p className="mt-1 text-xs text-destructive">{apiKeyError}</p>}
+                  <div className="mt-2 flex items-center gap-4">
+                    <p className="text-xs text-muted-foreground">
+                      Get your free API key from{' '}
+                      <a
+                        href="https://nvd.nist.gov/developers/request-an-api-key"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        NIST
+                      </a>{' '}
+                      for higher rate limits (5 requests/rolling 30 seconds instead of default)
+                    </p>
+                    {nvdApiKeyInput && isApiKeyAvailable && (
+                      <button
+                        onClick={handleDeleteApiKey}
+                        disabled={isSavingKey}
+                        className="text-xs text-destructive hover:underline disabled:opacity-50"
+                      >
+                        Delete Key
+                      </button>
+                    )}
+                  </div>
+                  {!isApiKeyAvailable && (
+                    <p className="mt-2 text-xs text-yellow-600">
+                      Secure storage is not available. API keys will be stored in localStorage (less secure).
+                    </p>
                   )}
                 </div>
-                {!isApiKeyAvailable && (
-                  <p className="mt-2 text-xs text-yellow-600">
-                    Secure storage is not available. API keys will be stored in localStorage (less secure).
-                  </p>
-                )}
-              </div>
 
-              {/* Auto Refresh */}
-              <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
-                <div className="flex items-center gap-3">
-                  <RotateCw className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <div className="font-medium">Auto-refresh Vulnerability Data</div>
-                    <p className="text-sm text-muted-foreground">
-                      Automatically refresh vulnerability data when viewing projects
+                {/* Auto Refresh */}
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
+                  <div className="flex items-center gap-3">
+                    <RotateCw className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">Auto-refresh Vulnerability Data</div>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically refresh vulnerability data when viewing projects
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => updateSettings({ autoRefresh: !settings.autoRefresh })}
+                    role="switch"
+                    aria-checked={settings.autoRefresh}
+                    aria-label="Toggle auto-refresh vulnerability data"
+                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                      settings.autoRefresh ? 'bg-primary' : 'bg-muted-foreground'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                        settings.autoRefresh ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Database Section */}
+            <div id="database" className="rounded-lg border border-border bg-card scroll-mt-6">
+              <div className="flex items-center gap-3 border-b border-border p-4">
+                <Database className="h-5 w-5 text-muted-foreground" />
+                <h2 className="font-semibold">Database Management</h2>
+              </div>
+              <div className="p-4 space-y-6">
+                {/* Database Statistics Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                    <div className="p-2 rounded-lg bg-red-500/10">
+                      <Shield className="h-5 w-5 text-red-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Total CVEs</div>
+                      <div className="text-lg font-semibold">{cveCount.toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                    <div className="p-2 rounded-lg bg-blue-500/10">
+                      <Database className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">CPE Matches</div>
+                      <div className="text-lg font-semibold">{cpeCount.toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                    <div className="p-2 rounded-lg bg-green-500/10">
+                      <HardDrive className="h-5 w-5 text-green-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Database Size</div>
+                      <div className="text-lg font-semibold">{formatBytes(databaseSize)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                    <div className="p-2 rounded-lg bg-purple-500/10">
+                      <Clock className="h-5 w-5 text-purple-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Last Sync</div>
+                      <div className="text-sm font-medium">
+                        {lastSyncAt ? new Date(lastSyncAt).toLocaleDateString() : 'Never'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bulk Download Progress */}
+                {isBulkDownloading && (
+                  <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+                      <div>
+                        <div className="font-medium text-blue-500">Downloading CVE Data</div>
+                        <div className="text-sm text-muted-foreground">Fetching vulnerability data from NVD API...</div>
+                      </div>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div className="bg-blue-500 rounded-full h-2 animate-pulse" style={{ width: '60%' }} />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">This may take several minutes. Please wait...</p>
+                  </div>
+                )}
+
+                {/* Sync Schedule */}
+                <div>
+                  <div className="flex items-end justify-between gap-4">
+                    <div className="flex-1">
+                      <label htmlFor="sync-schedule" className="mb-2 block text-sm font-medium">
+                        Sync Schedule
+                      </label>
+                      <select
+                        id="sync-schedule"
+                        value={syncSchedule}
+                        onChange={(e) => handleSyncScheduleChange(e.target.value as SyncSchedule)}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {SYNC_SCHEDULE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={handleSyncNow}
+                      disabled={isSyncing || isBulkDownloading}
+                      className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isSyncing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Sync Now
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleBulkDownload}
+                      disabled={isSyncing || isBulkDownloading}
+                      className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Download CVE data from NIST feeds (requires NVD API key)"
+                    >
+                      {isBulkDownloading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Downloading...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4" />
+                          Bulk Download
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {SYNC_SCHEDULE_OPTIONS.find((o) => o.value === syncSchedule)?.description}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    Bulk Download requires an NVD API key. Add your key above or set NVD_API_KEY environment variable.
+                  </p>
+                  {syncStatus && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      <span className="font-medium">Last sync:</span>{' '}
+                      {syncStatus.lastSyncAt ? new Date(syncStatus.lastSyncAt).toLocaleString() : 'Never'}
+                      {syncStatus.cvesAdded !== undefined && syncStatus.cvesAdded > 0 && (
+                        <span className="ml-2 text-green-600">+{syncStatus.cvesAdded} CVEs</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Bandwidth Limit (FR-10.3) */}
+                  <div className="mt-4">
+                    <label htmlFor="bandwidth-limit" className="mb-2 block text-sm font-medium">
+                      Bandwidth Limit (KB/s, 0 = unlimited)
+                    </label>
+                    <input
+                      id="bandwidth-limit"
+                      type="number"
+                      min={0}
+                      value={bandwidthLimit}
+                      onChange={(e) => handleBandwidthLimitChange(Number(e.target.value))}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Throttles NVD update downloads so a sync does not saturate the connection. 0 means no limit.
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => updateSettings({ autoRefresh: !settings.autoRefresh })}
-                  role="switch"
-                  aria-checked={settings.autoRefresh}
-                  aria-label="Toggle auto-refresh vulnerability data"
-                  className={`relative h-6 w-11 rounded-full transition-colors ${
-                    settings.autoRefresh ? 'bg-primary' : 'bg-muted-foreground'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
-                      settings.autoRefresh ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
 
-          {/* Database Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center gap-3 border-b border-border p-4">
-              <Database className="h-5 w-5 text-muted-foreground" />
-              <h2 className="font-semibold">Database Management</h2>
-            </div>
-            <div className="p-4 space-y-6">
-              {/* Database Statistics Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                  <div className="p-2 rounded-lg bg-red-500/10">
-                    <Shield className="h-5 w-5 text-red-500" />
+                {/* Storage Management */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-medium">Storage Management</h3>
                   </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Total CVEs</div>
-                    <div className="text-lg font-semibold">{cveCount.toLocaleString()}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                  <div className="p-2 rounded-lg bg-blue-500/10">
-                    <Database className="h-5 w-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">CPE Matches</div>
-                    <div className="text-lg font-semibold">{cpeCount.toLocaleString()}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                  <div className="p-2 rounded-lg bg-green-500/10">
-                    <HardDrive className="h-5 w-5 text-green-500" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Database Size</div>
-                    <div className="text-lg font-semibold">{formatBytes(databaseSize)}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                  <div className="p-2 rounded-lg bg-purple-500/10">
-                    <Clock className="h-5 w-5 text-purple-500" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Last Sync</div>
-                    <div className="text-sm font-medium">
-                      {lastSyncAt ? new Date(lastSyncAt).toLocaleDateString() : 'Never'}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Bulk Download Progress */}
-              {isBulkDownloading && (
-                <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
-                    <div>
-                      <div className="font-medium text-blue-500">Downloading CVE Data</div>
-                      <div className="text-sm text-muted-foreground">Fetching vulnerability data from NVD API...</div>
-                    </div>
+                  {/* Storage Location (FR-10.3) — read-only; changing it is an env/restart concern */}
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">Storage Location</label>
+                    <p className="break-all rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+                      {dbPath ?? 'Not available'}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Set via the DATA_DIR environment variable; requires an application restart to change.
+                    </p>
                   </div>
-                  <div className="w-full bg-secondary rounded-full h-2">
-                    <div className="bg-blue-500 rounded-full h-2 animate-pulse" style={{ width: '60%' }} />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">This may take several minutes. Please wait...</p>
-                </div>
-              )}
 
-              {/* Sync Schedule */}
-              <div>
-                <div className="flex items-end justify-between gap-4">
-                  <div className="flex-1">
-                    <label htmlFor="sync-schedule" className="mb-2 block text-sm font-medium">
-                      Sync Schedule
+                  {/* Storage Limit Slider */}
+                  <div>
+                    <label htmlFor="max-database-size" className="mb-2 block text-sm font-medium">
+                      Maximum Database Size
                     </label>
                     <select
-                      id="sync-schedule"
-                      value={syncSchedule}
-                      onChange={(e) => handleSyncScheduleChange(e.target.value as SyncSchedule)}
+                      id="max-database-size"
+                      value={storageSettings.maxSizeMB}
+                      onChange={(e) => handleStorageSettingChange('maxSizeMB', Number(e.target.value))}
                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      {SYNC_SCHEDULE_OPTIONS.map((option) => (
+                      {DATABASE_SIZE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Database will be pruned when it exceeds this limit
+                    </p>
                   </div>
+
+                  {/* Prune Old CVEs */}
+                  <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
+                    <div className="flex items-center gap-3">
+                      <Trash2 className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium">Prune Old CVEs</div>
+                        <p className="text-sm text-muted-foreground">
+                          Remove CVEs older than a specified year to save space
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleStorageSettingChange('pruneOldCves', !storageSettings.pruneOldCves)}
+                      role="switch"
+                      aria-checked={storageSettings.pruneOldCves}
+                      aria-label="Toggle prune old CVEs"
+                      className={`relative h-6 w-11 rounded-full transition-colors ${
+                        storageSettings.pruneOldCves ? 'bg-primary' : 'bg-muted-foreground'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                          storageSettings.pruneOldCves ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Prune Year Threshold */}
+                  {storageSettings.pruneOldCves && (
+                    <div>
+                      <label htmlFor="prune-year" className="mb-2 block text-sm font-medium">
+                        Keep CVEs From
+                      </label>
+                      <select
+                        id="prune-year"
+                        value={storageSettings.pruneOlderThanYear}
+                        onChange={(e) => handleStorageSettingChange('pruneOlderThanYear', Number(e.target.value))}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {PRUNE_YEAR_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Database Actions */}
+                <div className="flex flex-wrap gap-3 pt-2">
                   <button
-                    onClick={handleSyncNow}
-                    disabled={isSyncing || isBulkDownloading}
+                    onClick={() => setShowRebuildDialog(true)}
+                    className="flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Rebuild Indexes
+                  </button>
+                  <button
+                    onClick={() => setShowResetDialog(true)}
+                    className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Reset Database
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Backup & Recovery Section */}
+            <div id="backup" className="rounded-lg border border-border bg-card scroll-mt-6">
+              <div className="flex items-center gap-3 border-b border-border p-4">
+                <Archive className="h-5 w-5 text-muted-foreground" />
+                <h2 className="font-semibold">Backup & Recovery</h2>
+              </div>
+              <div className="p-4 space-y-6">
+                {/* Status Messages */}
+                {backupError && (
+                  <div className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+                    <XCircle className="h-4 w-4" />
+                    {backupError}
+                  </div>
+                )}
+                {backupSuccess && (
+                  <div className="flex items-center gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3 text-sm text-green-600">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {backupSuccess}
+                  </div>
+                )}
+
+                {/* Backup Actions */}
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={handleCreateBackup}
+                    disabled={isCreatingBackup}
                     className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {isSyncing ? (
+                    {isCreatingBackup ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Create Backup
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Backup Configuration */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Settings2 className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-medium">Backup Configuration</h3>
+                  </div>
+
+                  {/* Retention Count */}
+                  <div>
+                    <label htmlFor="backup-retention" className="mb-2 block text-sm font-medium">
+                      Keep Backups
+                    </label>
+                    <select
+                      id="backup-retention"
+                      value={backupConfig.retentionCount}
+                      onChange={async (e) => {
+                        const newCount = Number(e.target.value)
+                        setBackupConfig((prev) => ({ ...prev, retentionCount: newCount }))
+                        await getPlatform().backup.updateConfig({ maxBackups: newCount })
+                      }}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value={1}>1 backup</option>
+                      <option value={3}>3 backups</option>
+                      <option value={5}>5 backups</option>
+                      <option value={10}>10 backups</option>
+                    </select>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Older backups will be automatically deleted when limit is reached
+                    </p>
+                  </div>
+                </div>
+
+                {/* Backup List */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-medium">Available Backups ({backups.length})</h3>
+                  </div>
+
+                  {backups.length === 0 ? (
+                    <div className="text-sm text-muted-foreground p-4 rounded-lg bg-muted text-center">
+                      No backups available. Create your first backup to protect your data.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {backups.map((backup) => (
+                        <div
+                          key={backup.id}
+                          className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`p-2 rounded-lg ${
+                                backup.integrity === 'valid'
+                                  ? 'bg-green-500/10'
+                                  : backup.integrity === 'invalid'
+                                    ? 'bg-red-500/10'
+                                    : 'bg-muted-foreground/10'
+                              }`}
+                            >
+                              <Archive
+                                className={`h-4 w-4 ${
+                                  backup.integrity === 'valid'
+                                    ? 'text-green-500'
+                                    : backup.integrity === 'invalid'
+                                      ? 'text-red-500'
+                                      : 'text-muted-foreground'
+                                }`}
+                              />
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium">{new Date(backup.timestamp).toLocaleString()}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatBackupSize(backup.size)}
+                                {backup.integrity === 'valid' && ' • Verified'}
+                                {backup.integrity === 'invalid' && ' • Corrupted'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleVerifyBackup(backup.id)}
+                              className="p-2 rounded-md hover:bg-muted transition-colors"
+                              aria-label="Verify backup integrity"
+                              title="Verify integrity"
+                            >
+                              <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedBackupId(backup.id)
+                                setShowRestoreDialog(true)
+                              }}
+                              disabled={backup.integrity === 'invalid'}
+                              className="p-2 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+                              aria-label="Restore backup"
+                              title="Restore backup"
+                            >
+                              <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBackup(backup.id)}
+                              className="p-2 rounded-md hover:bg-destructive/10 transition-colors"
+                              aria-label="Delete backup"
+                              title="Delete backup"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Performance Section */}
+            <div id="performance" className="rounded-lg border border-border bg-card scroll-mt-6">
+              <div className="flex items-center gap-3 border-b border-border p-4">
+                <Gauge className="h-5 w-5 text-muted-foreground" />
+                <h2 className="font-semibold">Performance Tuning</h2>
+              </div>
+              <div className="p-4 space-y-4">
+                {/* Search Result Limit */}
+                <div>
+                  <label htmlFor="search-result-limit" className="mb-2 block text-sm font-medium">
+                    Search Result Limit
+                  </label>
+                  <select
+                    id="search-result-limit"
+                    value={performanceSettings.searchResultLimit}
+                    onChange={(e) => handlePerformanceSettingChange('searchResultLimit', Number(e.target.value))}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {SEARCH_RESULT_LIMIT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Maximum number of results returned from vulnerability searches
+                  </p>
+                </div>
+
+                {/* Search Cache Toggle */}
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
+                  <div className="flex items-center gap-3">
+                    <Zap className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">Enable Search Cache</div>
+                      <p className="text-sm text-muted-foreground">Cache search results for faster repeated queries</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() =>
+                      handlePerformanceSettingChange('enableSearchCache', !performanceSettings.enableSearchCache)
+                    }
+                    role="switch"
+                    aria-checked={performanceSettings.enableSearchCache}
+                    aria-label="Toggle search cache"
+                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                      performanceSettings.enableSearchCache ? 'bg-primary' : 'bg-muted-foreground'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                        performanceSettings.enableSearchCache ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Cache Size (if cache enabled) */}
+                {performanceSettings.enableSearchCache && (
+                  <div>
+                    <label htmlFor="cache-size" className="mb-2 block text-sm font-medium">
+                      Cache Size
+                    </label>
+                    <select
+                      id="cache-size"
+                      value={performanceSettings.cacheSizeMB}
+                      onChange={(e) => handlePerformanceSettingChange('cacheSizeMB', Number(e.target.value))}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {CACHE_SIZE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Maximum memory allocated for search result caching
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Data Management Section */}
+            <div id="data-management" className="rounded-lg border border-border bg-card scroll-mt-6">
+              <div className="flex items-center gap-3 border-b border-border p-4">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                <h2 className="font-semibold">Data Management</h2>
+              </div>
+              <div className="p-4 space-y-4">
+                {/* Import/Export Profiles */}
+                <div className="rounded-lg border border-border bg-muted p-4">
+                  <div className="mb-3">
+                    <div className="font-medium">Import/Export Settings Profiles</div>
+                    <p className="text-sm text-muted-foreground">
+                      Share your settings profiles across different installations
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleExportProfiles}
+                      disabled={settingsProfiles.length === 0}
+                      className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Download className="h-4 w-4" />
+                      Export Profiles
+                    </button>
+                    <label className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 cursor-pointer transition-colors">
+                      <Upload className="h-4 w-4" />
+                      Import Profiles
+                      <input type="file" accept=".json" onChange={handleImportProfiles} className="hidden" />
+                    </label>
+                  </div>
+                  {importSuccess && (
+                    <div className="mt-3 text-sm text-green-600">Settings profiles imported successfully!</div>
+                  )}
+                  {importError && <div className="mt-3 text-sm text-destructive">{importError}</div>}
+                </div>
+
+                {/* Data Retention */}
+                <div>
+                  <label htmlFor="data-retention" className="mb-2 block text-sm font-medium">
+                    Data Retention Period
+                  </label>
+                  <select
+                    id="data-retention"
+                    value={settings.dataRetentionDays}
+                    onChange={(e) => updateSettings({ dataRetentionDays: Number(e.target.value) })}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value={7}>7 days</option>
+                    <option value={30}>30 days</option>
+                    <option value={60}>60 days</option>
+                    <option value={90}>90 days</option>
+                    <option value={180}>6 months</option>
+                    <option value={365}>1 year</option>
+                    <option value={-1}>Never (keep all data)</option>
+                  </select>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Scan results older than the specified period will be automatically deleted
+                    {settings.dataRetentionDays === -1
+                      ? '. Data is never deleted automatically.'
+                      : ` (every ${settings.dataRetentionDays} days).`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Intelligence Section */}
+            <div id="threat-intel" className="rounded-lg border border-border bg-card scroll-mt-6">
+              <div className="flex items-center gap-3 border-b border-border p-4">
+                <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+                <h2 className="font-semibold">Threat Intelligence</h2>
+              </div>
+              <div className="p-4 space-y-6">
+                {/* Status Messages */}
+                {kevSyncError && (
+                  <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                    <XCircle className="h-4 w-4" />
+                    {kevSyncError}
+                  </div>
+                )}
+                {kevSyncSuccess && (
+                  <div className="flex items-center gap-2 rounded-lg bg-green-500/10 p-3 text-sm text-green-600">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {kevSyncSuccess}
+                  </div>
+                )}
+
+                {/* KEV Stats Grid */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                    <div className="p-2 rounded-lg bg-red-500/10">
+                      <AlertTriangle className="h-5 w-5 text-red-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">KEV Entries</div>
+                      <div className="text-lg font-semibold">{kevStats?.total ?? 0}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                    <div className="p-2 rounded-lg bg-orange-500/10">
+                      <Shield className="h-5 w-5 text-orange-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Ransomware</div>
+                      <div className="text-lg font-semibold">{kevStats?.ransomwareRelated ?? 0}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                    <div className="p-2 rounded-lg bg-purple-500/10">
+                      <Clock className="h-5 w-5 text-purple-500" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Last Updated</div>
+                      <div className="text-sm font-medium">
+                        {kevStats?.lastUpdated ? new Date(kevStats.lastUpdated).toLocaleDateString() : 'Never'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KEV Sync Button */}
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
+                  <div className="flex items-center gap-3">
+                    <RefreshCw className={`h-5 w-5 text-muted-foreground ${isSyncingKev ? 'animate-spin' : ''}`} />
+                    <div>
+                      <div className="font-medium">Sync KEV Catalog</div>
+                      <p className="text-sm text-muted-foreground">
+                        Download latest CISA Known Exploited Vulnerabilities catalog
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSyncKev}
+                    disabled={isSyncingKev}
+                    className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {isSyncingKev ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Syncing...
@@ -1123,575 +1556,53 @@ export function Settings() {
                       </>
                     )}
                   </button>
-                  <button
-                    onClick={handleBulkDownload}
-                    disabled={isSyncing || isBulkDownloading}
-                    className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title="Download CVE data from NIST feeds (requires NVD API key)"
-                  >
-                    {isBulkDownloading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Downloading...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-4 w-4" />
-                        Bulk Download
-                      </>
-                    )}
-                  </button>
                 </div>
+
+                {/* Info */}
+                <div className="text-xs text-muted-foreground">
+                  <p>
+                    The <strong>CISA KEV Catalog</strong> contains vulnerabilities that have been actively exploited in
+                    the wild. EPSS scores predict the likelihood of exploitation based on threat intelligence.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div id="danger-zone" className="rounded-lg border border-destructive/50 bg-destructive/5 scroll-mt-6">
+              <div className="border-b border-destructive/50 p-4">
+                <h2 className="font-semibold text-destructive">Danger Zone</h2>
+              </div>
+              <div className="p-4">
+                <button
+                  onClick={() => setShowResetSettingsDialog(true)}
+                  className="rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
+                >
+                  Reset All Settings to Defaults
+                </button>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {SYNC_SCHEDULE_OPTIONS.find((o) => o.value === syncSchedule)?.description}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Bulk Download requires an NVD API key. Add your key above or set NVD_API_KEY environment variable.
-                </p>
-                {syncStatus && (
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    <span className="font-medium">Last sync:</span>{' '}
-                    {syncStatus.lastSyncAt ? new Date(syncStatus.lastSyncAt).toLocaleString() : 'Never'}
-                    {syncStatus.cvesAdded !== undefined && syncStatus.cvesAdded > 0 && (
-                      <span className="ml-2 text-green-600">+{syncStatus.cvesAdded} CVEs</span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Storage Management */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <HardDrive className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="font-medium">Storage Management</h3>
-                </div>
-
-                {/* Storage Limit Slider */}
-                <div>
-                  <label htmlFor="max-database-size" className="mb-2 block text-sm font-medium">
-                    Maximum Database Size
-                  </label>
-                  <select
-                    id="max-database-size"
-                    value={storageSettings.maxSizeMB}
-                    onChange={(e) => handleStorageSettingChange('maxSizeMB', Number(e.target.value))}
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {DATABASE_SIZE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Database will be pruned when it exceeds this limit
-                  </p>
-                </div>
-
-                {/* Prune Old CVEs */}
-                <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
-                  <div className="flex items-center gap-3">
-                    <Trash2 className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <div className="font-medium">Prune Old CVEs</div>
-                      <p className="text-sm text-muted-foreground">
-                        Remove CVEs older than a specified year to save space
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleStorageSettingChange('pruneOldCves', !storageSettings.pruneOldCves)}
-                    role="switch"
-                    aria-checked={storageSettings.pruneOldCves}
-                    aria-label="Toggle prune old CVEs"
-                    className={`relative h-6 w-11 rounded-full transition-colors ${
-                      storageSettings.pruneOldCves ? 'bg-primary' : 'bg-muted-foreground'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
-                        storageSettings.pruneOldCves ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Prune Year Threshold */}
-                {storageSettings.pruneOldCves && (
-                  <div>
-                    <label htmlFor="prune-year" className="mb-2 block text-sm font-medium">
-                      Keep CVEs From
-                    </label>
-                    <select
-                      id="prune-year"
-                      value={storageSettings.pruneOlderThanYear}
-                      onChange={(e) => handleStorageSettingChange('pruneOlderThanYear', Number(e.target.value))}
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {PRUNE_YEAR_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {/* Database Actions */}
-              <div className="flex flex-wrap gap-3 pt-2">
-                <button
-                  onClick={() => setShowRebuildDialog(true)}
-                  className="flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Rebuild Indexes
-                </button>
-                <button
-                  onClick={() => setShowResetDialog(true)}
-                  className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Reset Database
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Backup & Recovery Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center gap-3 border-b border-border p-4">
-              <Archive className="h-5 w-5 text-muted-foreground" />
-              <h2 className="font-semibold">Backup & Recovery</h2>
-            </div>
-            <div className="p-4 space-y-6">
-              {/* Status Messages */}
-              {backupError && (
-                <div className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
-                  <XCircle className="h-4 w-4" />
-                  {backupError}
-                </div>
-              )}
-              {backupSuccess && (
-                <div className="flex items-center gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3 text-sm text-green-600">
-                  <CheckCircle2 className="h-4 w-4" />
-                  {backupSuccess}
-                </div>
-              )}
-
-              {/* Backup Actions */}
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={handleCreateBackup}
-                  disabled={isCreatingBackup}
-                  className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isCreatingBackup ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      Create Backup
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Backup Configuration */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="font-medium">Backup Configuration</h3>
-                </div>
-
-                {/* Retention Count */}
-                <div>
-                  <label htmlFor="backup-retention" className="mb-2 block text-sm font-medium">
-                    Keep Backups
-                  </label>
-                  <select
-                    id="backup-retention"
-                    value={backupConfig.retentionCount}
-                    onChange={async (e) => {
-                      const newCount = Number(e.target.value)
-                      setBackupConfig((prev) => ({ ...prev, retentionCount: newCount }))
-                      await getPlatform().backup.updateConfig({ maxBackups: newCount })
-                    }}
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value={1}>1 backup</option>
-                    <option value={3}>3 backups</option>
-                    <option value={5}>5 backups</option>
-                    <option value={10}>10 backups</option>
-                  </select>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Older backups will be automatically deleted when limit is reached
-                  </p>
-                </div>
-              </div>
-
-              {/* Backup List */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <History className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="font-medium">Available Backups ({backups.length})</h3>
-                </div>
-
-                {backups.length === 0 ? (
-                  <div className="text-sm text-muted-foreground p-4 rounded-lg bg-muted text-center">
-                    No backups available. Create your first backup to protect your data.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {backups.map((backup) => (
-                      <div
-                        key={backup.id}
-                        className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`p-2 rounded-lg ${
-                              backup.integrity === 'valid'
-                                ? 'bg-green-500/10'
-                                : backup.integrity === 'invalid'
-                                  ? 'bg-red-500/10'
-                                  : 'bg-muted-foreground/10'
-                            }`}
-                          >
-                            <Archive
-                              className={`h-4 w-4 ${
-                                backup.integrity === 'valid'
-                                  ? 'text-green-500'
-                                  : backup.integrity === 'invalid'
-                                    ? 'text-red-500'
-                                    : 'text-muted-foreground'
-                              }`}
-                            />
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium">{new Date(backup.timestamp).toLocaleString()}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatBackupSize(backup.size)}
-                              {backup.integrity === 'valid' && ' • Verified'}
-                              {backup.integrity === 'invalid' && ' • Corrupted'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleVerifyBackup(backup.id)}
-                            className="p-2 rounded-md hover:bg-muted transition-colors"
-                            aria-label="Verify backup integrity"
-                            title="Verify integrity"
-                          >
-                            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedBackupId(backup.id)
-                              setShowRestoreDialog(true)
-                            }}
-                            disabled={backup.integrity === 'invalid'}
-                            className="p-2 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
-                            aria-label="Restore backup"
-                            title="Restore backup"
-                          >
-                            <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteBackup(backup.id)}
-                            className="p-2 rounded-md hover:bg-destructive/10 transition-colors"
-                            aria-label="Delete backup"
-                            title="Delete backup"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Performance Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center gap-3 border-b border-border p-4">
-              <Gauge className="h-5 w-5 text-muted-foreground" />
-              <h2 className="font-semibold">Performance Tuning</h2>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Search Result Limit */}
-              <div>
-                <label htmlFor="search-result-limit" className="mb-2 block text-sm font-medium">
-                  Search Result Limit
-                </label>
-                <select
-                  id="search-result-limit"
-                  value={performanceSettings.searchResultLimit}
-                  onChange={(e) => handlePerformanceSettingChange('searchResultLimit', Number(e.target.value))}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {SEARCH_RESULT_LIMIT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Maximum number of results returned from vulnerability searches
-                </p>
-              </div>
-
-              {/* Search Cache Toggle */}
-              <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
-                <div className="flex items-center gap-3">
-                  <Zap className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <div className="font-medium">Enable Search Cache</div>
-                    <p className="text-sm text-muted-foreground">Cache search results for faster repeated queries</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() =>
-                    handlePerformanceSettingChange('enableSearchCache', !performanceSettings.enableSearchCache)
-                  }
-                  role="switch"
-                  aria-checked={performanceSettings.enableSearchCache}
-                  aria-label="Toggle search cache"
-                  className={`relative h-6 w-11 rounded-full transition-colors ${
-                    performanceSettings.enableSearchCache ? 'bg-primary' : 'bg-muted-foreground'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
-                      performanceSettings.enableSearchCache ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Cache Size (if cache enabled) */}
-              {performanceSettings.enableSearchCache && (
-                <div>
-                  <label htmlFor="cache-size" className="mb-2 block text-sm font-medium">
-                    Cache Size
-                  </label>
-                  <select
-                    id="cache-size"
-                    value={performanceSettings.cacheSizeMB}
-                    onChange={(e) => handlePerformanceSettingChange('cacheSizeMB', Number(e.target.value))}
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {CACHE_SIZE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Maximum memory allocated for search result caching
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Data Management Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center gap-3 border-b border-border p-4">
-              <FileText className="h-5 w-5 text-muted-foreground" />
-              <h2 className="font-semibold">Data Management</h2>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Import/Export Profiles */}
-              <div className="rounded-lg border border-border bg-muted p-4">
-                <div className="mb-3">
-                  <div className="font-medium">Import/Export Settings Profiles</div>
-                  <p className="text-sm text-muted-foreground">
-                    Share your settings profiles across different installations
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleExportProfiles}
-                    disabled={settingsProfiles.length === 0}
-                    className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Download className="h-4 w-4" />
-                    Export Profiles
-                  </button>
-                  <label className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 cursor-pointer transition-colors">
-                    <Upload className="h-4 w-4" />
-                    Import Profiles
-                    <input type="file" accept=".json" onChange={handleImportProfiles} className="hidden" />
-                  </label>
-                </div>
-                {importSuccess && (
-                  <div className="mt-3 text-sm text-green-600">Settings profiles imported successfully!</div>
-                )}
-                {importError && <div className="mt-3 text-sm text-destructive">{importError}</div>}
-              </div>
-
-              {/* Data Retention */}
-              <div>
-                <label htmlFor="data-retention" className="mb-2 block text-sm font-medium">
-                  Data Retention Period
-                </label>
-                <select
-                  id="data-retention"
-                  value={settings.dataRetentionDays}
-                  onChange={(e) => updateSettings({ dataRetentionDays: Number(e.target.value) })}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value={7}>7 days</option>
-                  <option value={30}>30 days</option>
-                  <option value={60}>60 days</option>
-                  <option value={90}>90 days</option>
-                  <option value={180}>6 months</option>
-                  <option value={365}>1 year</option>
-                  <option value={-1}>Never (keep all data)</option>
-                </select>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Scan results older than the specified period will be automatically deleted
-                  {settings.dataRetentionDays === -1
-                    ? '. Data is never deleted automatically.'
-                    : ` (every ${settings.dataRetentionDays} days).`}
+                  This will reset all settings to their default values. Your projects and vulnerability data will not be
+                  affected.
                 </p>
               </div>
             </div>
+
+            {/* Version Info */}
+            <div className="text-center text-sm text-muted-foreground">VulnAssessTool v0.1.0</div>
           </div>
-
-          {/* Intelligence Section */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center gap-3 border-b border-border p-4">
-              <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-              <h2 className="font-semibold">Threat Intelligence</h2>
-            </div>
-            <div className="p-4 space-y-6">
-              {/* Status Messages */}
-              {kevSyncError && (
-                <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                  <XCircle className="h-4 w-4" />
-                  {kevSyncError}
-                </div>
-              )}
-              {kevSyncSuccess && (
-                <div className="flex items-center gap-2 rounded-lg bg-green-500/10 p-3 text-sm text-green-600">
-                  <CheckCircle2 className="h-4 w-4" />
-                  {kevSyncSuccess}
-                </div>
-              )}
-
-              {/* KEV Stats Grid */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                  <div className="p-2 rounded-lg bg-red-500/10">
-                    <AlertTriangle className="h-5 w-5 text-red-500" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">KEV Entries</div>
-                    <div className="text-lg font-semibold">{kevStats?.total ?? 0}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                  <div className="p-2 rounded-lg bg-orange-500/10">
-                    <Shield className="h-5 w-5 text-orange-500" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Ransomware</div>
-                    <div className="text-lg font-semibold">{kevStats?.ransomwareRelated ?? 0}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                  <div className="p-2 rounded-lg bg-purple-500/10">
-                    <Clock className="h-5 w-5 text-purple-500" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Last Updated</div>
-                    <div className="text-sm font-medium">
-                      {kevStats?.lastUpdated ? new Date(kevStats.lastUpdated).toLocaleDateString() : 'Never'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* KEV Sync Button */}
-              <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
-                <div className="flex items-center gap-3">
-                  <RefreshCw className={`h-5 w-5 text-muted-foreground ${isSyncingKev ? 'animate-spin' : ''}`} />
-                  <div>
-                    <div className="font-medium">Sync KEV Catalog</div>
-                    <p className="text-sm text-muted-foreground">
-                      Download latest CISA Known Exploited Vulnerabilities catalog
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleSyncKev}
-                  disabled={isSyncingKev}
-                  className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                >
-                  {isSyncingKev ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Syncing...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4" />
-                      Sync Now
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Info */}
-              <div className="text-xs text-muted-foreground">
-                <p>
-                  The <strong>CISA KEV Catalog</strong> contains vulnerabilities that have been actively exploited in
-                  the wild. EPSS scores predict the likelihood of exploitation based on threat intelligence.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Danger Zone */}
-          <div className="rounded-lg border border-destructive/50 bg-destructive/5">
-            <div className="border-b border-destructive/50 p-4">
-              <h2 className="font-semibold text-destructive">Danger Zone</h2>
-            </div>
-            <div className="p-4">
-              <button
-                onClick={handleResetToDefaults}
-                className="rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
-              >
-                Reset All Settings to Defaults
-              </button>
-              <p className="mt-2 text-xs text-muted-foreground">
-                This will reset all settings to their default values. Your projects and vulnerability data will not be
-                affected.
-              </p>
-            </div>
-          </div>
-
-          {/* Version Info */}
-          <div className="text-center text-sm text-muted-foreground">VulnAssessTool v0.1.0</div>
         </div>
-      </main>
+      </div>
 
-      {/* Create Profile Dialog */}
-      <CreateProfileDialog
-        open={showCreateProfileDialog}
-        onClose={() => setShowCreateProfileDialog(false)}
-        onCreate={handleCreateProfile}
-        existingProfiles={settingsProfiles}
-        currentSettings={settings}
+      {/* Reset Settings Confirmation Dialog */}
+      <ConfirmDialog
+        open={showResetSettingsDialog}
+        title="Reset Settings"
+        message="Reset all settings to default values? Your projects and vulnerability data will not be affected."
+        confirmLabel="Reset to Defaults"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmResetSettings}
+        onCancel={() => setShowResetSettingsDialog(false)}
       />
 
       {/* Reset Database Confirmation Dialog */}

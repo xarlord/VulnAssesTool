@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { getPlatform } from '@/lib/platform'
 import {
-  X,
   ExternalLink,
   AlertTriangle,
   Shield,
@@ -16,6 +15,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { toast } from './Toaster'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 // Types matching the database types
 interface CpeMatchFull {
@@ -221,75 +221,14 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
   const [cweExpanded, setCweExpanded] = useState(true)
   const [refsExpanded, setRefsExpanded] = useState(true)
   const [cvssExpanded, setCvssExpanded] = useState(true)
-  const modalRef = useRef<HTMLDivElement>(null)
-  const previousActiveElement = useRef<HTMLElement | null>(null)
-
-  // Focus trap and keyboard handler for accessibility
-  useEffect(() => {
-    if (!open) return
-
-    // Store the previously focused element
-    previousActiveElement.current = document.activeElement as HTMLElement
-
-    const modalElement = modalRef.current
-    if (!modalElement) return
-
-    // Get all focusable elements
-    const focusableSelectors = [
-      'button:not([disabled])',
-      '[href]',
-      'input:not([disabled])',
-      'select:not([disabled])',
-      'textarea:not([disabled])',
-      '[tabindex]:not([tabindex="-1"])',
-    ].join(', ')
-
-    const getFocusableElements = () => modalElement.querySelectorAll<HTMLElement>(focusableSelectors)
-
-    // Focus the first focusable element
-    const focusableElements = getFocusableElements()
-    if (focusableElements.length > 0) {
-      focusableElements[0].focus()
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Close on Escape
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-        return
-      }
-
-      // Focus trap on Tab
-      if (e.key === 'Tab') {
-        const focusableElements = getFocusableElements()
-        const firstElement = focusableElements[0]
-        const lastElement = focusableElements[focusableElements.length - 1]
-
-        if (e.shiftKey && document.activeElement === firstElement) {
-          e.preventDefault()
-          lastElement?.focus()
-        } else if (!e.shiftKey && document.activeElement === lastElement) {
-          e.preventDefault()
-          firstElement?.focus()
-        }
-      }
-    }
-
-    modalElement.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      modalElement.removeEventListener('keydown', handleKeyDown)
-      // Restore focus to the previously focused element
-      previousActiveElement.current?.focus()
-    }
-  }, [open, onClose])
 
   // Fetch CVE details when opened
   useEffect(() => {
     if (open && cveId) {
       fetchCveDetails()
     }
+    // Intentional: re-fetch only when open/cveId change; fetchCveDetails is a stable closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cveId])
 
   const fetchCveDetails = async () => {
@@ -351,22 +290,20 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
     return SEVERITY_BG_COLORS[s] || SEVERITY_BG_COLORS.LOW
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-
-      {/* Modal */}
-      <div
-        ref={modalRef}
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
         data-testid="cve-detail-modal"
-        role="dialog"
         aria-modal="true"
-        aria-labelledby="cve-modal-title"
-        className="relative z-50 w-full max-w-4xl rounded-lg border border-border bg-card shadow-lg max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col"
+        className="max-w-4xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col"
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>CVE Vulnerability Details</DialogTitle>
+          <DialogDescription>
+            Detailed vulnerability information including CVSS scores, affected software, references, and timeline.
+          </DialogDescription>
+        </DialogHeader>
+
         {/* Header */}
         <div className="flex items-start justify-between border-b border-border p-6 bg-gradient-to-r from-muted to-card">
           <div className="flex-1">
@@ -440,14 +377,6 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
               <div className="text-muted-foreground">No CVE data</div>
             )}
           </div>
-          <button
-            onClick={onClose}
-            data-testid="cve-modal-close"
-            className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Close modal"
-          >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </button>
         </div>
 
         {/* Content */}
@@ -1030,7 +959,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
             Close
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

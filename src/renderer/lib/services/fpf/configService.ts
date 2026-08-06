@@ -261,7 +261,7 @@ export class ConfigService {
           message: 'Confidence threshold must be between 0 and 100',
         })
       }
-      if (config.filterSettings.neverAutoFilter?.includes('critical') === false) {
+      if (!config.filterSettings.neverAutoFilter?.includes('critical')) {
         warnings.push({
           path: 'filterSettings.neverAutoFilter',
           message: 'Critical vulnerabilities should not be auto-filtered',

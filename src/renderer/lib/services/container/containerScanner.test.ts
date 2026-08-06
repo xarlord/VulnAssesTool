@@ -35,9 +35,6 @@ vi.mock('@/lib/platform', () => ({
 
 const mockExecuteCommand = vi.fn()
 
-// Mock the private executeCommand method
-vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
-
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -45,6 +42,9 @@ vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation
 describe('ContainerScanner', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Re-establish the private-method spy each test: afterEach's restoreAllMocks() removes it, and
+    // the real executeCommand now throws (M1 — it no longer fabricates a {version:'24.0.0'} probe).
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
     mockExecuteCommand.mockResolvedValue({
       version: '24.0.0',
     })
@@ -330,7 +330,14 @@ describe('ContainerScanner', () => {
 
 describe('Convenience Functions', () => {
   beforeEach(() => {
+    // Re-establish the executeCommand spy (a prior describe's restoreAllMocks removed it, and the
+    // real method now throws after M1). Mirrors the main describe's setup.
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
     mockExecuteCommand.mockResolvedValue({ version: '24.0.0' })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   describe('createContainerScanner', () => {

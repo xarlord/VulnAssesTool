@@ -1,161 +1,93 @@
-/**
- * E2E Tests for SBOM Generator Dialog
- *
- * These tests cover file upload and parsing functionality that cannot be
- * properly tested in jsdom due to FileReader API limitations.
- *
- * NOTE: These tests require the SBOM Generator button to be available
- * in the Settings page. Tests will pass gracefully if not available.
- */
-
 import { test, expect, resetAppState } from '../test-helper'
-import { navigateToSettings } from '../shared-helpers'
 
 /**
- * Helper to check if SBOM Generator is available and click it
+ * SBOM Generator (Excel -> CycloneDX) Dialog — content contracts
+ *
+ * The previous version of this spec assumed the generator lived on the Settings page and
+ * groped for it via an `openSbomGenerator()` helper that tried four guessed selectors
+ * ('Generate SBOM', 'SBOM Generator', '[data-testid="sbom-generator-button"]', 'Excel')
+ * wrapped in `if (opened) {...} else {...}` no-op branches. None of those selectors ever
+ * matched real markup, so every assertion behind them was dead code — the suite was
+ * permanently green regardless of the feature's actual state. That helper and the
+ * settings-navigation premise have been removed entirely.
+ *
+ * Grounding for the rewrite (all verified against source):
+ *   - pages/Dashboard.tsx:250-254 — the real trigger is a Dashboard action button named
+ *     "Generate SBOM from Excel" (not anything in Settings). Unlike the neighboring
+ *     "Import SBOM" / "Export All" buttons, it has no `disabled` prop, so it is clickable
+ *     with zero projects.
+ *   - components/SbomGeneratorDialog.tsx:489 `<Dialog open={open} onOpenChange={(next) =>
+ *     !next && handleClose()}>` — a Radix dialog (role=dialog); Escape triggers the real
+ *     `handleClose` (:93), not a synthetic no-op.
+ *   - SbomGeneratorDialog.tsx:497-498 — DialogTitle "Generate SBOM from Excel",
+ *     DialogDescription "Upload an Excel file to generate a CycloneDX SBOM".
+ *   - SbomGeneratorDialog.tsx:505-553 — the idle-state step indicator renders exactly six
+ *     labels, unconditionally, in this order: Upload, Map Columns, Preview, CPEs, Generate,
+ *     Download.
+ *   - SbomGeneratorDialog.tsx:556-609 — idle drop-zone copy "Click to upload or drag and
+ *     drop" / "Excel files (.xlsx, .xls)", a hidden `<input type="file" accept=".xlsx,.xls">`,
+ *     a "Required Excel Columns:" block naming `name` and `version`, and an
+ *     "Optional Columns:" block.
+ *
+ * The upload -> column-mapping -> preview -> CPE-selection -> generate -> "SBOM Generated
+ * Successfully!" flow is real and fully client-side (parseExcel/generateCycloneDX — no Syft,
+ * no network) but requires driving a real binary .xlsx file through Playwright's file
+ * chooser, which is out of scope here. It is honestly skipped below rather than faked.
  */
-async function openSbomGenerator(page: import('@playwright/test').Page): Promise<boolean> {
-  // Look for SBOM Generator button with various selectors
-  const selectors = [
-    'button:has-text("Generate SBOM")',
-    'button:has-text("SBOM Generator")',
-    '[data-testid="sbom-generator-button"]',
-    'button:has-text("Excel")',
-  ]
-
-  for (const selector of selectors) {
-    const button = page.locator(selector)
-    const count = await button.count()
-    if (count > 0) {
-      try {
-        await button.first().click({ timeout: 5000 })
-        await page.waitForTimeout(500)
-        return true
-      } catch {
-        // Click failed, try next selector
-        continue
-      }
-    }
-  }
-  return false
-}
-
-test.describe('SBOM Generator Dialog E2E Tests', () => {
+test.describe('SBOM Generator Dialog', () => {
   test.beforeEach(async ({ page }) => {
     await resetAppState(page)
-    // Wait for dashboard to load
     await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
-  test('settings page should load', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
+  test('should open the SBOM generator dialog from the Dashboard button', async ({ page }) => {
+    await page.getByRole('button', { name: 'Generate SBOM from Excel' }).click()
 
-    // Check if settings navigation worked
-    if (navigated) {
-      await page.waitForTimeout(500)
-      // Look for any settings content
-      const settingsContent = page.locator('text=/Settings|Theme|Appearance|General/i')
-      const hasContent = (await settingsContent.count()) > 0
-      // Settings content presence varies by configuration
-    } else {
-      // Settings page may not exist - that's OK
-    }
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible({ timeout: 5000 })
+    await expect(dialog.getByRole('heading', { name: 'Generate SBOM from Excel' })).toBeVisible()
+    await expect(dialog.getByText('Upload an Excel file to generate a CycloneDX SBOM')).toBeVisible()
   })
 
-  test('should look for SBOM generator feature in settings', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
+  test('should display the six-step indicator in order', async ({ page }) => {
+    await page.getByRole('button', { name: 'Generate SBOM from Excel' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible({ timeout: 5000 })
 
-    await page.waitForTimeout(500)
-
-    // Look for any SBOM-related content
-    const sbomContent = page.locator('text=/SBOM|Excel|CycloneDX|generate/i')
-    const hasSbomContent = (await sbomContent.count()) > 0
+    // SbomGeneratorDialog.tsx:505-553: the step-indicator container (`div.mb-6`) renders one
+    // <span> label per step, unconditionally, regardless of which step is active.
+    const stepLabels = dialog.locator('div.mb-6 span')
+    await expect(stepLabels).toHaveText(['Upload', 'Map Columns', 'Preview', 'CPEs', 'Generate', 'Download'])
   })
 
-  test('should check for file input capability in dialogs', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
+  test('should show the idle upload zone with Excel-only guidance', async ({ page }) => {
+    await page.getByRole('button', { name: 'Generate SBOM from Excel' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible({ timeout: 5000 })
 
-    await page.waitForTimeout(500)
+    await expect(dialog.getByText('Click to upload or drag and drop')).toBeVisible()
+    await expect(dialog.getByText('Excel files (.xlsx, .xls)')).toBeVisible()
+    await expect(dialog.getByText('Required Excel Columns:')).toBeVisible()
+    await expect(dialog.getByText('name', { exact: true })).toBeVisible()
+    await expect(dialog.getByText('version', { exact: true })).toBeVisible()
+    await expect(dialog.getByText('Optional Columns:')).toBeVisible()
 
-    // Try to open SBOM generator
-    const opened = await openSbomGenerator(page)
-
-    if (opened) {
-      // Check for file input
-      const fileInput = page.locator('input[type="file"]')
-      const hasFileInput = (await fileInput.count()) > 0
-
-      if (hasFileInput) {
-        // Check accepted file types
-        const accept = await fileInput.first().getAttribute('accept')
-        const acceptsExcel = accept?.includes('.xlsx') || accept?.includes('.xls')
-        // Excel acceptance is optional
-      } else {
-        // File input may appear later or in different form
-      }
-    } else {
-      // SBOM generator not available - that's OK
-    }
+    const fileInput = dialog.locator('input[type="file"]')
+    await expect(fileInput).toHaveAttribute('accept', '.xlsx,.xls')
   })
 
-  test('should check for upload/drop zone UI', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
+  test('should close the dialog with Escape', async ({ page }) => {
+    await page.getByRole('button', { name: 'Generate SBOM from Excel' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible({ timeout: 5000 })
 
-    await page.waitForTimeout(500)
-
-    // Try to open SBOM generator
-    const opened = await openSbomGenerator(page)
-
-    if (opened) {
-      // Check for drop zone or file input area
-      const dropZone = page.locator('text=/drop|drag|upload|browse|select.*file/i')
-      const hasDropZone = (await dropZone.count()) > 0
-
-      // Test passes whether or not drop zone is visible - feature is optional
-    } else {
-      // SBOM generator not available
-    }
+    // Escape is Radix's built-in Dialog behavior (SbomGeneratorDialog.tsx:489
+    // `onOpenChange={(next) => !next && handleClose()}`), asserted directly with no fallback.
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible({ timeout: 5000 })
   })
 
-  test('should handle dialog close functionality', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      return
-    }
-
-    await page.waitForTimeout(500)
-
-    // Try to open SBOM generator
-    const opened = await openSbomGenerator(page)
-
-    if (opened) {
-      // Look for cancel/close buttons
-      const closeButton = page.locator('button:has-text("Cancel"), button:has-text("Close"), [aria-label*="close"]')
-
-      if ((await closeButton.count()) > 0) {
-        await closeButton.first().click()
-        await page.waitForTimeout(500)
-      }
-
-      // Press Escape to close any remaining dialog
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(300)
-
-      // App should still be responsive
-      const appContent = page.locator('button, a, h1, h2')
-      const hasContent = (await appContent.count()) > 0
-      expect(hasContent).toBe(true)
-    } else {
-      // SBOM generator not available - that's OK
-    }
+  test.skip('should complete the upload -> mapping -> preview -> generate -> download flow', async () => {
+    // requires a binary .xlsx fixture + real upload; not asserted here
   })
 })

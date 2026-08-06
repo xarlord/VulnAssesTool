@@ -1,17 +1,36 @@
 import { test, expect, resetAppState } from '../test-helper'
-import type { Page } from '@playwright/test'
 import { createProjectOnly } from '../shared-helpers'
 
 /**
- * E2E Tests for Offline Mode and Sync-on-Reconnect
+ * Offline Mode and Sync — content contracts
  *
- * Tests the complete offline functionality:
- * 1. Offline indicator appears when network is unavailable
- * 2. Requests are queued when offline
- * 3. Queue is displayed to user
- * 4. Sync occurs when connection is restored
- * 5. Toast notifications for sync events
+ * The only offline behavior actually observable in the running app is the shell's
+ * connectivity indicator. TopBar always mounts `<OfflineIndicator compact />` inside
+ * the app's single `<header>` (components/shell/TopBar.tsx:73,118 — PageHeader.tsx
+ * renders a plain `<div>`, never a `<header>`, so this element is unique app-wide).
+ * That compact wrapper div always carries a `title` attribute — `'Online'` when
+ * online, or `` `Offline - ${queueLength} requests queued` `` when offline
+ * (components/OfflineIndicator.tsx:134). `page.context().setOffline()` drives
+ * Chromium's real online/offline network state, which `OfflineQueue` listens for via
+ * `window.addEventListener('online'|'offline', ...)` (lib/services/OfflineQueue.ts:184-186).
+ * After `resetAppState` clears localStorage, the queue's persisted backing store is
+ * empty, so `queueLength` is deterministically 0 (OfflineIndicator.tsx:127).
+ *
+ * Everything else the original file exercised — queuing, sync progress, sync-complete
+ * toasts, sync errors, and the "offline banner" — is unreachable from any real user
+ * flow, so those cases are skipped with reasons rather than asserted on dead code:
+ *   - `OfflineQueue.enqueue()` (lib/services/OfflineQueue.ts:314) has zero call sites
+ *     in app code (only in its own unit test) — nothing ever queues a request, so the
+ *     queue is always empty, `processQueue()` (OfflineQueue.ts:462) never has work, the
+ *     compact badge (OfflineIndicator.tsx:143, gated on `queueLength > 0`) never shows,
+ *     and `useSyncNotifications.ts` never fires its `sync-started`/`sync-completed`/
+ *     `sync-error` toasts (they're wired only to events `processQueue()` emits while
+ *     draining a non-empty queue).
+ *   - `OfflineBanner` (components/OfflineIndicator.tsx:206) is exported but never
+ *     imported by TopBar.tsx, AppShell.tsx, or App.tsx — no route mounts it (it has its
+ *     own coverage in OfflineIndicator.test.tsx).
  */
+
 test.describe('Offline Mode and Sync', () => {
   test.beforeEach(async ({ page }) => {
     await resetAppState(page)
@@ -20,256 +39,102 @@ test.describe('Offline Mode and Sync', () => {
 
   test.describe('Offline Indicator', () => {
     test('should show offline indicator when network is offline', async ({ page }) => {
-      // Simulate offline mode
+      // The compact indicator's title attribute is the state contract (OfflineIndicator.tsx:134).
+      const indicator = page.locator('header [title]')
+      await expect(indicator).toHaveAttribute('title', 'Online')
+
       await page.context().setOffline(true)
-      await page.waitForTimeout(500)
+      await expect(indicator).toHaveAttribute('title', 'Offline - 0 requests queued')
 
-      // Check for offline indicator (compact mode in header)
-      // The indicator shows a WifiOff icon when offline
-      const offlineIndicator = page
-        .locator('[class*="OfflineIndicator"]')
-        .or(page.locator('svg[class*="wifi-off"]'))
-        .or(page.getByTestId('offline-indicator'))
-
-      // In offline mode, there should be some visual indication
-      // Check for either the indicator or a badge
-      const hasOfflineIndicator = (await offlineIndicator.count()) > 0
-
-      // Also check for the offline icon in the header
-      const headerOfflineIcon = page.locator('header svg').filter({
-        has: page.locator('[d*="M5 12.55a11"]'), // WifiOff icon path pattern
-      })
-
-      // Restore online state
       await page.context().setOffline(false)
     })
 
     test('should show online indicator when network is available', async ({ page }) => {
-      // Ensure online mode
-      await page.context().setOffline(false)
-      await page.waitForTimeout(500)
-
-      // The header should show an online indicator (green wifi icon)
-      // This is in compact mode by default
-      const headerIcons = page.locator('header svg')
-
-      // There should be at least one icon in the header (the wifi indicator)
-      const iconCount = await headerIcons.count()
-      expect(iconCount).toBeGreaterThan(0)
+      await expect(page.locator('header [title]')).toHaveAttribute('title', 'Online')
     })
 
     test('should toggle indicator when network status changes', async ({ page }) => {
-      // Start online
-      await page.context().setOffline(false)
-      await page.waitForTimeout(300)
+      const indicator = page.locator('header [title]')
 
-      // Go offline
       await page.context().setOffline(true)
-      await page.waitForTimeout(500)
+      await expect(indicator).toHaveAttribute('title', 'Offline - 0 requests queued')
 
-      // Check for offline state indication
-      // The page should reflect the offline state somehow
-      const pageContent = await page.content()
-
-      // Go back online
       await page.context().setOffline(false)
-      await page.waitForTimeout(500)
-
-      // Verify back to normal
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+      await expect(indicator).toHaveAttribute('title', 'Online')
     })
   })
 
   test.describe('Offline Queue', () => {
-    test('should queue requests when offline', async ({ page }) => {
-      // This test verifies that when offline, API requests are queued
-      // In the browser context, we can simulate this by going offline
-      // and then triggering an action that would make an API call
-
-      // Go offline
-      await page.context().setOffline(true)
-      await page.waitForTimeout(500)
-
-      // Try to perform an action that would require network
-      // For example, triggering a sync or refresh
-      // The action should be queued rather than failing immediately
-
-      // Verify the app doesn't crash or show error
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
-
-      // Go back online
-      await page.context().setOffline(false)
+    test.skip('should queue requests when offline', async () => {
+      // Infeasible: OfflineQueue.enqueue() (lib/services/OfflineQueue.ts:314) has no
+      // call sites in app code — nothing ever queues a request for this to observe.
     })
 
-    test('should show queue count badge when requests are pending', async ({ page }) => {
-      // Go offline
-      await page.context().setOffline(true)
-      await page.waitForTimeout(500)
-
-      // Check if there's a badge or count indicator
-      // This would appear after queuing requests
-      const badgeLocator = page.locator('[class*="badge"]').or(page.locator('span[class*="rounded-full"]'))
-
-      // The badge might not appear until requests are queued
-      // For now, just verify the offline state is indicated
-
-      // Restore online
-      await page.context().setOffline(false)
+    test.skip('should show queue count badge when requests are pending', async () => {
+      // Infeasible: the compact badge (components/OfflineIndicator.tsx:143) only renders
+      // when queueLength > 0, which requires a queued request (see skip above).
     })
   })
 
   test.describe('Sync-on-Reconnect', () => {
-    test('should automatically sync when coming back online', async ({ page }) => {
-      // Go offline first
-      await page.context().setOffline(true)
-      await page.waitForTimeout(500)
-
-      // Verify offline state
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
-
-      // Go back online - this should trigger sync
-      await page.context().setOffline(false)
-      await page.waitForTimeout(1000)
-
-      // The sync should happen automatically
-      // We can verify by checking that the app is still functional
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+    test.skip('should automatically sync when coming back online', async () => {
+      // Infeasible: processQueue() (lib/services/OfflineQueue.ts:462) returns immediately
+      // when the queue is empty, and nothing in app code ever enqueues a request.
     })
 
-    test('should show sync progress when processing queued requests', async ({ page }) => {
-      // Go offline
-      await page.context().setOffline(true)
-      await page.waitForTimeout(500)
-
-      // Go back online to trigger sync
-      await page.context().setOffline(false)
-
-      // Look for sync progress indicator
-      // This could be a progress bar or spinning icon
-      const syncIndicator = page.locator('text=/syncing/i').or(page.locator('[class*="animate-spin"]')).or(
-        page.locator('text=/\\d+\\/\\d+/'), // Progress like "1/5"
-      )
-
-      // The sync might be very fast, so we just check the app works
-      await page.waitForTimeout(1000)
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+    test.skip('should show sync progress when processing queued requests', async () => {
+      // Infeasible: sync-progress events are emitted from processQueue() while draining
+      // queued requests that never exist (see Offline Queue skips above).
     })
 
-    test('should show toast notification on sync completion', async ({ page }) => {
-      // Setup: Go offline, then come back online
-      await page.context().setOffline(true)
-      await page.waitForTimeout(300)
-      await page.context().setOffline(false)
-
-      // Wait for potential toast notification
-      await page.waitForTimeout(1000)
-
-      // Look for toast notification
-      // Toasts appear in bottom-right corner
-      const toast = page
-        .locator('[class*="toast"]')
-        .or(page.locator('[class*="fixed bottom-4 right-4"]'))
-        .or(page.locator('text=/sync complete/i'))
-        .or(page.locator('text=/syncing/i'))
-
-      // Toast may appear briefly; just verify app is functional
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+    test.skip('should show toast notification on sync completion', async () => {
+      // Infeasible: useSyncNotifications.ts toasts only on 'sync-started'/'sync-completed'
+      // events, which processQueue() never emits for an empty queue.
     })
   })
 
   test.describe('Error Handling', () => {
     test('should handle network errors gracefully', async ({ page }) => {
-      // Simulate intermittent connectivity
+      const indicator = page.locator('header [title]')
+
+      // Rapid connectivity flapping must settle back to a consistent online state
+      // without leaving the shell stuck mid-transition.
       await page.context().setOffline(true)
-      await page.waitForTimeout(200)
       await page.context().setOffline(false)
-      await page.waitForTimeout(200)
       await page.context().setOffline(true)
-      await page.waitForTimeout(200)
       await page.context().setOffline(false)
 
-      // Verify the app didn't crash
-      await page.waitForTimeout(500)
+      await expect(indicator).toHaveAttribute('title', 'Online')
       await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
     })
 
-    test('should show error notification for failed sync', async ({ page }) => {
-      // Go offline and trigger an action
-      await page.context().setOffline(true)
-      await page.waitForTimeout(500)
-
-      // Try to perform some action
-      // The action should fail gracefully
-
-      // Go back online
-      await page.context().setOffline(false)
-      await page.waitForTimeout(500)
-
-      // Verify app is still functional
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
+    test.skip('should show error notification for failed sync', async () => {
+      // Infeasible: sync-error fires from processQueue()'s retry loop over a queued
+      // request; nothing in app code ever enqueues one (see Offline Queue skips above).
     })
 
     test('should maintain app state during connectivity changes', async ({ page }) => {
-      // Create a project first
-      await createTestProject(page, 'Offline Test Project', 'Testing offline state persistence')
+      const projectName = 'Offline Test Project'
+      await createProjectOnly(page, projectName)
 
-      // Go offline
+      // Project data lives in client-side state/localStorage, so it must stay rendered
+      // regardless of the browser's connectivity state.
       await page.context().setOffline(true)
-      await page.waitForTimeout(500)
+      await expect(page.getByText(projectName)).toBeVisible()
 
-      // Verify project still visible (from local state)
-      await expect(page.getByText('Offline Test Project', { exact: false })).toBeVisible()
-
-      // Go back online
       await page.context().setOffline(false)
-      await page.waitForTimeout(500)
-
-      // Verify project still visible
-      await expect(page.getByText('Offline Test Project', { exact: false })).toBeVisible()
+      await expect(page.getByText(projectName)).toBeVisible()
     })
   })
 
-  test.describe('Offline Banner (if available)', () => {
-    test('should show offline banner when offline', async ({ page }) => {
-      // Go offline
-      await page.context().setOffline(true)
-      await page.waitForTimeout(500)
-
-      // Look for offline banner at top of page
-      const offlineBanner = page.locator('text=/you are offline/i').or(page.locator('[class*="offline-banner"]')).or(
-        page.locator('[class*="bg-amber"]'), // Warning color for offline
-      )
-
-      // The banner might appear at the top of the screen
-      // Restore online
-      await page.context().setOffline(false)
+  test.describe('Offline Banner', () => {
+    test.skip('should show offline banner when offline', async () => {
+      // Infeasible: OfflineBanner (components/OfflineIndicator.tsx:206) is exported but
+      // never imported by TopBar.tsx, AppShell.tsx, or App.tsx — no route mounts it.
     })
 
-    test('should hide offline banner when back online', async ({ page }) => {
-      // Go offline first
-      await page.context().setOffline(true)
-      await page.waitForTimeout(500)
-
-      // Go back online
-      await page.context().setOffline(false)
-      await page.waitForTimeout(500)
-
-      // The offline banner should be gone
-      const offlineBanner = page.locator('text=/you are offline/i')
-      const bannerCount = await offlineBanner.count()
-
-      // Banner should not be visible
-      expect(bannerCount).toBe(0)
+    test.skip('should hide offline banner when back online', async () => {
+      // Infeasible: same as above — OfflineBanner is unreachable from any route.
     })
   })
 })
-
-/**
- * Helper function to create a test project with unique name and description.
- * Wraps shared createProjectOnly to add timestamp + description support.
- */
-async function createTestProject(page: Page, name: string, description: string): Promise<string> {
-  const uniqueName = `${name} ${Date.now()}`
-  await createProjectOnly(page, uniqueName)
-  return uniqueName
-}

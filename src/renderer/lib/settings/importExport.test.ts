@@ -60,6 +60,7 @@ const mockSettings: AppSettings = {
   },
   cvssVersion: '3.1',
   showCvssBreakdown: true,
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 500,
   showVulnerableOnly: false,
 }
@@ -209,6 +210,35 @@ describe('Settings Import/Export', () => {
       expect(exported.profiles).toHaveLength(2)
       expect(exported.profiles[0].id).toBe(mockProfile.id)
       expect(exported.profiles[1].id).toBe(profile2.id)
+    })
+  })
+
+  describe('severityThresholds round-trip (FR-10.5)', () => {
+    it('preserves non-default severity thresholds through export + validation', () => {
+      const custom = { critical: 8.0, high: 6.0, medium: 3.0, low: 0.1 }
+      const customProfile: SettingsProfile = {
+        ...mockProfile,
+        settings: { ...mockSettings, severityThresholds: custom },
+      }
+
+      const roundTripped = JSON.parse(JSON.stringify(exportSettings([customProfile]))) as SettingsExport
+
+      expect(validateSettingsExport(roundTripped)).toBe(true)
+      expect(roundTripped.profiles[0].settings.severityThresholds).toEqual(custom)
+    })
+
+    it('rejects an export whose profile settings omit severityThresholds', () => {
+      // WHY (teeth): proves the schema actually REQUIRES the field — if it were
+      // optional/absent, a re-imported profile could silently drop the user's cutoffs.
+      const withoutThresholds = { ...mockSettings }
+      delete (withoutThresholds as Partial<AppSettings>).severityThresholds
+      const data = {
+        version: '1.0.0',
+        exportedAt: '2024-01-01T00:00:00.000Z',
+        profiles: [{ ...mockProfile, settings: withoutThresholds }],
+      } as unknown
+
+      expect(validateSettingsExport(data)).toBe(false)
     })
   })
 

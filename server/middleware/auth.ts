@@ -6,7 +6,7 @@
  * In development mode, auth is skipped entirely.
  */
 
-import { randomBytes } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import type { Request, Response, NextFunction } from 'express'
@@ -56,7 +56,9 @@ export function initAuth(): void {
   getServerToken()
 }
 
-const SKIP_AUTH_PATHS = ['/api/health', '/api/handshake']
+// Mount-relative paths: authMiddleware is mounted at app.use('/api', ...), so Express strips the
+// '/api' prefix from req.path here (it's '/health', not '/api/health').
+const SKIP_AUTH_PATHS = ['/health', '/handshake']
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   if (isDev()) {
@@ -76,7 +78,10 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   }
 
   const token = authHeader.slice(7)
-  if (token !== getServerToken()) {
+  // Constant-time comparison so response timing can't leak the token byte-by-byte.
+  const provided = Buffer.from(token)
+  const expected = Buffer.from(getServerToken())
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
     res.status(403).json({ success: false, error: 'Invalid token' })
     return
   }

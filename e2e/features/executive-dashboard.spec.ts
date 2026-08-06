@@ -1,5 +1,42 @@
+/**
+ * Executive Dashboard ("Reports") — content contracts
+ *
+ * The page is fully client-side: metrics are computed by lib/analytics from the Zustand
+ * project store, so its output is deterministic offline. Every assertion below is grounded
+ * in the shipped source rather than gated behind `if (count > 0)` / regex-OR locators /
+ * `.waitFor(...).catch(() => {})` (the previous version asserted "may or may not" on almost
+ * every behaviour, so nothing could fail):
+ *
+ *   - executive/ExecutiveDashboard.tsx     — "Reports" title + exact description; always-on
+ *                                            "Executive Summary" banner; empty state
+ *                                            ("No Data Available" + guidance + Go to Dashboard);
+ *                                            six-widget grid when >=1 project is in range;
+ *                                            header "Export Report" disabled when 0 projects.
+ *   - executive/widgets/DashboardConfig.tsx — "Dashboard Settings" trigger opens a dialog with
+ *                                            the four exact date presets, project-scope buttons
+ *                                            and the "Showing data from all N project(s)" footer.
+ *   - executive/widgets/RiskGauge.tsx       — "Overall Risk Level" + Critical/High stat cells.
+ *   - executive/widgets/ComplianceStatus.tsx — "Compliance Status" + "Overall SLA Compliance".
+ *   - lib/analytics/reportBuilder.ts        — PDF filename `executive-report-YYYY-MM-DD.pdf`.
+ *
+ * PageHeader renders NO navigation (its comment: navigation lives in the shell), so the
+ * "Dashboard" link is the AppShell sidebar nav — asserted once as real navigation, not as a
+ * per-page back button. A freshly created project has 0 vulnerabilities, so criticalCount /
+ * highCount are 0 by construction; computed metrics that depend on the analytics thresholds
+ * (SLA %, health score) are NOT asserted as exact values.
+ */
 import { test, expect, resetAppState } from '../test-helper'
-import { createProjectOnly, navigateToExecutiveDashboard, E2E_UI_DELAY, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
+import { createProjectOnly, navigateToExecutiveDashboard, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
+
+const WIDGET_HEADINGS = [
+  'Overall Risk Level',
+  'Compliance Status',
+  'Team Productivity',
+  'Project Health Comparison',
+  'Vulnerability Trends',
+  'Top Critical Vulnerabilities',
+  'Action Items',
+]
 
 test.describe('Executive Dashboard', () => {
   test.beforeEach(async ({ page }) => {
@@ -7,333 +44,173 @@ test.describe('Executive Dashboard', () => {
     await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
-  test.describe('Page Load', () => {
-    test('should display executive dashboard header', async ({ page }) => {
+  test.describe('Page load', () => {
+    test('shows the "Reports" title and exact description', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
-
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible({
-        timeout: E2E_SELECTOR_TIMEOUT,
-      })
+      const main = page.locator('#main-content')
+      await expect(main.getByRole('heading', { name: 'Reports' })).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(main.getByText('High-level security overview and compliance metrics', { exact: true })).toBeVisible()
     })
 
-    test('should display page description', async ({ page }) => {
+    test('always renders the Executive Summary banner', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
-
-      await expect(page.locator('text=/security overview|compliance metrics/i')).toBeVisible()
-    })
-
-    test('should show back to dashboard button', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      await expect(page.locator('button:has-text("Back")')).toBeVisible()
-    })
-
-    test('should display date range filter', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await expect(settingsButton).toBeVisible()
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const dateRangeLabel = page.locator('text=/Date Range/i')
-      await expect(dateRangeLabel.first()).toBeVisible()
-    })
-
-    test('should display project scope filter', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await expect(settingsButton).toBeVisible()
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const projectScope = page.locator('text=/Project Scope|All Projects/i')
-      await expect(projectScope.first()).toBeVisible()
-    })
-
-    test('should show refresh button', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await expect(settingsButton).toBeVisible()
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const refreshButton = page.locator('button:has-text("Refresh")')
-      await expect(refreshButton).toBeVisible()
-    })
-
-    test('should show export button', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const exportButton = page.locator('button:has-text("Export")')
-      await expect(exportButton.first()).toBeVisible()
+      // Rendered above the data grid, so it shows even with no projects.
+      await expect(page.locator('#main-content').getByRole('heading', { name: 'Executive Summary' })).toBeVisible()
     })
   })
 
-  test.describe('Widgets', () => {
-    test('should display risk gauge widget', async ({ page }) => {
+  test.describe('Empty state (no projects)', () => {
+    test('shows "No Data Available" with the create-projects guidance', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
-
-      const riskWidget = page.locator('text=/Risk|Overall|Score/i')
-      await expect(riskWidget.first()).toBeVisible()
+      const main = page.locator('#main-content')
+      await expect(main.getByRole('heading', { name: 'No Data Available' })).toBeVisible()
+      await expect(
+        main.getByText('Create projects and upload SBOMs to see executive dashboard data.', { exact: true }),
+      ).toBeVisible()
+      // The empty state offers a route back to the dashboard only when there are no projects at all.
+      await expect(main.getByRole('button', { name: 'Go to Dashboard' })).toBeVisible()
     })
 
-    test.skip('should display vulnerability trend chart', async ({ page }) => {
+    test('disables the header Export Report button when there is no data', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
-
-      const trendWidget = page.locator('text=/Trend|Over Time|History/i')
-      await expect(trendWidget.first()).toBeVisible()
-    })
-
-    test('should display project health section', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const healthSection = page.locator('text=/Project Health|Health Score/i')
-      await expect(healthSection.first()).toBeVisible()
-    })
-
-    test('should display compliance status section', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const complianceSection = page.locator('text=/Compliance|Status/i')
-      await expect(complianceSection.first()).toBeVisible()
-    })
-
-    test.skip('should display action items section', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const actionItems = page.locator('text=/Action Items|Recommendations|Priority/i')
-      await expect(actionItems.first()).toBeVisible()
-    })
-
-    test.skip('should show team productivity section if available', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const productivitySection = page.locator('text=/Productivity|Team|Activity/i')
-      await expect(productivitySection.first()).toBeVisible()
-    })
-
-    test('should display vulnerability counts', async ({ page }) => {
-      await createProjectOnly(page, 'Vuln Test Project')
-      await navigateToExecutiveDashboard(page)
-
-      const countText = page.locator('text=/\\d+.*vulnerabilities?/i')
-      await expect(countText.first()).toBeVisible()
-    })
-
-    test('should show critical vulnerability count prominently', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const criticalCount = page.locator('text=/Critical.*\\d+|\\d+.*Critical/i')
-      await expect(criticalCount.first()).toBeVisible()
+      // disabled={isExporting || filteredProjects.length === 0}
+      await expect(page.locator('#main-content').getByRole('button', { name: 'Export Report' })).toBeDisabled()
     })
   })
 
-  test.describe('Filters', () => {
-    test('should open date range picker', async ({ page }) => {
+  test.describe('Dashboard Settings dialog', () => {
+    test('opens a configuration dialog with the four exact date presets', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
+      await page.getByRole('button', { name: 'Dashboard Settings' }).click()
 
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const dateRangeLabel = page.locator('text=/Date Range/i')
-      await expect(dateRangeLabel.first()).toBeVisible()
-    })
-
-    test('should select date range preset', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const presetOption = page.locator('text=/Last 7 days|Last 30 days|7 days/i')
-      if ((await presetOption.count()) > 0) {
-        await presetOption.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByText('Dashboard Configuration')).toBeVisible()
+      await expect(dialog.getByText('Date Range', { exact: true })).toBeVisible()
+      for (const label of ['Last 7 days', 'Last 30 days', 'Last 90 days', 'Last 12 months']) {
+        await expect(dialog.getByRole('button', { name: label })).toBeVisible()
       }
     })
 
-    test('should open project scope dropdown', async ({ page }) => {
-      for (let i = 0; i < 3; i++) {
-        await createProjectOnly(page, `Test Project ${i + 1}`)
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+    test('marks a date preset selected after it is clicked', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
+      await page.getByRole('button', { name: 'Dashboard Settings' }).click()
 
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const scopeOption = page.locator('text=/All Projects|Project Scope/i')
-      await expect(scopeOption.first()).toBeVisible()
+      const dialog = page.getByRole('dialog')
+      const sevenDays = dialog.getByRole('button', { name: 'Last 7 days' })
+      await sevenDays.click()
+      // isSelected ⇒ 'border-primary …' on the chosen preset (source: DashboardConfig L119-121).
+      await expect(sevenDays).toHaveClass(/border-primary/)
     })
 
-    test('should filter by specific project', async ({ page }) => {
-      const projectName = 'Filter Test Project'
+    test('reports the exact in-scope project count', async ({ page }) => {
+      await createProjectOnly(page, 'Scope Project One')
+      await createProjectOnly(page, 'Scope Project Two')
+      await createProjectOnly(page, 'Scope Project Three')
+      await navigateToExecutiveDashboard(page)
+      await page.getByRole('button', { name: 'Dashboard Settings' }).click()
+
+      // Footer for the 'all' scope: `Showing data from all ${projects.length} project(s)`.
+      await expect(page.getByRole('dialog').getByText('Showing data from all 3 project(s)')).toBeVisible()
+    })
+
+    test('switching to "Selected Projects" lists the project and shows 0 selected', async ({ page }) => {
+      const projectName = 'Selectable Project'
       await createProjectOnly(page, projectName)
       await navigateToExecutiveDashboard(page)
+      await page.getByRole('button', { name: 'Dashboard Settings' }).click()
 
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('button', { name: 'Selected Projects' }).click()
+      // The scoped checkbox list renders the project, and nothing is selected yet.
+      await expect(dialog.getByText(projectName)).toBeVisible()
+      await expect(dialog.getByText('Showing data from 0 selected project(s)')).toBeVisible()
+    })
+  })
 
-      const selectedOption = page.locator('text=/Selected Projects/i')
-      if ((await selectedOption.count()) > 0) {
-        await selectedOption.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
+  test.describe('Widgets (one project in scope)', () => {
+    test('renders all six executive widgets', async ({ page }) => {
+      await createProjectOnly(page, 'Widget Grid Project')
+      await navigateToExecutiveDashboard(page)
+      const main = page.locator('#main-content')
+      for (const heading of WIDGET_HEADINGS) {
+        await expect(main.getByRole('heading', { name: heading })).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
       }
     })
 
-    test('should refresh data on refresh click', async ({ page }) => {
+    test('the risk gauge reports 0 critical and 0 high for an unscanned project', async ({ page }) => {
+      await createProjectOnly(page, 'Risk Gauge Project')
       await navigateToExecutiveDashboard(page)
+      const main = page.locator('#main-content')
 
-      const settingsButton = page.getByRole('button', { name: 'Dashboard Settings' })
-      await settingsButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+      const riskCard = main.locator('div.bg-card.rounded-lg.border').filter({ hasText: 'Overall Risk Level' })
+      await expect(riskCard).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      // No SBOM imported ⇒ no vulnerabilities ⇒ both severity tallies are exactly 0.
+      await expect(riskCard.locator('div.bg-muted').filter({ hasText: 'Critical' })).toContainText('0')
+      await expect(riskCard.locator('div.bg-muted').filter({ hasText: 'High' })).toContainText('0')
+    })
 
-      const refreshButton = page.locator('button:has-text("Refresh")')
-      await refreshButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+    test('the compliance widget shows the Overall SLA section with its target', async ({ page }) => {
+      await createProjectOnly(page, 'Compliance Project')
+      await navigateToExecutiveDashboard(page)
+      const main = page.locator('#main-content')
 
-      const loadingIndicator = page.locator('.animate-spin, [class*="loading"]')
-      await loadingIndicator
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      const complianceCard = main.locator('div.bg-card.rounded-lg.border').filter({ hasText: 'Compliance Status' })
+      await expect(complianceCard).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(complianceCard.getByText('Overall SLA Compliance')).toBeVisible()
+      await expect(complianceCard.getByText('Target: 80%')).toBeVisible()
     })
   })
 
   test.describe('Export', () => {
-    test('should show export options on click', async ({ page }) => {
+    test('exports a dated PDF report when data is present', async ({ page }) => {
+      await createProjectOnly(page, 'Export Project')
       await navigateToExecutiveDashboard(page)
 
-      const exportButton = page.locator('button:has-text("Export Report")')
-      if ((await exportButton.count()) > 0 && (await exportButton.first().isEnabled())) {
-        await exportButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
-    })
+      const exportButton = page.locator('#main-content').getByRole('button', { name: 'Export Report' })
+      await expect(exportButton).toBeEnabled()
 
-    test('should export to PDF format', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const exportButton = page.locator('button:has-text("Export Report")')
-      if ((await exportButton.count()) > 0 && (await exportButton.first().isEnabled())) {
-        await exportButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
-    })
-
-    test('should have export loading state', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const exportButton = page.locator('button:has-text("Export Report")')
-      if ((await exportButton.count()) > 0 && (await exportButton.first().isEnabled())) {
-        await exportButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        const spinner = page.locator('.animate-spin, [class*="loading"]')
-        await spinner
-          .first()
-          .waitFor({ state: 'attached', timeout: 5000 })
-          .catch(() => {})
-      }
+      const downloadPromise = page.waitForEvent('download', { timeout: E2E_SELECTOR_TIMEOUT })
+      await exportButton.click()
+      const download = await downloadPromise
+      // reportBuilder.ts: `executive-report-${YYYY-MM-DD}.pdf`.
+      expect(download.suggestedFilename()).toMatch(/^executive-report-\d{4}-\d{2}-\d{2}\.pdf$/)
     })
   })
 
   test.describe('Navigation', () => {
-    test('should navigate back to main dashboard', async ({ page }) => {
+    test('the shell "Dashboard" link returns to the project dashboard', async ({ page }) => {
       await navigateToExecutiveDashboard(page)
-
-      await page.locator('button:has-text("Back")').click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      await expect(page.locator('button:has-text("New Project")')).toBeVisible()
+      await page.getByRole('link', { name: 'Dashboard' }).click()
+      await expect(page).toHaveURL(/\/dashboard$/, { timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible()
     })
 
-    test('should navigate to project from widget', async ({ page }) => {
-      const projectName = 'Widget Nav Project'
-      await createProjectOnly(page, projectName)
-      await navigateToExecutiveDashboard(page)
-
-      const projectLink = page.locator(`text="${projectName}"`)
-      if ((await projectLink.count()) > 0) {
-        await projectLink.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        await expect(page).toHaveURL(/\/project\//)
-      }
-    })
-
-    test('should show arrow icon on back button', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const backButton = page.locator('button:has-text("Back")')
-      const arrowIcon = backButton.locator('svg')
-      await expect(arrowIcon).toBeVisible()
+    test.skip('navigate to a project from the Action Items widget', async () => {
+      // Offline-infeasible as a content contract: ActionItems renders clickable project links only
+      // from summary.topRisks, which is empty for an unscanned (0-vulnerability) project. Populating
+      // it deterministically needs a scan that produces risks — covered by the scan workflows, not here.
     })
   })
 
-  test.describe('Empty States', () => {
-    test('should handle no projects gracefully', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible()
+  test.describe('Responsive design', () => {
+    test.describe('desktop', () => {
+      test.use({ viewport: { width: 1280, height: 720 } })
+      test('renders the full widget grid at desktop width', async ({ page }) => {
+        await createProjectOnly(page, 'Desktop Project')
+        await navigateToExecutiveDashboard(page)
+        const main = page.locator('#main-content')
+        for (const heading of WIDGET_HEADINGS) {
+          await expect(main.getByRole('heading', { name: heading })).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+        }
+      })
     })
 
-    test('should show zero counts when no data', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const zeroIndicators = page.locator('text=/0|No data|Empty/i')
-      await zeroIndicators
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
-    })
-
-    test('should show helpful message when no vulnerabilities', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const emptyMessage = page.locator('text=/No vulnerabilities|All clear|Secure/i')
-      await emptyMessage
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
-    })
-  })
-
-  test.describe('Responsive Design', () => {
-    test.use({ viewport: { width: 1280, height: 720 } })
-
-    test('should display all widgets on desktop', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible()
-
-      const widgets = page.locator('[class*="widget"], [class*="card"]')
-      const count = await widgets.count()
-      expect(count).toBeGreaterThan(0)
-    })
-  })
-
-  test.describe('Tablet Design', () => {
-    test.use({ viewport: { width: 768, height: 1024 } })
-
-    test('should display on tablet viewport', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      await expect(page.getByRole('heading', { name: 'Executive Dashboard' })).toBeVisible()
-    })
-
-    test('should stack widgets on tablet', async ({ page }) => {
-      await navigateToExecutiveDashboard(page)
-
-      const content = page.locator('.container, [class*="content"], .grid')
-      await expect(content.first()).toBeVisible()
+    test.describe('tablet', () => {
+      test.use({ viewport: { width: 768, height: 1024 } })
+      test('renders the Reports header at tablet width', async ({ page }) => {
+        await navigateToExecutiveDashboard(page)
+        await expect(page.locator('#main-content').getByRole('heading', { name: 'Reports' })).toBeVisible()
+      })
     })
   })
 })

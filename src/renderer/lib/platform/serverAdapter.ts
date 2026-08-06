@@ -5,6 +5,10 @@ import type {
   BackupAPI,
   IntelligenceAPI,
   ContainerPlatformAPI,
+  SbomGenerationAPI,
+  SbomGenerateResult,
+  SbomEngineStatus,
+  SbomGenerateProgress,
   UpdaterPlatformAPI,
 } from './types'
 import type {
@@ -64,7 +68,7 @@ import type {
   ExtractPackagesResponse,
   StartBulkDownloadRequest,
 } from '@@/types/ipc'
-import { apiGet, apiPost, apiPut, setAuthToken } from './httpClient'
+import { apiGet, apiPost, apiPut, apiPostForm, setAuthToken } from './httpClient'
 import { wsClient } from './wsClient'
 
 const noopCleanup = () => {}
@@ -86,26 +90,34 @@ function createServerDatabase(): DatabaseAPI {
       apiPost<{ success: boolean }>('/database/sync/auto', { enabled, intervalHours }),
     onSyncProgress: (cb: (progress: DeltaSyncProgress) => void) => {
       const handler = (data: unknown) => cb(data as DeltaSyncProgress)
-      wsClient.on('sync-progress', handler)
-      wsClient.on('delta-sync-progress', handler)
-      return noopCleanup
+      const offA = wsClient.on('sync-progress', handler)
+      const offB = wsClient.on('delta-sync-progress', handler)
+      return () => {
+        offA()
+        offB()
+      }
     },
     onSyncComplete: (cb: (result: DeltaSyncResult) => void) => {
       const handler = (data: unknown) => cb(data as DeltaSyncResult)
-      wsClient.on('sync-complete', handler)
-      wsClient.on('delta-sync-complete', handler)
-      return noopCleanup
+      const offA = wsClient.on('sync-complete', handler)
+      const offB = wsClient.on('delta-sync-complete', handler)
+      return () => {
+        offA()
+        offB()
+      }
     },
     onSyncError: (cb: (error: string) => void) => {
       const handler = (data: unknown) => cb(data as string)
-      wsClient.on('sync-error', handler)
-      wsClient.on('delta-sync-error', handler)
-      return noopCleanup
+      const offA = wsClient.on('sync-error', handler)
+      const offB = wsClient.on('delta-sync-error', handler)
+      return () => {
+        offA()
+        offB()
+      }
     },
     onBulkDownloadProgress: (cb: (progress: BulkDownloadProgress) => void) => {
       const handler = (data: unknown) => cb(data as BulkDownloadProgress)
-      wsClient.on('bulk-download-progress', handler)
-      return noopCleanup
+      return wsClient.on('bulk-download-progress', handler)
     },
     cpeSearch: (request: CPESearchRequest) => apiPost<CPESearchResponse>('/database/cpe/search', request),
     getSyncConfig: () => apiGet<SyncConfigResponse>('/database/config/sync'),
@@ -173,24 +185,53 @@ function createServerIntelligence(): IntelligenceAPI {
       apiPost<{ success: boolean; cleanedCount: number; error?: string }>('/intelligence/epss/cleanup'),
     onKevSynced: (cb) => {
       const handler = (data: unknown) => cb(data as KevSyncResult)
-      wsClient.on('kev-synced', handler)
-      return noopCleanup
+      return wsClient.on('kev-synced', handler)
     },
   }
 }
 
+// Pulling, `docker save`-ing and unpacking a multi-layer image (e.g. nginx on
+// Debian) takes well over the default 30s request deadline, so these endpoints
+// get a generous timeout to avoid a premature client-side abort.
+const CONTAINER_JOB_TIMEOUT_MS = 10 * 60 * 1000
+
 function createServerContainer(): ContainerPlatformAPI {
   return {
     checkRuntime: (runtime: ContainerRuntime) => apiPost<CheckRuntimeResponse>('/container/check-runtime', { runtime }),
-    pullImage: (request: PullImageRequest) => apiPost<PullImageResponse>('/container/pull', request),
+    pullImage: (request: PullImageRequest) =>
+      apiPost<PullImageResponse>('/container/pull', request, { timeoutMs: CONTAINER_JOB_TIMEOUT_MS }),
     getManifest: (request) => apiPost<GetManifestResponse>('/container/manifest', request),
     inspectImage: (request) => apiPost<InspectImageResponse>('/container/inspect', request),
-    scanImage: (request) => apiPost<ScanImageResponse>('/container/scan', request),
-    extractPackages: (request) => apiPost<ExtractPackagesResponse>('/container/extract', request),
+    scanImage: (request) =>
+      apiPost<ScanImageResponse>('/container/scan', request, { timeoutMs: CONTAINER_JOB_TIMEOUT_MS }),
+    extractPackages: (request) =>
+      apiPost<ExtractPackagesResponse>('/container/extract', request, { timeoutMs: CONTAINER_JOB_TIMEOUT_MS }),
     onScanProgress: (cb) => {
       const handler = (data: unknown) => cb(data as ContainerScanProgress)
-      wsClient.on('scan-progress', handler)
-      return noopCleanup
+      return wsClient.on('scan-progress', handler)
+    },
+  }
+}
+
+// Syft scans of large images/artifacts run for minutes; don't abort them at
+// the default 30s request deadline.
+const SBOM_JOB_TIMEOUT_MS = 15 * 60 * 1000
+
+function createServerSbom(): SbomGenerationAPI {
+  return {
+    getEngineStatus: () => apiGet<SbomEngineStatus>('/sbom/engine-status'),
+    generateFromFile: (file: File) => {
+      const form = new FormData()
+      form.append('artifact', file)
+      return apiPostForm<SbomGenerateResult>('/sbom/generate', form)
+    },
+    generateFromImage: (imageRef: string) =>
+      apiPost<SbomGenerateResult>('/sbom/generate', { imageRef }, { timeoutMs: SBOM_JOB_TIMEOUT_MS }),
+    generateFromPath: (localPath: string) =>
+      apiPost<SbomGenerateResult>('/sbom/generate', { localPath }, { timeoutMs: SBOM_JOB_TIMEOUT_MS }),
+    onGenerateProgress: (cb) => {
+      const handler = (data: unknown) => cb(data as SbomGenerateProgress)
+      return wsClient.on('sbom-generate-progress', handler)
     },
   }
 }
@@ -212,14 +253,16 @@ export async function createServerAdapter(): Promise<PlatformAPI> {
     if (response.success && response.token) {
       setAuthToken(response.token)
     }
-  } catch {
-    // handshake failed — continue without token (dev mode may skip auth)
+  } catch (error) {
+    // In dev the server may skip auth, but elsewhere a failed handshake means every authenticated
+    // call fails with an opaque 401/403 — log it so the real cause is visible, not inferred.
+    console.error('[Auth] Handshake failed; subsequent API calls may be unauthenticated:', error)
   }
 
   wsClient.connect()
 
   return {
-    ping: () => apiGet<string>('/health').then(() => 'pong'),
+    ping: () => apiGet<{ status: string; db: boolean; uptime: number; version: string }>('/health').then(() => 'pong'),
     getAppVersion: () => Promise.resolve('2.0.0-web'),
     getPlatform: () =>
       Promise.resolve(
@@ -240,39 +283,13 @@ export async function createServerAdapter(): Promise<PlatformAPI> {
     },
     getSystemTheme: () => Promise.resolve(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
     onMenuAction: () => noopCleanup,
-    generatePDF: async (htmlContent: string): Promise<Uint8Array> => {
-      const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-
-      const parser = new DOMParser()
-      const docEl = parser.parseFromString(htmlContent, 'text/html')
-      const bodyText = docEl.body?.innerText || htmlContent
-
-      const pageWidth = doc.internal.pageSize.getWidth()
-      const margin = 15
-      const maxWidth = pageWidth - margin * 2
-      const lines = doc.splitTextToSize(bodyText, maxWidth)
-
-      let y = margin
-      const pageHeight = doc.internal.pageSize.getHeight()
-      for (const line of lines) {
-        if (y + 7 > pageHeight - margin) {
-          doc.addPage()
-          y = margin
-        }
-        doc.text(line, margin, y)
-        y += 7
-      }
-
-      const arrayBuffer = doc.output('arraybuffer')
-      return new Uint8Array(arrayBuffer)
-    },
 
     database: createServerDatabase(),
     secureStorage: createServerSecureStorage(),
     backup: createServerBackup(),
     intelligence: createServerIntelligence(),
     container: createServerContainer(),
+    sbom: createServerSbom(),
     updater: createServerUpdater(),
   }
 }

@@ -1,13 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { createJSONStorage } from 'zustand/middleware'
 import { useStore } from './useStore'
 import { act } from '@testing-library/react'
 import { renderHook } from '@testing-library/react'
 import type { AppSettings, Project, Component, Vulnerability } from '@@/types'
 import { DEFAULT_SETTINGS } from '@@/constants'
+import { DEFAULT_DASHBOARD_LAYOUT } from '@/lib/dashboard/dashboardLayout'
 
 // Mock the refresh module
 vi.mock('@/lib/refresh', () => ({
   refreshVulnerabilityData: vi.fn(),
+}))
+
+// Mock the server-persistence module so we can assert the delete cascade (FR-01.2) and so the
+// store's fire-and-forget network calls don't hit a real (rejecting) endpoint during tests.
+vi.mock('@/lib/api/projectPersistence', () => ({
+  saveProjectToServer: vi.fn().mockResolvedValue(undefined),
+  loadProjectFromServer: vi.fn().mockResolvedValue(null),
+  deleteProjectFromServer: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock the settings modules
@@ -24,6 +34,7 @@ vi.mock('@/lib/settings', () => ({
 }))
 
 import { refreshVulnerabilityData as refreshData } from '@/lib/refresh'
+import { deleteProjectFromServer } from '@/lib/api/projectPersistence'
 import {
   createProfile,
   updateProfile,
@@ -35,6 +46,7 @@ import {
   exportSettingsToFile,
   importSettingsFromFile,
 } from '@/lib/settings'
+import { useAuditStore } from '@/lib/audit'
 
 const mockRefreshData = refreshData as jest.MockedFunction<typeof refreshData>
 
@@ -128,7 +140,7 @@ describe('useStore', () => {
       const { result } = renderHook(() => useStore())
 
       expect(result.current.settings).toEqual(DEFAULT_SETTINGS)
-      expect(result.current.settings.theme).toBe('system')
+      expect(result.current.settings.theme).toBe('dark')
       expect(result.current.settings.fontSize).toBe('default')
       expect(result.current.settings.dataRetentionDays).toBe(30)
       expect(result.current.settings.autoRefresh).toBe(false)
@@ -841,6 +853,23 @@ describe('useStore', () => {
       expect(result.current.projects).toHaveLength(0)
     })
 
+    it('should cascade the delete to the server-persisted copy so scan data does not orphan (FR-01.2)', () => {
+      const { result } = renderHook(() => useStore())
+      const project = createMockProject({ id: 'cascade-delete-id' })
+
+      act(() => {
+        result.current.addProject(project)
+      })
+      act(() => {
+        result.current.deleteProject(project.id)
+      })
+
+      // WHY: the PRD requires deletion to cascade to associated scan results/vulnerabilities.
+      // Those live in DATA_DIR/projects/<id>.json on the server; without this call they orphan
+      // on disk after a UI delete.
+      expect(deleteProjectFromServer).toHaveBeenCalledWith('cascade-delete-id')
+    })
+
     it('should delete correct project when multiple exist', () => {
       const { result } = renderHook(() => useStore())
       const project1 = createMockProject({ id: 'project-1', name: 'Project 1' })
@@ -1376,6 +1405,103 @@ describe('useStore', () => {
     })
   })
 
+  // ==================== Audit Logging Integration Tests ====================
+  // FR-07.1/07.2: project CREATE/UPDATE/DELETE and settings changes are user
+  // actions that must leave a compliance trail — the audit logger existed but
+  // was never wired into the store, so these actions were previously silent.
+  describe('audit logging integration', () => {
+    beforeEach(() => {
+      useAuditStore.getState().resetStore()
+    })
+
+    it('records a CREATE audit entry when a project is added', () => {
+      const { result } = renderHook(() => useStore())
+      const mockProject = createMockProject()
+
+      act(() => {
+        result.current.addProject(mockProject)
+      })
+
+      const createEvent = useAuditStore
+        .getState()
+        .events.find((e) => e.actionType === 'CREATE' && e.entityType === 'project')
+
+      expect(createEvent).toBeDefined()
+      expect(createEvent?.entityId).toBe(mockProject.id)
+      expect(createEvent?.newState).toBeDefined()
+    })
+
+    it('records an UPDATE audit entry with before/after state when a project is updated', () => {
+      const { result } = renderHook(() => useStore())
+      const mockProject = createMockProject({ name: 'Original Name' })
+
+      act(() => {
+        result.current.addProject(mockProject)
+      })
+      // Isolate the update event from the create event recorded above
+      useAuditStore.getState().resetStore()
+
+      act(() => {
+        result.current.updateProject(mockProject.id, { name: 'Updated Name' })
+      })
+
+      const updateEvent = useAuditStore
+        .getState()
+        .events.find((e) => e.actionType === 'UPDATE' && e.entityType === 'project')
+
+      expect(updateEvent).toBeDefined()
+      expect(updateEvent?.entityId).toBe(mockProject.id)
+      expect(updateEvent?.previousState).toBeDefined()
+      expect(updateEvent?.newState).toBeDefined()
+    })
+
+    it('does not record an UPDATE audit entry when the project id does not match any project', () => {
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        result.current.updateProject('non-existent-id', { name: 'Updated Name' })
+      })
+
+      expect(useAuditStore.getState().events).toHaveLength(0)
+    })
+
+    it('records a DELETE audit entry with the removed project state when a project is deleted', () => {
+      const { result } = renderHook(() => useStore())
+      const mockProject = createMockProject()
+
+      act(() => {
+        result.current.addProject(mockProject)
+      })
+      // Isolate the delete event from the create event recorded above
+      useAuditStore.getState().resetStore()
+
+      act(() => {
+        result.current.deleteProject(mockProject.id)
+      })
+
+      const deleteEvent = useAuditStore
+        .getState()
+        .events.find((e) => e.actionType === 'DELETE' && e.entityType === 'project')
+
+      expect(deleteEvent).toBeDefined()
+      expect(deleteEvent?.entityId).toBe(mockProject.id)
+      expect(deleteEvent?.previousState).toBeDefined()
+    })
+
+    it('records a SETTINGS_CHANGE audit entry when settings are updated', () => {
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        result.current.updateSettings({ theme: 'light' })
+      })
+
+      const settingsEvent = useAuditStore.getState().events.find((e) => e.actionType === 'SETTINGS_CHANGE')
+
+      expect(settingsEvent).toBeDefined()
+      expect(settingsEvent?.entityType).toBe('settings')
+    })
+  })
+
   // ==================== UI State Tests ====================
   describe('ui state', () => {
     it('should initialize with sidebar open', () => {
@@ -1654,13 +1780,14 @@ describe('useStore', () => {
       const mockProject = createMockProject()
 
       act(() => {
-        result.current.updateSettings({ theme: 'dark' })
+        // 'light' differs from the 'dark' default so the reset below provably restores it
+        result.current.updateSettings({ theme: 'light' })
         result.current.addProject(mockProject)
         result.current.setSidebarOpen(false)
         result.current.updateNotificationPreferences({ enabled: false })
       })
 
-      expect(result.current.settings.theme).toBe('dark')
+      expect(result.current.settings.theme).toBe('light')
       expect(result.current.projects).toHaveLength(1)
       expect(result.current.sidebarOpen).toBe(false)
       expect(result.current.notificationPreferences.enabled).toBe(false)
@@ -1669,7 +1796,7 @@ describe('useStore', () => {
         result.current.resetStore()
       })
 
-      expect(result.current.settings.theme).toBe('system')
+      expect(result.current.settings.theme).toBe('dark')
       expect(result.current.settings.fontSize).toBe('default')
       expect(result.current.settings.dataRetentionDays).toBe(30)
       expect(result.current.settings.autoRefresh).toBe(false)
@@ -1960,6 +2087,97 @@ describe('useStore', () => {
       })
 
       expect(result.current.settingsProfiles).toEqual([])
+    })
+  })
+
+  // ==================== Persistence across reload ====================
+  // WHY: a page reload re-creates the store from DEFAULT_SETTINGS and then rehydrates
+  // localStorage over it. A user's chosen theme MUST win over the compiled default, or
+  // the setting silently reverts on every refresh. This reproduces the reload path
+  // (seed storage -> rehydrate) so it fails if persist ever stops restoring settings.
+  describe('persistence across reload (rehydration)', () => {
+    it('restores a persisted non-default theme when the store rehydrates from storage', async () => {
+      // Default theme is 'dark'; persist 'light' so the assertion proves the persisted
+      // value — not the default — is what survives. Guard keeps the test honest if the
+      // default ever changes to 'light'.
+      expect(DEFAULT_SETTINGS.theme).toBe('dark')
+      // The persist storage is bound to the real global localStorage at module load (before
+      // this suite stubs it), so point it at the per-test mock explicitly.
+      useStore.persist.setOptions({ storage: createJSONStorage(() => localStorageMock) })
+      localStorageMock.setItem(
+        'vuln-assess-storage',
+        JSON.stringify({
+          state: { settings: { ...DEFAULT_SETTINGS, theme: 'light' }, projects: [], activeProfileId: '' },
+          version: 0,
+        }),
+      )
+
+      await act(async () => {
+        await useStore.persist.rehydrate()
+      })
+
+      expect(useStore.getState().settings.theme).toBe('light')
+    })
+  })
+
+  // ==================== Dashboard Layout Profiles (FR-06.3) ====================
+  describe('Dashboard layout profiles', () => {
+    it('seeds a Default profile matching DEFAULT_DASHBOARD_LAYOUT on a fresh store', () => {
+      const { dashboardLayoutProfiles, activeDashboardLayoutProfileId } = useStore.getState()
+      expect(dashboardLayoutProfiles).toHaveLength(1)
+      expect(activeDashboardLayoutProfileId).toBe('default')
+      expect(dashboardLayoutProfiles[0].widgets.map((w) => w.id)).toEqual(DEFAULT_DASHBOARD_LAYOUT.map((w) => w.id))
+    })
+
+    it('updateDashboardLayoutWidgets replaces the widgets for the given profile only', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      const [first, second] = useStore.getState().dashboardLayoutProfiles
+      const hiddenWidgets = first.widgets.map((w) => ({ ...w, visible: false }))
+
+      act(() => {
+        useStore.getState().updateDashboardLayoutWidgets(second.id, hiddenWidgets)
+      })
+
+      const profiles = useStore.getState().dashboardLayoutProfiles
+      // The other profile must be untouched (catches accidental global mutation).
+      expect(profiles.find((p) => p.id === first.id)?.widgets.every((w) => w.visible)).toBe(true)
+      expect(profiles.find((p) => p.id === second.id)?.widgets.every((w) => !w.visible)).toBe(true)
+    })
+
+    it('addDashboardLayoutProfile creates a new profile without changing the active profile id', () => {
+      const activeBefore = useStore.getState().activeDashboardLayoutProfileId
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      expect(useStore.getState().dashboardLayoutProfiles).toHaveLength(2)
+      // Adding is not switching.
+      expect(useStore.getState().activeDashboardLayoutProfileId).toBe(activeBefore)
+    })
+
+    it('setActiveDashboardLayoutProfileId switches which profile is active', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      const second = useStore.getState().dashboardLayoutProfiles[1]
+      act(() => {
+        useStore.getState().setActiveDashboardLayoutProfileId(second.id)
+      })
+      expect(useStore.getState().activeDashboardLayoutProfileId).toBe(second.id)
+    })
+
+    it('persists dashboardLayoutProfiles and activeDashboardLayoutProfileId through the partialize allowlist', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      // A future edit that drops these from partialize (silently breaking "Save
+      // dashboard configurations") must fail here rather than ship unnoticed.
+      const partialized = useStore.persist.getOptions().partialize?.(useStore.getState()) as
+        | { dashboardLayoutProfiles?: unknown[]; activeDashboardLayoutProfileId?: string }
+        | undefined
+      expect(partialized?.dashboardLayoutProfiles).toHaveLength(2)
+      expect(partialized?.activeDashboardLayoutProfileId).toBe('default')
     })
   })
 })

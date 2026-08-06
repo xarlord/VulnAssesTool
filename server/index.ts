@@ -8,27 +8,13 @@
  * Development: Express on :3001, Vite on :3000 (Vite proxies /api and /ws)
  */
 
-import express from 'express'
-import cors from 'cors'
-import helmet from 'helmet'
 import { createServer } from 'node:http'
 import { existsSync, mkdirSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { config, initializePaths, isDev } from './config.js'
-import { authMiddleware, getServerToken } from './middleware/auth.js'
+import { getServerToken } from './middleware/auth.js'
 import { initWebSocketServer, shutdownWebSocket } from './websocket.js'
 import { initializeDatabase, closeDatabase } from './database/initialize.js'
-import { databaseRouter } from './routes/database.js'
-import { storageRoutes } from './routes/storage.js'
-import { intelligenceRoutes } from './routes/intelligence.js'
-import { backupRoutes } from './routes/backup.js'
-import { containerRoutes } from './routes/container.js'
-import { projectRouter } from './routes/projects.js'
-import { defaultLimiter } from './middleware/rateLimit.js'
-
-const currentFilename = fileURLToPath(import.meta.url)
-const currentDirname = path.dirname(currentFilename)
+import { createApp } from './app.js'
 
 function ensureDataDirectories(): void {
   const dirs = [config.DATA_DIR, config.BACKUP_DIR, config.LOG_DIR]
@@ -37,64 +23,6 @@ function ensureDataDirectories(): void {
       mkdirSync(dir, { recursive: true })
     }
   }
-}
-
-function createApp(): express.Express {
-  const app = express()
-
-  app.use(helmet())
-  app.use(
-    cors({
-      origin: isDev() ? 'http://localhost:3000' : undefined,
-      credentials: true,
-    }),
-  )
-  app.use(express.json({ limit: '10mb' }))
-
-  // 1. Static assets — no auth needed (HTML, JS, CSS, images)
-  const staticDir = path.join(currentDirname, '..', 'renderer')
-  if (!isDev() && existsSync(staticDir)) {
-    app.use(express.static(staticDir))
-  }
-
-  // 2. Public API routes — no auth required
-  app.get('/api/health', (_req, res) => {
-    res.json({
-      status: 'ok',
-      db: false,
-      uptime: process.uptime(),
-      version: '2.0.0-web',
-    })
-  })
-
-  app.get('/api/handshake', (_req, res) => {
-    res.json({ success: true, token: getServerToken() })
-  })
-
-  // 3. Protected API routes — auth middleware
-  app.use('/api', authMiddleware)
-
-  app.use('/api/database', defaultLimiter, databaseRouter)
-  app.use('/api/intelligence', defaultLimiter, intelligenceRoutes)
-  app.use('/api/storage', defaultLimiter, storageRoutes)
-  app.use('/api/backup', defaultLimiter, backupRoutes)
-  app.use('/api/container', defaultLimiter, containerRoutes)
-  app.use('/api/projects', defaultLimiter, projectRouter)
-
-  // 3. SPA fallback — must be LAST. Serves index.html for all
-  //    non-API, non-static GET requests (client-side routing).
-  if (!isDev() && existsSync(staticDir)) {
-    app.get('/{*path}', (_req, res) => {
-      const indexPath = path.join(staticDir, 'index.html')
-      if (existsSync(indexPath)) {
-        res.sendFile(indexPath)
-      } else {
-        res.status(404).json({ error: 'Frontend not built. Run npm run build first.' })
-      }
-    })
-  }
-
-  return app
 }
 
 async function startServer(): Promise<void> {
@@ -115,6 +43,17 @@ async function startServer(): Promise<void> {
 
   await initializeDatabase()
 
+  // Without an 'error' listener, a bind failure (e.g. port already in use) is rethrown as an
+  // uncaught exception with a raw stack trace instead of a clear message.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[Server] Port ${config.PORT} is already in use.`)
+    } else {
+      console.error('[Server] Failed to bind:', err)
+    }
+    process.exit(1)
+  })
+
   server.listen(config.PORT, config.HOST, () => {
     console.log(`\n=== VulnAssessTool Web Server ===`)
     console.log(`Environment: ${config.NODE_ENV}`)
@@ -124,7 +63,12 @@ async function startServer(): Promise<void> {
     console.log(`================================\n`)
   })
 
+  let isShuttingDown = false
   const shutdown = async (): Promise<void> => {
+    // Re-entrancy guard: SIGINT+SIGTERM (or a double Ctrl+C) must not run this twice —
+    // that would call closeDatabase() on an already-closing connection and start a second timer.
+    if (isShuttingDown) return
+    isShuttingDown = true
     console.log('\n[Server] Shutting down...')
     shutdownWebSocket()
     await closeDatabase()
@@ -142,4 +86,7 @@ async function startServer(): Promise<void> {
   process.on('SIGTERM', shutdown)
 }
 
-startServer()
+startServer().catch((error) => {
+  console.error('[Server] Failed to start:', error)
+  process.exit(1)
+})

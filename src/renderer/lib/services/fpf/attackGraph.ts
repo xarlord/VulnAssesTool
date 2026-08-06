@@ -264,7 +264,10 @@ export class AttackGraph {
         paths: [],
         shortestPath: null,
         blockedBy: [],
-        confidence: 100, // High confidence that non-existent node is unreachable
+        // The component isn't modeled in the graph at all — that is "unknown", NOT "proven
+        // unreachable". Return zero confidence so Tier 2 escalates (rather than auto-suppresses)
+        // medium/low vulns on components outside the hardcoded interface/service map.
+        confidence: 0,
       }
     }
 
@@ -308,8 +311,8 @@ export class AttackGraph {
         if (edgeTypeMap) {
           const edgeType = edgeTypeMap.get(to)
           if (edgeType === 'blocking') {
-            const node = this.nodes.get(to)
-            blockedBy.push(`${node?.name || to} blocks access`)
+            const node = this.nodes.get(from)
+            blockedBy.push(`${node?.name || from} blocks access`)
           }
         }
       }

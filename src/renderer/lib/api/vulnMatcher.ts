@@ -1,7 +1,8 @@
-import type { Component, Vulnerability, VulnerabilityReference } from '@@/types'
+import type { Component, MatchConfidence, Vulnerability, VulnerabilityReference } from '@@/types'
 import { queryByPurls } from './osv'
-import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT } from '@@/constants'
+import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT, OSV_CACHE_TTL_HOURS } from '@@/constants'
 import { getPlatform } from '@/lib/platform'
+import { getVulnCache } from '@/lib/cache'
 
 export interface ScanProgressEvent {
   phase: 'nvd-cpe' | 'nvd-name' | 'osv' | 'dedup' | 'done'
@@ -213,6 +214,61 @@ async function searchLocalNvdByName(
   }
 }
 
+const OSV_CACHE_TTL_MS = OSV_CACHE_TTL_HOURS * 60 * 60 * 1000
+
+/**
+ * Query OSV for a set of PURLs, serving any already-cached PURL from the shared vuln
+ * cache (keyed by `(purl, 'osv')`) and only hitting the OSV proxy for cache misses.
+ *
+ * Mirrors the NVD-cache convention already used in refreshService.ts so repeated scans
+ * or refreshes of an unchanged SBOM do not needlessly re-query OSV's public, rate-limited
+ * API within the TTL window (FR-03.3). Misses that return no vulnerabilities are cached as
+ * an empty array so an unaffected PURL is not re-queried on every scan either.
+ */
+/**
+ * Union the source attribution and aliases of `incoming` into `entry` when the
+ * same vulnerability id is matched again from a different source. Without this,
+ * a CVE found via local NVD first would silently drop OSV's cross-reference (and
+ * vice-versa), losing the multi-source attribution the UI displays per finding.
+ */
+function mergeSourceAttribution(entry: Vulnerability, incoming: Vulnerability): void {
+  const existingSources = entry.sources ?? (entry.source ? [entry.source] : [])
+  const incomingSources = incoming.sources ?? (incoming.source ? [incoming.source] : [])
+  const mergedSources = Array.from(new Set([...existingSources, ...incomingSources]))
+  if (mergedSources.length > 0) entry.sources = mergedSources
+
+  const mergedAliases = Array.from(new Set([...(entry.aliases ?? []), ...(incoming.aliases ?? [])]))
+  if (mergedAliases.length > 0) entry.aliases = mergedAliases
+}
+
+async function queryOsvWithCache(purls: string[], nvdApiKey?: string): Promise<Map<string, Vulnerability[]>> {
+  const cache = getVulnCache()
+  const results = new Map<string, Vulnerability[]>()
+  const misses: string[] = []
+
+  for (const purl of purls) {
+    const cached = cache.get(purl, 'osv')
+    if (cached) {
+      results.set(purl, cached)
+    } else {
+      misses.push(purl)
+    }
+  }
+
+  if (misses.length > 0) {
+    // Forward the NVD API key so osv.ts can enrich CVE-aliased OSV advisories
+    // with authoritative NVD data (its NVD-over-OSV priority merge is gated on it).
+    const fetched = await queryByPurls(misses, nvdApiKey)
+    for (const purl of misses) {
+      const vulns = fetched.get(purl) || []
+      cache.set(purl, 'osv', vulns, OSV_CACHE_TTL_MS)
+      results.set(purl, vulns)
+    }
+  }
+
+  return results
+}
+
 /**
  * Match component to vulnerabilities using local NVD database and OSV
  *
@@ -221,31 +277,45 @@ async function searchLocalNvdByName(
  * 2. Priority 2: Use high-confidence suggested CPEs if available (>= 80% confidence)
  * 3. Priority 3: Fall back to name-based search (least accurate)
  *
- * **IMPORTANT: OSV Behavior in Electron Environment**
+ * **OSV Querying**
  *
- * In Electron, OSV API queries are conditionally disabled because:
- * 1. The renderer process runs in a web context subject to CORS restrictions
- * 2. Direct API calls to osv.dev from the renderer are blocked by browser security
- * 3. Unlike NVD (which uses local database), OSV requires live API calls
- *
- * OSV is only queried when:
- * - Running in a non-Electron environment (e.g., pure web app)
- * - OR when a proper API proxy is configured to bypass CORS
- *
- * For Electron users, vulnerability coverage is provided by:
- * - Local NVD database (comprehensive CVE data)
- * - Periodic database syncs to keep data current
+ * The browser cannot call osv.dev directly (CORS), so OSV queries go through
+ * the Express server's `/api/osv` proxy route (see `queryByPurls` / `OSV_API_BASE_URL`).
+ * OSV is queried whenever the platform (the server adapter) is available and the
+ * component has a PURL — the same condition the app's platform layer uses for every
+ * other server-backed call.
  *
  * @param component - The component to find vulnerabilities for
- * @param _nvdApiKey - Optional NVD API key (not used, kept for API compatibility)
+ * @param nvdApiKey - Optional NVD API key, forwarded to OSV so CVE-aliased OSV
+ *   advisories are enriched/merged with authoritative NVD data (source priority)
  * @returns Array of vulnerabilities affecting this component
  */
 export async function matchVulnerabilitiesForComponent(
   component: Component,
-  _nvdApiKey?: string,
+  nvdApiKey?: string,
 ): Promise<Vulnerability[]> {
   const vulnerabilities: Vulnerability[] = []
   const seenIds = new Set<string>()
+
+  // Push matches for this component, tagging each with how confidently it was matched so the
+  // UI/CLI can de-emphasize name-only matches on unversioned components. First tier to find a CVE
+  // wins (tiers run in descending precision), matching the seenIds dedup — but when a later source
+  // reports the same CVE, its source attribution/aliases are merged into the kept entry.
+  const pushMatches = (vulns: Vulnerability[], confidence: MatchConfidence): void => {
+    for (const vuln of vulns) {
+      if (!seenIds.has(vuln.id)) {
+        vulnerabilities.push({
+          ...vuln,
+          affectedComponents: [component.id],
+          matchQuality: { [component.id]: confidence },
+        })
+        seenIds.add(vuln.id)
+      } else {
+        const existing = vulnerabilities.find((v) => v.id === vuln.id)
+        if (existing) mergeSourceAttribution(existing, vuln)
+      }
+    }
+  }
 
   // ============================================================
   // PRIORITY 1: CPE-based search (most accurate)
@@ -253,25 +323,14 @@ export async function matchVulnerabilitiesForComponent(
   if (component.cpe) {
     try {
       const nvdVulns = await searchLocalNvdByCpe(component.cpe)
-      for (const vuln of nvdVulns) {
-        if (!seenIds.has(vuln.id)) {
-          vulnerabilities.push({ ...vuln, affectedComponents: [component.id] })
-          seenIds.add(vuln.id)
-        }
-      }
-
-      // If CPE search returned results, use them exclusively (most accurate)
       if (nvdVulns.length > 0) {
+        // CPE search returned results, use them exclusively (most accurate)
+        pushMatches(nvdVulns, 'cpe-exact')
         console.log(`[VulnMatcher] Found ${nvdVulns.length} vulns for ${component.name} via CPE: ${component.cpe}`)
       } else {
-        // CPE search returned no results, try fallback text search by name
+        // CPE search returned no results, try fallback text search by name (least precise)
         const fallbackVulns = await searchLocalNvdByName(component.name, component.cpe)
-        for (const vuln of fallbackVulns) {
-          if (!seenIds.has(vuln.id)) {
-            vulnerabilities.push({ ...vuln, affectedComponents: [component.id] })
-            seenIds.add(vuln.id)
-          }
-        }
+        pushMatches(fallbackVulns, 'name-only')
       }
     } catch (error) {
       console.error(`[VulnMatcher] Failed to search local NVD for CPE ${component.cpe}:`, error)
@@ -291,12 +350,7 @@ export async function matchVulnerabilitiesForComponent(
       for (const suggestedCpe of highConfidenceCpes) {
         try {
           const nvdVulns = await searchLocalNvdByCpe(suggestedCpe.cpe)
-          for (const vuln of nvdVulns) {
-            if (!seenIds.has(vuln.id)) {
-              vulnerabilities.push({ ...vuln, affectedComponents: [component.id] })
-              seenIds.add(vuln.id)
-            }
-          }
+          pushMatches(nvdVulns, 'cpe-estimated')
           // If we found results from a high-confidence CPE, stop searching
           if (nvdVulns.length > 0) {
             console.log(
@@ -313,12 +367,7 @@ export async function matchVulnerabilitiesForComponent(
     // If no results from high-confidence CPEs, fall back to name search
     if (vulnerabilities.length === 0 && component.name) {
       const fallbackVulns = await searchLocalNvdByName(component.name)
-      for (const vuln of fallbackVulns) {
-        if (!seenIds.has(vuln.id)) {
-          vulnerabilities.push({ ...vuln, affectedComponents: [component.id] })
-          seenIds.add(vuln.id)
-        }
-      }
+      pushMatches(fallbackVulns, 'name-only')
     }
   }
   // ============================================================
@@ -326,28 +375,16 @@ export async function matchVulnerabilitiesForComponent(
   // ============================================================
   else if (component.name) {
     const fallbackVulns = await searchLocalNvdByName(component.name)
-    for (const vuln of fallbackVulns) {
-      if (!seenIds.has(vuln.id)) {
-        vulnerabilities.push({ ...vuln, affectedComponents: [component.id] })
-        seenIds.add(vuln.id)
-      }
-    }
+    pushMatches(fallbackVulns, 'name-only')
   }
 
-  // Try PURL matching with OSV
-  // NOTE: In Electron environment, this is conditionally skipped to avoid CORS issues.
-  // See the function documentation above for details on OSV behavior.
-  // OSV queries are enabled when NOT running in Electron (no electronAPI.database available)
+  // Try PURL matching with OSV (a precise, versioned identifier -> high confidence).
+  // Queried via the server's `/api/osv` proxy — see the function documentation above.
   if (component.purl && typeof window !== 'undefined' && getPlatform()?.database) {
     try {
-      const osvResults = await queryByPurls([component.purl])
+      const osvResults = await queryOsvWithCache([component.purl], nvdApiKey)
       const osvVulns = osvResults.get(component.purl) || []
-      for (const vuln of osvVulns) {
-        if (!seenIds.has(vuln.id)) {
-          vulnerabilities.push({ ...vuln, affectedComponents: [component.id] })
-          seenIds.add(vuln.id)
-        }
-      }
+      pushMatches(osvVulns, 'cpe-exact')
     } catch (error) {
       console.error(`[VulnMatcher] Failed to query OSV for PURL ${component.purl}:`, error)
     }
@@ -364,23 +401,43 @@ export async function matchVulnerabilitiesForComponent(
  * 2. Priority 2: Use high-confidence suggested CPEs if available (>= 80% confidence)
  * 3. Priority 3: Fall back to name-based search (least accurate)
  *
- * **IMPORTANT: OSV Behavior in Electron Environment**
+ * **OSV Querying**
  *
- * OSV is only queried when NOT running in Electron (no electronAPI.database available).
- * See matchVulnerabilitiesForComponent documentation for details.
+ * See matchVulnerabilitiesForComponent documentation above for details on how
+ * OSV queries are proxied through the Express server.
  *
  * @param components - Array of components to find vulnerabilities for
- * @param _nvdApiKey - Optional NVD API key (not used, kept for API compatibility)
+ * @param nvdApiKey - Optional NVD API key, forwarded to OSV so CVE-aliased OSV
+ *   advisories are enriched/merged with authoritative NVD data (source priority)
  * @returns Map of component ID to array of vulnerabilities
  */
 export async function matchVulnerabilitiesForComponents(
   components: Component[],
-  _nvdApiKey?: string,
+  nvdApiKey?: string,
   onProgress?: ScanProgressCallback,
 ): Promise<Map<string, Vulnerability[]>> {
   const resultMap = new Map<string, Vulnerability[]>()
   const vulnerabilityMap = new Map<string, Vulnerability>()
   const totalComponents = components.length
+
+  // Upsert a batch of matches for one component, tagging each with how confidently it was matched.
+  // matchQuality is keyed by component id and MERGED (never overwritten) so a CVE shared across
+  // several components keeps each component's own confidence. When the same CVE is re-reported by a
+  // different source (e.g. OSV after a local NVD hit), its source attribution/aliases are unioned in.
+  const recordMatch = (vulns: Vulnerability[], componentId: string, confidence: MatchConfidence): void => {
+    for (const vuln of vulns) {
+      const isNew = !vulnerabilityMap.has(vuln.id)
+      if (isNew) {
+        vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [], matchQuality: {} })
+      }
+      const entry = vulnerabilityMap.get(vuln.id)
+      if (entry) {
+        if (!entry.affectedComponents.includes(componentId)) entry.affectedComponents.push(componentId)
+        entry.matchQuality = { ...entry.matchQuality, [componentId]: confidence }
+        if (!isNew) mergeSourceAttribution(entry, vuln)
+      }
+    }
+  }
 
   // Initialize result map
   for (const component of components) {
@@ -405,13 +462,14 @@ export async function matchVulnerabilitiesForComponents(
           message: `Searching NVD by CPE: ${component.name} (${componentIndex}/${totalComponents})`,
         })
         let vulns = await searchLocalNvdByCpe(component.cpe)
+        let confidence: MatchConfidence = 'cpe-exact'
 
         // If CPE search returned results, use them exclusively (most accurate)
         if (vulns.length > 0) {
           foundVulns = true
           console.log(`[VulnMatcher] Batch: Found ${vulns.length} vulns for ${component.name} via CPE`)
         } else if (component.name) {
-          // CPE search returned no results, try fallback text search by name
+          // CPE search returned no results, try fallback text search by name (least precise)
           onProgress?.({
             phase: 'nvd-name',
             current: componentIndex,
@@ -419,15 +477,10 @@ export async function matchVulnerabilitiesForComponents(
             message: `CPE had no results, searching NVD by name: ${component.name}`,
           })
           vulns = await searchLocalNvdByName(component.name, component.cpe)
+          confidence = 'name-only'
         }
 
-        for (const vuln of vulns) {
-          if (!vulnerabilityMap.has(vuln.id)) {
-            vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
-          }
-          const entry = vulnerabilityMap.get(vuln.id)
-          if (entry) entry.affectedComponents.push(component.id)
-        }
+        recordMatch(vulns, component.id, confidence)
       } catch (error) {
         console.error(`[VulnMatcher] Failed to search local NVD for CPE ${component.cpe}:`, error)
       }
@@ -452,16 +505,10 @@ export async function matchVulnerabilitiesForComponents(
         for (const suggestedCpe of highConfidenceCpes) {
           try {
             const vulns = await searchLocalNvdByCpe(suggestedCpe.cpe)
-            for (const vuln of vulns) {
-              if (!vulnerabilityMap.has(vuln.id)) {
-                vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
-              }
-              const entry = vulnerabilityMap.get(vuln.id)
-              if (entry) entry.affectedComponents.push(component.id)
-              foundVulns = true
-            }
+            recordMatch(vulns, component.id, 'cpe-estimated')
             // If we found results from a high-confidence CPE, stop searching
             if (vulns.length > 0) {
+              foundVulns = true
               console.log(`[VulnMatcher] Batch: Found ${vulns.length} vulns for ${component.name} via suggested CPE`)
               break
             }
@@ -475,13 +522,7 @@ export async function matchVulnerabilitiesForComponents(
       if (!foundVulns && component.name) {
         try {
           const vulns = await searchLocalNvdByName(component.name)
-          for (const vuln of vulns) {
-            if (!vulnerabilityMap.has(vuln.id)) {
-              vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
-            }
-            const entry = vulnerabilityMap.get(vuln.id)
-            if (entry) entry.affectedComponents.push(component.id)
-          }
+          recordMatch(vulns, component.id, 'name-only')
         } catch (error) {
           console.error(`[VulnMatcher] Failed to search local NVD for name ${component.name}:`, error)
         }
@@ -499,23 +540,16 @@ export async function matchVulnerabilitiesForComponents(
           message: `Searching NVD by name: ${component.name} (${componentIndex}/${totalComponents})`,
         })
         const vulns = await searchLocalNvdByName(component.name)
-        for (const vuln of vulns) {
-          if (!vulnerabilityMap.has(vuln.id)) {
-            vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
-          }
-          const entry = vulnerabilityMap.get(vuln.id)
-          if (entry) entry.affectedComponents.push(component.id)
-        }
+        recordMatch(vulns, component.id, 'name-only')
       } catch (error) {
         console.error(`[VulnMatcher] Failed to search local NVD for name ${component.name}:`, error)
       }
     }
   }
 
-  // Query OSV by PURLs
-  // NOTE: Only runs when NOT in Electron environment to avoid CORS issues.
-  // See matchVulnerabilitiesForComponent documentation for details.
-  if (typeof window === 'undefined' || !getPlatform()?.database) {
+  // Query OSV by PURLs, proxied through the Express server (see
+  // matchVulnerabilitiesForComponent documentation above for details).
+  if (typeof window !== 'undefined' && getPlatform()?.database) {
     const purls = components.filter((c) => c.purl).map((c) => c.purl as string)
     if (purls.length > 0) {
       onProgress?.({
@@ -526,17 +560,12 @@ export async function matchVulnerabilitiesForComponents(
       })
     }
     try {
-      const osvResults = await queryByPurls(purls)
+      const osvResults = await queryOsvWithCache(purls, nvdApiKey)
       for (const component of components) {
         if (component.purl) {
           const vulns = osvResults.get(component.purl) || []
-          for (const vuln of vulns) {
-            if (!vulnerabilityMap.has(vuln.id)) {
-              vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [] })
-            }
-            const entry = vulnerabilityMap.get(vuln.id)
-            if (entry) entry.affectedComponents.push(component.id)
-          }
+          // OSV matches by PURL (a precise, versioned identifier) — treat as a high-confidence match.
+          recordMatch(vulns, component.id, 'cpe-exact')
         }
       }
     } catch (error) {
@@ -617,6 +646,26 @@ export function sortBySeverity(vulnerabilities: Vulnerability[]): Vulnerability[
     const scoreA = a.cvssScore || 0
     const scoreB = b.cvssScore || 0
     return scoreB - scoreA
+  })
+}
+
+/**
+ * Sort vulnerabilities by CVSS score (highest first); undefined scores sort last (FR-04.1).
+ * Non-mutating — returns a new array.
+ */
+export function sortByCvssScore(vulnerabilities: Vulnerability[]): Vulnerability[] {
+  return [...vulnerabilities].sort((a, b) => (b.cvssScore ?? 0) - (a.cvssScore ?? 0))
+}
+
+/**
+ * Sort vulnerabilities by publication date (most recent first); missing dates sort last (FR-04.1).
+ * Non-mutating — returns a new array.
+ */
+export function sortByPublicationDate(vulnerabilities: Vulnerability[]): Vulnerability[] {
+  return [...vulnerabilities].sort((a, b) => {
+    const timeA = a.publishedAt ? new Date(a.publishedAt).getTime() : -Infinity
+    const timeB = b.publishedAt ? new Date(b.publishedAt).getTime() : -Infinity
+    return timeB - timeA
   })
 }
 

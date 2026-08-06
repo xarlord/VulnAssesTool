@@ -7,15 +7,8 @@
 export { RateLimiter, createNvdRateLimiter } from './rateLimiter.js'
 export type { RateLimiterOptions } from './rateLimiter.js'
 
-export { MultiThreadedDownloader, createMultiThreadedDownloader } from './multiThreadedDownloader.js'
-export type { DownloadProgress, DownloadTask, MultiThreadedDownloaderOptions } from './multiThreadedDownloader.js'
-
-export { NvdStreamParser, createStreamParser } from './streamParser.js'
-export type { ParsedCVE, ParserOptions, ParseResult } from './streamParser.js'
-
-export { BulkDatabaseManager, getBulkDatabase, resetBulkDatabase } from './bulkDatabase.js'
-export type { BulkImportOptions, BulkImportStats, BulkImportResult } from './bulkDatabase.js'
-
+// NVD population is consolidated onto the REST API v2 path (NvdApiV2Client → NvdDataImporter).
+// The former feed-file downloader, stream parser, and separate bulk database were retired (B1).
 export { NvdImportManager, importNvdData, getAvailableNvdYears } from './nvdImportManager.js'
 export type { NvdImportOptions, NvdImportProgress, NvdImportResult } from './nvdImportManager.js'
 

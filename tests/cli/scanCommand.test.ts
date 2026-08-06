@@ -28,7 +28,7 @@ vi.mock('../../src/renderer/lib/parsers/cyclonedx.js', () => ({
 }))
 
 vi.mock('../../src/renderer/lib/parsers/spdx.js', () => ({
-  parseSPDX: vi.fn(),
+  parseSpdx: vi.fn(),
 }))
 
 // Mock the hybrid scanner
@@ -192,7 +192,41 @@ describe('CLI Scan Command', () => {
       const result = await scanCommand('sbom.cdx.json', {})
 
       expect(result.success).toBe(true)
-      expect(result.vulnerabilities).toBeDefined()
+      expect(result.format).toBe('cyclonedx')
+      expect(result.componentsScanned).toBe(1)
+      expect(result.vulnerabilities).toHaveLength(1)
+      expect(result.vulnerabilities[0].id).toBe('CVE-2024-12345')
+    })
+
+    it('uses an injected scanner instead of the default getHybridScanner (DI path)', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true)
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ bomFormat: 'CycloneDX' }))
+
+      const { parseCycloneDX } = await import('../../src/renderer/lib/parsers/cyclonedx.js')
+      vi.mocked(parseCycloneDX).mockReturnValue({
+        components: mockComponents.slice(0, 1),
+        vulnerabilities: [],
+        sbomFile: {} as any,
+      })
+
+      const { getHybridScanner } = await import('../../src/renderer/lib/database/hybridScanner.js')
+      const injected = {
+        scanComponent: vi.fn().mockResolvedValue({
+          vulnerabilities: [mockVulnerabilities[0]],
+          fromCache: 1,
+          fromApi: 0,
+          errors: [],
+        }),
+        scanComponents: vi.fn(),
+        getStatistics: vi.fn().mockReturnValue({ totalCves: 42 }),
+      }
+
+      const result = await scanCommand('sbom.cdx.json', {}, injected as any)
+
+      expect(injected.scanComponent).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(getHybridScanner)).not.toHaveBeenCalled()
+      expect(result.vulnerabilities).toHaveLength(1)
+      expect(result.vulnerabilities[0].id).toBe('CVE-2024-12345')
     })
 
     it('parses SPDX JSON files correctly', async () => {
@@ -216,8 +250,8 @@ describe('CLI Scan Command', () => {
       vi.mocked(fs.existsSync).mockReturnValue(true)
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(spdxContent))
 
-      const { parseSPDX } = await import('../../src/renderer/lib/parsers/spdx.js')
-      vi.mocked(parseSPDX).mockReturnValue({
+      const { parseSpdx } = await import('../../src/renderer/lib/parsers/spdx.js')
+      vi.mocked(parseSpdx).mockReturnValue({
         components: mockComponents.slice(0, 1),
         vulnerabilities: [],
         sbomFile: {} as any,
@@ -241,7 +275,9 @@ describe('CLI Scan Command', () => {
       expect(result.format).toBe('spdx')
     })
 
-    it('returns warnings from parser', async () => {
+    it('exposes an (empty) warnings array — the real parsers do not emit warnings', async () => {
+      // The CycloneDX/SPDX parsers return { components, vulnerabilities, metadata }
+      // with no warnings channel, so scanCommand must not fabricate one.
       const cycloneDxContent = {
         bomFormat: 'CycloneDX',
         specVersion: '1.5',
@@ -256,7 +292,6 @@ describe('CLI Scan Command', () => {
         components: [],
         vulnerabilities: [],
         sbomFile: {} as any,
-        warnings: ['Unknown component type'],
       })
 
       const { getHybridScanner } = await import('../../src/renderer/lib/database/hybridScanner.js')
@@ -274,7 +309,7 @@ describe('CLI Scan Command', () => {
       const result = await scanCommand('sbom.cdx.json', {})
 
       expect(result.success).toBe(true)
-      expect(result.warnings).toContain('Unknown component type')
+      expect(result.warnings).toEqual([])
     })
 
     it('handles errors during scanning', async () => {

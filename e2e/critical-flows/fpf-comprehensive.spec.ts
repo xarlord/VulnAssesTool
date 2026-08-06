@@ -22,6 +22,20 @@ import {
  *
  * Note: These tests navigate through the UI rather than direct URL navigation
  * to ensure proper Zustand store state is maintained.
+ *
+ * Grounding for the two tests below that previously relied on false-green guards
+ * (`isVisible().catch(() => false)` OR-chains, and an always-matching `/Flagged/`
+ * regex that is satisfied by the button's own static label regardless of state):
+ *   - components/FPF/FilterDashboard.tsx — `EffectivenessMetrics` renders
+ *     `data-testid="no-filter-results"` only while `lastFilterResult` is null, and
+ *     `data-testid="effectiveness-metrics"` once it is set; `export-report-button`
+ *     is `disabled={!lastFilterResult}`. Running the filter on a project with zero
+ *     vulnerabilities still produces a non-null `FilterBatchResult` (all-zero counts)
+ *     via `falsePositiveFilter.ts` `filterBatch`, so this is fully deterministic offline.
+ *   - components/FPF/MissFilterPanel.tsx — the All/Flagged/Unflagged toggle buttons
+ *     apply the `bg-primary` class only to whichever button matches the current
+ *     `filterFlagged` state (`null`/`true`/`false`), so a toggle click is verifiable
+ *     via its class list rather than its always-present label text.
  */
 
 test.describe('FPF Comprehensive Tests', () => {
@@ -61,37 +75,23 @@ test.describe('FPF Comprehensive Tests', () => {
       await expect(page.locator('[data-testid="step-1-content"]')).toBeVisible()
     })
 
-    test('should run filter and handle empty vulnerabilities', async ({ page }) => {
+    test('should run the filter and update dashboard metrics for a project with no vulnerabilities', async ({
+      page,
+    }) => {
       await createTestProjectAndNavigateToFPF(page)
 
-      const runFilterButton = page.locator('[data-testid="run-filter-button"]')
-      if (!(await runFilterButton.isVisible().catch(() => false))) {
-        test.skip(true, 'Run Filter button not found - FPF feature may not be fully implemented')
-        return
-      }
+      // createProjectOnly imports no SBOM, so project.vulnerabilities is empty. filterBatch still
+      // resolves to a non-null FilterBatchResult (all-zero counts) for an empty items array
+      // (falsePositiveFilter.ts filterBatch), which flips FilterDashboard from the
+      // "no-filter-results" placeholder to "effectiveness-metrics" and enables Export Report
+      // (FilterDashboard.tsx: EffectivenessMetrics + export-report-button disabled={!lastFilterResult}).
+      await page.locator('[data-testid="run-filter-button"]').click()
 
-      await runFilterButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      const dashboardVisible = await page
-        .locator('[data-testid="filter-dashboard"]')
-        .isVisible()
-        .catch(() => false)
-      const metricsVisible = await page
-        .locator('[data-testid="effectiveness-metrics"]')
-        .isVisible()
-        .catch(() => false)
-      const noResultsVisible = await page
-        .locator('[data-testid="no-filter-results"]')
-        .isVisible()
-        .catch(() => false)
-      const anyContentVisible = await page
-        .locator('[class*="fpf"], [class*="filter"]')
-        .first()
-        .isVisible()
-        .catch(() => false)
-
-      expect(dashboardVisible || metricsVisible || noResultsVisible || anyContentVisible).toBe(true)
+      await expect(page.locator('[data-testid="effectiveness-metrics"]')).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
+      await expect(page.locator('[data-testid="no-filter-results"]')).not.toBeVisible()
+      await expect(page.locator('[data-testid="export-report-button"]')).toBeEnabled()
     })
 
     test('should show export button disabled when no results', async ({ page }) => {
@@ -328,9 +328,7 @@ test.describe('FPF Comprehensive Tests', () => {
       await expect(page.locator('[data-testid="filter-unflagged"]')).toBeVisible()
     })
 
-    // Component gap: MissFilterPanel requires config prop but FalsePositiveFilter doesn't pass it
-    // ConfigPanel component expects MissFilterDetectionConfig but receives undefined
-    test.fixme('should toggle configuration panel', async ({ page }) => {
+    test('should toggle configuration panel', async ({ page }) => {
       await createTestProjectAndNavigateToFPF(page)
       await page.getByRole('tab', { name: /Miss-Filter Detection/i }).click()
       await page.waitForTimeout(E2E_UI_DELAY * 2)
@@ -358,19 +356,24 @@ test.describe('FPF Comprehensive Tests', () => {
     test('should filter by flagged status', async ({ page }) => {
       await createTestProjectAndNavigateToFPF(page)
       await page.getByRole('tab', { name: /Miss-Filter Detection/i }).click()
-      await page.waitForTimeout(E2E_UI_DELAY)
 
-      await page.locator('[data-testid="filter-flagged"]').click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
+      // filterFlagged starts as `null`, so "All" carries the active `bg-primary` class by default
+      // (MissFilterPanel.tsx toggle buttons). Clicking "Flagged" sets filterFlagged to `true` and
+      // moves the active class to that button instead; clicking "Unflagged" moves it again. The
+      // label text itself ("Flagged (0)") never changes here since there is no filter result to
+      // derive counts from, so the class is the only state-dependent, assertable signal.
+      const allButton = page.locator('[data-testid="filter-all"]')
       const flaggedButton = page.locator('[data-testid="filter-flagged"]')
-      await expect(flaggedButton).toHaveText(/Flagged/)
-
-      await page.locator('[data-testid="filter-unflagged"]').click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
       const unflaggedButton = page.locator('[data-testid="filter-unflagged"]')
-      await expect(unflaggedButton).toHaveText(/Unflagged/)
+      await expect(allButton).toHaveClass(/bg-primary/)
+
+      await flaggedButton.click()
+      await expect(flaggedButton).toHaveClass(/bg-primary/)
+      await expect(allButton).not.toHaveClass(/bg-primary/)
+
+      await unflaggedButton.click()
+      await expect(unflaggedButton).toHaveClass(/bg-primary/)
+      await expect(flaggedButton).not.toHaveClass(/bg-primary/)
     })
   })
 

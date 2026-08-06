@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FilterPresets, CvssRangeSlider, MultiSelectFilter } from './FilterPresets'
@@ -185,7 +185,10 @@ describe('FilterPresets', () => {
     const deleteButtons = screen.getAllByLabelText(/Delete preset/)
     await user.click(deleteButtons[0])
 
-    expect(global.confirm).toHaveBeenCalledWith('Delete preset "Critical Only"?')
+    // Confirm in the dialog
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Delete preset "Critical Only"?')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
     expect(onDeletePreset).toHaveBeenCalledWith('1')
   })
 
@@ -317,7 +320,9 @@ describe('FilterPresets', () => {
     const deleteButtons = screen.getAllByLabelText(/Delete preset/)
     await user.click(deleteButtons[0])
 
-    expect(global.confirm).toHaveBeenCalledWith('Delete preset "Critical Only"?')
+    // Confirm in the dialog
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
     expect(onDeletePreset).toHaveBeenCalledWith('1')
     expect(onDeletePreset).toHaveBeenCalledTimes(1)
   })
@@ -384,9 +389,6 @@ describe('FilterPresets', () => {
     const onDeletePreset = vi.fn()
     const user = userEvent.setup()
 
-    // Mock confirm to return false (user cancels)
-    global.confirm = vi.fn(() => false)
-
     render(
       <FilterPresets
         presets={mockPresets}
@@ -402,7 +404,9 @@ describe('FilterPresets', () => {
     const deleteButtons = screen.getAllByLabelText(/Delete preset/)
     await user.click(deleteButtons[0])
 
-    expect(global.confirm).toHaveBeenCalledWith('Delete preset "Critical Only"?')
+    // Cancel in the dialog
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(onDeletePreset).not.toHaveBeenCalled()
   })
 })

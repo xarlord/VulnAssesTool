@@ -7,9 +7,15 @@
 
 import { useMemo, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Filter } from 'lucide-react'
+import { Filter } from 'lucide-react'
 import { DependencyGraph } from '@/components/graph/DependencyGraph'
+import { findShortestPath } from '@/components/graph'
+import { MAX_GRAPH_NODES } from '@/components/graph/types'
+import { PageHeader } from '@/components/PageHeader'
+import { ComponentVulnerabilitiesPopup } from '@/components/ComponentVulnerabilitiesPopup'
+import { toast } from '@/components/Toaster'
 import { useProjects } from '@/store/useStore'
+import { getVulnerabilitiesForComponent } from './project-detail/helpers'
 import type { Component } from '@@/types'
 
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low'
@@ -21,6 +27,15 @@ export function DependencyGraphPage() {
 
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [showVulnerableOnly, setShowVulnerableOnly] = useState(false)
+
+  // Node-selection details popup (FR-11.2-a)
+  const [selectedComponent, setSelectedComponent] = useState<Component | null>(null)
+  const [showDetail, setShowDetail] = useState(false)
+
+  // Path highlighting (FR-11.2-b)
+  const [fromId, setFromId] = useState('')
+  const [toId, setToId] = useState('')
+  const [highlightedPath, setHighlightedPath] = useState<string[] | null>(null)
 
   // Get current project
   const project = useMemo(() => {
@@ -57,15 +72,26 @@ export function DependencyGraphPage() {
     return filtered
   }, [components, projectVulnerabilities, severityFilter, showVulnerableOnly])
 
-  // Handle node click
+  // Handle node click — open the shared component details popup (FR-11.2-a)
   const handleNodeClick = useCallback((component: Component) => {
-    console.log('[DependencyGraphPage] Node clicked:', component.name)
+    setSelectedComponent(component)
+    setShowDetail(true)
   }, [])
 
-  // Handle back navigation
-  const handleBack = useCallback(() => {
-    navigate(`/project/${projectId}`)
-  }, [navigate, projectId])
+  // Path highlighting (FR-11.2-b) — wire the From/To picker to findShortestPath
+  const handleHighlightPath = useCallback(() => {
+    const path = findShortestPath(components, fromId, toId)
+    if (path) {
+      setHighlightedPath(path)
+    } else {
+      setHighlightedPath(null)
+      toast.error('No path found between these components')
+    }
+  }, [components, fromId, toId])
+
+  const handleClearPath = useCallback(() => {
+    setHighlightedPath(null)
+  }, [])
 
   // Severity counts
   const counts = useMemo(
@@ -97,63 +123,113 @@ export function DependencyGraphPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-card">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Project
-          </button>
-          <div>
-            <h1 className="text-lg font-semibold">Dependency Graph</h1>
-            <p className="text-sm text-muted-foreground">{project.name}</p>
-          </div>
+      <div className="px-6 pt-6">
+        <PageHeader
+          title="Dependency Graph"
+          description={project.name}
+          actions={
+            <>
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <select
+                  value={severityFilter}
+                  onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="all">All Severities</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => setShowVulnerableOnly(!showVulnerableOnly)}
+                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                  showVulnerableOnly
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground hover:bg-accent'
+                }`}
+              >
+                Vulnerable Only
+              </button>
+
+              {/* Path highlighting controls (FR-11.2-b) */}
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label="Path from"
+                  value={fromId}
+                  onChange={(e) => {
+                    setFromId(e.target.value)
+                    setHighlightedPath(null)
+                  }}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">From…</option>
+                  {components.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.version}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Path to"
+                  value={toId}
+                  onChange={(e) => {
+                    setToId(e.target.value)
+                    setHighlightedPath(null)
+                  }}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">To…</option>
+                  {components.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.version}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleHighlightPath}
+                  disabled={!fromId || !toId}
+                  className="px-3 py-1.5 text-sm rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Highlight Path
+                </button>
+                <button
+                  onClick={handleClearPath}
+                  disabled={!highlightedPath}
+                  className="px-3 py-1.5 text-sm rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Clear Path
+                </button>
+              </div>
+            </>
+          }
+        />
+      </div>
+
+      {/* Truncation banner (FR-11.1-b): the graph caps at MAX_GRAPH_NODES. */}
+      {filteredComponents.length > MAX_GRAPH_NODES && (
+        <div className="mx-6 mb-2 rounded-md bg-yellow-500/15 px-3 py-2 text-sm text-yellow-600">
+          Showing first {MAX_GRAPH_NODES} of {filteredComponents.length} components — narrow the filter to see the rest.
         </div>
+      )}
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <select
-              value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
-              className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-
-          <button
-            onClick={() => setShowVulnerableOnly(!showVulnerableOnly)}
-            className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-              showVulnerableOnly
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-background text-muted-foreground hover:bg-accent'
-            }`}
-          >
-            Vulnerable Only
-          </button>
-        </div>
-      </header>
-
-      {/* Graph Container */}
-      <main className="flex-1 p-6">
+      {/* Graph Container — the AppShell owns the single <main> landmark. */}
+      <div className="flex-1 px-6 pb-6">
         <DependencyGraph
           components={filteredComponents}
           vulnerabilities={projectVulnerabilities}
           onNodeClick={handleNodeClick}
+          highlightPath={highlightedPath ?? undefined}
+          clearHighlight={!highlightedPath}
           height="calc(100vh - 180px)"
           showControls={true}
           showLegend={true}
           className="border rounded-lg"
         />
-      </main>
+      </div>
 
       {/* Stats Footer */}
       <footer className="px-6 py-3 border-t bg-card">
@@ -185,6 +261,20 @@ export function DependencyGraphPage() {
           </div>
         </div>
       </footer>
+
+      {/* Node-selection details (FR-11.2-a) — reuses the shared component popup. */}
+      {selectedComponent && (
+        <ComponentVulnerabilitiesPopup
+          component={selectedComponent}
+          vulnerabilities={getVulnerabilitiesForComponent(project, selectedComponent.id)}
+          open={showDetail}
+          onClose={() => {
+            setShowDetail(false)
+            setSelectedComponent(null)
+          }}
+          onViewVulnerability={() => navigate(`/project/${project.id}`)}
+        />
+      )}
     </div>
   )
 }

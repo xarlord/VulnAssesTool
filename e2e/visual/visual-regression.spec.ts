@@ -43,7 +43,7 @@ test.describe('Visual Regression Tests', () => {
   test.describe('Search Page - NVD Mode', () => {
     test('NVD search empty state - desktop', async ({ page }) => {
       // Navigate to search page
-      await page.click('[data-testid="nav-search"]')
+      await page.getByRole('link', { name: 'Search' }).click()
       await page.waitForTimeout(E2E_UI_DELAY)
 
       // Switch to NVD mode
@@ -58,15 +58,17 @@ test.describe('Visual Regression Tests', () => {
 
     test('NVD search with results - desktop', async ({ page }) => {
       // Navigate to search page
-      await page.click('[data-testid="nav-search"]')
+      await page.getByRole('link', { name: 'Search' }).click()
       await page.waitForTimeout(E2E_UI_DELAY)
 
       // Switch to NVD mode
       await page.click('button:has-text("NVD Database")')
       await page.waitForTimeout(E2E_UI_DELAY)
 
-      // Search for a CVE
-      await page.fill('input[placeholder*="CVE ID"]', 'CVE-2024')
+      // Search for a seeded CVE. A full id resolves via the id lookup path;
+      // a bare year prefix like "CVE-2024" only matched real-NVD description
+      // cross-references, which the seeded fixture set intentionally lacks.
+      await page.fill('input[placeholder*="CVE ID"]', 'CVE-2024-3094')
       await page.waitForTimeout(E2E_SEARCH_DELAY)
 
       // Wait for results to appear (database should be seeded)
@@ -84,7 +86,7 @@ test.describe('Visual Regression Tests', () => {
 
     test('NVD sync button states - desktop', async ({ page }) => {
       // Navigate to search page
-      await page.click('[data-testid="nav-search"]')
+      await page.getByRole('link', { name: 'Search' }).click()
       await page.waitForTimeout(E2E_UI_DELAY)
 
       // Switch to NVD mode
@@ -245,7 +247,7 @@ test.describe('Visual Regression Tests', () => {
 
     for (const severity of severities) {
       test(`${severity} severity badge`, async ({ page }) => {
-        await page.click('[data-testid="nav-search"]')
+        await page.getByRole('link', { name: 'Search' }).click()
         await page.waitForTimeout(E2E_UI_DELAY)
         await page.click('button:has-text("NVD Database")')
         await page.waitForTimeout(E2E_UI_DELAY)
@@ -273,7 +275,8 @@ test.describe('Visual Regression Tests', () => {
     test.use({ viewport: VIEWPORTS.mobile })
 
     test('Search page - mobile viewport', async ({ page }) => {
-      await page.click('[data-testid="nav-search"]')
+      // Desktop sidebar nav is hidden at mobile width; use the SPA router hook directly.
+      await page.evaluate(() => (window as unknown as { __navigate?: (p: string) => void }).__navigate?.('/search'))
       await page.waitForTimeout(E2E_UI_DELAY)
 
       await expect(page).toHaveScreenshot('search-mobile.png', {

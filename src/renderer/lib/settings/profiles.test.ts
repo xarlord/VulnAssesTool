@@ -10,6 +10,7 @@ import {
   initializeProfiles,
 } from './profiles'
 import type { AppSettings } from '@@/types'
+import { useAuditStore } from '../audit/auditStore'
 
 const mockSettings: AppSettings = {
   theme: 'dark',
@@ -38,6 +39,7 @@ const mockSettings: AppSettings = {
   },
   cvssVersion: '3.1',
   showCvssBreakdown: true,
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 500,
   showVulnerableOnly: false,
 }
@@ -200,6 +202,17 @@ describe('Settings Profiles', () => {
 
       expect(updated?.name).toBe('Updated Name')
       expect(updated?.description).toBe('Updated Description')
+    })
+
+    it('preserves the existing description when a partial update omits it (H24)', () => {
+      const profile = createProfile('Test Profile', 'Keep me', mockSettings)
+      // WHY: updateProfile set description unconditionally, so a partial update that omitted the
+      // field wiped the stored value to undefined.
+      updateProfile(profile.id, { name: 'Renamed' })
+
+      const updated = getProfiles().find((p) => p.id === profile.id)
+      expect(updated?.name).toBe('Renamed')
+      expect(updated?.description).toBe('Keep me')
     })
   })
 
@@ -377,6 +390,44 @@ describe('Settings Profiles', () => {
       const profiles = getProfiles()
       expect(profiles).toHaveLength(1)
       expect(profiles[0].name).toBe('Custom Profile')
+    })
+  })
+
+  // M10: profile create/update/delete were never recorded in the compliance audit
+  // trail even though logProfileEvent existed. Each mutation must emit an event.
+  describe('audit wiring (M10)', () => {
+    beforeEach(() => {
+      useAuditStore.setState({ events: [] })
+    })
+
+    it('records a CREATE audit event when a profile is created', () => {
+      const profile = createProfile('Audited Create', 'desc', mockSettings)
+
+      const event = useAuditStore.getState().events.find((e) => e.entityType === 'profile' && e.entityId === profile.id)
+      expect(event?.actionType).toBe('CREATE')
+    })
+
+    it('records an UPDATE audit event carrying the prior profile state', () => {
+      const profile = createProfile('Before Name', undefined, mockSettings)
+      useAuditStore.setState({ events: [] })
+
+      updateProfile(profile.id, { name: 'After Name' })
+
+      const event = useAuditStore.getState().events.find((e) => e.entityType === 'profile' && e.entityId === profile.id)
+      expect(event?.actionType).toBe('UPDATE')
+      // WHY: the audit trail must capture what the profile looked like before the edit.
+      expect((event?.previousState as { name?: string } | undefined)?.name).toBe('Before Name')
+    })
+
+    it('records a DELETE audit event when a profile is deleted', () => {
+      createProfile('Keeper', undefined, mockSettings)
+      const target = createProfile('Doomed', undefined, mockSettings)
+      useAuditStore.setState({ events: [] })
+
+      deleteProfile(target.id)
+
+      const event = useAuditStore.getState().events.find((e) => e.entityType === 'profile' && e.entityId === target.id)
+      expect(event?.actionType).toBe('DELETE')
     })
   })
 

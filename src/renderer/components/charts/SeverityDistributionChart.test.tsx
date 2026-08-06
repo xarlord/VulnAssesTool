@@ -131,6 +131,14 @@ describe('SeverityDistributionChart', () => {
       expect(screen.queryByTestId('pie-chart')).not.toBeInTheDocument()
     })
 
+    it('exposes the chart as a labelled image summarizing the distribution', () => {
+      render(<SeverityDistributionChart vulnerabilities={createMockVulnerabilities()} />)
+
+      const label = screen.getByRole('img').getAttribute('aria-label') ?? ''
+      expect(label).toMatch(/severity distribution/i)
+      expect(label).toMatch(/Critical: \d/)
+    })
+
     it('should render legend when showLegend is true', () => {
       const vulnerabilities = createMockVulnerabilities()
       render(<SeverityDistributionChart vulnerabilities={vulnerabilities} showLegend={true} />)
@@ -292,6 +300,23 @@ describe('SeverityDistributionChart', () => {
       it('should return empty array for no vulnerabilities', () => {
         const distribution = calculateSeverityDistribution([])
         expect(distribution).toEqual([])
+      })
+
+      it('should use precomputed counts when provided (Dashboard aggregate path)', () => {
+        // Why: the Dashboard drives this chart off aggregate statistics counts,
+        // not a vulnerability array (persisted projects keep counts, not vulns).
+        const distribution = calculateSeverityDistribution(undefined, {
+          critical: 3,
+          high: 2,
+          medium: 0,
+          low: 1,
+          none: 0,
+        })
+        expect(distribution.map((d) => [d.name, d.value])).toEqual([
+          ['Critical', 3],
+          ['High', 2],
+          ['Low', 1],
+        ])
       })
 
       it('should include "none" severity when present', () => {

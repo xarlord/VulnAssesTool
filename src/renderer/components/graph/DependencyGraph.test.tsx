@@ -10,10 +10,12 @@ import {
   getMaxSeverity,
   getVulnerabilityCount,
   buildGraphElements,
+  detectCycles,
   findPaths,
   findShortestPath,
   getPathEdges,
 } from './utils'
+import { MAX_GRAPH_NODES } from './types'
 import type { Component, Vulnerability } from '@@/types'
 
 // Mock cytoscape
@@ -58,10 +60,16 @@ const mockCy = {
   getElementById: vi.fn(() => mockNodeCollection),
   animate: vi.fn(),
   ready: vi.fn((cb: () => void) => cb()),
+  png: vi.fn(() => 'data:image/png;base64,mock'),
 }
 
 vi.mock('cytoscape', () => ({
-  default: vi.fn(() => mockCy),
+  // The default export is the cytoscape factory, but the component also calls
+  // cytoscape.use(fcose) at module load to register the layout extension.
+  default: Object.assign(
+    vi.fn(() => mockCy),
+    { use: vi.fn() },
+  ),
 }))
 
 // Mock cn utility
@@ -114,6 +122,22 @@ describe('DependencyGraph', () => {
       expect(screen.getByText('Upload an SBOM to view the dependency graph')).toBeInTheDocument()
     })
 
+    it('provides a labelled image and a screen-reader list as a text alternative', () => {
+      const components = [
+        createMockComponent({ id: 'c1', name: 'alpha', vulnerabilities: [] }),
+        createMockComponent({ id: 'c2', name: 'beta', vulnerabilities: ['CVE-2024-0001'] }),
+      ]
+      render(<DependencyGraph components={components} vulnerabilities={[]} />)
+
+      const label = screen.getByRole('img').getAttribute('aria-label') ?? ''
+      expect(label).toMatch(/2 components/i)
+      expect(label).toMatch(/1 with known vulnerabilities/i)
+
+      // The sr-only list names each component.
+      expect(screen.getByText(/alpha/)).toBeInTheDocument()
+      expect(screen.getByText(/beta/)).toBeInTheDocument()
+    })
+
     it('should render graph container when components exist', () => {
       const components = [createMockComponent()]
       render(<DependencyGraph components={components} vulnerabilities={[]} />)
@@ -155,6 +179,26 @@ describe('DependencyGraph', () => {
       // No buttons should be present
       const buttons = screen.queryAllByRole('button')
       expect(buttons.length).toBe(0)
+    })
+
+    it('clicking Export as Image calls cy.png() and triggers a download (FR-11.2-c)', () => {
+      render(<DependencyGraph components={[createMockComponent()]} vulnerabilities={[]} showControls={true} />)
+
+      // Scope the anchor mock to the export click only (not React's render).
+      const clickSpy = vi.fn()
+      const anchor = { href: '', download: '', click: clickSpy } as unknown as HTMLAnchorElement
+      const realCreateElement = document.createElement.bind(document)
+      const createElementSpy = vi
+        .spyOn(document, 'createElement')
+        .mockImplementation((tag: string) => (tag === 'a' ? anchor : realCreateElement(tag)))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Export as Image' }))
+
+      expect(mockCy.png).toHaveBeenCalledWith(expect.objectContaining({ full: true }))
+      expect(anchor.download).toBe('dependency-graph.png')
+      expect(clickSpy).toHaveBeenCalled()
+
+      createElementSpy.mockRestore()
     })
 
     it('should render legend when showLegend is true', () => {
@@ -308,6 +352,60 @@ describe('DependencyGraph', () => {
 
         expect(onNodeClick).not.toHaveBeenCalled()
       }
+    })
+  })
+
+  describe('Keyboard navigation', () => {
+    const twoComponents = () => [
+      createMockComponent({ id: 'c1', name: 'alpha', version: '1.0.0', vulnerabilities: [] }),
+      createMockComponent({ id: 'c2', name: 'beta', version: '2.0.0', vulnerabilities: ['CVE-2024-0001'] }),
+    ]
+
+    it('exposes graph nodes as a keyboard-navigable listbox with one option per component', () => {
+      render(<DependencyGraph components={twoComponents()} vulnerabilities={[]} />)
+
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+      const options = screen.getAllByRole('option')
+      expect(options).toHaveLength(2)
+      // First option is active by default so arrow keys have a starting point.
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+      expect(options[1]).toHaveAttribute('aria-selected', 'false')
+    })
+
+    it('moves the active node with ArrowDown / ArrowUp', () => {
+      render(<DependencyGraph components={twoComponents()} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' })
+      let options = screen.getAllByRole('option')
+      expect(options[1]).toHaveAttribute('aria-selected', 'true')
+      expect(listbox).toHaveAttribute('aria-activedescendant', options[1].id)
+
+      fireEvent.keyDown(listbox, { key: 'ArrowUp' })
+      options = screen.getAllByRole('option')
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('opens the active node details when Enter is pressed', () => {
+      const onNodeClick = vi.fn()
+      const components = twoComponents()
+      render(<DependencyGraph components={components} vulnerabilities={[]} onNodeClick={onNodeClick} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' })
+      fireEvent.keyDown(listbox, { key: 'Enter' })
+
+      expect(onNodeClick).toHaveBeenCalledWith(components[1])
+    })
+
+    it('opens a node`s details when its option is clicked (keyboard-equivalent of a canvas tap)', () => {
+      const onNodeClick = vi.fn()
+      const components = twoComponents()
+      render(<DependencyGraph components={components} vulnerabilities={[]} onNodeClick={onNodeClick} />)
+
+      fireEvent.click(screen.getAllByRole('option')[0])
+
+      expect(onNodeClick).toHaveBeenCalledWith(components[0])
     })
   })
 
@@ -512,6 +610,48 @@ describe('Helper Functions', () => {
     })
   })
 
+  describe('detectCycles (FR-11.1-a)', () => {
+    it('returns the edge keys of a 3-node cycle A->B->C->A', () => {
+      const components = [
+        createMockComponent({ id: 'A', dependencies: ['B'] }),
+        createMockComponent({ id: 'B', dependencies: ['C'] }),
+        createMockComponent({ id: 'C', dependencies: ['A'] }),
+      ]
+      const cycles = detectCycles(components)
+      expect(cycles.has('A->B')).toBe(true)
+      expect(cycles.has('B->C')).toBe(true)
+      expect(cycles.has('C->A')).toBe(true)
+      expect(cycles.size).toBe(3)
+    })
+
+    it('returns an empty set for a pure DAG', () => {
+      const components = [
+        createMockComponent({ id: 'A', dependencies: ['B'] }),
+        createMockComponent({ id: 'B', dependencies: ['C'] }),
+        createMockComponent({ id: 'C' }),
+      ]
+      expect(detectCycles(components).size).toBe(0)
+    })
+
+    it('detects a self-loop A->A', () => {
+      const components = [createMockComponent({ id: 'A', dependencies: ['A'] })]
+      expect(detectCycles(components).has('A->A')).toBe(true)
+    })
+
+    it('flags only the cyclic edges when a cycle coexists with an acyclic branch', () => {
+      const components = [
+        createMockComponent({ id: 'A', dependencies: ['B'] }),
+        createMockComponent({ id: 'B', dependencies: ['A'] }), // A<->B cycle
+        createMockComponent({ id: 'X', dependencies: ['Y'] }), // X->Y acyclic
+        createMockComponent({ id: 'Y' }),
+      ]
+      const cycles = detectCycles(components)
+      expect(cycles.has('A->B')).toBe(true)
+      expect(cycles.has('B->A')).toBe(true)
+      expect(cycles.has('X->Y')).toBe(false)
+    })
+  })
+
   describe('buildGraphElements', () => {
     it('should create nodes for all components', () => {
       const components = [
@@ -548,6 +688,45 @@ describe('Helper Functions', () => {
       const elements = buildGraphElements(components, vulnerabilities)
 
       expect(elements.edges.length).toBe(0)
+    })
+
+    it('should cap nodes at MAX_GRAPH_NODES for very large component sets (FR-11.1-b)', () => {
+      // Sequential deps comp-0->comp-1->...; more than the cap so truncation kicks in.
+      const total = MAX_GRAPH_NODES + 50
+      const components = Array.from({ length: total }, (_unused, i) =>
+        createMockComponent({ id: `comp-${i}`, dependencies: i < total - 1 ? [`comp-${i + 1}`] : [] }),
+      )
+
+      const elements = buildGraphElements(components, [])
+
+      expect(elements.nodes.length).toBe(MAX_GRAPH_NODES)
+      // Every retained edge must reference only retained nodes (no dangling edges).
+      const retained = new Set(elements.nodes.map((n) => n.data.id))
+      for (const edge of elements.edges) {
+        expect(retained.has(edge.data.source)).toBe(true)
+        expect(retained.has(edge.data.target)).toBe(true)
+      }
+    })
+
+    it('should mark edges participating in a circular dependency as isCycleEdge (FR-11.1-a)', () => {
+      // A->B->C->A is a cycle; a 4th component D->A is acyclic (D depends into the
+      // cycle but nothing points back to D).
+      const components = [
+        createMockComponent({ id: 'A', dependencies: ['B'] }),
+        createMockComponent({ id: 'B', dependencies: ['C'] }),
+        createMockComponent({ id: 'C', dependencies: ['A'] }),
+        createMockComponent({ id: 'D', dependencies: ['A'] }),
+      ]
+
+      const elements = buildGraphElements(components, [])
+      const edgeOf = (source: string) =>
+        elements.edges.find((e) => e.data.source === source)?.data as { isCycleEdge?: boolean } | undefined
+
+      expect(edgeOf('A')?.isCycleEdge).toBe(true)
+      expect(edgeOf('B')?.isCycleEdge).toBe(true)
+      expect(edgeOf('C')?.isCycleEdge).toBe(true)
+      // D->A is not part of any cycle.
+      expect(edgeOf('D')?.isCycleEdge).toBeFalsy()
     })
 
     it('should include vulnerability count in node data', () => {

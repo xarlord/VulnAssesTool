@@ -189,15 +189,15 @@ export abstract class BaseVulnerabilityProvider implements VulnerabilityProvider
    * Execute API call with rate limiting and retry logic
    */
   protected async executeApiCall<T>(apiCall: () => Promise<T>, maxRetries = 3, retryDelay = 1000): Promise<T> {
-    // Check rate limit
-    const canProceed = await this.checkRateLimit()
-    if (!canProceed) {
-      throw new Error(`Rate limit exceeded for ${this.name}. Please wait before making more requests.`)
-    }
-
     let lastError: Error | undefined
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Check rate limit before every attempt, not just the first
+      const canProceed = await this.checkRateLimit()
+      if (!canProceed) {
+        throw new Error(`Rate limit exceeded for ${this.name}. Please wait before making more requests.`)
+      }
+
       try {
         return await apiCall()
       } catch (error) {

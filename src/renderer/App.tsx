@@ -6,13 +6,13 @@ import { MenuActionListener } from './components/MenuActionListener'
 // NotificationCenter is used via Toaster notification system
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { CommandPalette, useCommandPalette, CommandPaletteTrigger } from './components/CommandPalette'
+import { AppShell } from './components/shell/AppShell'
 import { OnboardingTour, useOnboardingTour } from './components/onboarding'
 import { useSyncNotifications } from './lib/hooks'
 import { registerAppCommands, unregisterAppCommands } from './lib/commands'
 
 // Lazy-loaded pages for better startup performance
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
-const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })))
 const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then((m) => ({ default: m.ProjectDetail })))
 const Search = lazy(() => import('./pages/Search').then((m) => ({ default: m.Search })))
@@ -24,6 +24,8 @@ const DependencyGraphPage = lazy(() =>
 )
 
 const ExecutiveDashboard = lazy(() => import('./components/executive').then((m) => ({ default: m.ExecutiveDashboard })))
+
+const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })))
 
 // Loading fallback component
 function PageLoader() {
@@ -138,15 +140,20 @@ export function App() {
         <CommandPaletteTrigger onTrigger={togglePalette} />
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/executive" element={<ExecutiveDashboard />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/project/:projectId" element={<ProjectDetail />} />
-            <Route path="/project/:projectId/fpf" element={<FalsePositiveFilterPage />} />
-            <Route path="/project/:projectId/graph" element={<DependencyGraphPage />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* Every page renders inside the AppShell layout route (sidebar + top bar).
+                The Dashboard is the root experience — the old marketing HomePage is gone. */}
+            <Route element={<AppShell onOpenCommandPalette={togglePalette} />}>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/executive" element={<ExecutiveDashboard />} />
+              <Route path="/search" element={<Search />} />
+              <Route path="/project/:projectId" element={<ProjectDetail />} />
+              <Route path="/project/:projectId/fpf" element={<FalsePositiveFilterPage />} />
+              <Route path="/project/:projectId/graph" element={<DependencyGraphPage />} />
+              <Route path="/audit" element={<AuditLog />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Route>
           </Routes>
         </Suspense>
         <Toaster />

@@ -1,13 +1,31 @@
 /**
- * Full User Journey Integration Tests
+ * Full User Journey Integration Tests — content contracts
  *
- * End-to-end workflow tests combining multiple features:
- * 1. Full vulnerability assessment: create → upload → scan → export
- * 2. Full FPF journey: create → upload → configure → filter → review
- * 3. Multi-project: create 2 projects → upload different SBOMs → verify isolation
+ * End-to-end workflows combining multiple features, restricted to what the offline seeded
+ * environment can drive deterministically:
+ *   1. Create → upload SBOM (local parse) → inspect Components/Vulnerabilities tabs → export.
+ *   2. Create → upload SBOM → open the False Positive Filter page, its default config, and the
+ *      Configuration wizard.
+ *   3. Create two projects with different SBOM formats → verify component data is isolated per
+ *      project → delete one → verify the other survives. (Already a real content contract —
+ *      kept unchanged.)
+ *
+ * Grounding:
+ *   - pages/ProjectDetail.tsx — header "Export" (exact) button
+ *   - components/ExportDialog.tsx — DialogTitle "Export Data" + CSV/JSON/PDF format buttons
+ *   - pages/FalsePositiveFilter.tsx — PageHeader h1 "False Positive Filter" + "Project: <name>";
+ *     tabs ['Dashboard','Review Filtered','Configuration','Miss-Filter Detection'] (role=tab,
+ *     aria-selected); Configuration tab's wizard Cancel returns activeTab to 'dashboard'
+ *   - components/FPF/FilterDashboard.tsx — "Configuration Active" (default config is auto-set
+ *     once the project loads) + "No filter results yet. Run the filter to see effectiveness
+ *     metrics." (shown until a filter batch is run)
+ *   - components/FPF/ConfigWizard.tsx — h2 "FPF Configuration Wizard"; step-1 "Cancel" button
+ *
+ * Running the FPF filter to a meaningful (non-degenerate) result needs a scanned project with
+ * real vulnerabilities — infeasible offline, see the skipped test below.
  */
 
-import { test, expect } from '../test-helper'
+import { test, expect, resetAppState } from '../test-helper'
 import {
   createTestProject,
   uploadSbomFile,
@@ -23,6 +41,11 @@ import path from 'node:path'
 const FIXTURES_DIR = path.join(import.meta.dirname, '..', 'fixtures', 'sbom')
 
 test.describe('Full User Journey', () => {
+  test.beforeEach(async ({ page }) => {
+    await resetAppState(page)
+    await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
+  })
+
   test('complete vulnerability assessment journey', async ({ page }) => {
     // Step 1: Create project
     const projectName = `Full Journey ${Date.now()}`
@@ -48,20 +71,14 @@ test.describe('Full User Journey', () => {
     const vulnTab = page.getByRole('tab', { name: /vulnerabilities/i })
     await expect(vulnTab).toHaveAttribute('aria-selected', 'true')
 
-    // Step 5: Try export
-    const exportButton = page.getByRole('button', { name: /export/i }).first()
-    if (await exportButton.isVisible().catch(() => false)) {
-      await exportButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Export dialog should open
-      const dialog = page.getByRole('dialog')
-      if (await dialog.isVisible().catch(() => false)) {
-        // Verify export format options exist
-        await expect(page.getByText(/pdf|csv|json/i).first()).toBeVisible()
-        await closeDialog(page)
-      }
+    // Step 5: Export dialog offers the designed CSV/JSON/PDF formats.
+    await page.getByRole('button', { name: 'Export', exact: true }).first().click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('Export Data')).toBeVisible()
+    for (const format of ['CSV', 'JSON', 'PDF']) {
+      await expect(dialog.getByRole('button', { name: format })).toBeVisible()
     }
+    await closeDialog(page)
   })
 
   test('complete FPF journey', async ({ page }) => {
@@ -72,61 +89,31 @@ test.describe('Full User Journey', () => {
     const sbomPath = path.join(FIXTURES_DIR, 'sample-cyclonedx.json')
     await uploadSbomFile(page, sbomPath)
 
-    // Step 2: Navigate to FPF page
-    const url = page.url()
-    const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
+    // Step 2: Navigate to the project's False Positive Filter page via the header button.
+    await page.getByRole('button', { name: 'False Positive Filter' }).click()
+    await expect(page).toHaveURL(/\/project\/[^/]+\/fpf$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'False Positive Filter' })).toBeVisible({
+      timeout: E2E_SELECTOR_TIMEOUT,
+    })
+    await expect(page.getByText(`Project: ${projectName}`)).toBeVisible()
 
-    await page.evaluate((id: string) => {
-      const nav = (window as unknown as Record<string, unknown>).__navigate
-      if (typeof nav === 'function') nav(`/project/${id}/fpf`)
-    }, projectId)
-    await page.waitForLoadState('domcontentloaded')
-    await page.waitForTimeout(E2E_UI_DELAY)
+    // Step 3: Dashboard tab (default) — a default config is auto-populated once the project
+    // loads, and there are no filter results yet since the filter hasn't been run.
+    await expect(page.getByText('Configuration Active')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+    await expect(page.getByText('No filter results yet. Run the filter to see effectiveness metrics.')).toBeVisible()
 
-    // Step 3: Configure FPF - open config tab
-    const configTab = page.getByRole('tab', { name: /configuration/i })
-    if (await configTab.isVisible().catch(() => false)) {
-      await configTab.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+    // Step 4: Configuration tab opens the wizard; Cancel returns to the dashboard tab.
+    await page.getByRole('tab', { name: 'Configuration' }).click()
+    await expect(page.getByRole('heading', { name: 'FPF Configuration Wizard' })).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByRole('tab', { name: 'Dashboard' })).toHaveAttribute('aria-selected', 'true')
+  })
 
-      // Verify config wizard is shown
-      const configContent = page.locator('form, [class*="config"], [class*="wizard"]').first()
-      if (await configContent.isVisible().catch(() => false)) {
-        await expect(configContent).toBeVisible()
-      }
-
-      // Go back to dashboard
-      const dashboardTab = page.getByRole('tab', { name: /dashboard/i })
-      if (await dashboardTab.isVisible().catch(() => false)) {
-        await dashboardTab.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
-    }
-
-    // Step 4: Run filter
-    const runFilterButton = page.getByRole('button', { name: /run filter|start filter|filter now/i }).first()
-    if (await runFilterButton.isVisible().catch(() => false)) {
-      await runFilterButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
-
-      // Check results appeared or review tab activated
-      const resultsElement = page.getByText(/filtered|kept|total|results|processing/i)
-      if (
-        await resultsElement
-          .first()
-          .isVisible()
-          .catch(() => false)
-      ) {
-        await expect(resultsElement.first()).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
-      }
-    }
-
-    // Step 5: Go back to project
-    const backButton = page.getByRole('button', { name: /back to project/i })
-    if (await backButton.isVisible().catch(() => false)) {
-      await backButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-    }
+  test.skip('should run the false-positive filter against scanned vulnerabilities', async () => {
+    // Infeasible offline: a meaningful filter run needs a scanned project with real
+    // vulnerabilities. createTestProject + a local SBOM parse produces zero vulnerabilities, so
+    // filterBatch degenerates to a total:0 result (NaN% effectiveness) — not a designed content
+    // contract.
   })
 
   test('multi-project data isolation', async ({ page }) => {
@@ -190,9 +177,10 @@ test.describe('Full User Journey', () => {
     // Delete project 2 from dashboard by clicking its delete button scoped to its card
     const project2Card = page.locator('.group.rounded-lg.border').filter({ hasText: project2 }).first()
 
-    // The delete uses window.confirm() — accept the browser dialog
-    page.on('dialog', (dialog) => dialog.accept())
     await project2Card.getByLabel(/delete/i).click()
+
+    // Delete now uses an in-app ConfirmDialog (P7), not window.confirm(); confirm the deletion.
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click()
     await page.waitForTimeout(E2E_UI_DELAY * 2)
 
     // Verify project 2 is gone but project 1 still exists

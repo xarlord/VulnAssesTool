@@ -17,6 +17,7 @@
  */
 
 import { RateLimiter, createNvdRateLimiter } from './rateLimiter.js'
+import { computeThrottleDelayMs } from './bandwidthThrottle.js'
 
 // NVD API 2.0 base URL
 const NVD_API_V2_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
@@ -199,6 +200,12 @@ export interface NvdDateRangeFetchOptions {
  */
 export interface NvdDeltaFetchOptions {
   lastModifiedDate: Date
+  // End of the lastModified window. Defaults to now; delta sync sets it to bound each
+  // sub-range to ≤120 days, the maximum span the NVD API accepts (H25).
+  lastModifiedEndDate?: Date
+  // Zero-based pagination cursor. Defaults to 0; delta sync advances it so a truncated
+  // window resumes where the previous page ended instead of re-fetching from 0 (C3).
+  startIndex?: number
   apiKey?: string
   onProgress?: (progress: NvdDownloadProgress) => void
   signal?: AbortSignal
@@ -388,7 +395,9 @@ class ResponseCache {
 class ConcurrentExecutor {
   private concurrency: number
   private activeCount: number = 0
-  private queue: Array<() => Promise<void>> = []
+  // Queue entries keep their reject handle so clearQueue() can reject still-queued callers
+  // rather than dropping them silently (H26).
+  private queue: Array<{ run: () => void; reject: (error: Error) => void }> = []
 
   constructor(concurrency: number = DEFAULT_CONCURRENCY) {
     this.concurrency = Math.max(1, Math.min(concurrency, 10))
@@ -399,13 +408,12 @@ class ConcurrentExecutor {
    */
   async execute<T>(task: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
-      const wrappedTask = async () => {
+      const run = async () => {
         this.activeCount++
         try {
-          const result = await task()
-          resolve(result)
+          resolve(await task())
         } catch (error) {
-          reject(error)
+          reject(error as Error)
         } finally {
           this.activeCount--
           this.processQueue()
@@ -413,9 +421,9 @@ class ConcurrentExecutor {
       }
 
       if (this.activeCount < this.concurrency) {
-        wrappedTask()
+        run()
       } else {
-        this.queue.push(wrappedTask)
+        this.queue.push({ run, reject })
       }
     })
   }
@@ -427,7 +435,7 @@ class ConcurrentExecutor {
     if (this.queue.length > 0 && this.activeCount < this.concurrency) {
       const next = this.queue.shift()
       if (next) {
-        next()
+        next.run()
       }
     }
   }
@@ -444,10 +452,15 @@ class ConcurrentExecutor {
   }
 
   /**
-   * Clear the queue
+   * Clear the queue, rejecting any still-queued callers so their awaits settle (H26)
+   * instead of hanging when a download is cancelled.
    */
   clearQueue(): void {
+    const pending = this.queue
     this.queue = []
+    for (const item of pending) {
+      item.reject(new Error('NVD request cancelled'))
+    }
   }
 }
 
@@ -457,15 +470,40 @@ class ConcurrentExecutor {
 export class NvdApiV2Client {
   private rateLimiter: RateLimiter
   private apiKey?: string
-  private abortController: AbortController | null = null
+  // Every in-flight fetch registers its controller here so cancel() aborts ALL concurrent
+  // fetches, not just the most recently started one (L7). Each fetch deregisters on finish.
+  private abortControllers: Set<AbortController> = new Set()
   private cache: ResponseCache
   private executor: ConcurrentExecutor
+  private bandwidthLimitKBps: number
 
-  constructor(apiKey?: string, concurrency: number = DEFAULT_CONCURRENCY) {
+  constructor(apiKey?: string, concurrency: number = DEFAULT_CONCURRENCY, bandwidthLimitKBps: number = 0) {
     this.apiKey = apiKey
     this.rateLimiter = createNvdRateLimiter(!!apiKey)
     this.cache = new ResponseCache(CACHE_TTL_MS)
     this.executor = new ConcurrentExecutor(concurrency)
+    this.bandwidthLimitKBps = bandwidthLimitKBps > 0 ? bandwidthLimitKBps : 0
+  }
+
+  /**
+   * Set the download bandwidth limit in KB/s (0 = unlimited). Applied after each
+   * fetched page via computeThrottleDelayMs. A non-positive value disables it.
+   */
+  setBandwidthLimitKBps(kbps: number): void {
+    this.bandwidthLimitKBps = kbps > 0 ? kbps : 0
+  }
+
+  /**
+   * Pause after a real network page so the average download rate stays at/below
+   * the configured KB/s (FR-10.3). No-op at the default (0 = unlimited), so an
+   * unset limit leaves sync timing byte-for-byte unchanged.
+   */
+  private async throttleForPayload(response: NvdApiResponseV2): Promise<void> {
+    if (this.bandwidthLimitKBps <= 0) {
+      return
+    }
+    const bytes = Buffer.byteLength(JSON.stringify(response))
+    await this.delay(computeThrottleDelayMs(bytes, this.bandwidthLimitKBps))
   }
 
   /**
@@ -519,8 +557,11 @@ export class NvdApiV2Client {
    * Fetch all CVEs for a specific year
    */
   async fetchYear(options: NvdYearFetchOptions): Promise<NvdFetchResult> {
-    const startDate = new Date(options.year, 0, 1) // January 1st
-    const endDate = new Date(options.year, 11, 31, 23, 59, 59) // December 31st
+    // Construct the year window in UTC so it pairs with the UTC formatting in
+    // formatDateForNvd; a local-time construction would shift the window sent to NVD by the
+    // host's UTC offset and miss/duplicate CVEs near the year boundary.
+    const startDate = new Date(Date.UTC(options.year, 0, 1)) // January 1st 00:00:00 UTC
+    const endDate = new Date(Date.UTC(options.year, 11, 31, 23, 59, 59)) // December 31st 23:59:59 UTC
 
     return this.fetchDateRange({
       ...options,
@@ -548,9 +589,15 @@ export class NvdApiV2Client {
     const resultsPerPage = options.resultsPerPage || DEFAULT_RESULTS_PER_PAGE
     const useCache = options.useCache !== false
 
-    // Create abort controller if not provided
-    this.abortController = new AbortController()
-    const signal = options.signal || this.abortController.signal
+    // Register this fetch's controller so cancel() can abort it (L7); compose any
+    // caller-supplied signal so external aborts still propagate.
+    const controller = new AbortController()
+    this.abortControllers.add(controller)
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort()
+      else options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+    const signal = controller.signal
 
     try {
       let hasMore = true
@@ -616,6 +663,11 @@ export class NvdApiV2Client {
           if (response && useCache) {
             this.cache.set(cacheKey, response)
           }
+
+          // Throttle only real network fetches (cached pages transferred nothing).
+          if (response) {
+            await this.throttleForPayload(response)
+          }
         }
 
         if (!response) {
@@ -677,6 +729,9 @@ export class NvdApiV2Client {
       })
 
       throw error
+    } finally {
+      // Always deregister: a finished/failed fetch's controller must not be aborted by a later cancel().
+      this.abortControllers.delete(controller)
     }
   }
 
@@ -688,17 +743,28 @@ export class NvdApiV2Client {
     const allCves: NvdCveV2[] = []
     let totalResults = 0
     let fromCache = false
+    let truncated = false
 
     // Format date for NVD API (ISO 8601, UTC)
     const lastModStartDate = this.formatDateForNvd(options.lastModifiedDate)
-    const lastModEndDate = this.formatDateForNvd(new Date())
+    // Bound the window end (defaults to now) so a caller can chunk a large gap into
+    // ≤120-day sub-ranges the NVD API accepts (H25).
+    const lastModEndDate = this.formatDateForNvd(options.lastModifiedEndDate ?? new Date())
 
-    let startIndex = 0
+    // Resume at the caller's cursor (defaults to 0) so a truncated window continues rather
+    // than restarting from the first page (C3).
+    let startIndex = options.startIndex ?? 0
+    let firstPage = true
     const resultsPerPage = options.resultsPerPage || DEFAULT_RESULTS_PER_PAGE
     const useCache = options.useCache !== false
 
-    this.abortController = new AbortController()
-    const signal = options.signal || this.abortController.signal
+    const controller = new AbortController()
+    this.abortControllers.add(controller)
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort()
+      else options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+    const signal = controller.signal
 
     try {
       let hasMore = true
@@ -750,12 +816,19 @@ export class NvdApiV2Client {
           if (response && useCache) {
             this.cache.set(cacheKey, response)
           }
+
+          // Throttle only real network fetches (cached pages transferred nothing).
+          if (response) {
+            await this.throttleForPayload(response)
+          }
         }
 
         if (!response) break
 
-        if (startIndex === 0) {
+        // Capture the total on the first page regardless of the starting cursor.
+        if (firstPage) {
           totalResults = response.totalResults
+          firstPage = false
         }
 
         const cves = response.vulnerabilities.map((v) => v.cve)
@@ -763,6 +836,13 @@ export class NvdApiV2Client {
 
         hasMore = startIndex + response.resultsPerPage < totalResults
         startIndex += response.resultsPerPage
+
+        // Safety cap (mirrors fetchDateRange): a very large "modified since" window — e.g.
+        // after a long outage or an NVD re-index — could otherwise grow allCves without bound.
+        if (allCves.length >= 50000) {
+          truncated = true
+          break
+        }
       }
 
       options.onProgress?.({
@@ -779,7 +859,7 @@ export class NvdApiV2Client {
       return {
         cves: allCves,
         totalResults,
-        truncated: false,
+        truncated,
         durationMs: Date.now() - startTime,
         fromCache,
       }
@@ -797,6 +877,8 @@ export class NvdApiV2Client {
       })
 
       throw error
+    } finally {
+      this.abortControllers.delete(controller)
     }
   }
 
@@ -1023,10 +1105,12 @@ export class NvdApiV2Client {
    * Cancel any ongoing download
    */
   cancel(): void {
-    if (this.abortController) {
-      this.abortController.abort()
-      this.abortController = null
+    // Abort every in-flight fetch (L7), then reject anything still queued in the rate
+    // limiter / executor so awaiting callers reject instead of hanging (H26).
+    for (const controller of this.abortControllers) {
+      controller.abort()
     }
+    this.abortControllers.clear()
     this.rateLimiter.reset()
     this.executor.clearQueue()
   }
@@ -1077,12 +1161,15 @@ export class NvdApiV2Client {
    * Format date for NVD API (ISO 8601 without timezone)
    */
   private formatDateForNvd(date: Date): string {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const hours = String(date.getHours()).padStart(2, '0')
-    const minutes = String(date.getMinutes()).padStart(2, '0')
-    const seconds = String(date.getSeconds()).padStart(2, '0')
+    // Use UTC getters: the emitted string is timezone-less and the NVD API treats it as
+    // UTC, so local getters on a non-UTC host would shift the pub/lastMod window by the
+    // local offset and miss or duplicate CVEs near the window boundaries.
+    const year = date.getUTCFullYear()
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(date.getUTCDate()).padStart(2, '0')
+    const hours = String(date.getUTCHours()).padStart(2, '0')
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0')
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0')
 
     return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000`
   }
@@ -1098,8 +1185,12 @@ export class NvdApiV2Client {
 /**
  * Create a new NVD API v2 client
  */
-export function createNvdApiV2Client(apiKey?: string, concurrency?: number): NvdApiV2Client {
-  return new NvdApiV2Client(apiKey, concurrency)
+export function createNvdApiV2Client(
+  apiKey?: string,
+  concurrency?: number,
+  bandwidthLimitKBps?: number,
+): NvdApiV2Client {
+  return new NvdApiV2Client(apiKey, concurrency, bandwidthLimitKBps)
 }
 
 /**

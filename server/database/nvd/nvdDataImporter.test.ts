@@ -521,6 +521,65 @@ describe('NvdDataImporter', () => {
       expect(cveRow[0].cvss_v2_score).toBe(7.5)
     })
 
+    it('should keep a real CVSS v3.1 baseScore of 0.0 as primary (not fall through to v2)', async () => {
+      // WHY: 0.0 is a legitimate "no impact" v3.1 score but is falsy; the old
+      // `!transformed.cvss_score` check treated it as missing and overwrote the primary
+      // with the v2 7.5 fallback. `=== null` preserves the real 0.0.
+      const cveZeroV31: NvdCveV2 = {
+        ...sampleCve,
+        id: 'CVE-2024-ZEROV31',
+        metrics: {
+          cvssMetricV31: [
+            {
+              source: 'nvd@nist.gov',
+              type: 'Primary',
+              cvssData: {
+                version: '3.1',
+                vectorString: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:N/I:N/A:N',
+                attackVector: 'NETWORK',
+                attackComplexity: 'HIGH',
+                privilegesRequired: 'HIGH',
+                userInteraction: 'REQUIRED',
+                scope: 'UNCHANGED',
+                confidentialityImpact: 'NONE',
+                integrityImpact: 'NONE',
+                availabilityImpact: 'NONE',
+                baseScore: 0.0,
+                baseSeverity: 'NONE',
+              },
+            },
+          ],
+          // A higher v2 score must NOT overwrite the real 0.0 v3.1 primary.
+          cvssMetricV2: [
+            {
+              source: 'nvd@nist.gov',
+              type: 'Primary',
+              cvssData: {
+                version: '2.0',
+                vectorString: 'AV:N/AC:L/Au:N/C:P/I:P/A:P',
+                accessVector: 'NETWORK',
+                accessComplexity: 'LOW',
+                authentication: 'NONE',
+                confidentialityImpact: 'PARTIAL',
+                integrityImpact: 'PARTIAL',
+                availabilityImpact: 'PARTIAL',
+                baseScore: 7.5,
+              },
+              baseSeverity: 'HIGH',
+            },
+          ],
+        },
+      }
+
+      const result = await importer.importCves([cveZeroV31])
+      expect(result.success).toBe(true)
+
+      const cveRow = db.prepare('SELECT cvss_score, cvss_v31_score, severity FROM cves WHERE id = ?').all(cveZeroV31.id)
+      expect(cveRow[0].cvss_v31_score).toBe(0)
+      expect(cveRow[0].cvss_score).toBe(0)
+      expect(cveRow[0].severity).toBe('NONE')
+    })
+
     it('should handle CVE with no vulnStatus or sourceIdentifier', async () => {
       const cveMinimal: NvdCveV2 = {
         ...sampleCve,

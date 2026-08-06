@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Shield, Filter, Settings, AlertTriangle } from 'lucide-react'
+import { Shield, Filter, Settings, AlertTriangle } from 'lucide-react'
 import { useProjects } from '@/store/useStore'
+import { PageHeader } from '@/components/PageHeader'
 import { FilterDashboard } from '@/components/FPF/FilterDashboard'
 import { FilteredItemsReview } from '@/components/FPF/FilteredItemsReview'
 import type { FilteredVulnerability } from '@/components/FPF/FilteredItemsReview'
@@ -12,6 +13,7 @@ import { toast } from '@/components/Toaster'
 import type { SystemConfig, FilterBatchResult, FilterResult, MissFilterDetectionConfig } from '@@/types/fpf'
 import type { Vulnerability, Component } from '@@/types'
 import { FalsePositiveFilter } from '@/lib/services/fpf/falsePositiveFilter'
+import type { Severity } from '@/lib/severity'
 
 type TabType = 'dashboard' | 'review' | 'config' | 'missfilter'
 
@@ -57,8 +59,7 @@ function exportToCsv(items: FilteredVulnerability[]): void {
   URL.revokeObjectURL(url)
 }
 
-function resolveSeverity(vuln: Vulnerability): 'critical' | 'high' | 'medium' | 'low' {
-  if (vuln.severity === 'none') return 'low'
+function resolveSeverity(vuln: Vulnerability): Severity {
   return vuln.severity
 }
 
@@ -174,7 +175,9 @@ export function FalsePositiveFilterPage() {
         if (vuln.isKev) reasons.push('Known exploit (CISA KEV)')
 
         return {
-          id: `mf-${idx}`,
+          // Encode the CVE id in the element id so handleMissFlag's `mf-<idx>-` strip yields the
+          // real vulnerabilityId (isFlagged checks that), instead of the synthetic `mf-<idx>`.
+          id: `mf-${idx}-${r.vulnerabilityId}`,
           vulnerabilityId: r.vulnerabilityId,
           cveId: r.vulnerabilityId,
           severity: resolveSeverity(vuln),
@@ -228,6 +231,10 @@ export function FalsePositiveFilterPage() {
       if (result.results.length > 0) {
         setActiveTab('review')
       }
+    } catch (error) {
+      // filterBatch throwing was previously an unhandled rejection: the spinner just stopped
+      // with no feedback. Surface it.
+      toast.error('Filter Failed', error instanceof Error ? error.message : 'Failed to run the false-positive filter.')
     } finally {
       setIsFiltering(false)
     }
@@ -312,14 +319,6 @@ export function FalsePositiveFilterPage() {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </button>
-
           <div className="text-center py-12">
             <Shield className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
             <h1 className="text-2xl font-semibold mb-2">No Project Selected</h1>
@@ -340,29 +339,17 @@ export function FalsePositiveFilterPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate(`/project/${projectId}`)}
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back to Project</span>
-              </button>
-              <div className="h-6 w-px bg-border" />
-              <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-primary" />
-                <h1 className="text-lg font-semibold">False Positive Filter</h1>
-              </div>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Project: <span className="font-medium text-foreground">{project.name}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <div className="max-w-7xl mx-auto px-6 pt-6">
+        <PageHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Shield className="h-6 w-6 text-primary" />
+              False Positive Filter
+            </span>
+          }
+          description={`Project: ${project.name}`}
+        />
+      </div>
 
       <div className="border-b border-border bg-card">
         <div className="max-w-7xl mx-auto px-6">
@@ -387,7 +374,7 @@ export function FalsePositiveFilterPage() {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto px-6 py-6">
+      <div className="max-w-7xl mx-auto px-6 py-6">
         {activeTab === 'dashboard' && (
           <FilterDashboard
             config={config}
@@ -441,7 +428,7 @@ export function FalsePositiveFilterPage() {
             onLLMAnalysis={handleLlmUnavailable}
           />
         )}
-      </main>
+      </div>
     </div>
   )
 }

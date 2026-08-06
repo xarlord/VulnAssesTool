@@ -76,47 +76,128 @@ export function buildSearchIndex(projects: Project[]): SearchIndex {
   return index
 }
 
+/** A single term in a parsed query: literal text to find, optionally negated (NOT). */
+export interface SearchTerm {
+  text: string
+  negated: boolean
+}
+
 /**
- * Simple text matching search
+ * A parsed boolean query in disjunctive form: an outer OR of groups, each group an AND
+ * of terms. A haystack matches if ANY group matches; a group matches if ALL its terms are
+ * satisfied (a negated term is satisfied when the text does NOT contain it).
+ */
+export type ParsedQuery = SearchTerm[][]
+
+/**
+ * Split a raw query into tokens, honoring "quoted phrases" (always literal terms, even if
+ * they spell an operator) and the bare uppercase operators AND/OR/NOT. Lowercase and/or/not
+ * are ordinary search terms — only the uppercase forms act as operators.
+ */
+function tokenizeQuery(query: string): Array<{ kind: 'and' | 'or' | 'not' | 'term'; text: string }> {
+  const tokens: Array<{ kind: 'and' | 'or' | 'not' | 'term'; text: string }> = []
+  const pattern = /"([^"]*)"|(\S+)/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(query)) !== null) {
+    if (match[1] !== undefined) {
+      const phrase = match[1].trim().toLowerCase()
+      if (phrase) tokens.push({ kind: 'term', text: phrase })
+    } else {
+      const word = match[2]
+      if (word === 'AND') tokens.push({ kind: 'and', text: word })
+      else if (word === 'OR') tokens.push({ kind: 'or', text: word })
+      else if (word === 'NOT') tokens.push({ kind: 'not', text: word })
+      else tokens.push({ kind: 'term', text: word.toLowerCase() })
+    }
+  }
+  return tokens
+}
+
+/**
+ * Parse a query string into an OR-of-AND boolean structure. Adjacent terms are implicitly
+ * ANDed; OR starts a new group; NOT negates the term that follows it. Dangling or duplicate
+ * operators are ignored so malformed input never throws.
+ */
+export function parseSearchQuery(query: string): ParsedQuery {
+  const groups: ParsedQuery = []
+  let current: SearchTerm[] = []
+  let negateNext = false
+
+  for (const token of tokenizeQuery(query)) {
+    if (token.kind === 'or') {
+      if (current.length > 0) groups.push(current)
+      current = []
+      negateNext = false
+    } else if (token.kind === 'not') {
+      negateNext = true
+    } else if (token.kind === 'term') {
+      current.push({ text: token.text, negated: negateNext })
+      negateNext = false
+    }
+    // An explicit AND is just a joiner between terms; nothing to record.
+  }
+  if (current.length > 0) groups.push(current)
+  return groups
+}
+
+/** True if the (already lowercased) haystack satisfies the parsed boolean query. */
+export function matchesParsedQuery(haystack: string, query: ParsedQuery): boolean {
+  if (query.length === 0) return false
+  return query.some((group) =>
+    group.every((term) => (term.negated ? !haystack.includes(term.text) : haystack.includes(term.text))),
+  )
+}
+
+/**
+ * Search the index with advanced boolean syntax (AND, OR, NOT) and "quoted phrases".
+ * Adjacent terms are ANDed by default. Results are ranked by relevance, with title matches
+ * and an exact single-term title match boosted (preserving the pre-boolean ranking).
  */
 export function searchIndex(index: SearchIndex, query: string): SearchResult[] {
   if (!query.trim()) {
     return []
   }
 
-  const lowerQuery = query.toLowerCase()
-  const results: SearchResult[] = []
+  const parsed = parseSearchQuery(query)
+  if (parsed.length === 0) {
+    // The query was only operators/punctuation — there is nothing to match.
+    return []
+  }
 
-  // Search in all collections
+  const positiveTerms = parsed
+    .flat()
+    .filter((term) => !term.negated)
+    .map((term) => term.text)
+  // A lone positive term (no OR/AND/NOT) enables the exact-title-match boost.
+  const singleTerm = parsed.length === 1 && parsed[0].length === 1 && !parsed[0][0].negated ? parsed[0][0].text : null
+
+  const results: SearchResult[] = []
   const collections = [index.projects, index.components, index.vulnerabilities]
 
   for (const collection of collections) {
-    for (const [_id, result] of collection.entries()) {
-      const titleMatch = result.title.toLowerCase().includes(lowerQuery)
-      const descriptionMatch = result.description.toLowerCase().includes(lowerQuery)
+    for (const result of collection.values()) {
+      const titleLower = result.title.toLowerCase()
+      const descLower = result.description.toLowerCase()
 
-      if (titleMatch || descriptionMatch) {
-        // Calculate relevance score
-        let relevance = result.relevance
-
-        if (titleMatch) {
-          relevance += 0.3
-        }
-
-        if (descriptionMatch) {
-          relevance += 0.1
-        }
-
-        // Boost exact matches
-        if (result.title.toLowerCase() === lowerQuery) {
-          relevance += 0.5
-        }
-
-        results.push({
-          ...result,
-          relevance,
-        })
+      // Join with a newline (never present in a single-line query) so a quoted phrase cannot
+      // falsely match across the title/description boundary, while single terms still match
+      // either field (AND-across-fields is intentional).
+      if (!matchesParsedQuery(`${titleLower}\n${descLower}`, parsed)) {
+        continue
       }
+
+      let relevance = result.relevance
+      if (positiveTerms.some((term) => titleLower.includes(term))) {
+        relevance += 0.3
+      }
+      if (positiveTerms.some((term) => descLower.includes(term))) {
+        relevance += 0.1
+      }
+      if (singleTerm !== null && titleLower === singleTerm) {
+        relevance += 0.5
+      }
+
+      results.push({ ...result, relevance })
     }
   }
 

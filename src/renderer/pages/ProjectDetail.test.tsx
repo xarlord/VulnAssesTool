@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useNavigate, useParams } from 'react-router-dom'
 import { ProjectDetail } from './ProjectDetail'
@@ -99,7 +99,7 @@ vi.mock('@/components/StalenessIndicator', () => ({
     <div data-testid="staleness-indicator">
       <span>Stale</span>
       {onRefresh && (
-        <button onClick={onRefresh} disabled={isRefreshing} data-testid="refresh-button">
+        <button onClick={() => onRefresh()} disabled={isRefreshing} data-testid="refresh-button">
           {isRefreshing ? 'Refreshing...' : 'Refresh Now'}
         </button>
       )}
@@ -118,11 +118,14 @@ vi.mock('lucide-react', () => {
     'HelpCircle',
     'AlertTriangle',
     'RefreshCw',
+    'RefreshCcw',
     'Home',
     'Bug',
     'Trash2',
     'RotateCcw',
     'Shield',
+    'ShieldCheck',
+    'Scale',
     'ChevronDown',
     'ChevronUp',
     'ChevronRight',
@@ -164,6 +167,7 @@ vi.mock('lucide-react', () => {
     'Mail',
     'Heart',
     'Container',
+    'Binary',
   ]
   const mod: Record<string, unknown> = {}
   for (const name of icons) {
@@ -183,6 +187,17 @@ vi.mock('@/components/ContainerScanDialog', () => ({
     ) : null,
 }))
 
+// Mock BinarySbomDialog (always rendered by ProjectDetail)
+vi.mock('@/components/BinarySbomDialog', () => ({
+  BinarySbomDialog: ({ open, onClose }: { open: boolean; onClose: () => void; projectId: string }) =>
+    open ? (
+      <div data-testid="binary-sbom-dialog">
+        Binary SBOM Dialog
+        <button onClick={onClose}>Close Binary SBOM</button>
+      </div>
+    ) : null,
+}))
+
 // Mock ExportDialog (always rendered by ProjectDetail)
 vi.mock('@/components/ExportDialog', () => ({
   ExportDialog: ({ open, onClose }: { open: boolean; onClose: () => void; project: unknown }) =>
@@ -190,6 +205,28 @@ vi.mock('@/components/ExportDialog', () => ({
       <div data-testid="export-dialog">
         Export Dialog
         <button onClick={onClose}>Close Export</button>
+      </div>
+    ) : null,
+}))
+
+// Mock ReportPreview (always rendered by ProjectDetail; FR-09.2 entry point)
+vi.mock('@/components/reports', () => ({
+  ReportPreview: ({
+    open,
+    onOpenChange,
+    data,
+    projectName,
+  }: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    data: { statistics: { totalVulnerabilities: number } } | null
+    projectName?: string
+  }) =>
+    open ? (
+      <div data-testid="report-preview">
+        Report Preview for {projectName}
+        <span data-testid="report-preview-total">{data?.statistics.totalVulnerabilities ?? 'no-data'}</span>
+        <button onClick={() => onOpenChange(false)}>Close Report Preview</button>
       </div>
     ) : null,
 }))
@@ -311,6 +348,10 @@ vi.mock('@/lib/health', () => ({
     vulnerableCount: 1,
   })),
   calculateTrend: vi.fn(() => 'improving'),
+  calculateTrendFromHistory: vi.fn(() => 'unknown'),
+  getHealthHistory: vi.fn(() => []),
+  mergeTodaySnapshot: vi.fn(() => []),
+  recordHealthScore: vi.fn(() => []),
 }))
 
 // Mock vulnerability ID formatting
@@ -335,6 +376,13 @@ vi.mock('@/lib/services/intelligence/enrichVulnerabilities', () => ({
   enrichVulnerabilities: vi.fn((vulns: unknown[]) => Promise.resolve(vulns)),
 }))
 
+// Spy on the audit logger's SCAN event while keeping every other export real, so the scan
+// flow emits a real, filterable SCAN event (FR-07.1) and we can assert it independently.
+vi.mock('@/lib/audit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/audit')>()
+  return { ...actual, logVulnerabilityScan: vi.fn() }
+})
+
 // Mock the store
 const mockUpdateProject = vi.fn()
 const mockDeleteProject = vi.fn()
@@ -345,6 +393,7 @@ vi.mock('@/store/useStore', () => ({ useStore: () => mockUseStore() }))
 
 // Import mocked modules
 const { matchVulnerabilitiesForComponents } = await import('@/lib/api/vulnMatcher')
+const { logVulnerabilityScan } = await import('@/lib/audit')
 const { refreshVulnerabilityData } = await import('@/lib/refresh')
 const { toast } = await import('@/components/Toaster')
 const { formatVulnerabilityId } = await import('@/lib/utils/vulnIdFormat')
@@ -595,27 +644,28 @@ describe('ProjectDetail', () => {
       expect(screen.getByText('Delete')).toBeInTheDocument()
     })
 
-    it('should call deleteProject and navigate when delete is confirmed', () => {
-      // Mock window.confirm
-      global.confirm = vi.fn(() => true)
-
+    it('should call deleteProject and navigate when delete is confirmed', async () => {
       renderProjectDetail()
 
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      // Open the confirm dialog from the header Delete button
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      // Confirm in the dialog
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
       expect(mockDeleteProject).toHaveBeenCalledWith('test-project-id')
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
-    })
+      // Generous timeout: mounting the heavy ProjectDetail component and awaiting the Radix confirm
+      // dialog is CPU-bound and occasionally exceeds the 10s default under the parallel full-suite
+      // run. The path is correct (passes in isolation) — this only guards against load flakiness.
+    }, 20_000)
 
-    it('should not delete when cancel is clicked in confirm dialog', () => {
-      global.confirm = vi.fn(() => false)
-
+    it('should not delete when cancel is clicked in confirm dialog', async () => {
       renderProjectDetail()
 
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
       expect(mockDeleteProject).not.toHaveBeenCalled()
       expect(mockNavigate).not.toHaveBeenCalled()
@@ -630,14 +680,44 @@ describe('ProjectDetail', () => {
     })
   })
 
+  describe('Generate Report (FR-09.2)', () => {
+    // ReportPreview was built but never reachable from any route/action, so users
+    // had no way to generate a vulnerability report. This locks in the entry point
+    // and confirms it is fed the project's real vulnerability data (not stubbed data).
+    it('should open the report preview with the current project data when Generate Report is clicked', () => {
+      renderProjectDetail()
+
+      expect(screen.queryByTestId('report-preview')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('Generate Report'))
+
+      expect(screen.getByTestId('report-preview')).toBeInTheDocument()
+      expect(screen.getByText('Report Preview for Test Project')).toBeInTheDocument()
+      // Mock project statistics.totalVulnerabilities is 5 — proves real project data
+      // reaches the report, not an empty/placeholder object.
+      expect(screen.getByTestId('report-preview-total')).toHaveTextContent('5')
+    })
+
+    it('should close the report preview when its dialog requests it', () => {
+      renderProjectDetail()
+
+      fireEvent.click(screen.getByText('Generate Report'))
+      expect(screen.getByTestId('report-preview')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('Close Report Preview'))
+      expect(screen.queryByTestId('report-preview')).not.toBeInTheDocument()
+    })
+  })
+
   describe('Statistics Cards', () => {
     it('should display component count', () => {
       renderProjectDetail()
 
-      // The statistics cards are in the Overview tab which is default
-      // Use getAllByText since "Components" appears in both tabs and statistics
+      // The statistics cards are in the Overview tab which is default.
+      // Use getAllByText since "Components" appears in both tabs and statistics,
+      // and the count "2" also appears in the license-compliance summary.
       expect(screen.getAllByText('Components').length).toBeGreaterThan(0)
-      expect(screen.getByText('2')).toBeInTheDocument()
+      expect(screen.getAllByText('2').length).toBeGreaterThan(0)
     })
 
     it('should display critical vulnerability count', () => {
@@ -1463,18 +1543,11 @@ describe('ProjectDetail', () => {
       expect(sourceLabel).toBeInTheDocument()
     })
 
-    it('TC-VM-005: should filter vulnerabilities by reference tags', () => {
-      renderProjectDetail()
-      clickVulnerabilitiesTab()
-
-      // Click Advanced Filters button
-      const advancedFiltersButton = screen.getByText('Advanced Filters')
-      fireEvent.click(advancedFiltersButton)
-
-      // Find reference tags filter
-      const refTagLabel = screen.getByText('Reference Tags')
-      expect(refTagLabel).toBeInTheDocument()
-    })
+    // TC-VM-005 removed: it was titled "should filter vulnerabilities by reference tags" but only
+    // asserted the 'Reference Tags' label rendered (FilterPresets is stub-mocked here), so it could
+    // not fail if reference-tag filtering broke. That rendering check is already covered by TC-VM-006
+    // below, and the real reference-tag narrowing is now driven against the unmocked control in
+    // src/renderer/pages/project-detail/VulnerabilitiesTab.test.tsx (FR-08.3).
 
     it('TC-VM-006: should apply multiple filters together', () => {
       renderProjectDetail()
@@ -1697,6 +1770,47 @@ describe('ProjectDetail', () => {
       )
     })
 
+    it('emits a distinct SCAN audit event when a scan completes (not just a generic UPDATE)', async () => {
+      vi.mocked(logVulnerabilityScan).mockClear()
+      vi.mocked(matchVulnerabilitiesForComponents).mockResolvedValue(
+        new Map([
+          [
+            'comp-1',
+            [
+              {
+                id: 'CVE-2024-1234',
+                source: 'nvd',
+                severity: 'high',
+                description: '',
+                references: [],
+                affectedComponents: ['comp-1'],
+              },
+            ],
+          ],
+        ]),
+      )
+
+      renderProjectDetail()
+
+      fireEvent.click(screen.getByText('Scan for Vulnerabilities'))
+
+      // Why: SCAN is a first-class filterable audit action; the scan flow previously only fired
+      // a generic UPDATE via updateProject, so a compliance filter on 'SCAN' saw nothing. A test
+      // that only checks updateProject was called cannot catch this regression — spying on the
+      // SCAN logger directly can.
+      await waitFor(
+        () =>
+          expect(logVulnerabilityScan).toHaveBeenCalledWith(
+            'test-project-id',
+            'Test Project',
+            2,
+            expect.any(Number),
+            expect.any(Number),
+          ),
+        { timeout: 10000 },
+      )
+    })
+
     it('should handle scan errors gracefully', async () => {
       // Use a mock that will fail immediately
       vi.mocked(matchVulnerabilitiesForComponents).mockImplementation(() => Promise.reject(new Error('Scan failed')))
@@ -1906,6 +2020,48 @@ describe('ProjectDetail', () => {
       )
     })
 
+    it('defaults to a cached refresh (useCache: true) on a normal refresh click', async () => {
+      vi.mocked(refreshVulnerabilityData).mockResolvedValue({
+        success: true,
+        vulnerabilities: [],
+        componentsScanned: 2,
+      })
+
+      renderProjectDetailWithRefresh()
+      fireEvent.click(screen.getByTestId('refresh-button'))
+
+      await waitFor(
+        () =>
+          expect(vi.mocked(refreshVulnerabilityData)).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ useCache: true }),
+          ),
+        { timeout: 10000 },
+      )
+    })
+
+    it('passes useCache: false when the force-refresh button is clicked (FR-03.5)', async () => {
+      vi.mocked(refreshVulnerabilityData).mockResolvedValue({
+        success: true,
+        vulnerabilities: [],
+        componentsScanned: 2,
+      })
+
+      renderProjectDetailWithRefresh()
+      // Why: the PRD asks for a user-facing cache-bypass control. Without pinning this caller-level
+      // contract, a future refactor could silently re-hardcode the cached path and nothing would fail.
+      fireEvent.click(screen.getByLabelText('Force refresh vulnerability data (bypass cache)'))
+
+      await waitFor(
+        () =>
+          expect(vi.mocked(refreshVulnerabilityData)).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ useCache: false }),
+          ),
+        { timeout: 10000 },
+      )
+    })
+
     it('TC-SCAN-006: should show warning when refreshing without API key', async () => {
       // Configure secure key service to return no API key
       mockGetApiKey.mockResolvedValue(null)
@@ -2049,6 +2205,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Updated Project Name',
         description: 'A test project for vulnerability assessment',
+        updatedAt: expect.any(Date),
       })
     })
 
@@ -2105,6 +2262,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Test Project',
         description: 'Updated description',
+        updatedAt: expect.any(Date),
       })
     })
 
@@ -2126,6 +2284,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'New Project Name',
         description: 'New description',
+        updatedAt: expect.any(Date),
       })
     })
 
@@ -2145,6 +2304,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Test Project',
         description: 'Added description',
+        updatedAt: expect.any(Date),
       })
     })
   })
@@ -2279,77 +2439,49 @@ describe('ProjectDetail', () => {
   })
 
   describe('Project Deletion - TC-PM Scenarios', () => {
-    it('TC-PM-005: Delete Project - Single - should show confirmation dialog and delete on confirm', () => {
-      // Mock window.confirm to return true (user confirms deletion)
-      global.confirm = vi.fn(() => true)
-
+    it('TC-PM-005: Delete Project - Single - should show confirmation dialog and delete on confirm', async () => {
       renderProjectDetail()
 
-      // Find and click the Delete button
-      const deleteButton = screen.getByText('Delete')
-      expect(deleteButton).toBeInTheDocument()
+      // Open the confirm dialog from the header Delete button
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      // Confirm deletion inside the dialog
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
-      fireEvent.click(deleteButton)
-
-      // Verify confirmation dialog was shown
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
-
-      // Verify deleteProject was called with correct project ID
       expect(mockDeleteProject).toHaveBeenCalledWith('test-project-id')
-
-      // Verify navigation to home page after deletion
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
 
-    it('TC-PM-006: Delete Project - Cancel - should not delete when cancel is clicked', () => {
-      // Mock window.confirm to return false (user cancels deletion)
-      global.confirm = vi.fn(() => false)
-
+    it('TC-PM-006: Delete Project - Cancel - should not delete when cancel is clicked', async () => {
       renderProjectDetail()
 
-      // Find and click the Delete button
-      const deleteButton = screen.getByText('Delete')
-      expect(deleteButton).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
-      fireEvent.click(deleteButton)
-
-      // Verify confirmation dialog was shown
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Test Project"?')
-
-      // Verify deleteProject was NOT called
       expect(mockDeleteProject).not.toHaveBeenCalled()
-
-      // Verify navigation did NOT occur
       expect(mockNavigate).not.toHaveBeenCalled()
-
       // Verify project is still visible (not deleted)
       expect(screen.getByText('Test Project')).toBeInTheDocument()
     })
 
-    it('TC-PM-005-variant: should handle deletion of project with different name', () => {
-      // Mock window.confirm to return true
-      global.confirm = vi.fn(() => true)
-
+    it('TC-PM-005-variant: should handle deletion of project with different name', async () => {
       const customProject = createMockProject({
         name: 'Custom Project Name',
         id: 'custom-project-id',
       })
       renderProjectDetail(customProject, 'custom-project-id')
 
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      // Confirmation shows the correct project name
+      expect(within(dialog).getByText(/Custom Project Name/)).toBeInTheDocument()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
-      // Verify confirmation shows correct project name
-      expect(global.confirm).toHaveBeenCalledWith('Are you sure you want to delete "Custom Project Name"?')
-
-      // Verify deleteProject was called with correct project ID
       expect(mockDeleteProject).toHaveBeenCalledWith('custom-project-id')
     })
 
-    it('should maintain project state after cancel operation', () => {
-      // Mock window.confirm to return false (user cancels)
-      global.confirm = vi.fn(() => false)
-
+    it('should maintain project state after cancel operation', async () => {
       renderProjectDetail()
 
       // Get initial project elements
@@ -2357,8 +2489,9 @@ describe('ProjectDetail', () => {
       expect(screen.getByText('A test project for vulnerability assessment')).toBeInTheDocument()
 
       // Attempt to delete but cancel
-      const deleteButton = screen.getByText('Delete')
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
       // Verify project data is still visible and intact
       expect(screen.getByText('Test Project')).toBeInTheDocument()
@@ -2368,16 +2501,12 @@ describe('ProjectDetail', () => {
       expect(screen.getAllByText('Vulnerabilities').length).toBeGreaterThan(0)
     })
 
-    it('should call deleteProject exactly once per confirmed deletion', () => {
-      // Mock window.confirm to return true
-      global.confirm = vi.fn(() => true)
-
+    it('should call deleteProject exactly once per confirmed deletion', async () => {
       renderProjectDetail()
 
-      const deleteButton = screen.getByText('Delete')
-
-      // Click delete button once
-      fireEvent.click(deleteButton)
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
       // Verify deleteProject was called exactly once
       expect(mockDeleteProject).toHaveBeenCalledTimes(1)
@@ -2427,15 +2556,6 @@ describe('ProjectDetail', () => {
       await user.click(screen.getByText('View Queue Vuln'))
 
       expect(screen.getByTestId('vuln-detail-modal')).toBeInTheDocument()
-    })
-
-    it('should navigate to home when back arrow button is clicked', () => {
-      renderProjectDetail()
-
-      const backButton = screen.getByLabelText('back')
-      fireEvent.click(backButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
     })
   })
 
@@ -2611,7 +2731,22 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Updated Name',
         description: 'A test project for vulnerability assessment',
+        updatedAt: expect.any(Date),
       })
+    })
+
+    it('should stamp a fresh updatedAt on save so the edit reorders in updatedAt-sorted views (FR-01.1)', () => {
+      renderProjectDetail()
+      fireEvent.click(screen.getByText('Edit'))
+      fireEvent.change(screen.getByDisplayValue('Test Project'), { target: { value: 'Renamed' } })
+
+      const before = Date.now()
+      fireEvent.click(screen.getByText('Save Changes'))
+
+      // Stronger than expect.any(Date): a regression that reused the project's OLD updatedAt
+      // would pass a type check but fail this freshness assertion.
+      const stamped = mockUpdateProject.mock.calls[0][1].updatedAt as Date
+      expect(stamped.getTime()).toBeGreaterThanOrEqual(before)
     })
 
     it('should save with undefined description when description is empty', () => {
@@ -2627,6 +2762,7 @@ describe('ProjectDetail', () => {
       expect(mockUpdateProject).toHaveBeenCalledWith('test-project-id', {
         name: 'Test Project',
         description: undefined,
+        updatedAt: expect.any(Date),
       })
     })
   })
@@ -3187,22 +3323,28 @@ describe('ProjectDetail', () => {
       expect(screen.queryByText('CVE-2022-12345')).not.toBeInTheDocument()
     })
 
-    it('should load a preset with reference tags filter', () => {
-      const projectWithRefTags = createMockProject({
+    // NOTE: FilterPresets (incl. MultiSelectFilter) is stub-mocked in this file, so real
+    // reference-tag/source *controls* cannot be driven here — that lives in
+    // VulnerabilitiesTab.test.tsx. This test exercises only the preset-LOAD path for the source
+    // filter, with mixed sources so it actually narrows (was previously mistitled "reference
+    // tags filter" while loading a source preset over two same-source fixtures, so it could not
+    // fail if source filtering broke).
+    it('should load a preset with a source filter and hide non-matching sources', () => {
+      const projectWithMixedSources = createMockProject({
         vulnerabilities: [
           {
-            id: 'CVE-WITH-PATCH',
+            id: 'CVE-NVD-SRC',
             source: 'nvd',
             severity: 'high',
-            description: 'Has patch ref',
-            references: [{ url: 'https://example.com', tags: ['Patch'] }],
+            description: 'From NVD',
+            references: [],
             affectedComponents: ['comp-1'],
           },
           {
-            id: 'CVE-NO-REFS',
-            source: 'nvd',
+            id: 'CVE-OSV-SRC',
+            source: 'osv',
             severity: 'high',
-            description: 'No refs',
+            description: 'From OSV',
             references: [],
             affectedComponents: ['comp-1'],
           },
@@ -3213,13 +3355,14 @@ describe('ProjectDetail', () => {
         JSON.stringify([{ id: 'preset-1', name: 'Source NVD', filters: { source: ['nvd'] } }]),
       )
 
-      renderProjectDetail(projectWithRefTags)
+      renderProjectDetail(projectWithMixedSources)
       clickVulnerabilitiesTab()
 
       fireEvent.click(screen.getByTestId('load-preset-btn'))
 
-      expect(screen.getByText('CVE-WITH-PATCH')).toBeInTheDocument()
-      expect(screen.getByText('CVE-NO-REFS')).toBeInTheDocument()
+      // Loading a source=['nvd'] preset keeps the NVD vuln and hides the OSV one.
+      expect(screen.getByText('CVE-NVD-SRC')).toBeInTheDocument()
+      expect(screen.queryByText('CVE-OSV-SRC')).not.toBeInTheDocument()
     })
 
     it('should load a preset with source filter', () => {

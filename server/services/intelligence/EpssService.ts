@@ -93,7 +93,9 @@ export class EpssService {
       const scores = await this.fetchFromApi([cveId])
       return scores.get(cveId) || null
     } catch (error) {
-      console.error(`[EpssService] Failed to fetch EPSS for ${cveId}:`, error)
+      // cveId is passed as a format argument, not interpolated into the format string, so a
+      // value containing %-specifiers can't be treated as a console format directive.
+      console.error('[EpssService] Failed to fetch EPSS for %s:', cveId, error)
       return null
     }
   }
@@ -212,7 +214,9 @@ export class EpssService {
     // Check cache TTL
     const cachedTime = new Date(row.epss_updated_at)
     const ttlMs = this.config.cacheTtlHours * 60 * 60 * 1000
-    const isExpired = Date.now() - cachedTime.getTime() > ttlMs
+    // Treat a corrupt/unparseable timestamp as expired: getTime() is NaN, and `NaN > ttlMs` is
+    // false, which would otherwise serve the stale cached value forever (fail-open).
+    const isExpired = Number.isNaN(cachedTime.getTime()) || Date.now() - cachedTime.getTime() > ttlMs
 
     if (isExpired) {
       return null
@@ -270,7 +274,6 @@ export class EpssService {
       })
 
       clearTimeout(timeoutId)
-      this.lastRequestTime = Date.now()
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -341,10 +344,16 @@ export class EpssService {
    */
   private async waitForRateLimit(): Promise<void> {
     const minIntervalMs = 1000 / this.config.requestsPerSecond
-    const elapsed = Date.now() - this.lastRequestTime
-
-    if (elapsed < minIntervalMs) {
-      await new Promise((resolve) => setTimeout(resolve, minIntervalMs - elapsed))
+    const now = Date.now()
+    // Reserve this request's slot SYNCHRONOUSLY (before any await): each caller schedules
+    // relative to the previous reservation, not the last completed fetch. Otherwise two
+    // concurrent callers both read the same lastRequestTime, both sleep the same amount, and
+    // both fire at once — bypassing the throttle.
+    const scheduledTime = Math.max(now, this.lastRequestTime + minIntervalMs)
+    this.lastRequestTime = scheduledTime
+    const waitMs = scheduledTime - now
+    if (waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs))
     }
   }
 

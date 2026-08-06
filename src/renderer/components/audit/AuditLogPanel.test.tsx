@@ -296,6 +296,51 @@ describe('AuditLogPanel', () => {
       await userEvent.click(screen.getByText('Filters'))
       expect(screen.queryByText('Search')).not.toBeInTheDocument()
     })
+
+    it('narrows the table to events within the selected date range', async () => {
+      // addEvent stamps 'now', so inject two events with controlled ages via setState directly
+      // (addEvent's signature omits timestamp) — one 40 days old, one 2 days old.
+      const store = useAuditStore.getState()
+      store.resetStore()
+      store.addEvent({
+        actionType: 'CREATE',
+        entityType: 'project',
+        entityId: 'old-proj',
+        metadata: { description: 'Old event 40 days ago' },
+      })
+      store.addEvent({
+        actionType: 'CREATE',
+        entityType: 'project',
+        entityId: 'recent-proj',
+        metadata: { description: 'Recent event 2 days ago' },
+      })
+      const now = Date.now()
+      const events = useAuditStore
+        .getState()
+        .events.map((e) =>
+          e.entityId === 'old-proj'
+            ? { ...e, timestamp: new Date(now - 40 * 24 * 60 * 60 * 1000) }
+            : { ...e, timestamp: new Date(now - 2 * 24 * 60 * 60 * 1000) },
+        )
+      useAuditStore.setState({ events })
+
+      render(<AuditLogPanel />)
+
+      // Both visible with the default 'All time' range.
+      expect(screen.getByText('Old event 40 days ago')).toBeInTheDocument()
+      expect(screen.getByText('Recent event 2 days ago')).toBeInTheDocument()
+
+      await userEvent.click(screen.getByText('Filters'))
+      await userEvent.click(await screen.findByText('Last 7 days'))
+
+      // Why: the PRD requires filtering by date range. Asserting the actual row set (the
+      // 40-day event disappears, the 2-day one stays) proves the control narrows results
+      // rather than merely rendering — a cosmetic-only control would leave both visible.
+      await waitFor(() => {
+        expect(screen.queryByText('Old event 40 days ago')).not.toBeInTheDocument()
+      })
+      expect(screen.getByText('Recent event 2 days ago')).toBeInTheDocument()
+    })
   })
 
   // ---- Export ----

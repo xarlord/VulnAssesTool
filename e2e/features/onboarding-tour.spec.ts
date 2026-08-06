@@ -1,285 +1,118 @@
-import { test, expect, resetAppState } from '../test-helper'
-import { triggerOnboardingTour, E2E_UI_DELAY } from '../shared-helpers'
+import { test } from '../test-helper'
+
+/**
+ * Onboarding Tour — content contracts
+ *
+ * OnboardingTour (src/renderer/components/onboarding/OnboardingTour.tsx) renders nothing itself
+ * (`return null`, line 247) — every visible artifact of the tour is painted by driver.js outside
+ * React's tree: `.driver-popover` / `.driver-popover-title` / `.driver-popover-description` /
+ * `.driver-popover-progress-text` (lines 27, 35, 42, 48), `.driver-active-element` /
+ * `.driver-highlighted-element` (lines 93, 98), and the `nextBtnText: 'Next'` /
+ * `prevBtnText: 'Previous'` / `doneBtnText: 'Finish'` buttons (lines 177-179). That paint step
+ * never completes in this suite's headless Chromium engine — which is why every test in the
+ * original file already carried `test.skip(browserName === 'chromium', ...)`. playwright.config.ts
+ * defines five projects (critical-flows/features/workflows/visual/a11y) and none of them set a
+ * non-chromium browser, so `browserName` is unconditionally `'chromium'` here: the guard always
+ * fired, and every test body beneath it — full of `if ((await x.count()) > 0)`,
+ * `.isVisible().catch(() => false)`, `.waitFor(...).catch(() => {})`, and
+ * `expect([true, false]).toContain(...)` — was dead code that would silently turn into false-green
+ * assertions the moment a firefox/webkit project was ever added.
+ *
+ * There is no way to ground a real assertion about tour content in this environment, so every
+ * test below is now an explicit `test.skip` with the concrete reason it can't run. Two are doubly
+ * infeasible even setting rendering aside: the driver.js config never defines a "Skip"/"Close"
+ * text button (OnboardingTour.tsx:177-179 only sets Next/Previous/Finish), and Settings.tsx has
+ * no tour/tutorial/onboarding restart control at all (grep found zero matches).
+ */
 
 test.describe('Onboarding Tour', () => {
-  test.beforeEach(async ({ page }) => {
-    await resetAppState(page)
-  })
-
   test.describe('First Launch', () => {
-    test('should show tour on first launch', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await page.goto('/dashboard')
-      await page.waitForLoadState('domcontentloaded')
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
-
-      const tourElement = page.locator('.driver-popover, [class*="driver"]')
-      const hasTour = await tourElement
-        .first()
-        .isVisible()
-        .catch(() => false)
-      expect([true, false]).toContain(hasTour)
+    test.skip('should show tour on first launch', async () => {
+      // App.tsx:74-83 auto-opens the tour 500ms after first launch, but its driver.js popover
+      // (`.driver-popover`) never paints in this suite's headless Chromium engine.
     })
 
-    test('should display welcome message', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await page.goto('/')
-      await page.waitForLoadState('domcontentloaded')
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      const welcomeText = page.locator('text=/Welcome|Get Started|Introduction/i')
-      await welcomeText
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should display welcome message', async () => {
+      // Same driver.js / headless-Chromium rendering gap as above — see file header.
     })
 
-    test('should show step indicator', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const stepIndicator = page.locator('[class*="step"], [class*="dot"], [class*="progress"]')
-      await stepIndicator
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should show step indicator', async () => {
+      // `.driver-popover-progress-text` (OnboardingTour.tsx:48) is configured but unrenderable headless.
     })
 
-    test('should highlight dashboard elements', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const highlighted = page.locator('[class*="highlight"], [class*="spotlight"], [class*="popover"]')
-      await highlighted
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should highlight dashboard elements', async () => {
+      // `.driver-active-element` / `.driver-highlighted-element` (OnboardingTour.tsx:93,98) never paint headless.
     })
   })
 
   test.describe('Navigation', () => {
-    test('should progress to next step with Next button', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const nextButton = page.locator('button:has-text("Next")')
-      if ((await nextButton.count()) > 0) {
-        await nextButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+    test.skip('should progress to next step with Next button', async () => {
+      // nextBtnText: 'Next' (OnboardingTour.tsx:177) is configured but the popover never paints headless.
     })
 
-    test('should go back with Previous button', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const nextButton = page.locator('button:has-text("Next")')
-      if ((await nextButton.count()) > 0) {
-        await nextButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        const prevButton = page.locator('button:has-text("Previous"), button:has-text("Back")')
-        if ((await prevButton.count()) > 0) {
-          await prevButton.click()
-          await page.waitForTimeout(E2E_UI_DELAY)
-        }
-      }
+    test.skip('should go back with Previous button', async () => {
+      // prevBtnText: 'Previous' (OnboardingTour.tsx:178) is configured but the popover never paints headless.
     })
 
-    test('should skip tour with Skip button', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const skipButton = page.locator('button:has-text("Skip"), button:has-text("Close")')
-      if ((await skipButton.count()) > 0) {
-        await skipButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        const tourAfter = page.locator('.driver-popover, [class*="driver"]')
-        const hasTourAfter = await tourAfter
-          .first()
-          .isVisible()
-          .catch(() => false)
-        expect(hasTourAfter).toBe(false)
-      }
+    test.skip('should skip tour with Skip button', async () => {
+      // Doubly infeasible: the driver.js config only sets Next/Previous/Finish button text
+      // (OnboardingTour.tsx:177-179) — there is no "Skip"/"Close" text button to click at all.
     })
 
-    test('should complete tour with Finish button', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const nextButton = page.locator('button:has-text("Next")')
-      const finishButton = page.locator('button:has-text("Finish"), button:has-text("Done")')
-
-      for (let i = 0; i < 10; i++) {
-        if ((await finishButton.count()) > 0) {
-          await finishButton.click()
-          await page.waitForTimeout(E2E_UI_DELAY)
-          break
-        }
-        if ((await nextButton.count()) > 0) {
-          await nextButton.click()
-          await page.waitForTimeout(E2E_UI_DELAY)
-        }
-      }
-
-      const tourAfter = page.locator('.driver-popover, [class*="driver"]')
-      const hasTourAfter = await tourAfter
-        .first()
-        .isVisible()
-        .catch(() => false)
-      expect(hasTourAfter).toBe(false)
+    test.skip('should complete tour with Finish button', async () => {
+      // doneBtnText: 'Finish' (OnboardingTour.tsx:179) is configured but the popover never paints headless.
     })
 
-    test('should close tour with Escape key', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const tourAfter = page.locator('.driver-popover, [class*="driver"]')
-      const hasTourAfter = await tourAfter
-        .first()
-        .isVisible()
-        .catch(() => false)
-      expect(hasTourAfter).toBe(false)
+    test.skip('should close tour with Escape key', async () => {
+      // The tour never paints headless, so there is nothing for Escape to visibly dismiss.
     })
   })
 
   test.describe('Content', () => {
-    test('should show step descriptions', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const description = page.locator('.driver-popover-description, .driver-popover')
-      await description
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should show step descriptions', async () => {
+      // `.driver-popover-description` (OnboardingTour.tsx:42) is configured but unrenderable headless.
     })
 
-    test('should show step titles', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const title = page.locator('.driver-popover-title, h1, h2, h3')
-      const hasTitle = (await title.count()) > 0
-      expect(hasTitle).toBe(true)
+    test.skip('should show step titles', async () => {
+      // `.driver-popover-title` (OnboardingTour.tsx:35) is configured but unrenderable headless.
     })
 
-    test('should highlight correct elements per step', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const popover = page.locator('.driver-popover, .driver-highlighted-element')
-      await popover
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should highlight correct elements per step', async () => {
+      // Per-step targets come from tourSteps.ts, but `.driver-highlighted-element` never paints headless.
     })
   })
 
   test.describe('Persistence', () => {
-    test('should not show tour on subsequent visits after completion', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const skipButton = page.locator('button:has-text("Skip"), button:has-text("Finish")')
-      if ((await skipButton.count()) > 0) {
-        await skipButton.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
-
-      await page.reload()
-      await page.waitForLoadState('domcontentloaded')
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      const tourAfterReload = page.locator('.driver-popover, [class*="driver"]')
-      const hasTourAfter = await tourAfterReload
-        .first()
-        .isVisible()
-        .catch(() => false)
-      expect(hasTourAfter).toBe(false)
+    test.skip('should not show tour on subsequent visits after completion', async () => {
+      // hasLaunchedBefore persists to localStorage (tourStore.ts:159-176) and gates App.tsx's
+      // first-launch auto-show (App.tsx:74-83), but the popover never paints headless on a fresh
+      // launch either, so "not visible after reload" can't be distinguished from "never renders here".
     })
 
-    test('should remember current step if interrupted', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const nextButton = page.locator('button:has-text("Next")')
-      if ((await nextButton.count()) > 0) {
-        await nextButton.click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+    test.skip('should remember current step if interrupted', async () => {
+      // tourStore.ts persists `currentStep` per tour (lines 53,73,84,91,176) across reloads, but
+      // advancing it requires clicking driver.js's Next button, which never paints headless.
     })
   })
 
   test.describe('Manual Trigger', () => {
-    test('should be able to restart tour from menu', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await page.goto('/dashboard')
-      await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
-
-      await page.evaluate(() => {
-        window.dispatchEvent(new CustomEvent('menu-show-tour'))
-      })
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      const tourElement = page.locator('.driver-popover, [class*="driver"]')
-      await tourElement
-        .first()
-        .isVisible()
-        .catch(() => false)
+    test.skip('should be able to restart tour from menu', async () => {
+      // App.tsx:87-94 really does wire `menu-show-tour` to reopen the tour, but the resulting
+      // popover never paints in this suite's headless Chromium engine.
     })
 
-    test('should be able to restart tour from settings', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await page.goto('/')
-      await page.waitForLoadState('domcontentloaded')
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      await page.evaluate(() => {
-        const nav = (window as any).__navigate
-        if (typeof nav === 'function') nav('/settings')
-      })
-      await page.waitForLoadState('domcontentloaded')
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const tourSetting = page.locator('text=/Tour|Tutorial|Onboarding/i')
-      await tourSetting
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test.skip('should be able to restart tour from settings', async () => {
+      // Settings.tsx has no tour/tutorial/onboarding restart control — this feature does not exist.
     })
   })
 
   test.describe('Responsive Design', () => {
-    test.use({ viewport: { width: 768, height: 1024 } })
-
-    test('should display tour on tablet', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const tourElement = page.locator('.driver-popover, [class*="driver"]')
-      const hasTour = await tourElement
-        .first()
-        .isVisible()
-        .catch(() => false)
-      expect([true, false]).toContain(hasTour)
+    test.skip('should display tour on tablet', async () => {
+      // Same driver.js / headless-Chromium rendering gap as above, independent of viewport.
     })
 
-    test('should be navigable on tablet', async ({ page, browserName }) => {
-      test.skip(browserName === 'chromium', 'driver.js tour does not render in headless Chromium')
-      await triggerOnboardingTour(page)
-
-      const nextButton = page.locator('button:has-text("Next")')
-      if ((await nextButton.count()) > 0) {
-        await nextButton.tap()
-        await page.waitForTimeout(E2E_UI_DELAY)
-      }
+    test.skip('should be navigable on tablet', async () => {
+      // Same driver.js / headless-Chromium rendering gap as above, independent of viewport.
     })
   })
 })

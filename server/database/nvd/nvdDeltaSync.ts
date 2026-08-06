@@ -14,6 +14,11 @@ import { NvdDataImporter, createNvdDataImporter } from './nvdDataImporter.js'
 
 type BetterDb = InstanceType<typeof Database>
 
+// Maximum span of a single lastModified query window. The NVD API rejects a range wider
+// than 120 days, so a long gap since the last sync is chunked into windows of this size (H25).
+const MAX_DELTA_WINDOW_DAYS = 120
+const DAY_MS = 24 * 60 * 60 * 1000
+
 /**
  * Sync status information
  */
@@ -26,6 +31,7 @@ export interface SyncStatus {
   nextScheduledSync: string | null
   autoSyncEnabled: boolean
   autoSyncIntervalHours: number
+  bandwidthLimitKBps: number
 }
 
 /**
@@ -98,6 +104,9 @@ export class NvdDeltaSync {
     this.apiClient = createNvdApiV2Client(apiKey)
     this.importer = createNvdDataImporter(db)
     this.progress = this.createInitialProgress()
+    // Re-apply the persisted bandwidth cap so a restart keeps throttling updates
+    // at the user's chosen rate (migrations have already run before this point).
+    this.apiClient.setBandwidthLimitKBps(this.getSyncStatus().bandwidthLimitKBps)
   }
 
   /**
@@ -142,7 +151,8 @@ export class NvdDeltaSync {
         last_error,
         next_scheduled_sync,
         auto_sync_enabled,
-        auto_sync_interval_hours
+        auto_sync_interval_hours,
+        bandwidth_limit_kbps
       FROM sync_status
       WHERE source = 'NVD'
       ORDER BY id DESC
@@ -159,6 +169,7 @@ export class NvdDeltaSync {
           next_scheduled_sync: string | null
           auto_sync_enabled: number
           auto_sync_interval_hours: number
+          bandwidth_limit_kbps: number | null
         }
       | undefined
 
@@ -171,6 +182,7 @@ export class NvdDeltaSync {
       nextScheduledSync: null,
       autoSyncEnabled: false,
       autoSyncIntervalHours: 24,
+      bandwidthLimitKBps: 0,
     }
 
     if (!row) {
@@ -186,7 +198,49 @@ export class NvdDeltaSync {
       nextScheduledSync: row.next_scheduled_sync,
       autoSyncEnabled: row.auto_sync_enabled === 1,
       autoSyncIntervalHours: row.auto_sync_interval_hours,
+      bandwidthLimitKBps: row.bandwidth_limit_kbps ?? 0,
     }
+  }
+
+  /**
+   * Persist the auto-sync interval (in hours) without starting the scheduler.
+   * A value of 0 means auto-sync is disabled (manual only). Used by the
+   * settings UI to remember the chosen sync schedule across reloads; the
+   * scheduler itself is (re)started separately via enableAutoSync().
+   */
+  setAutoSyncInterval(hours: number): void {
+    const existing = this.db.prepare(`SELECT id FROM sync_status WHERE source = 'NVD'`).get()
+    const enabled = hours > 0 ? 1 : 0
+    if (existing) {
+      this.db
+        .prepare(`UPDATE sync_status SET auto_sync_enabled = ?, auto_sync_interval_hours = ? WHERE source = 'NVD'`)
+        .run(enabled, hours)
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO sync_status (source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours)
+           VALUES ('NVD', '', ?, ?)`,
+        )
+        .run(enabled, hours)
+    }
+  }
+
+  /**
+   * Persist the update bandwidth limit (KB/s, 0 = unlimited) and apply it to the
+   * API client immediately so in-flight and future syncs honour it. Mirrors how
+   * setAutoSyncInterval persists to sync_status; survives reload/restart.
+   */
+  setBandwidthLimitKBps(kbps: number): void {
+    const normalized = kbps > 0 ? kbps : 0
+    const existing = this.db.prepare(`SELECT id FROM sync_status WHERE source = 'NVD'`).get()
+    if (existing) {
+      this.db.prepare(`UPDATE sync_status SET bandwidth_limit_kbps = ? WHERE source = 'NVD'`).run(normalized)
+    } else {
+      this.db
+        .prepare(`INSERT INTO sync_status (source, last_sync_at, bandwidth_limit_kbps) VALUES ('NVD', '', ?)`)
+        .run(normalized)
+    }
+    this.apiClient.setBandwidthLimitKBps(normalized)
   }
 
   /**
@@ -246,36 +300,44 @@ export class NvdDeltaSync {
       options.onProgress?.(this.getProgress())
 
       const allCves: NvdCveV2[] = []
-      let hasMore = true
+      // Split the gap since the last sync into ≤120-day windows the NVD API accepts (H25).
+      const windows = this.buildSyncWindows(syncFromDate, new Date())
+      let cancelled = false
 
-      while (hasMore) {
-        if (options.signal?.aborted) {
-          result.success = false
-          result.errors.push('Sync cancelled')
-          break
-        }
+      for (const [windowStart, windowEnd] of windows) {
+        if (cancelled) break
 
-        const fetchResult = await this.apiClient.fetchModifiedSince({
-          lastModifiedDate: syncFromDate,
-          signal: options.signal,
-        })
+        // Page through this window with a cursor that advances by the number of CVEs
+        // returned, so a truncated (>50k) window resumes instead of re-fetching page 0 (C3).
+        let startIndex = 0
+        let windowTruncated = true
 
-        if (!fetchResult.cves || fetchResult.cves.length === 0) {
-          hasMore = false
-          break
-        }
+        while (windowTruncated) {
+          if (options.signal?.aborted) {
+            result.success = false
+            result.errors.push('Sync cancelled')
+            cancelled = true
+            break
+          }
 
-        allCves.push(...fetchResult.cves)
-        this.progress.cvesFetched = allCves.length
-        this.progress.percentage = fetchResult.truncated ? 50 : 100
-        this.progress.elapsedTimeMs = Date.now() - this.startTime
+          const fetchResult = await this.apiClient.fetchModifiedSince({
+            lastModifiedDate: windowStart,
+            lastModifiedEndDate: windowEnd,
+            startIndex,
+            signal: options.signal,
+          })
 
-        options.onProgress?.(this.getProgress())
+          allCves.push(...fetchResult.cves)
+          startIndex += fetchResult.cves.length
 
-        if (fetchResult.truncated) {
-          // Continue fetching next page
-        } else {
-          hasMore = false
+          this.progress.cvesFetched = allCves.length
+          this.progress.percentage = fetchResult.truncated ? 50 : 100
+          this.progress.elapsedTimeMs = Date.now() - this.startTime
+          options.onProgress?.(this.getProgress())
+
+          // Keep paging only while truncated AND still returning rows; the empty guard
+          // prevents an infinite loop on a degenerate truncated-but-empty page.
+          windowTruncated = fetchResult.truncated && fetchResult.cves.length > 0
         }
       }
 
@@ -330,6 +392,32 @@ export class NvdDeltaSync {
     options.onProgress?.(this.getProgress())
 
     return result
+  }
+
+  /**
+   * Split [start, end] into consecutive windows no wider than MAX_DELTA_WINDOW_DAYS. The
+   * NVD API rejects a lastModified range wider than 120 days, so a long gap since the last
+   * successful sync must be chunked rather than sent as one over-wide window (H25).
+   */
+  private buildSyncWindows(start: Date, end: Date): Array<[Date, Date]> {
+    const maxSpanMs = MAX_DELTA_WINDOW_DAYS * DAY_MS
+    const windows: Array<[Date, Date]> = []
+
+    let windowStart = start
+    while (windowStart.getTime() < end.getTime()) {
+      const tentativeEnd = new Date(windowStart.getTime() + maxSpanMs)
+      const windowEnd = tentativeEnd.getTime() < end.getTime() ? tentativeEnd : end
+      windows.push([windowStart, windowEnd])
+      // Step 1s past the boundary so consecutive windows don't overlap on the edge CVE.
+      windowStart = new Date(windowEnd.getTime() + 1000)
+    }
+
+    // Always issue at least one window (e.g. if start >= end from clock skew).
+    if (windows.length === 0) {
+      windows.push([start, end])
+    }
+
+    return windows
   }
 
   /**

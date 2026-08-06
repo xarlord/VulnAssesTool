@@ -1,10 +1,27 @@
 import { test, expect, resetAppState } from '../test-helper'
-import { navigateToSettings } from '../shared-helpers'
 
 /**
- * E2E Tests for Settings Configuration Flow
+ * Settings Configuration Flow — content contracts
  *
- * Tests the settings page functionality
+ * Every guard here used to be an `if (!navigated) test.skip()` around a helper that can
+ * never actually fail (the Settings nav link is always in the shell sidebar), or a
+ * try-both-selectors dance with no real assertion behind it. Grounding for the rewrite:
+ *   - shell/Sidebar.tsx (SidebarContent) — the rail's bottom nav item
+ *     `{ to: '/settings', label: 'Settings' }` renders an `<a>` (role=link) named "Settings".
+ *   - pages/Settings.tsx — `<PageHeader title="Settings" />` renders `<h1>Settings</h1>`.
+ *   - pages/settings/AppearanceSection.tsx — `<h2>Appearance</h2>`, and three theme buttons
+ *     whose accessible name is the raw theme value ('light' | 'dark' | 'system' — the
+ *     `capitalize` class is CSS-only styling, not the text content); each button's onClick
+ *     calls `updateSettings({ theme })`.
+ *   - App.tsx's theme effect (~L108-120) — `root.classList.remove('light', 'dark'); ` then
+ *     `root.classList.add(theme)`, so a theme button click is verifiable via the actual DOM
+ *     class the rest of the app styles against, not just component state.
+ *
+ * Theme DOES persist across page.reload(): the persist middleware ('vuln-assess-storage',
+ * useStore.ts:432-445) rehydrates settings from localStorage before App.tsx's theme effect
+ * runs, and nothing on mount re-fetches or overwrites settings. Asserted below in
+ * 'should persist the selected theme across a full page reload'. (An earlier suspicion that it
+ * reverted did not reproduce — see store/useStore.test.ts rehydration test.)
  */
 test.describe('Settings Configuration Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -13,81 +30,63 @@ test.describe('Settings Configuration Flow', () => {
   })
 
   test('should navigate to settings page', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      // Settings might not be accessible - skip test
-      test.skip()
-      return
-    }
-
-    // Verify settings page is loaded
-    await expect(
-      page
-        .getByRole('heading', { name: 'Settings', exact: true })
-        .or(page.locator('h1').filter({ hasText: 'Settings' })),
-    ).toBeVisible({ timeout: 5000 })
+    await page.getByRole('link', { name: 'Settings' }).click()
+    await expect(page).toHaveURL(/\/settings$/)
+    await expect(page.locator('#main-content').getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   })
 
   test('should display theme options in settings', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      test.skip()
-      return
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+
+    await expect(main.getByRole('heading', { name: 'Appearance' })).toBeVisible()
+    // AppearanceSection.tsx maps exactly these three theme buttons.
+    for (const theme of ['light', 'dark', 'system']) {
+      await expect(main.getByRole('button', { name: theme, exact: true })).toBeVisible()
     }
-
-    await page.waitForTimeout(500)
-
-    // Look for theme section
-    const themeSection = page.getByText(/theme/i).or(page.getByText(/appearance/i))
-    await expect(themeSection.first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should change theme to dark mode', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      test.skip()
-      return
-    }
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+    const html = page.locator('html')
 
-    await page.waitForTimeout(500)
+    // Force a real transition through "light" first, so the subsequent "dark" click is a
+    // provable change rather than a no-op against whatever theme the app happened to start in.
+    await main.getByRole('button', { name: 'light', exact: true }).click()
+    await expect(html).toHaveClass(/light/)
+    await expect(html).not.toHaveClass(/dark/)
 
-    // Find and click dark theme button
-    const darkButton = page
-      .getByRole('button', { name: /^dark$/i })
-      .or(page.locator('button').filter({ hasText: /^dark$/ }))
+    await main.getByRole('button', { name: 'dark', exact: true }).click()
+    await expect(html).toHaveClass(/dark/)
+    await expect(html).not.toHaveClass(/light/)
+  })
 
-    if ((await darkButton.count()) > 0) {
-      await darkButton.first().click()
-      await page.waitForTimeout(300)
+  test('should persist the selected theme across a full page reload', async ({ page }) => {
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+    const html = page.locator('html')
 
-      // Verify dark mode is applied
-      const html = page.locator('html')
-      const isDark = await html.evaluate((el) => el.classList.contains('dark'))
-      expect(isDark).toBe(true)
-    } else {
-      // Try to find theme buttons by looking for light/dark/system pattern
-      const themeButtons = page.locator('button').filter({ hasText: /light|dark|system/i })
-      if ((await themeButtons.count()) >= 3) {
-        // Assume second button is dark
-        await themeButtons.nth(1).click()
-        await page.waitForTimeout(300)
-      }
-    }
+    // Default theme is 'dark' (DEFAULT_SETTINGS); switch to a non-default 'light' so the
+    // post-reload assertion proves the *persisted user choice* survived, not the compiled
+    // default happening to match.
+    await main.getByRole('button', { name: 'light', exact: true }).click()
+    await expect(html).toHaveClass(/light/)
+    await expect(html).not.toHaveClass(/dark/)
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+
+    // On reload the persist middleware rehydrates settings from localStorage before App's
+    // theme effect runs, so the html element must still carry the chosen 'light' class.
+    await expect(html).toHaveClass(/light/)
+    await expect(html).not.toHaveClass(/dark/)
   })
 
   test('should navigate back to dashboard from settings', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      test.skip()
-      return
-    }
+    await page.getByRole('link', { name: 'Settings' }).click()
+    await expect(page).toHaveURL(/\/settings$/)
 
-    await page.waitForTimeout(500)
-
-    // Go back using browser navigation
     await page.goBack()
-
-    // Should be back on dashboard
     await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 5000 })
   })
 })

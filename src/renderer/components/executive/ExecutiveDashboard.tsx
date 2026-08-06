@@ -11,6 +11,7 @@ import {
   generateExecutiveSummary,
   buildExecutiveReport,
   downloadExecutiveReport,
+  computeNextComplianceReview,
 } from '@/lib/analytics'
 const RiskGauge = lazy(() => import('./widgets/RiskGauge').then((m) => ({ default: m.RiskGauge })))
 const ProjectHealthComparison = lazy(() =>
@@ -22,8 +23,20 @@ const VulnerabilityTrendChart = lazy(() =>
 const TeamProductivity = lazy(() => import('./widgets/TeamProductivity').then((m) => ({ default: m.TeamProductivity })))
 const ComplianceStatus = lazy(() => import('./widgets/ComplianceStatus').then((m) => ({ default: m.ComplianceStatus })))
 const ActionItems = lazy(() => import('./widgets/ActionItems').then((m) => ({ default: m.ActionItems })))
+const TopCriticalVulnerabilities = lazy(() =>
+  import('./widgets/TopCriticalVulnerabilities').then((m) => ({ default: m.TopCriticalVulnerabilities })),
+)
 const DashboardConfig = lazy(() => import('./widgets/DashboardConfig').then((m) => ({ default: m.DashboardConfig })))
-import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+const DashboardLayoutEditor = lazy(() =>
+  import('./widgets/DashboardLayoutEditor').then((m) => ({ default: m.DashboardLayoutEditor })),
+)
+import { Download, Loader2 } from 'lucide-react'
+import { PageHeader } from '@/components/PageHeader'
+import { WIDGET_SIZE_CLASSES, type DashboardWidgetId } from '@/lib/dashboard/dashboardLayout'
+
+// Compliance-review cadence used to derive the next-review date from the last assessment.
+// A configurable default (quarterly) rather than the fabricated "today + 7 days" (M3).
+const COMPLIANCE_REVIEW_INTERVAL_DAYS = 90
 
 export function ExecutiveDashboard() {
   const navigate = useNavigate()
@@ -34,21 +47,32 @@ export function ExecutiveDashboard() {
     end: new Date(),
   })
   const [projectScope, setProjectScope] = useState<'all' | 'selected'>('all')
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Filter projects based on date range and scope
-  const filteredProjects = useMemo(() => {
-    let filtered = projects
-
-    // Filter by date range (projects updated within range)
-    filtered = filtered.filter((p) => {
+  // Projects within the selected date range — the pool the config picker chooses from.
+  const dateFilteredProjects = useMemo(() => {
+    return projects.filter((p) => {
       const updateDate = new Date(p.updatedAt)
       return updateDate >= dateRange.start && updateDate <= dateRange.end
     })
+  }, [projects, dateRange])
 
-    return filtered
-  }, [projects, dateRange, projectScope])
+  // Metrics pool: further narrowed to the chosen projects when scope is 'selected' (H4).
+  const filteredProjects = useMemo(() => {
+    if (projectScope === 'selected') {
+      return dateFilteredProjects.filter((p) => selectedProjectIds.includes(p.id))
+    }
+    return dateFilteredProjects
+  }, [dateFilteredProjects, projectScope, selectedProjectIds])
+
+  // Real next compliance-review date (M3): last assessment + cadence, or null when nothing
+  // has been assessed yet (rendered as "not scheduled" rather than a fabricated date).
+  const nextComplianceReview = useMemo(
+    () => computeNextComplianceReview(filteredProjects, COMPLIANCE_REVIEW_INTERVAL_DAYS),
+    [filteredProjects],
+  )
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -91,31 +115,63 @@ export function ExecutiveDashboard() {
     [navigate],
   )
 
+  // Active dashboard layout profile (FR-06.3) drives which widgets render, in
+  // what order, at what size.
+  const dashboardProfiles = useStore((s) => s.dashboardLayoutProfiles)
+  const activeDashboardProfileId = useStore((s) => s.activeDashboardLayoutProfileId)
+  const activeProfile = dashboardProfiles.find((p) => p.id === activeDashboardProfileId) ?? dashboardProfiles[0]
+
+  // Exhaustive per-widget renderer. A missing case is a compile error, so a
+  // widget can never be silently dropped or mis-supplied when the grid is
+  // data-driven instead of hardcoded.
+  const renderWidget = (id: DashboardWidgetId) => {
+    switch (id) {
+      case 'risk-gauge':
+        return <RiskGauge metrics={metrics.overall} />
+      case 'compliance-status':
+        return <ComplianceStatus compliance={metrics.compliance} nextReviewDate={nextComplianceReview} />
+      case 'team-productivity':
+        return <TeamProductivity productivity={metrics.productivity} />
+      case 'project-health-comparison':
+        return <ProjectHealthComparison projectMetrics={metrics.byProject} />
+      case 'vulnerability-trend-chart':
+        return <VulnerabilityTrendChart trends={metrics.trends} />
+      case 'top-critical-vulnerabilities':
+        return (
+          <TopCriticalVulnerabilities
+            vulnerabilities={metrics.topCriticalVulnerabilities}
+            onProjectClick={handleProjectClick}
+          />
+        )
+      case 'action-items':
+        return (
+          <ActionItems
+            recommendations={summary.topRecommendations}
+            topRisks={summary.topRisks}
+            onProjectClick={handleProjectClick}
+          />
+        )
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="rounded-md hover:bg-secondary px-3 py-1.5 text-sm font-medium flex items-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Dashboard
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Executive Dashboard</h1>
-                <p className="text-sm text-muted-foreground">High-level security overview and compliance metrics</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+      <div className="container mx-auto px-4 pt-6">
+        <PageHeader
+          title="Reports"
+          description="High-level security overview and compliance metrics"
+          actions={
+            <>
+              <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
+                <DashboardLayoutEditor />
+              </Suspense>
               <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
                 <DashboardConfig
                   dateRange={dateRange}
                   projectScope={projectScope}
-                  projects={filteredProjects}
+                  projects={dateFilteredProjects}
+                  selectedProjectIds={selectedProjectIds}
+                  onSelectedProjectsChange={setSelectedProjectIds}
                   onDateRangeChange={setDateRange}
                   onProjectScopeChange={setProjectScope}
                   onExportReport={handleExportReport}
@@ -131,9 +187,9 @@ export function ExecutiveDashboard() {
                 {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Export Report
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
       </div>
 
       {/* Executive Summary Banner */}
@@ -197,33 +253,13 @@ export function ExecutiveDashboard() {
             }
           >
             <div className="grid grid-cols-9 gap-4 auto-rows-min">
-              {/* Row 1 */}
-              <div className="col-span-3 row-span-4">
-                <RiskGauge metrics={metrics.overall} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <ComplianceStatus compliance={metrics.compliance} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <TeamProductivity productivity={metrics.productivity} />
-              </div>
-
-              {/* Row 2 */}
-              <div className="col-span-6 row-span-4">
-                <ProjectHealthComparison projectMetrics={metrics.byProject} />
-              </div>
-              <div className="col-span-3 row-span-4">
-                <VulnerabilityTrendChart trends={metrics.trends} />
-              </div>
-
-              {/* Row 3 */}
-              <div className="col-span-9 row-span-4">
-                <ActionItems
-                  recommendations={summary.topRecommendations}
-                  topRisks={summary.topRisks}
-                  onProjectClick={handleProjectClick}
-                />
-              </div>
+              {activeProfile.widgets
+                .filter((slot) => slot.visible)
+                .map((slot) => (
+                  <div key={slot.id} className={WIDGET_SIZE_CLASSES[slot.size]}>
+                    {renderWidget(slot.id)}
+                  </div>
+                ))}
             </div>
           </Suspense>
         )}

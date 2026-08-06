@@ -115,7 +115,10 @@ function convertNvdCveToVulnerability(cve: NvdApiCve): Vulnerability {
   let cvssVector: string | undefined
   let severity: Vulnerability['severity'] = 'none'
 
-  const cvssMetrics = cve.metrics?.cvssMetricV31?.[0]
+  // Fall back through v3.1 → v3.0 → v2 so CVEs with only older CVSS data (common for pre-2016
+  // CVEs) still get a score/severity instead of defaulting to 'none'.
+  const cvssMetrics =
+    cve.metrics?.cvssMetricV31?.[0] ?? cve.metrics?.cvssMetricV30?.[0] ?? cve.metrics?.cvssMetricV2?.[0]
   if (cvssMetrics) {
     cvssScore = cvssMetrics.cvssData.baseScore
     cvssVector = cvssMetrics.cvssData.vectorString

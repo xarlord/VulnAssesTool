@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { Dashboard } from './Dashboard'
 import { useStore } from '@/store/useStore'
@@ -117,6 +117,13 @@ vi.mock('@/lib/refresh', () => ({
   refreshVulnerabilityData: vi.fn(() => Promise.resolve({ success: true, vulnerabilities: [] })),
 }))
 
+// Identity pass-through: the refresh path now re-enriches merged vulns (KEV/EPSS/risk), but this
+// suite asserts merge + per-severity counting, not enrichment. Real enrichment is covered by
+// enrichVulnerabilities' own tests; here it would only add network coupling and mutate objects.
+vi.mock('@/lib/services/intelligence/enrichVulnerabilities', () => ({
+  enrichVulnerabilities: vi.fn((vulns: unknown) => Promise.resolve(vulns)),
+}))
+
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -169,6 +176,7 @@ describe('Dashboard', () => {
       projects,
       addProject: vi.fn(),
       updateProject: vi.fn(),
+      setRefreshingProject: vi.fn(),
       deleteProject: vi.fn(),
       setCurrentProject: vi.fn(),
       currentProject: null,
@@ -201,16 +209,11 @@ describe('Dashboard', () => {
   }
 
   describe('Rendering', () => {
-    it('should render the header with app name', () => {
+    it('should render the page title', () => {
       renderDashboard()
 
-      expect(screen.getByText('VulnAssessTool')).toBeInTheDocument()
-    })
-
-    it('should render Settings button', () => {
-      renderDashboard()
-
-      expect(screen.getByText('Settings')).toBeInTheDocument()
+      // App branding + Settings/Search nav now live in the AppShell, not the page.
+      expect(screen.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
     })
 
     it('should render quick action buttons', () => {
@@ -564,14 +567,7 @@ describe('Dashboard', () => {
   })
 
   describe('Navigation', () => {
-    it('should navigate to settings when Settings button is clicked', () => {
-      renderDashboard()
-
-      const settingsButton = screen.getByText('Settings')
-      fireEvent.click(settingsButton)
-
-      expect(mockNavigate).toHaveBeenCalledWith('/settings')
-    })
+    // Settings / Search navigation moved to the AppShell sidebar (covered by shell tests).
 
     it('should navigate to project detail when project card View button is clicked', () => {
       const mockProjects = [
@@ -688,6 +684,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -730,6 +727,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -775,6 +773,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -860,22 +859,7 @@ describe('Dashboard', () => {
       expect(screen.getByText('Export All')).toBeDisabled()
     })
 
-    it('should navigate to search page', () => {
-      renderDashboard()
-      fireEvent.click(screen.getByTestId('nav-search'))
-      expect(mockNavigate).toHaveBeenCalledWith('/search')
-    })
-
-    it('should navigate to executive dashboard', () => {
-      renderDashboard(oneProject)
-      fireEvent.click(screen.getByText('Executive Dashboard'))
-      expect(mockNavigate).toHaveBeenCalledWith('/executive')
-    })
-
-    it('should disable Executive Dashboard when no projects exist', () => {
-      renderDashboard([])
-      expect(screen.getByText('Executive Dashboard')).toBeDisabled()
-    })
+    // Search + Executive/Reports navigation moved to the AppShell sidebar (covered by shell tests).
   })
 
   describe('Project Actions', () => {
@@ -905,6 +889,7 @@ describe('Dashboard', () => {
         projects: [mockProject],
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: mockDelete,
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1018,6 +1003,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: mockDelete,
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1055,25 +1041,28 @@ describe('Dashboard', () => {
         expect(screen.getByText('1 project selected')).toBeInTheDocument()
       })
 
-      global.confirm = vi.fn(() => true)
-      fireEvent.click(
-        screen
-          .getAllByRole('button', { name: /delete/i })
-          .find((btn) => btn.textContent === 'Delete' && btn.classList.contains('bg-destructive'))!,
-      )
+      // Native confirm() replaced by an accessible ConfirmDialog. Open it via the
+      // bulk-bar Delete (the destructive-styled one, vs. the per-card Delete
+      // buttons the ProjectCard mock renders), then confirm inside the dialog.
+      const bulkDelete = screen
+        .getAllByRole('button', { name: 'Delete' })
+        .find((b) => b.classList.contains('bg-destructive'))
+      fireEvent.click(bulkDelete!)
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
-      expect(global.confirm).toHaveBeenCalled()
       await waitFor(() => {
         expect(mockDelete).toHaveBeenCalledWith('p1')
       })
     })
 
-    it('should not delete when bulk delete is cancelled', () => {
+    it('should not delete when bulk delete is cancelled', async () => {
       const mockDelete = vi.fn()
       const storeState = {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: mockDelete,
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1107,9 +1096,12 @@ describe('Dashboard', () => {
       const checkboxes = screen.getAllByRole('checkbox')
       fireEvent.click(checkboxes[1])
 
-      global.confirm = vi.fn(() => false)
-      const deleteButtons = screen.getAllByText('Delete')
-      fireEvent.click(deleteButtons[0])
+      const bulkDelete = screen
+        .getAllByRole('button', { name: 'Delete' })
+        .find((b) => b.classList.contains('bg-destructive'))
+      fireEvent.click(bulkDelete!)
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
       expect(mockDelete).not.toHaveBeenCalled()
     })
@@ -1121,6 +1113,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1166,6 +1159,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1207,6 +1201,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1252,6 +1247,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1390,6 +1386,7 @@ describe('Dashboard', () => {
         projects: [mockProject],
         addProject: vi.fn(),
         updateProject: capturedUpdateProject,
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1483,6 +1480,7 @@ describe('Dashboard', () => {
         projects: [mockProject],
         addProject: vi.fn(),
         updateProject: mockUpdate,
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1612,6 +1610,7 @@ describe('Dashboard', () => {
         projects: [projectWithComponents],
         addProject: vi.fn(),
         updateProject: mockUpdate,
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,
@@ -1666,6 +1665,7 @@ describe('Dashboard', () => {
         projects: twoProjects,
         addProject: vi.fn(),
         updateProject: vi.fn(),
+        setRefreshingProject: vi.fn(),
         deleteProject: vi.fn(),
         setCurrentProject: vi.fn(),
         currentProject: null,

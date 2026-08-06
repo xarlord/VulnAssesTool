@@ -1,4 +1,4 @@
-import { Given, When, Then, And } from '@cucumber/cucumber'
+import { Given, When, Then } from '@cucumber/cucumber'
 import { expect } from '@vitest/expect'
 import { CustomWorld } from '../support/world'
 
@@ -41,7 +41,8 @@ Then('I should be able to retrieve the data', async function (this: CustomWorld)
   expect(initialized).toBe(true)
 })
 
-And('the World should be cleaned up after the scenario', async function (this: CustomWorld) {
+// Registered with Then: Cucumber matches feature "And" steps against the previous keyword's steps.
+Then('the World should be cleaned up after the scenario', async function (this: CustomWorld) {
   // This will be verified in the After hook
   expect(this.screenshots).toBeDefined()
   expect(Array.isArray(this.screenshots)).toBe(true)

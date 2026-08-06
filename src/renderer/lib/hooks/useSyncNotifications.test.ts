@@ -307,6 +307,36 @@ describe('useSyncNotifications', () => {
     expect(toast.success).toHaveBeenCalled()
   })
 
+  it('counts a retry-exhausted request as an error even when shouldRetry is still true (M16)', () => {
+    renderHook(() => useSyncNotifications())
+
+    emitEvent({ type: 'sync-started', isOnline: true, queueLength: 1, total: 1, processed: 0, progress: 0 })
+    vi.advanceTimersByTime(1000)
+
+    // WHY: OfflineQueue breaks the retry loop at retryCount>=maxRetries even if the result still
+    // reports shouldRetry:true, so this permanent drop must NOT be shown as a clean success.
+    emitEvent({
+      type: 'request-processed',
+      isOnline: true,
+      queueLength: 0,
+      request: {
+        id: 'req-x',
+        type: 'cve-lookup',
+        payload: {},
+        timestamp: Date.now(),
+        retryCount: 3,
+        maxRetries: 3,
+        priority: 0,
+      },
+      result: { requestId: 'req-x', success: false, error: 'still failing', shouldRetry: true },
+    })
+
+    emitEvent({ type: 'sync-completed', isOnline: true, queueLength: 0, total: 1, processed: 1, progress: 100 })
+
+    expect(toast.warning).toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
   it('should handle sync completion without prior sync-started', () => {
     renderHook(() => useSyncNotifications())
 

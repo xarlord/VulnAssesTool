@@ -43,7 +43,8 @@ export const FONT_SIZES = {
 
 // Default settings
 export const DEFAULT_SETTINGS = {
-  theme: 'system' as const,
+  // Dark-first: security tooling default. Light and system remain selectable in Settings.
+  theme: 'dark' as const,
   fontSize: 'default' as const,
   dataRetentionDays: 30,
   autoRefresh: false,
@@ -92,6 +93,8 @@ export const DEFAULT_SETTINGS = {
   },
   cvssVersion: '3.1' as const,
   showCvssBreakdown: true,
+  // CVSS v3.x spec cutoffs (FR-10.5); kept in sync with DEFAULT_SEVERITY_THRESHOLDS in cvss/parser.ts.
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 500,
   showVulnerableOnly: false,
   // Database update schedule
@@ -201,6 +204,11 @@ export const AUTO_REFRESH_INTERVAL_OPTIONS = [
   { value: 24, label: 'Daily' },
   { value: 168, label: 'Weekly' },
 ]
+
+// Default TTL (hours) for cached OSV responses, keyed by (purl, 'osv') in the vuln cache.
+// Mirrors the documented 24h refresh window so repeated scans of an unchanged SBOM do not
+// re-hit OSV's public, rate-limited API within the window.
+export const OSV_CACHE_TTL_HOURS = 24
 
 // Cache TTL options
 export const CACHE_TTL_OPTIONS = [

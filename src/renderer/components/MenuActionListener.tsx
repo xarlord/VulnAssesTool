@@ -96,6 +96,7 @@ export function MenuActionListener() {
 /**
  * Hook to listen for specific menu action events
  */
+// eslint-disable-next-line react-refresh/only-export-components -- hook intentionally co-located with its component (dev-only fast-refresh hint)
 export function useMenuActionListener(eventName: string, handler: () => void) {
   useEffect(() => {
     const handleEvent = () => handler()

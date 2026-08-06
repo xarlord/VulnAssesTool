@@ -5,12 +5,15 @@ import {
   filterBySeverity,
   filterByCvssScore,
   sortBySeverity,
+  sortByCvssScore,
+  sortByPublicationDate,
   getVulnerabilityStatistics,
   hasHighSeverityVulnerabilities,
 } from './vulnMatcher'
 import type { Component, Vulnerability, CveResult } from '@@/types'
-import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT } from '@@/constants'
+import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT, OSV_CACHE_TTL_HOURS } from '@@/constants'
 import { getPlatform } from '@/lib/platform'
+import { resetVulnCache } from '@/lib/cache'
 
 // Mock the OSV module
 vi.mock('./osv', () => ({
@@ -40,6 +43,9 @@ function mockDatabaseSearch() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // OSV responses are cached across calls (FR-03.3); reset so cached entries never
+  // leak between tests and a per-test queryByPurls mock is always the one consulted.
+  resetVulnCache()
 })
 
 afterEach(() => {
@@ -170,6 +176,36 @@ describe('matchVulnerabilitiesForComponent', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('CVE-2024-1001')
+  })
+
+  it('tags CPE matches as cpe-exact in matchQuality', async () => {
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: mockNvdVulns.map(createMockCveResult),
+      totalResults: mockNvdVulns.length,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(mockComponent)
+
+    expect(result[0].matchQuality?.['comp-1']).toBe('cpe-exact')
+  })
+
+  it('tags name-only matches for a component with neither CPE nor suggested CPEs', async () => {
+    // A gap component (no CPE, no purl, no suggested CPEs) can only be matched by product name,
+    // which is the dominant false-positive source — it must be tagged so the UI can hide it.
+    const nameOnly: Component = { ...mockComponent, cpe: undefined, purl: undefined, suggestedCpes: undefined }
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: mockNvdVulns.map(createMockCveResult),
+      totalResults: mockNvdVulns.length,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(nameOnly)
+
+    expect(result.length).toBeGreaterThan(0)
+    expect(result[0].matchQuality?.[nameOnly.id]).toBe('name-only')
   })
 
   it('should return empty array when no vulnerabilities found', async () => {
@@ -363,12 +399,13 @@ describe('matchVulnerabilitiesForComponents', () => {
     expect(result.get('comp-2')![0].id).toBe('CVE-2024-1001')
   })
 
-  it('should handle same vulnerability from OSV for multiple components (non-platform environment)', async () => {
-    // Simulate non-platform environment by making database unavailable.
-    // This triggers the OSV query path in matchVulnerabilitiesForComponents.
-    const platform = getPlatform()
-    const originalDatabase = platform.database
-    platform.database = undefined as any
+  it('should query OSV and merge the same vulnerability across multiple components in the normal (platform-available) case', async () => {
+    // Regression test for FR-03.3: the OSV branch must run whenever the platform's
+    // database adapter is available — which is always true in the deployed web app
+    // (server adapter, not Electron). A prior bug inverted this condition so OSV was
+    // skipped whenever the database WAS available, silently disabling OSV coverage
+    // in every real scan. This test asserts OSV runs in that default, always-on case.
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
 
     const sharedOsvVuln: Vulnerability = {
       id: 'OSV-2024-1001',
@@ -390,6 +427,9 @@ describe('matchVulnerabilitiesForComponents', () => {
 
     const result = await matchVulnerabilitiesForComponents(mockComponents)
 
+    // The NVD key is always threaded to OSV now (FR-03.4); here no key was passed,
+    // so it forwards `undefined`.
+    expect(queryByPurls).toHaveBeenCalledWith(['pkg:npm/lodash@4.17.21', 'pkg:npm/express@4.18.0'], undefined)
     // Both components should have the same vulnerability
     expect(result.get('comp-1')).toHaveLength(1)
     expect(result.get('comp-2')).toHaveLength(1)
@@ -397,8 +437,71 @@ describe('matchVulnerabilitiesForComponents', () => {
     expect(result.get('comp-2')![0].id).toBe('OSV-2024-1001')
     // The vulnerability should have both components in affectedComponents
     expect(result.get('comp-1')![0].affectedComponents).toEqual(['comp-1', 'comp-2'])
+  })
 
-    // Restore platform database for subsequent tests
+  describe('OSV response caching (FR-03.3)', () => {
+    const cacheComponent: Component = {
+      id: 'comp-cache',
+      name: 'lodash',
+      version: '4.17.21',
+      type: 'library',
+      purl: 'pkg:npm/lodash@4.17.21',
+      licenses: ['MIT'],
+      vulnerabilities: [],
+    }
+
+    const cachedOsvVuln: Vulnerability = {
+      id: 'OSV-2024-9001',
+      source: 'osv',
+      severity: 'high',
+      cvssScore: 7.5,
+      description: 'Cached OSV vulnerability',
+      references: [],
+      affectedComponents: [],
+    }
+
+    beforeEach(() => {
+      vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
+      vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', [cachedOsvVuln]]]))
+    })
+
+    it('serves a second OSV lookup for the same PURL from cache instead of calling the API again', async () => {
+      await matchVulnerabilitiesForComponents([cacheComponent])
+      await matchVulnerabilitiesForComponents([cacheComponent])
+      // Why: repeated scans/renders of an unchanged SBOM must not re-hit OSV's public,
+      // rate-limited endpoint. A naive always-query implementation passes every other test
+      // yet violates this PRD bullet — only asserting the SECOND call is suppressed catches it.
+      expect(queryByPurls).toHaveBeenCalledTimes(1)
+    })
+
+    it('re-queries OSV after the cache TTL has elapsed', async () => {
+      vi.useFakeTimers()
+      try {
+        await matchVulnerabilitiesForComponents([cacheComponent])
+        // Advance past the TTL so the cached entry expires — proves the cache is not permanent.
+        vi.advanceTimersByTime((OSV_CACHE_TTL_HOURS + 1) * 60 * 60 * 1000)
+        await matchVulnerabilitiesForComponents([cacheComponent])
+        expect(queryByPurls).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  it('should NOT query OSV when the platform database is unavailable (no server adapter initialized)', async () => {
+    // Mirrors the guard used everywhere else in this module: without an initialized
+    // platform, there's nowhere to proxy the OSV request through, so it must be skipped
+    // rather than attempted directly from the browser (CORS).
+    const platform = getPlatform()
+    const originalDatabase = platform.database
+    platform.database = undefined as any
+
+    vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', []]]))
+
+    await matchVulnerabilitiesForComponents(mockComponents)
+
+    expect(queryByPurls).not.toHaveBeenCalled()
+
     platform.database = originalDatabase
   })
 
@@ -523,6 +626,77 @@ describe('sortBySeverity', () => {
     const originalOrder = mockVulnerabilities.map((v) => v.id)
     sortBySeverity(mockVulnerabilities)
     expect(mockVulnerabilities.map((v) => v.id)).toEqual(originalOrder)
+  })
+})
+
+describe('sortByCvssScore', () => {
+  const vulns: Vulnerability[] = [
+    { id: 'low', source: 'nvd', severity: 'medium', cvssScore: 4.0, references: [], affectedComponents: [] },
+    { id: 'high', source: 'nvd', severity: 'critical', cvssScore: 9.8, references: [], affectedComponents: [] },
+    { id: 'none', source: 'nvd', severity: 'high', references: [], affectedComponents: [] },
+    { id: 'mid', source: 'nvd', severity: 'high', cvssScore: 7.5, references: [], affectedComponents: [] },
+  ]
+
+  it('sorts by CVSS score descending', () => {
+    const result = sortByCvssScore(vulns)
+    expect(result.map((v) => v.id)).toEqual(['high', 'mid', 'low', 'none'])
+  })
+
+  it('sorts vulnerabilities without a CVSS score last', () => {
+    const result = sortByCvssScore(vulns)
+    expect(result[result.length - 1].id).toBe('none')
+  })
+
+  it('does not mutate the input array', () => {
+    const order = vulns.map((v) => v.id)
+    sortByCvssScore(vulns)
+    expect(vulns.map((v) => v.id)).toEqual(order)
+  })
+})
+
+describe('sortByPublicationDate', () => {
+  const vulns: Vulnerability[] = [
+    {
+      id: 'old',
+      source: 'nvd',
+      severity: 'high',
+      publishedAt: new Date('2020-01-01'),
+      references: [],
+      affectedComponents: [],
+    },
+    {
+      id: 'new',
+      source: 'nvd',
+      severity: 'high',
+      publishedAt: new Date('2026-06-01'),
+      references: [],
+      affectedComponents: [],
+    },
+    { id: 'undated', source: 'nvd', severity: 'high', references: [], affectedComponents: [] },
+    {
+      id: 'mid',
+      source: 'nvd',
+      severity: 'high',
+      publishedAt: new Date('2023-03-15'),
+      references: [],
+      affectedComponents: [],
+    },
+  ]
+
+  it('sorts by publication date, most recent first', () => {
+    const result = sortByPublicationDate(vulns)
+    expect(result.map((v) => v.id)).toEqual(['new', 'mid', 'old', 'undated'])
+  })
+
+  it('sorts vulnerabilities without a publication date last', () => {
+    const result = sortByPublicationDate(vulns)
+    expect(result[result.length - 1].id).toBe('undated')
+  })
+
+  it('does not mutate the input array', () => {
+    const order = vulns.map((v) => v.id)
+    sortByPublicationDate(vulns)
+    expect(vulns.map((v) => v.id)).toEqual(order)
   })
 })
 
@@ -1406,5 +1580,66 @@ describe('sortBySeverity edge cases', () => {
     const result = sortBySeverity(vulns)
     expect(result[0].cvssScore).toBe(7.0)
     expect(result[1].cvssScore).toBeUndefined()
+  })
+})
+
+describe('Hybrid scanning: NVD key forwarding + source merge (FR-03.4)', () => {
+  const purl = 'pkg:npm/lodash@4.17.21'
+  const hybridComponent: Component = {
+    id: 'comp-1',
+    name: 'lodash',
+    version: '4.17.21',
+    type: 'library',
+    purl,
+    cpe: 'cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*',
+    licenses: ['MIT'],
+    vulnerabilities: [],
+  }
+
+  it('forwards the NVD API key to OSV queries instead of silently dropping it', async () => {
+    // WHY: osv.ts's NVD-over-OSV enrichment merge is gated on the key arriving.
+    // Before the fix the key was declared `_nvdApiKey` ("not used") and never
+    // passed to queryByPurls, so the enrichment path was dead in the real app.
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [], totalResults: 0 })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    await matchVulnerabilitiesForComponents([hybridComponent], 'test-api-key')
+
+    expect(queryByPurls).toHaveBeenCalledWith(expect.arrayContaining([purl]), 'test-api-key')
+  })
+
+  it('keeps both sources attributed when the same CVE is found via local NVD first and OSV second', async () => {
+    // WHY: the PRD requires source attribution per vulnerability. A CVE found in
+    // local NVD first must not drop OSV's cross-reference when OSV reports the
+    // same id — recordMatch has to UNION sources/aliases, not keep only the first.
+    const shared: Vulnerability = {
+      id: 'CVE-2021-44228',
+      source: 'nvd',
+      severity: 'critical',
+      cvssScore: 10.0,
+      description: 'Log4Shell',
+      references: [],
+      affectedComponents: [],
+    }
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(shared)],
+      totalResults: 1,
+    })
+    // osv.ts, once the key arrives, returns the same CVE enriched with both
+    // sources and its GHSA alias.
+    const osvEnriched: Vulnerability = {
+      ...shared,
+      source: 'osv',
+      sources: ['nvd', 'osv'],
+      aliases: ['GHSA-jfh8-c2jp-5v3q'],
+    }
+    vi.mocked(queryByPurls).mockResolvedValue(new Map([[purl, [osvEnriched]]]))
+
+    const result = await matchVulnerabilitiesForComponents([hybridComponent], 'test-api-key')
+    const merged = (result.get('comp-1') ?? []).find((v) => v.id === 'CVE-2021-44228')
+
+    expect(merged?.sources).toEqual(expect.arrayContaining(['nvd', 'osv']))
+    expect(merged?.aliases).toEqual(expect.arrayContaining(['GHSA-jfh8-c2jp-5v3q']))
   })
 })

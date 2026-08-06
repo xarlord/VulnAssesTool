@@ -4,6 +4,8 @@
  */
 
 import type { SettingsProfile, AppSettings } from '@@/types'
+import { DEFAULT_SEVERITY_THRESHOLDS } from '@/lib/cvss/parser'
+import { logProfileEvent } from '@/lib/audit'
 
 const PROFILES_STORAGE_KEY = 'vuln-assess-settings-profiles'
 const ACTIVE_PROFILE_ID_KEY = 'vuln-assess-active-profile-id'
@@ -99,6 +101,8 @@ export function createProfile(name: string, description: string | undefined, set
     saveActiveProfileId(newProfile.id)
   }
 
+  logProfileEvent('CREATE', newProfile)
+
   return newProfile
 }
 
@@ -125,15 +129,23 @@ export function updateProfile(
     }
   }
 
+  // Capture the pre-edit state for the audit trail before we overwrite the slot.
+  const previousProfile = profiles[profileIndex]
+
   // Update the profile
   profiles[profileIndex] = {
     ...profiles[profileIndex],
     ...updates,
     name: updates.name ? updates.name.trim() : profiles[profileIndex].name,
-    description: updates.description?.trim() || undefined,
+    // Only overwrite the description when the caller actually supplied the field. A partial
+    // update that omits `description` must PRESERVE the stored value, not wipe it to undefined.
+    description:
+      'description' in updates ? updates.description?.trim() || undefined : profiles[profileIndex].description,
   }
 
   saveProfilesToStorage(profiles)
+
+  logProfileEvent('UPDATE', profiles[profileIndex], previousProfile)
 }
 
 /**
@@ -160,15 +172,18 @@ export function deleteProfile(profileId: string): void {
   // If we deleted the default profile, make another one default
   if (profile.isDefault && updatedProfiles.length > 0) {
     updatedProfiles[0].isDefault = true
+  }
 
-    // Update active profile if it was the deleted one
-    const activeId = loadActiveProfileId()
-    if (activeId === profileId) {
-      saveActiveProfileId(updatedProfiles[0].id)
-    }
+  // Update active profile if the deleted profile was active, regardless of isDefault
+  const activeId = loadActiveProfileId()
+  if (activeId === profileId && updatedProfiles.length > 0) {
+    saveActiveProfileId(updatedProfiles[0].id)
   }
 
   saveProfilesToStorage(updatedProfiles)
+
+  // Pass the deleted profile as previousState so the audit trail records what was removed.
+  logProfileEvent('DELETE', profile, profile)
 }
 
 /**
@@ -301,6 +316,7 @@ function getDefaultSettings(): AppSettings {
     },
     cvssVersion: '3.1',
     showCvssBreakdown: true,
+    severityThresholds: { ...DEFAULT_SEVERITY_THRESHOLDS },
     maxGraphNodes: 500,
     showVulnerableOnly: false,
   }

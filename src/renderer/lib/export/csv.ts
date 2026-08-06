@@ -5,6 +5,18 @@
 
 import type { Vulnerability, Component } from '@@/types'
 import type { VulnerabilityCsvRow, ComponentCsvRow } from './types'
+import { scanComponentLicenses, createDefaultLicensePolicy } from '@/lib/services/license'
+
+const LICENSE_POLICY = createDefaultLicensePolicy()
+
+/** Offline license-compliance verdict for a component's declared licenses. */
+function computeLicenseRisk(licenses: string[]): string {
+  const [finding] = scanComponentLicenses([{ id: '', name: '', version: '', licenses }], LICENSE_POLICY).findings
+  if (!finding) return 'review'
+  if (finding.worstVerdict === 'allowed') return 'allowed'
+  const categories = Array.from(new Set(finding.assessments.map((assessment) => assessment.category))).join('; ')
+  return `${finding.worstVerdict} (${categories})`
+}
 
 /**
  * Escape a CSV value by wrapping in quotes and escaping quotes
@@ -63,9 +75,10 @@ export function vulnerabilityToCsvRow(vuln: Vulnerability, componentName?: strin
   // Format CWEs as semicolon-separated list
   const cwes = vuln.cwes?.join('; ') || ''
 
-  // Check patch availability
+  // Check patch availability. patchAvailability is an enum, so a truthy check treats 'none'
+  // (explicitly "no patch") as available — compare to 'available' explicitly.
   const patchAvailable =
-    vuln.patchInfo?.patchAvailability || (vuln.patchedVersions && vuln.patchedVersions.length > 0)
+    vuln.patchInfo?.patchAvailability === 'available' || (vuln.patchedVersions?.length ?? 0) > 0
       ? 'Available'
       : 'Unknown'
 
@@ -169,6 +182,7 @@ export function componentToCsvRow(comp: Component): ComponentCsvRow {
     version: comp.version,
     type: comp.type,
     licenses: arrayToCSV(comp.licenses),
+    licenseRisk: computeLicenseRisk(comp.licenses),
     purl: comp.purl || '',
     vulnerabilityCount: comp.vulnerabilities.length,
     patchAvailable: comp.patchInfo?.hasFixAvailable ? 'Available' : comp.patchInfo ? 'Not Available' : 'Unknown',
@@ -188,6 +202,7 @@ export function componentToCsvLine(comp: Component): string {
     escapeCSV(row.version),
     escapeCSV(row.type),
     escapeCSV(row.licenses),
+    escapeCSV(row.licenseRisk),
     escapeCSV(row.purl),
     escapeCSV(row.vulnerabilityCount.toString()),
     escapeCSV(row.patchAvailable),
@@ -206,6 +221,7 @@ export function getComponentCsvHeader(): string {
     'Version',
     'Type',
     'Licenses',
+    'License Risk',
     'PURL',
     'Vulnerability Count',
     'Patch Available',

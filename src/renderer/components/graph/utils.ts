@@ -5,7 +5,7 @@
 import cytoscape from 'cytoscape'
 import type { Component, Vulnerability } from '@@/types'
 import type { GraphNodeData } from './types'
-import { SEVERITY_NODE_COLORS, DEFAULT_NODE_STYLE, DEFAULT_EDGE_STYLE } from './types'
+import { SEVERITY_NODE_COLORS, DEFAULT_NODE_STYLE, DEFAULT_EDGE_STYLE, MAX_GRAPH_NODES } from './types'
 
 /**
  * Calculate the maximum severity for a component based on its vulnerabilities
@@ -38,13 +38,92 @@ export function getVulnerabilityCount(component: Component, vulnerabilities: Vul
 }
 
 /**
+ * Detect which dependency edges participate in a circular dependency (FR-11.1-a).
+ *
+ * Uses Tarjan's strongly-connected-components algorithm: an edge `u->v` is part
+ * of a cycle iff `u` and `v` belong to the same SCC (every node in an SCC can
+ * reach every other, so any intra-SCC edge lies on a cycle), or it is a
+ * self-loop. Returns the set of edge keys (`${sourceId}->${targetId}`) so callers
+ * can flag cyclic edges without restructuring the graph.
+ */
+export function detectCycles(components: Component[]): Set<string> {
+  const ids = new Set(components.map((c) => c.id))
+  const adjacency = new Map<string, string[]>()
+  for (const component of components) {
+    const deps = component.dependencies || []
+    adjacency.set(
+      component.id,
+      deps.filter((depId) => ids.has(depId)),
+    )
+  }
+
+  let index = 0
+  let sccCounter = 0
+  const indices = new Map<string, number>()
+  const lowlink = new Map<string, number>()
+  const onStack = new Set<string>()
+  const stack: string[] = []
+  const sccId = new Map<string, number>()
+
+  const strongconnect = (v: string): void => {
+    indices.set(v, index)
+    lowlink.set(v, index)
+    index++
+    stack.push(v)
+    onStack.add(v)
+
+    for (const w of adjacency.get(v) ?? []) {
+      if (!indices.has(w)) {
+        strongconnect(w)
+        lowlink.set(v, Math.min(lowlink.get(v) ?? 0, lowlink.get(w) ?? 0))
+      } else if (onStack.has(w)) {
+        lowlink.set(v, Math.min(lowlink.get(v) ?? 0, indices.get(w) ?? 0))
+      }
+    }
+
+    if ((lowlink.get(v) ?? 0) === (indices.get(v) ?? 0)) {
+      // v is the root of an SCC — pop the stack down to v.
+      let popped: string | undefined
+      do {
+        popped = stack.pop()
+        if (popped === undefined) break
+        onStack.delete(popped)
+        sccId.set(popped, sccCounter)
+      } while (popped !== v)
+      sccCounter++
+    }
+  }
+
+  for (const component of components) {
+    if (!indices.has(component.id)) strongconnect(component.id)
+  }
+
+  const cycleEdges = new Set<string>()
+  for (const component of components) {
+    for (const dep of adjacency.get(component.id) ?? []) {
+      const sameScc = sccId.get(component.id) === sccId.get(dep)
+      if (component.id === dep || sameScc) {
+        cycleEdges.add(`${component.id}->${dep}`)
+      }
+    }
+  }
+
+  return cycleEdges
+}
+
+/**
  * Convert components and vulnerabilities to Cytoscape elements
  */
 export function buildGraphElements(
   components: Component[],
   vulnerabilities: Vulnerability[],
 ): cytoscape.ElementsDefinition {
-  const nodes: cytoscape.NodeDefinition[] = components.map((component) => {
+  // Cap node/edge count to keep fcose responsive (FR-11.1-b). Edges to a
+  // truncated-out target are dropped by the existing existence guard below, so
+  // no dangling-edge cleanup is needed. The page surfaces a truncation banner.
+  const graphComponents = components.length > MAX_GRAPH_NODES ? components.slice(0, MAX_GRAPH_NODES) : components
+
+  const nodes: cytoscape.NodeDefinition[] = graphComponents.map((component) => {
     const vulnCount = getVulnerabilityCount(component, vulnerabilities)
     const maxSeverity = getMaxSeverity(component, vulnerabilities)
 
@@ -65,18 +144,20 @@ export function buildGraphElements(
   })
 
   const edges: cytoscape.EdgeDefinition[] = []
+  const cycleEdges = detectCycles(graphComponents)
 
   // Build edges from dependencies
-  components.forEach((component) => {
+  graphComponents.forEach((component) => {
     if (component.dependencies) {
       component.dependencies.forEach((depId) => {
         // Only add edge if target component exists
-        if (components.some((c) => c.id === depId)) {
+        if (graphComponents.some((c) => c.id === depId)) {
           edges.push({
             data: {
               id: `edge-${component.id}-${depId}`,
               source: component.id,
               target: depId,
+              isCycleEdge: cycleEdges.has(`${component.id}->${depId}`),
             },
           })
         }
@@ -259,6 +340,15 @@ export function getBaseStyles() {
         'target-arrow-shape': 'triangle',
         'arrow-scale': DEFAULT_EDGE_STYLE.arrowScale,
         'curve-style': DEFAULT_EDGE_STYLE.curveStyle,
+      } as cytoscape.Css.Edge,
+    },
+    {
+      // Circular-dependency edges are flagged dashed + amber (FR-11.1-a).
+      selector: 'edge[?isCycleEdge]',
+      style: {
+        'line-style': 'dashed',
+        'line-color': '#f59e0b', // amber-500
+        'target-arrow-color': '#f59e0b',
       } as cytoscape.Css.Edge,
     },
     {

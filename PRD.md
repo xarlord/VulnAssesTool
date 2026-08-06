@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-VulnAssessTool is a desktop vulnerability assessment application designed for security teams, DevOps engineers, and compliance officers to analyze Software Bill of Materials (SBOM) for security vulnerabilities. The application provides comprehensive vulnerability scanning, health monitoring, audit logging, and reporting capabilities through an intuitive desktop interface built on Electron and React.
+VulnAssessTool is a web-based vulnerability assessment application designed for security teams, DevOps engineers, and compliance officers to analyze Software Bill of Materials (SBOM) for security vulnerabilities. The application provides comprehensive vulnerability scanning, health monitoring, audit logging, and reporting capabilities through an intuitive browser interface backed by an Express (Node) server and a React frontend.
 
 ### Product Vision
 
@@ -55,21 +55,21 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### Technology Stack
 
-| Layer | Technology | Version |
-|--------|-------------|----------|
-| Desktop Framework | Electron | 40.1.0 |
-| Frontend Framework | React | 19.2.0 |
-| Language | TypeScript | ~5.9.3 |
-| Build Tool | Vite | 7.2.4 |
-| State Management | Zustand | 5.0.11 |
-| Styling | Tailwind CSS | 3.4.19 |
-| Database (Local) | SQLite (better-sqlite3) | 12.6.2 |
-| Database (Browser) | sql.js | 1.12.0 |
-| Testing (Unit) | Vitest | 4.0.18 |
-| Testing (E2E) | Playwright | 1.58.1 |
-| Testing (BDD) | Cucumber.js | 12.6.0 |
-| PDF Generation | jsPDF | 4.1.0 |
-| Charts | Recharts | 3.7.0 |
+| Layer              | Technology              | Version |
+| ------------------ | ----------------------- | ------- |
+| Backend Framework  | Express (Node)          | 5.2.1   |
+| Frontend Framework | React                   | 19.2.0  |
+| Language           | TypeScript              | ~5.9.3  |
+| Build Tool         | Vite                    | 7.2.4   |
+| State Management   | Zustand                 | 5.0.11  |
+| Styling            | Tailwind CSS            | 3.4.19  |
+| Database (Local)   | SQLite (better-sqlite3) | 12.6.2  |
+| Database (Browser) | sql.js                  | 1.12.0  |
+| Testing (Unit)     | Vitest                  | 4.0.18  |
+| Testing (E2E)      | Playwright              | 1.58.1  |
+| Testing (BDD)      | Cucumber.js             | 12.6.0  |
+| PDF Generation     | jsPDF                   | 4.1.0   |
+| Charts             | Recharts                | 3.7.0   |
 
 ---
 
@@ -77,13 +77,13 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### Primary Users
 
-| User Type | Role | Goals | Pain Points |
-|-----------|-------|--------|-------------|
-| **Security Analyst** | Conducts vulnerability assessments and security reviews | Needs fast, accurate vulnerability data; requires detailed CVE information; manages remediation prioritization | Slow API-based tools; information overload; poor prioritization guidance |
-| **DevOps Engineer** | Integrates security into CI/CD pipelines | Needs automated scanning; quick status indicators; patch availability information | Manual processes; lack of automation; unclear remediation paths |
-| **Compliance Officer** | Ensures regulatory and policy compliance | Requires audit trails; needs reporting; must demonstrate due diligence | Incomplete records; manual report generation; missing audit evidence |
-| **Engineering Manager** | Oversees security posture across projects | Needs portfolio visibility; trend analysis; resource allocation insights | Lack of visibility; inability to compare projects; no trending data |
-| **Software Developer** | Uses secure components in development | Wants quick vulnerability checks; needs clear fix guidance; prefers offline operation | API rate limits; unclear fix instructions; network dependency issues |
+| User Type               | Role                                                    | Goals                                                                                                          | Pain Points                                                              |
+| ----------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Security Analyst**    | Conducts vulnerability assessments and security reviews | Needs fast, accurate vulnerability data; requires detailed CVE information; manages remediation prioritization | Slow API-based tools; information overload; poor prioritization guidance |
+| **DevOps Engineer**     | Integrates security into CI/CD pipelines                | Needs automated scanning; quick status indicators; patch availability information                              | Manual processes; lack of automation; unclear remediation paths          |
+| **Compliance Officer**  | Ensures regulatory and policy compliance                | Requires audit trails; needs reporting; must demonstrate due diligence                                         | Incomplete records; manual report generation; missing audit evidence     |
+| **Engineering Manager** | Oversees security posture across projects               | Needs portfolio visibility; trend analysis; resource allocation insights                                       | Lack of visibility; inability to compare projects; no trending data      |
+| **Software Developer**  | Uses secure components in development                   | Wants quick vulnerability checks; needs clear fix guidance; prefers offline operation                          | API rate limits; unclear fix instructions; network dependency issues     |
 
 ### Secondary Users
 
@@ -94,6 +94,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### User Personas
 
 #### Persona 1: Sarah - Security Analyst
+
 - **Role:** Senior Security Analyst at a mid-sized fintech company
 - **Experience:** 7 years in application security, familiar with OWASP standards
 - **Goals:**
@@ -106,6 +107,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Limited offline capability
 
 #### Persona 2: Marcus - DevOps Engineer
+
 - **Role:** DevOps Lead at a SaaS company
 - **Experience:** 5 years in DevOps, responsible for CI/CD pipelines
 - **Goals:**
@@ -118,6 +120,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - No support for offline environments
 
 #### Persona 3: Elena - Compliance Officer
+
 - **Role:** IT Compliance Manager at a healthcare organization
 - **Experience:** 10 years in compliance, HIPAA and SOC 2 expertise
 - **Goals:**
@@ -132,9 +135,11 @@ VulnAssessTool provides an offline-first desktop application that:
 ### Use Case Scenarios
 
 #### UC-01: Initial Vulnerability Assessment
+
 **Actor:** Security Analyst
 **Preconditions:** SBOM file available from development team
 **Steps:**
+
 1. Create new project in VulnAssessTool
 2. Import CycloneDX JSON SBOM file
 3. Application automatically parses components and scans vulnerabilities
@@ -143,9 +148,11 @@ VulnAssessTool provides an offline-first desktop application that:
 6. Export vulnerability report as PDF for management review
 
 #### UC-02: Ongoing Monitoring
+
 **Actor:** DevOps Engineer
 **Preconditions:** Project exists with previous scan results
 **Steps:**
+
 1. Open VulnAssessTool and select project
 2. Click "Refresh Vulnerability Data" to check for new CVEs
 3. Application queries local NVD database for updates
@@ -154,9 +161,11 @@ VulnAssessTool provides an offline-first desktop application that:
 6. Generate upgrade recommendations for development team
 
 #### UC-03: Audit Preparation
+
 **Actor:** Compliance Officer
 **Preconditions:** Annual SOC 2 audit scheduled
 **Steps:**
+
 1. Access audit log panel in VulnAssessTool
 2. Export audit trail covering the audit period
 3. Filter events to show all vulnerability scans and assessments
@@ -167,9 +176,11 @@ VulnAssessTool provides an offline-first desktop application that:
 5. Provide complete audit package to external auditors
 
 #### UC-04: Executive Dashboard Review
+
 **Actor:** Engineering Manager
 **Preconditions:** Multiple projects under active development
 **Steps:**
+
 1. Open VulnAssessTool executive dashboard
 2. Review aggregate health score across all projects (85/100)
 3. Identify two projects in "critical" health state
@@ -184,6 +195,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-01: Project Management
 
 #### FR-01.1: Project Creation
+
 - **Priority:** High (Must Have)
 - **Description:** Users must be able to create new projects to organize vulnerability assessments
 - **Requirements:**
@@ -194,6 +206,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Project data must persist across application restarts
 
 #### FR-01.2: Project Editing and Deletion
+
 - **Priority:** Medium (Should Have)
 - **Description:** Users must be able to modify and remove projects
 - **Requirements:**
@@ -205,6 +218,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-02: SBOM Import and Parsing
 
 #### FR-02.1: CycloneDX Support
+
 - **Priority:** High (Must Have)
 - **Description:** Application must import and parse CycloneDX format SBOMs
 - **Requirements:**
@@ -217,6 +231,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Provide clear error messages for invalid files
 
 #### FR-02.2: SPDX Support
+
 - **Priority:** High (Must Have)
 - **Description:** Application must import and parse SPDX format SBOMs
 - **Requirements:**
@@ -227,6 +242,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Support both tag-value and RDF formats
 
 #### FR-02.3: Multiple SBOM Files per Project
+
 - **Priority:** Medium (Should Have)
 - **Description:** Projects must support multiple SBOM file uploads
 - **Requirements:**
@@ -238,6 +254,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-03: Vulnerability Scanning and Detection
 
 #### FR-03.1: Local Database Scanning
+
 - **Priority:** High (Must Have)
 - **Description:** Application must scan components against local NVD database
 - **Requirements:**
@@ -249,6 +266,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Handle 100,000+ components in database without performance degradation
 
 #### FR-03.2: NVD API Integration
+
 - **Priority:** High (Must Have)
 - **Description:** Application must query NVD API for latest vulnerability data
 - **Requirements:**
@@ -260,6 +278,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Support offline mode when API unavailable
 
 #### FR-03.3: OSV Integration
+
 - **Priority:** High (Must Have)
 - **Description:** Application must integrate with OSV (Open Source Vulnerabilities) database
 - **Requirements:**
@@ -270,6 +289,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Cache OSV responses
 
 #### FR-03.4: Hybrid Scanning
+
 - **Priority:** Medium (Should Have)
 - **Description:** Application must combine local and API-based scanning
 - **Requirements:**
@@ -280,6 +300,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Display source attribution for each vulnerability
 
 #### FR-03.5: Manual Refresh
+
 - **Priority:** High (Must Have)
 - **Description:** Users must be able to manually trigger vulnerability data refresh
 - **Requirements:**
@@ -290,6 +311,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Notification when refresh completes
 
 #### FR-03.6: Automatic Refresh
+
 - **Priority:** Medium (Should Have)
 - **Description:** Application must support scheduled vulnerability data refresh
 - **Requirements:**
@@ -301,6 +323,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-04: Vulnerability Details and Presentation
 
 #### FR-04.1: Vulnerability Listing
+
 - **Priority:** High (Must Have)
 - **Description:** Users must be able to view all vulnerabilities for a project
 - **Requirements:**
@@ -311,6 +334,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Bulk select for operations
 
 #### FR-04.2: Vulnerability Detail View
+
 - **Priority:** High (Must Have)
 - **Description:** Users must access complete vulnerability information
 - **Requirements:**
@@ -325,6 +349,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Display exploit status if known
 
 #### FR-04.3: CVSS Breakdown
+
 - **Priority:** Medium (Should Have)
 - **Description:** Application must explain CVSS scores in detail
 - **Requirements:**
@@ -334,6 +359,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Temporal metrics if available (E, X, RL, RC, CR)
 
 #### FR-04.4: Patch Information
+
 - **Priority:** High (Must Have)
 - **Description:** Application must provide patch availability information
 - **Requirements:**
@@ -347,6 +373,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-05: Health Dashboard
 
 #### FR-05.1: Health Score Calculation
+
 - **Priority:** High (Must Have)
 - **Description:** Application must calculate health scores for projects
 - **Requirements:**
@@ -357,6 +384,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Show score trends (improving, stable, degrading)
 
 #### FR-05.2: Health Categories
+
 - **Priority:** High (Must Have)
 - **Description:** Health scores must map to descriptive categories
 - **Requirements:**
@@ -367,6 +395,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Critical (0-39): Critical vulnerabilities present
 
 #### FR-05.3: Health Dashboard Visualization
+
 - **Priority:** High (Must Have)
 - **Description:** Users must visualize health metrics
 - **Requirements:**
@@ -379,6 +408,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-06: Executive Dashboard
 
 #### FR-06.1: Aggregate Metrics
+
 - **Priority:** Medium (Should Have)
 - **Description:** Dashboard must show portfolio-level metrics
 - **Requirements:**
@@ -389,6 +419,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Fixable vulnerability percentage
 
 #### FR-06.2: Executive Widgets
+
 - **Priority:** Medium (Should Have)
 - **Description:** Configurable widgets for executive dashboard
 - **Requirements:**
@@ -400,6 +431,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Top 10 critical vulnerabilities
 
 #### FR-06.3: Dashboard Customization
+
 - **Priority:** Low (Nice to Have)
 - **Description:** Users must customize their dashboard layout
 - **Requirements:**
@@ -411,6 +443,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-07: Audit and Compliance
 
 #### FR-07.1: Audit Logging
+
 - **Priority:** High (Must Have)
 - **Description:** Application must log all state changes for compliance
 - **Requirements:**
@@ -423,6 +456,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Immutable log entries (no modifications allowed)
 
 #### FR-07.2: Audit Log Viewing
+
 - **Priority:** High (Must Have)
 - **Description:** Users must be able to review audit logs
 - **Requirements:**
@@ -433,6 +467,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Pagination for large logs
 
 #### FR-07.3: Audit Export
+
 - **Priority:** Medium (Should Have)
 - **Description:** Users must export audit logs for compliance reporting
 - **Requirements:**
@@ -445,6 +480,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-08: Search and Filtering
 
 #### FR-08.1: Global Search
+
 - **Priority:** High (Must Have)
 - **Description:** Application must provide search across all projects
 - **Requirements:**
@@ -456,6 +492,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Save search queries
 
 #### FR-08.2: Component Filtering
+
 - **Priority:** High (Must Have)
 - **Description:** Users must filter components by various criteria
 - **Requirements:**
@@ -467,6 +504,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Save filter presets
 
 #### FR-08.3: Vulnerability Filtering
+
 - **Priority:** High (Must Have)
 - **Description:** Users must filter vulnerabilities by severity and attributes
 - **Requirements:**
@@ -480,6 +518,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-09: Export and Reporting
 
 #### FR-09.1: Data Export
+
 - **Priority:** High (Must Have)
 - **Description:** Users must export project data in multiple formats
 - **Requirements:**
@@ -490,6 +529,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Support bulk export of multiple projects
 
 #### FR-09.2: Vulnerability Reports
+
 - **Priority:** High (Must Have)
 - **Description:** Application must generate formatted vulnerability reports
 - **Requirements:**
@@ -502,6 +542,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Save/export as PDF
 
 #### FR-09.3: Compliance Reports
+
 - **Priority:** Medium (Should Have)
 - **Description:** Application must generate compliance-focused reports
 - **Requirements:**
@@ -514,6 +555,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-10: Settings and Configuration
 
 #### FR-10.1: Theme and Appearance
+
 - **Priority:** Medium (Should Have)
 - **Description:** Users must customize application appearance
 - **Requirements:**
@@ -523,6 +565,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Persist preferences across sessions
 
 #### FR-10.2: Settings Profiles
+
 - **Priority:** Medium (Should Have)
 - **Description:** Users must manage multiple configuration profiles
 - **Requirements:**
@@ -533,6 +576,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Profile descriptions
 
 #### FR-10.3: Database Configuration
+
 - **Priority:** High (Must Have)
 - **Description:** Users must configure vulnerability database settings
 - **Requirements:**
@@ -544,6 +588,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Manual database update trigger
 
 #### FR-10.4: Notification Preferences
+
 - **Priority:** Medium (Should Have)
 - **Description:** Users must configure notification behavior
 - **Requirements:**
@@ -553,6 +598,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Notification center for viewing history
 
 #### FR-10.5: CVSS Configuration
+
 - **Priority:** Low (Nice to Have)
 - **Description:** Users must configure CVSS settings
 - **Requirements:**
@@ -563,6 +609,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### FR-11: Dependency Graph Visualization
 
 #### FR-11.1: Graph Generation
+
 - **Priority:** Low (Nice to Have)
 - **Description:** Application must generate dependency graphs
 - **Requirements:**
@@ -573,6 +620,7 @@ VulnAssessTool provides an offline-first desktop application that:
   - Show transitive dependencies
 
 #### FR-11.2: Graph Visualization
+
 - **Priority:** Low (Nice to Have)
 - **Description:** Users must visualize dependency relationships
 - **Requirements:**
@@ -588,80 +636,80 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### NFR-01: Performance
 
-| Metric | Requirement | Measurement Method |
-|--------|-------------|-------------------|
-| Application Startup | < 3 seconds on typical hardware | Time from launch to usable UI |
-| SBOM Import (1000 components) | < 5 seconds | File read to data stored |
-| Vulnerability Scan (1000 components) | < 10 seconds (local DB), < 60 seconds (API) | Scan completion time |
-| Dashboard Load | < 2 seconds | Time to render with 100 projects |
-| Search Response | < 1 second for 10,000+ components | Query execution time |
-| UI Responsiveness | < 100ms for all interactions | Interaction to feedback |
+| Metric                               | Requirement                                 | Measurement Method               |
+| ------------------------------------ | ------------------------------------------- | -------------------------------- |
+| Application Startup                  | < 3 seconds on typical hardware             | Time from launch to usable UI    |
+| SBOM Import (1000 components)        | < 5 seconds                                 | File read to data stored         |
+| Vulnerability Scan (1000 components) | < 10 seconds (local DB), < 60 seconds (API) | Scan completion time             |
+| Dashboard Load                       | < 2 seconds                                 | Time to render with 100 projects |
+| Search Response                      | < 1 second for 10,000+ components           | Query execution time             |
+| UI Responsiveness                    | < 100ms for all interactions                | Interaction to feedback          |
 
 ### NFR-02: Scalability
 
-| Dimension | Requirement |
-|-----------|-------------|
-| Projects | Support 1,000+ projects |
-| Components per Project | Support 50,000+ components |
-| Vulnerabilities | Handle 1,000,000+ vulnerability records |
-| Concurrent Users | Single-user desktop (future: multi-user cloud) |
-| Database Size | Handle 10GB+ NVD database |
+| Dimension              | Requirement                                    |
+| ---------------------- | ---------------------------------------------- |
+| Projects               | Support 1,000+ projects                        |
+| Components per Project | Support 50,000+ components                     |
+| Vulnerabilities        | Handle 1,000,000+ vulnerability records        |
+| Concurrent Users       | Single-user desktop (future: multi-user cloud) |
+| Database Size          | Handle 10GB+ NVD database                      |
 
 ### NFR-03: Reliability
 
-| Metric | Requirement |
-|--------|-------------|
-| Application Crash Rate | < 0.1% of sessions |
-| Data Loss | Zero data loss in normal operation |
-| Auto-recovery | Graceful recovery from crashes |
-| Backup | Automatic data backup before updates |
+| Metric                 | Requirement                          |
+| ---------------------- | ------------------------------------ |
+| Application Crash Rate | < 0.1% of sessions                   |
+| Data Loss              | Zero data loss in normal operation   |
+| Auto-recovery          | Graceful recovery from crashes       |
+| Backup                 | Automatic data backup before updates |
 
 ### NFR-04: Usability
 
-| Metric | Requirement |
-|--------|-------------|
-| Learning Curve | New user productive within 15 minutes |
-| Help Accessibility | Context-sensitive help available |
-| Error Messages | Clear, actionable error messages |
-| Keyboard Shortcuts | All actions accessible via keyboard |
-| Accessibility | WCAG 2.1 Level AA compliance |
+| Metric             | Requirement                           |
+| ------------------ | ------------------------------------- |
+| Learning Curve     | New user productive within 15 minutes |
+| Help Accessibility | Context-sensitive help available      |
+| Error Messages     | Clear, actionable error messages      |
+| Keyboard Shortcuts | All actions accessible via keyboard   |
+| Accessibility      | WCAG 2.1 Level AA compliance          |
 
 ### NFR-05: Compatibility
 
-| Platform | Version | Support Level |
-|----------|----------|---------------|
-| Windows | 10/11 | Full support |
-| macOS | 11+ (Big Sur+) | Full support |
-| Linux | Ubuntu 20.04+, Fedora 35+ | Full support |
-| Architecture | x64, ARM64 | Full support |
+| Platform     | Version                   | Support Level |
+| ------------ | ------------------------- | ------------- |
+| Windows      | 10/11                     | Full support  |
+| macOS        | 11+ (Big Sur+)            | Full support  |
+| Linux        | Ubuntu 20.04+, Fedora 35+ | Full support  |
+| Architecture | x64, ARM64                | Full support  |
 
 ### NFR-06: Security
 
-| Requirement | Description |
-|-------------|-------------|
-| Data at Rest | Encrypt sensitive configuration data |
-| Data in Transit | HTTPS/TLS 1.3 for API calls |
-| Local Storage | No plaintext storage of API keys |
-| Updates | Code signing for application updates |
-| Sandboxing | Electron context isolation enabled |
+| Requirement     | Description                          |
+| --------------- | ------------------------------------ |
+| Data at Rest    | Encrypt sensitive configuration data |
+| Data in Transit | HTTPS/TLS 1.3 for API calls          |
+| Local Storage   | No plaintext storage of API keys     |
+| Updates         | Code signing for application updates |
+| Sandboxing      | Electron context isolation enabled   |
 
 ### NFR-07: Maintainability
 
-| Metric | Requirement |
-|--------|-------------|
-| Code Coverage | 95% minimum for unit tests |
-| Code Quality | ESLint with zero warnings |
+| Metric        | Requirement                    |
+| ------------- | ------------------------------ |
+| Code Coverage | 95% minimum for unit tests     |
+| Code Quality  | ESLint with zero warnings      |
 | Documentation | All APIs documented with JSDoc |
-| Build Time | < 5 minutes for full build |
+| Build Time    | < 5 minutes for full build     |
 
 ### NFR-08: Testability
 
-| Type | Coverage |
-|------|----------|
-| Unit Tests | 95% coverage requirement |
-| Integration Tests | All API endpoints covered |
-| E2E Tests | Critical user paths covered |
-| BDD Tests | All major features defined with Gherkin |
+| Type              | Coverage                                |
+| ----------------- | --------------------------------------- |
+| Unit Tests        | 95% coverage requirement                |
+| Integration Tests | All API endpoints covered               |
+| E2E Tests         | Critical user paths covered             |
+| BDD Tests         | All major features defined with Gherkin |
 
 ---
 
@@ -670,18 +718,21 @@ VulnAssessTool provides an offline-first desktop application that:
 ### Security Requirements
 
 #### SR-01: Data Protection
+
 - Encrypt API keys in local storage
 - Secure handling of sensitive vulnerability data
 - No telemetry without explicit consent
 - Sanitize all user inputs before processing
 
 #### SR-02: Code Security
+
 - Regular dependency updates for known vulnerabilities
 - Static analysis before releases
 - Security review of all database operations
 - Context isolation in Electron
 
 #### SR-03: Update Security
+
 - Code signing for all releases
 - Verified update sources
 - Checksum validation for downloads
@@ -690,16 +741,19 @@ VulnAssessTool provides an offline-first desktop application that:
 ### Compliance Requirements
 
 #### CR-01: Supply Chain Compliance
+
 - **CISA CISA:** Support SBOM requirements per CISA guidelines
 - **NTIA:** Minimum elements for SBOM (SPDX/CycloneDX)
 - **EO 14028:** Support for software artifact attestation
 
 #### CR-02: Industry Standards
+
 - **OWASP:** Align with OWASP Software Component Verification Standard (SCVS)
 - **ISO 27001:** Audit trail and access control requirements
 - **SOC 2:** Evidence generation for security assessments
 
 #### CR-03: Data Formats
+
 - **CycloneDX:** Support v1.0 - v1.5 (JSON/XML)
 - **SPDX:** Support v2.2 - v2.3
 - **CVSS:** Support v3.0 and v3.1
@@ -711,32 +765,32 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### Product Success Metrics
 
-| Metric | Target | Timeframe |
-|--------|--------|-----------|
-| Active Users | 1,000 monthly active users | 6 months post-launch |
-| User Satisfaction | 4.5/5 average rating | 6 months post-launch |
-| GitHub Stars | 500 stars | 3 months post-launch |
-| Bug Reports | < 10 critical bugs/month | Ongoing |
-| Feature Requests | < 20 open requests | Ongoing |
+| Metric            | Target                     | Timeframe            |
+| ----------------- | -------------------------- | -------------------- |
+| Active Users      | 1,000 monthly active users | 6 months post-launch |
+| User Satisfaction | 4.5/5 average rating       | 6 months post-launch |
+| GitHub Stars      | 500 stars                  | 3 months post-launch |
+| Bug Reports       | < 10 critical bugs/month   | Ongoing              |
+| Feature Requests  | < 20 open requests         | Ongoing              |
 
 ### Quality Metrics
 
-| Metric | Target | Status |
-|--------|--------|--------|
-| Unit Test Coverage | 95% | Existing: ~70% (Need improvement) |
-| E2E Test Coverage | 100% of critical paths | Existing: ~80% (Good) |
-| BDD Scenarios | 100% of features | Existing: 124 scenarios (Good) |
-| Linting Issues | 0 errors/warnings | Current: Needs verification |
-| Security Vulnerabilities | 0 critical/high in dependencies | Ongoing monitoring |
+| Metric                   | Target                          | Status                            |
+| ------------------------ | ------------------------------- | --------------------------------- |
+| Unit Test Coverage       | 95%                             | Existing: ~70% (Need improvement) |
+| E2E Test Coverage        | 100% of critical paths          | Existing: ~80% (Good)             |
+| BDD Scenarios            | 100% of features                | Existing: 124 scenarios (Good)    |
+| Linting Issues           | 0 errors/warnings               | Current: Needs verification       |
+| Security Vulnerabilities | 0 critical/high in dependencies | Ongoing monitoring                |
 
 ### Adoption Metrics
 
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Download Count | 5,000 downloads | Release tracking |
-| Installation Success Rate | 98% | Error reporting |
-| Daily Active Usage | 30% of downloads | Telemetry (optional) |
-| Feature Usage | All core features used | Feature analytics |
+| Metric                    | Target                 | Measurement          |
+| ------------------------- | ---------------------- | -------------------- |
+| Download Count            | 5,000 downloads        | Release tracking     |
+| Installation Success Rate | 98%                    | Error reporting      |
+| Daily Active Usage        | 30% of downloads       | Telemetry (optional) |
+| Feature Usage             | All core features used | Feature analytics    |
 
 ---
 
@@ -745,6 +799,7 @@ VulnAssessTool provides an offline-first desktop application that:
 ### Build and Release
 
 #### DR-01: Build Process
+
 - Automated builds via CI/CD
 - Multi-platform builds (Windows, macOS, Linux)
 - Code signing for each platform
@@ -752,13 +807,15 @@ VulnAssessTool provides an offline-first desktop application that:
 - Automated testing before release
 
 #### DR-02: Release Channels
-| Channel | Frequency | Purpose |
-|---------|-----------|---------|
-| Stable | Monthly | Production-ready releases |
-| Beta | Bi-weekly | Pre-release testing |
-| Nightly | Daily | Latest features (unstable) |
+
+| Channel | Frequency | Purpose                    |
+| ------- | --------- | -------------------------- |
+| Stable  | Monthly   | Production-ready releases  |
+| Beta    | Bi-weekly | Pre-release testing        |
+| Nightly | Daily     | Latest features (unstable) |
 
 #### DR-03: Distribution
+
 - GitHub Releases for all versions
 - Automatic update notifications
 - Delta updates for efficiency
@@ -768,30 +825,34 @@ VulnAssessTool provides an offline-first desktop application that:
 ### System Requirements
 
 #### Minimum Requirements
-| Component | Minimum |
-|-----------|-----------|
-| OS | Windows 10, macOS 11, Ubuntu 20.04 |
-| RAM | 4 GB |
-| Storage | 500 MB + database size |
-| CPU | Dual-core 1.5 GHz |
+
+| Component | Minimum                            |
+| --------- | ---------------------------------- |
+| OS        | Windows 10, macOS 11, Ubuntu 20.04 |
+| RAM       | 4 GB                               |
+| Storage   | 500 MB + database size             |
+| CPU       | Dual-core 1.5 GHz                  |
 
 #### Recommended Requirements
-| Component | Recommended |
-|-----------|-------------|
-| OS | Windows 11, macOS 13+, Ubuntu 22.04+ |
-| RAM | 8 GB |
-| Storage | 2 GB + database size |
-| CPU | Quad-core 2.0 GHz |
+
+| Component | Recommended                          |
+| --------- | ------------------------------------ |
+| OS        | Windows 11, macOS 13+, Ubuntu 22.04+ |
+| RAM       | 8 GB                                 |
+| Storage   | 2 GB + database size                 |
+| CPU       | Quad-core 2.0 GHz                    |
 
 ### Installation
 
 #### DR-04: Installation Methods
+
 - Windows: MSI installer with admin option
 - macOS: DMG with drag-to-install
 - Linux: AppImage, DEB, RPM packages
 - All platforms: Portable binary option
 
 #### DR-05: First-Run Experience
+
 - Welcome wizard for configuration
 - Optional NVD database download
 - Settings profile selection
@@ -802,7 +863,9 @@ VulnAssessTool provides an offline-first desktop application that:
 ## Roadmap & Future Enhancements
 
 ### Phase 1: Core Foundation (Current - MVP Complete)
+
 **Status:** ✅ Complete
+
 - [x] Electron + React application structure
 - [x] CycloneDX and SPDX SBOM parsing
 - [x] Local NVD database integration
@@ -811,7 +874,9 @@ VulnAssessTool provides an offline-first desktop application that:
 - [x] Unit testing framework
 
 ### Phase 2: Enhanced Features (Complete)
+
 **Status:** ✅ Complete
+
 - [x] Health dashboard with scoring
 - [x] Audit logging system
 - [x] Executive dashboard
@@ -822,7 +887,9 @@ VulnAssessTool provides an offline-first desktop application that:
 - [x] E2E testing with Playwright
 
 ### Phase 3: Polish & Optimization (Current Focus)
+
 **Status:** 🚧 In Progress
+
 - [ ] Performance optimization for large datasets
 - [ ] Enhanced CVSS breakdown visualization
 - [ ] Dependency graph visualization
@@ -832,7 +899,9 @@ VulnAssessTool provides an offline-first desktop application that:
 - [ ] Code refactoring for maintainability
 
 ### Phase 4: Advanced Features (Planned)
+
 **Status:** 📋 Planned
+
 - [ ] Multi-provider vulnerability scanning (Snyk, OSS Index)
 - [ ] Team collaboration features
 - [ ] Cloud sync with self-hosted option
@@ -842,7 +911,9 @@ VulnAssessTool provides an offline-first desktop application that:
 - [ ] Mobile companion app
 
 ### Phase 5: Enterprise Features (Future)
+
 **Status:** 🔮 Future
+
 - [ ] Multi-user support with authentication
 - [ ] Role-based access control
 - [ ] SAML/LDAP integration
@@ -854,13 +925,13 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ## Open Questions
 
-| Question | Impact | Priority | Owner |
-|----------|---------|-----------|--------|
-| Should we implement cloud sync for vulnerability data across devices? | High | Medium | Product |
-| What is the go-to-market strategy for open-source project? | High | High | Product |
-| Should we offer a paid enterprise version with advanced features? | High | High | Business |
-| What is the long-term maintenance plan for NVD database? | Medium | High | Engineering |
-| Should we support custom vulnerability databases for air-gapped environments? | Medium | Medium | Engineering |
+| Question                                                                      | Impact | Priority | Owner       |
+| ----------------------------------------------------------------------------- | ------ | -------- | ----------- |
+| Should we implement cloud sync for vulnerability data across devices?         | High   | Medium   | Product     |
+| What is the go-to-market strategy for open-source project?                    | High   | High     | Product     |
+| Should we offer a paid enterprise version with advanced features?             | High   | High     | Business    |
+| What is the long-term maintenance plan for NVD database?                      | Medium | High     | Engineering |
+| Should we support custom vulnerability databases for air-gapped environments? | Medium | Medium   | Engineering |
 
 ---
 
@@ -868,16 +939,16 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### Terminology
 
-| Term | Definition |
-|-------|------------|
-| SBOM | Software Bill of Materials - inventory of software components |
-| CVE | Common Vulnerabilities and Exposures - standardized vulnerability IDs |
-| CVSS | Common Vulnerability Scoring System - vulnerability severity scoring |
-| CWE | Common Weakness Enumeration - vulnerability type classification |
-| CPE | Common Platform Enumeration - system/software identifier |
-| PURL | Package URL - standard package identifier |
-| NVD | National Vulnerability Database - US government CVE repository |
-| OSV | Open Source Vulnerabilities - Google-hosted vulnerability database |
+| Term | Definition                                                            |
+| ---- | --------------------------------------------------------------------- |
+| SBOM | Software Bill of Materials - inventory of software components         |
+| CVE  | Common Vulnerabilities and Exposures - standardized vulnerability IDs |
+| CVSS | Common Vulnerability Scoring System - vulnerability severity scoring  |
+| CWE  | Common Weakness Enumeration - vulnerability type classification       |
+| CPE  | Common Platform Enumeration - system/software identifier              |
+| PURL | Package URL - standard package identifier                             |
+| NVD  | National Vulnerability Database - US government CVE repository        |
+| OSV  | Open Source Vulnerabilities - Google-hosted vulnerability database    |
 
 ### References
 
@@ -892,16 +963,16 @@ VulnAssessTool provides an offline-first desktop application that:
 
 **Document Change History**
 
-| Version | Date | Author | Changes |
-|---------|--------|---------|----------|
-| 1.0 | 2026-02-12 | Project Lead Agent | Initial PRD creation based on existing codebase analysis |
+| Version | Date       | Author             | Changes                                                  |
+| ------- | ---------- | ------------------ | -------------------------------------------------------- |
+| 1.0     | 2026-02-12 | Project Lead Agent | Initial PRD creation based on existing codebase analysis |
 
 ---
 
 **Approval Sign-Off**
 
-| Role | Name | Signature | Date |
-|-------|-------|-----------|-------|
-| Product Owner | TBD | | |
-| Engineering Lead | TBD | | |
-| Security Lead | TBD | | |
+| Role             | Name | Signature | Date |
+| ---------------- | ---- | --------- | ---- |
+| Product Owner    | TBD  |           |      |
+| Engineering Lead | TBD  |           |      |
+| Security Lead    | TBD  |           |      |

@@ -12,6 +12,9 @@ import { config } from '../config.js'
 import type { CVE, CPEMatch, Reference, CVEWithDetails, DatabaseMetadata } from './types.js'
 import type { CveFullDetails, CpeMatchFull, CweReference, ReferenceFull, CvssMetric } from '../types/database.js'
 import { runMigrations as runV2Migrations } from './migrations/v2SchemaMigration.js'
+import { escapeLikePattern } from './sqlSanitizer.js'
+import { isFTSAvailable, searchCVEsFTS, buildFtsMatchExpression } from './ftsMigration.js'
+import { isVersionInRange, type VersionRange } from './versionRange.js'
 
 type BetterDatabase = InstanceType<typeof BetterSqlite3>
 
@@ -45,6 +48,9 @@ export class NvdDatabase {
   private dbPath: string
   // Store bound handler for proper cleanup
   private boundCloseHandler: () => void
+  // Lazily-detected: the indexed cpe_product column exists only after the v2 schema migration;
+  // older / seed databases fall back to a cpe23_uri substring (mirrors CPESearch).
+  private cpeProductColumn: boolean | null = null
 
   constructor(dbPath?: string) {
     this.dbPath = dbPath || config.DB_PATH
@@ -430,31 +436,100 @@ export class NvdDatabase {
   }
 
   /**
+   * Map a single legacy CVSS score/vector/severity to the version-specific column set
+   * the v2 schema and detail view rely on, detecting the version from the vector prefix
+   * (CVSS:3.1 / CVSS:3.0 / bare v2 vectors have no CVSS: prefix). Returns all-null when
+   * the version can't be determined, so a score is never mislabeled with a wrong version.
+   */
+  private cvssVersionColumns(cve: CVE): {
+    v31Score: number | null
+    v31Vector: string | null
+    v31Severity: string | null
+    v30Score: number | null
+    v30Vector: string | null
+    v30Severity: string | null
+    v2Score: number | null
+    v2Vector: string | null
+    v2Severity: string | null
+  } {
+    const empty = {
+      v31Score: null,
+      v31Vector: null,
+      v31Severity: null,
+      v30Score: null,
+      v30Vector: null,
+      v30Severity: null,
+      v2Score: null,
+      v2Vector: null,
+      v2Severity: null,
+    }
+    const vector = cve.cvss_vector
+    if (!vector) return empty
+    const score = cve.cvss_score ?? null
+    const severity = cve.severity ?? null
+    if (vector.startsWith('CVSS:3.1')) return { ...empty, v31Score: score, v31Vector: vector, v31Severity: severity }
+    if (vector.startsWith('CVSS:3.0')) return { ...empty, v30Score: score, v30Vector: vector, v30Severity: severity }
+    // CVSS v2 base vectors have no 'CVSS:' prefix (e.g. 'AV:N/AC:L/Au:N/C:P/I:P/A:P').
+    if (vector.startsWith('CVSS:2.0') || vector.startsWith('AV:')) {
+      return { ...empty, v2Score: score, v2Vector: vector, v2Severity: severity }
+    }
+    return empty
+  }
+
+  /**
    * Insert or update a CVE
    */
   async upsertCVE(cve: CVE): Promise<void> {
     if (!this.db) throw new Error('Database not initialized')
 
+    // Populate the version-specific CVSS columns (left NULL by this legacy path before
+    // the fix) so getCVEFullDetails and the severity indexes see this CVE's real data.
+    const v = this.cvssVersionColumns(cve)
+
     const stmt = this.db.prepare(`
-      INSERT INTO cves (id, description, cvss_score, cvss_vector, severity, published_at, modified_at, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO cves (
+        id, description, cvss_score, cvss_vector, severity, published_at, modified_at, source,
+        cvss_v31_score, cvss_v31_vector, cvss_v31_severity,
+        cvss_v30_score, cvss_v30_vector, cvss_v30_severity,
+        cvss_v2_score, cvss_v2_vector, cvss_v2_severity
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         description = excluded.description,
         cvss_score = excluded.cvss_score,
         cvss_vector = excluded.cvss_vector,
         severity = excluded.severity,
-        modified_at = excluded.modified_at
+        modified_at = excluded.modified_at,
+        source = excluded.source,
+        cvss_v31_score = excluded.cvss_v31_score,
+        cvss_v31_vector = excluded.cvss_v31_vector,
+        cvss_v31_severity = excluded.cvss_v31_severity,
+        cvss_v30_score = excluded.cvss_v30_score,
+        cvss_v30_vector = excluded.cvss_v30_vector,
+        cvss_v30_severity = excluded.cvss_v30_severity,
+        cvss_v2_score = excluded.cvss_v2_score,
+        cvss_v2_vector = excluded.cvss_v2_vector,
+        cvss_v2_severity = excluded.cvss_v2_severity
     `)
 
     stmt.run(
       cve.id,
       cve.description,
-      cve.cvss_score || null,
+      cve.cvss_score ?? null,
       cve.cvss_vector || null,
       cve.severity || null,
       cve.published_at,
       cve.modified_at,
       cve.source,
+      v.v31Score,
+      v.v31Vector,
+      v.v31Severity,
+      v.v30Score,
+      v.v30Vector,
+      v.v30Severity,
+      v.v2Score,
+      v.v2Vector,
+      v.v2Severity,
     )
   }
 
@@ -463,18 +538,36 @@ export class NvdDatabase {
    */
   async insertCPEMatches(cveId: string, matches: CPEMatch[]): Promise<void> {
     if (!this.db) throw new Error('Database not initialized')
+    const db = this.db
 
-    // First delete existing matches for this CVE
-    this.db.prepare('DELETE FROM cpe_matches WHERE cve_id = ?').run(cveId)
-
-    const stmt = this.db.prepare(`
-      INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable)
-      VALUES (?, ?, ?)
+    const del = db.prepare('DELETE FROM cpe_matches WHERE cve_id = ?')
+    const stmt = db.prepare(`
+      INSERT INTO cpe_matches (
+        cve_id, cpe23_uri, vulnerable,
+        version_start_including, version_start_excluding,
+        version_end_including, version_end_excluding
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
 
-    for (const match of matches) {
-      stmt.run(cveId, match.cpe_text, match.vulnerable ? 1 : 0)
-    }
+    // Atomic: delete + all inserts commit together, so a mid-loop failure can never
+    // leave a CVE with its old matches deleted and only some new ones written. Also
+    // persists the version-range bounds so range search can find these CVEs.
+    const replaceAll = db.transaction((rows: CPEMatch[]) => {
+      del.run(cveId)
+      for (const match of rows) {
+        stmt.run(
+          cveId,
+          match.cpe23_uri ?? match.cpe_text,
+          match.vulnerable ? 1 : 0,
+          match.version_start_including ?? null,
+          match.version_start_excluding ?? null,
+          match.version_end_including ?? null,
+          match.version_end_excluding ?? null,
+        )
+      }
+    })
+    replaceAll(matches)
   }
 
   /**
@@ -482,18 +575,22 @@ export class NvdDatabase {
    */
   async insertReferences(cveId: string, refs: Reference[]): Promise<void> {
     if (!this.db) throw new Error('Database not initialized')
+    const db = this.db
 
-    // First delete existing references for this CVE
-    this.db.prepare('DELETE FROM "references" WHERE cve_id = ?').run(cveId)
-
-    const stmt = this.db.prepare(`
+    const del = db.prepare('DELETE FROM "references" WHERE cve_id = ?')
+    const stmt = db.prepare(`
       INSERT INTO "references" (cve_id, url, source, tags)
       VALUES (?, ?, ?, ?)
     `)
 
-    for (const ref of refs) {
-      stmt.run(cveId, ref.url, ref.source || null, ref.tags || null)
-    }
+    // Atomic delete + re-insert (see insertCPEMatches).
+    const replaceAll = db.transaction((rows: Reference[]) => {
+      del.run(cveId)
+      for (const ref of rows) {
+        stmt.run(cveId, ref.url, ref.source || null, ref.tags || null)
+      }
+    })
+    replaceAll(refs)
   }
 
   /**
@@ -757,46 +854,198 @@ export class NvdDatabase {
   }
 
   /**
-   * Search CVEs by text (description or CVE ID)
+   * Search CVEs by text (description or CVE ID).
+   *
+   * Three tiers: an exact CVE ID resolves via the id primary key; free text goes
+   * through the index-backed FTS5 path (token-prefix matching, size-invariant)
+   * when the cves_fts table is present; otherwise a substring LIKE scan is used
+   * as a fallback (and if the FTS query is ever rejected).
    */
   searchCVEsByText(query: string, limit = 100, offset = 0): CVEWithDetails[] {
     if (!this.db) throw new Error('Database not initialized')
 
+    const hydrate = (ids: string[]): CVEWithDetails[] => {
+      const batchDetails = this.getCVEsByIds(ids)
+      return ids.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+    }
+
+    const trimmed = query.trim()
+
+    // Tier 1: an exact CVE ID resolves directly via the id primary key.
+    if (/^CVE-\d{4}-\d+$/i.test(trimmed)) {
+      return hydrate([trimmed.toUpperCase()])
+    }
+
+    // Tier 2: free text goes through the index-backed FTS5 path when available.
+    const match = buildFtsMatchExpression(trimmed)
+    if (match && isFTSAvailable(this.db)) {
+      try {
+        const ftsHits = searchCVEsFTS(this.db, match, limit, offset)
+        return hydrate(ftsHits.map((r) => r.id))
+      } catch {
+        // FTS rejected the query — fall through to the LIKE scan below.
+      }
+    }
+
+    // Tier 3: substring LIKE fallback (no FTS table, or FTS rejected the query).
     const rows = this.db
       .prepare(
         `
       SELECT * FROM cves
-      WHERE description LIKE ?
-         OR id LIKE ?
+      WHERE description LIKE ? ESCAPE '\\'
+         OR id LIKE ? ESCAPE '\\'
       ORDER BY cvss_score DESC
       LIMIT ? OFFSET ?
     `,
       )
-      .all(`%${query}%`, `%${query}%`, limit, offset) as CVE[]
+      .all(`%${escapeLikePattern(query)}%`, `%${escapeLikePattern(query)}%`, limit, offset) as CVE[]
 
-    const cveIds = rows.map((cve) => cve.id)
-    const batchDetails = this.getCVEsByIds(cveIds)
-    return cveIds.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+    return hydrate(rows.map((cve) => cve.id))
   }
 
   /**
-   * Search CVEs by CPE text
+   * Search CVEs by CPE text.
+   *
+   * Two matching strategies are unioned:
+   *  1. Literal substring match on the full cpe23_uri (fast path, unchanged) —
+   *     catches rows that list the component's exact version.
+   *  2. Version-RANGE match (FR-03.1): when the query CPE carries a concrete
+   *     version, also match same part/vendor/product rows whose cpe23_uri uses
+   *     version='*' plus version_start/end bound columns and whose range actually
+   *     contains that version. Most real NVD applicability data is published as
+   *     ranges, which a literal substring can never hit.
    */
   searchCVEsByCPE(cpeText: string, limit = 100, offset = 0): CVEWithDetails[] {
     if (!this.db) throw new Error('Database not initialized')
 
+    // Cap the literal candidate set so a very common CPE substring can't pull an
+    // unbounded number of rows into memory before the JS-side merge/sort below.
+    const LITERAL_CPE_MATCH_CAP = 5000
+    const literalRows = this.db
+      .prepare(
+        `SELECT DISTINCT c.* FROM cves c
+         INNER JOIN cpe_matches cp ON c.id = cp.cve_id
+         WHERE cp.cpe23_uri LIKE ? ESCAPE '\\' AND cp.vulnerable = 1
+         LIMIT ?`,
+      )
+      .all(`%${escapeLikePattern(cpeText)}%`, LITERAL_CPE_MATCH_CAP) as CVE[]
+
+    // Merge both strategies by CVE id (literal wins on collision — same CVE).
+    const matched = new Map<string, CVE>()
+    for (const row of literalRows) if (row.id) matched.set(row.id, row)
+
+    const parsed = this.parseCpeForRange(cpeText)
+    if (parsed) {
+      for (const { cve, range } of this.searchVersionRangeCandidates(parsed)) {
+        if (cve.id && !matched.has(cve.id) && isVersionInRange(parsed.version, range)) {
+          matched.set(cve.id, cve)
+        }
+      }
+    }
+
+    // Order by CVSS desc (nulls last) and paginate in JS: the union of the two
+    // strategies cannot be expressed as one paginated query.
+    const ordered = [...matched.values()].sort((a, b) => (b.cvss_score ?? -1) - (a.cvss_score ?? -1))
+    const pageIds = ordered.slice(offset, offset + limit).map((cve) => cve.id)
+
+    const batchDetails = this.getCVEsByIds(pageIds)
+    return pageIds.map((id) => batchDetails.get(id)).filter((r): r is CVEWithDetails => r !== undefined)
+  }
+
+  /**
+   * Parse a cpe:2.3 URI into the fields the range query needs. Returns null for
+   * bare tokens or wildcard/absent versions (nothing to range-match), so those
+   * queries use the literal path only.
+   */
+  private parseCpeForRange(cpeText: string): { part: string; vendor: string; product: string; version: string } | null {
+    const parts = cpeText.split(':')
+    if (parts.length < 6 || parts[0] !== 'cpe' || parts[1] !== '2.3') return null
+    const [, , part, vendor, product, version] = parts
+    if (!part || !vendor || !product || !version || version === '*' || version === '-') return null
+    return { part, vendor, product, version }
+  }
+
+  /**
+   * Candidate rows for range matching: same part/vendor/product as the query CPE,
+   * carrying at least one version bound. Scoped via an index-usable cpe23_uri
+   * prefix (`cpe:2.3:part:vendor:product:`) rather than the cpe_product column —
+   * insertCPEMatches (the sync insert path) leaves cpe_product NULL, so scoping by
+   * it would miss freshly-synced rows; the cpe23_uri prefix is always populated
+   * and still uses idx_cpe_matches_cpe23_uri (no leading wildcard).
+   */
+  private searchVersionRangeCandidates(parsed: {
+    part: string
+    vendor: string
+    product: string
+  }): Array<{ cve: CVE; range: VersionRange }> {
+    if (!this.db) return []
+    const prefix = `cpe:2.3:${parsed.part}:${parsed.vendor}:${parsed.product}:`
     const rows = this.db
       .prepare(
-        `
-      SELECT DISTINCT c.* FROM cves c
-      INNER JOIN cpe_matches cp ON c.id = cp.cve_id
-      WHERE cp.cpe23_uri LIKE ?
-      AND cp.vulnerable = 1
-      ORDER BY c.cvss_score DESC
-      LIMIT ? OFFSET ?
-    `,
+        `SELECT DISTINCT c.*,
+           cp.version_start_including AS versionStartIncluding,
+           cp.version_start_excluding AS versionStartExcluding,
+           cp.version_end_including  AS versionEndIncluding,
+           cp.version_end_excluding  AS versionEndExcluding
+         FROM cves c INNER JOIN cpe_matches cp ON c.id = cp.cve_id
+         WHERE cp.cpe23_uri LIKE ? ESCAPE '\\'
+           AND cp.vulnerable = 1
+           AND (cp.version_start_including IS NOT NULL OR cp.version_start_excluding IS NOT NULL
+                OR cp.version_end_including IS NOT NULL OR cp.version_end_excluding IS NOT NULL)`,
       )
-      .all(`%${cpeText}%`, limit, offset) as CVE[]
+      .all(`${escapeLikePattern(prefix)}%`) as Array<Record<string, unknown>>
+
+    return rows.map((row) => ({
+      cve: row as unknown as CVE,
+      range: {
+        versionStartIncluding: (row.versionStartIncluding as string) || undefined,
+        versionStartExcluding: (row.versionStartExcluding as string) || undefined,
+        versionEndIncluding: (row.versionEndIncluding as string) || undefined,
+        versionEndExcluding: (row.versionEndExcluding as string) || undefined,
+      },
+    }))
+  }
+
+  /** Whether the indexed cpe_product column exists (added by the v2 migration). */
+  private hasCpeProductColumn(): boolean {
+    if (!this.db) return false
+    if (this.cpeProductColumn === null) {
+      const cols = this.db.prepare('PRAGMA table_info(cpe_matches)').all() as Array<{ name: string }>
+      this.cpeProductColumn = cols.some((c) => c.name === 'cpe_product')
+    }
+    return this.cpeProductColumn
+  }
+
+  /**
+   * Search CVEs by CPE PRODUCT name, precision-first: exact `cpe_product`, then a prefix match,
+   * then a `cpe23_uri` substring fallback only for recall. This scopes a bare product term to the
+   * CPE product field instead of a blunt `%term%` over the whole URI (which over-matches — e.g.
+   * `%ssl%` also hits unrelated products/vendors). Falls straight to the substring when the
+   * indexed column is absent (older/seed DBs), so recall is never worse than searchCVEsByCPE.
+   */
+  searchCVEsByProduct(product: string, limit = 100, offset = 0): CVEWithDetails[] {
+    if (!this.db) throw new Error('Database not initialized')
+    const db = this.db
+    const term = product.toLowerCase().trim()
+    if (!term) return []
+
+    const runQuery = (clause: string, param: string): CVE[] =>
+      db
+        .prepare(
+          `SELECT DISTINCT c.* FROM cves c
+           INNER JOIN cpe_matches cp ON c.id = cp.cve_id
+           WHERE ${clause} AND cp.vulnerable = 1
+           ORDER BY c.cvss_score DESC
+           LIMIT ? OFFSET ?`,
+        )
+        .all(param, limit, offset) as CVE[]
+
+    let rows: CVE[] = []
+    if (this.hasCpeProductColumn()) {
+      rows = runQuery('cp.cpe_product = ?', term)
+      if (rows.length === 0) rows = runQuery('cp.cpe_product LIKE ?', `${escapeLikePattern(term)}%`)
+    }
+    if (rows.length === 0) rows = runQuery('cp.cpe23_uri LIKE ?', `%${escapeLikePattern(term)}%`)
 
     const cveIds = rows.map((cve) => cve.id)
     const batchDetails = this.getCVEsByIds(cveIds)

@@ -34,7 +34,7 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
   const stats = useAuditStore((state) => state.getStatistics())
   const totalEvents = stats.totalEvents
 
-  function handleExport() {
+  async function handleExport() {
     setIsExporting(true)
 
     try {
@@ -52,7 +52,9 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
         options.filter = { dateRange: { start, end } }
       }
 
-      void exportAuditLogs(options)
+      // Await inside the try so an async export rejection is caught here, and only close the
+      // dialog once the export actually succeeded (the old `void`+sync-close swallowed failures).
+      await exportAuditLogs(options)
       onOpenChange(false)
     } catch (error) {
       console.error('Export failed:', error)

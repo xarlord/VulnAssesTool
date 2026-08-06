@@ -1,22 +1,40 @@
 /**
  * NVD Import Manager
- * Orchestrates the complete process of downloading, parsing, and importing
- * NVD CVE data into the local database.
  *
- * This is the main entry point for populating the database with NVD data.
+ * Orchestrates a full/bulk population of the local CVE database from the NVD REST API v2.
+ * Consolidated (B1) onto NvdApiV2Client → NvdDataImporter: it fetches each year through the
+ * rate-limited REST client and imports the CVEs into the shared v2-schema database. The old
+ * feed-file downloader / stream parser / separate bulk database have been retired.
+ *
+ * This is the entry point behind POST /sync/start and /sync/bulk.
  */
 
-import { promises as fs } from 'node:fs'
-import { MultiThreadedDownloader, type DownloadProgress } from './multiThreadedDownloader.js'
-import { NvdStreamParser, type ParsedCVE } from './streamParser.js'
-import { getBulkDatabase, type BulkImportStats } from './bulkDatabase.js'
-import type { CVE } from '../types.js'
+import Database from 'better-sqlite3'
+import { NvdApiV2Client, createNvdApiV2Client, type NvdCveV2 } from './nvdApiV2Client.js'
+import { createNvdDataImporter } from './nvdDataImporter.js'
+
+type BetterDb = InstanceType<typeof Database>
+
+// A single fetchDateRange caps at 50k CVEs and flags `truncated`. When a year exceeds that,
+// the window is split by publication date and re-fetched until each sub-range fits, so no CVEs
+// are silently dropped. Stop splitting below one day — no real day publishes >50k CVEs.
+const DAY_MS = 24 * 60 * 60 * 1000
+const MIN_SPLIT_MS = DAY_MS
 
 export interface NvdImportOptions {
   years: number[]
-  maxConcurrentDownloads?: number
+  /**
+   * Target database (raw better-sqlite3) — the same connection the rest of the app reads.
+   * Nullable because callers pass getDb()?.getRawDb() directly; a null DB fails the import
+   * cleanly (start() returns a not-initialized result) instead of forcing a cast at the call site.
+   */
+  db: BetterDb | null
+  /** NVD API key; enables the 50-req/30s rate tier for faster fetching. */
+  apiKey?: string
+  /** Inject a pre-built client (tests use a fake so nothing hits the network). */
+  apiClient?: NvdApiV2Client
   batchSize?: number
-  validateChecksums?: boolean
+  signal?: AbortSignal
   onProgress?: (progress: NvdImportProgress) => void
   onComplete?: (result: NvdImportResult) => void
   onError?: (error: Error) => void
@@ -67,9 +85,8 @@ export interface NvdImportResult {
  * NVD Import Manager - Main Orchestrator
  */
 export class NvdImportManager {
-  private downloader: MultiThreadedDownloader
-  private parser: NvdStreamParser
-  private db: ReturnType<typeof getBulkDatabase>
+  private db: BetterDb | null
+  private apiClient: NvdApiV2Client
   private options: NvdImportOptions
   private progress: NvdImportProgress
   private startTime: number
@@ -80,20 +97,19 @@ export class NvdImportManager {
 
   constructor(options: NvdImportOptions) {
     this.options = options
+    this.db = options.db
     this.onProgress = options.onProgress
     this.onComplete = options.onComplete
     this.onError = options.onError
 
-    this.db = getBulkDatabase()
+    this.apiClient = options.apiClient ?? createNvdApiV2Client(options.apiKey)
 
-    this.downloader = new MultiThreadedDownloader({
-      maxConcurrentDownloads: this.options.maxConcurrentDownloads,
-      validateChecksums: this.options.validateChecksums,
-    })
-
-    this.parser = new NvdStreamParser({
-      batchSize: this.options.batchSize,
-    })
+    // Compose any caller-supplied signal into our controller so both an external abort and
+    // cancel() stop the fetch/import (the client also aborts in-flight requests on cancel()).
+    if (options.signal) {
+      if (options.signal.aborted) this.abortController.abort()
+      else options.signal.addEventListener('abort', () => this.abortController.abort(), { once: true })
+    }
 
     this.startTime = Date.now()
 
@@ -129,14 +145,26 @@ export class NvdImportManager {
    * Start the import process
    */
   async start(): Promise<NvdImportResult> {
+    if (!this.db) {
+      const notReady: NvdImportResult = {
+        success: false,
+        yearsProcessed: [],
+        yearsFailed: this.options.years,
+        totalCVEs: 0,
+        importedCVEs: 0,
+        failedCVEs: 0,
+        duration: Date.now() - this.startTime,
+        dbSize: 0,
+        error: 'Database not initialized',
+      }
+      this.onError?.(new Error('Database not initialized'))
+      return notReady
+    }
+    const importer = createNvdDataImporter(this.db)
+
     try {
-      // Initialize database
       this.updateProgress({ phase: 'initializing' })
-      await this.db.initialize()
 
-      this.onProgress?.(this.progress)
-
-      // Process each year
       const yearsProcessed: number[] = []
       const yearsFailed: number[] = []
       let totalCVEs = 0
@@ -149,38 +177,43 @@ export class NvdImportManager {
         }
 
         try {
+          // Fetch the whole year from the REST API (sub-chunking to defeat the 50k cap).
+          this.updateProgress({ phase: 'downloading', currentYear: year })
+          const cves = await this.fetchYearCves(year)
+          totalCVEs += cves.length
+
+          // Import the fetched CVEs into the shared database.
           this.updateProgress({
-            phase: 'downloading',
+            phase: 'importing',
             currentYear: year,
+            import: { totalCVEs: cves.length, importedCVEs: 0, percentage: 0 },
+          })
+          const importResult = await importer.importCves(cves, {
+            batchSize: this.options.batchSize,
+            updateExisting: true,
+            skipExisting: false,
+            signal: this.abortController.signal,
+            onProgress: (ip) => {
+              this.updateProgress({
+                phase: 'importing',
+                currentYear: year,
+                import: {
+                  totalCVEs: ip.totalCves,
+                  importedCVEs: ip.processedCves,
+                  percentage: ip.percentage,
+                },
+              })
+            },
           })
 
-          // Download year data
-          const filePath = await this.downloadYear(year)
-
-          // Parse and import
-          this.updateProgress({
-            phase: 'parsing',
-            currentYear: year,
-          })
-
-          const { yearCVEs, yearImported, yearFailed } = await this.parseAndImportYear(year, filePath)
-
-          totalCVEs += yearCVEs
-          importedCVEs += yearImported
-          failedCVEs += yearFailed
+          importedCVEs += importResult.importedCves + importResult.updatedCves
+          failedCVEs += importResult.failedCves
           yearsProcessed.push(year)
 
           this.progress.years.completed++
           this.progress.years.pending--
-
-          // Clean up downloaded file
-          try {
-            await fs.unlink(filePath)
-          } catch {
-            // best-effort: stream cleanup on error
-          }
         } catch (error) {
-          console.error(`Failed to process year ${year}:`, error)
+          console.error('Failed to process year %s:', year, error)
           yearsFailed.push(year)
           this.progress.years.failed++
           this.progress.years.pending--
@@ -188,12 +221,11 @@ export class NvdImportManager {
           this.updateProgress({
             phase: 'error',
             currentYear: year,
-            error: (error as Error).message,
+            error: error instanceof Error ? error.message : 'Unknown error',
           })
         }
       }
 
-      // Complete
       this.updateProgress({ phase: 'complete' })
 
       const result: NvdImportResult = {
@@ -204,7 +236,7 @@ export class NvdImportManager {
         importedCVEs,
         failedCVEs,
         duration: Date.now() - this.startTime,
-        dbSize: this.db.getStats().dbSize,
+        dbSize: this.getDbSize(),
       }
 
       this.onComplete?.(result)
@@ -212,7 +244,7 @@ export class NvdImportManager {
     } catch (error) {
       this.updateProgress({
         phase: 'error',
-        error: (error as Error).message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       })
 
       const result: NvdImportResult = {
@@ -224,104 +256,76 @@ export class NvdImportManager {
         failedCVEs: 0,
         duration: Date.now() - this.startTime,
         dbSize: 0,
-        error: (error as Error).message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       }
 
-      this.onError?.(error as Error)
+      this.onError?.(error instanceof Error ? error : new Error('Unknown error'))
       return result
     }
   }
 
   /**
-   * Download a single year's data
+   * Fetch every CVE published in a year, defeating the 50k page cap by recursively splitting
+   * the publication-date window until each sub-range fits.
    */
-  private async downloadYear(year: number): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const downloader = new MultiThreadedDownloader({
-        maxConcurrentDownloads: 1,
-        validateChecksums: this.options.validateChecksums,
-        onProgress: (progress: DownloadProgress) => {
-          this.updateProgress({
-            phase: 'downloading',
-            currentYear: year,
-            download: {
-              totalBytes: progress.totalBytes,
-              downloadedBytes: progress.downloadedBytes,
-              percentage: progress.percentage,
-              speedMBps: progress.speedMBps,
-              etaSeconds: progress.etaSeconds,
-            },
-          })
-        },
-      })
+  private async fetchYearCves(year: number): Promise<NvdCveV2[]> {
+    const start = new Date(Date.UTC(year, 0, 1))
+    const end = new Date(Date.UTC(year, 11, 31, 23, 59, 59))
+    return this.fetchRange(start, end, year)
+  }
 
-      downloader.downloadYear(year).then(resolve).catch(reject)
+  private async fetchRange(start: Date, end: Date, year: number): Promise<NvdCveV2[]> {
+    const result = await this.apiClient.fetchDateRange({
+      startDate: start,
+      endDate: end,
+      signal: this.abortController.signal,
+      onProgress: (p) => {
+        this.updateProgress({
+          phase: 'downloading',
+          currentYear: year,
+          download: {
+            totalBytes: 0,
+            downloadedBytes: 0,
+            percentage: p.percentage,
+            speedMBps: 0,
+            etaSeconds: Math.round(p.estimatedTimeRemainingMs / 1000),
+          },
+        })
+      },
     })
+
+    if (!result.truncated) {
+      return result.cves
+    }
+
+    // This window still exceeds the 50k cap — split it by time and recurse so nothing is missed.
+    const spanMs = end.getTime() - start.getTime()
+    if (spanMs <= MIN_SPLIT_MS) {
+      console.warn(
+        `NVD import: ${start.toISOString()}..${end.toISOString()} exceeds the 50k page cap in a ` +
+          `minimal window; some CVEs for ${year} may be missed`,
+      )
+      return result.cves
+    }
+
+    const midMs = start.getTime() + Math.floor(spanMs / 2)
+    const left = await this.fetchRange(start, new Date(midMs), year)
+    const right = await this.fetchRange(new Date(midMs + 1000), end, year)
+    return [...left, ...right]
   }
 
   /**
-   * Parse and import a single year's data
+   * Best-effort database size in bytes (page_count × page_size).
    */
-  private async parseAndImportYear(
-    year: number,
-    filePath: string,
-  ): Promise<{ yearCVEs: number; yearImported: number; yearFailed: number }> {
-    let yearCVEs = 0
-    let yearImported = 0
-    let yearFailed = 0
-
-    await this.parser.parseFile(
-      filePath,
-      async (batch: ParsedCVE[]) => {
-        // Convert to CVE format and import
-        const cves: CVE[] = batch.map((cve) => ({
-          id: cve.id,
-          description: cve.description,
-          cvss_score: cve.cvss_score,
-          cvss_vector: cve.cvss_vector,
-          severity: cve.severity,
-          published_at: cve.published_at,
-          modified_at: cve.modified_at,
-          source: cve.source,
-          cpe_matches: cve.cpe_matches,
-          references: cve.references,
-        }))
-
-        const result = await this.db.bulkImportCVEs(cves, {
-          batchSize: this.options.batchSize,
-          onProgress: (stats: BulkImportStats) => {
-            this.updateProgress({
-              phase: 'importing',
-              currentYear: year,
-              import: {
-                totalCVEs: stats.totalCVEs,
-                importedCVEs: stats.processedCVEs,
-                percentage: stats.totalCVEs > 0 ? (stats.processedCVEs / stats.totalCVEs) * 100 : 0,
-              },
-            })
-          },
-        })
-
-        yearImported += result.importedCVEs
-        yearFailed += result.failedCVEs
-      },
-      {
-        onProgress: (processed, total) => {
-          yearCVEs = total
-          this.updateProgress({
-            phase: 'parsing',
-            currentYear: year,
-            parse: {
-              totalCVEs: total,
-              processedCVEs: processed,
-              percentage: total > 0 ? (processed / total) * 100 : 0,
-            },
-          })
-        },
-      },
-    )
-
-    return { yearCVEs, yearImported, yearFailed }
+  private getDbSize(): number {
+    if (!this.db) return 0
+    try {
+      const pageCount = this.db.pragma('page_count', { simple: true }) as number
+      const pageSize = this.db.pragma('page_size', { simple: true }) as number
+      return pageCount * pageSize
+    } catch {
+      return 0
+    }
   }
 
   /**
@@ -337,7 +341,7 @@ export class NvdImportManager {
    */
   cancel(): void {
     this.abortController.abort()
-    this.downloader.cancel()
+    this.apiClient.cancel()
   }
 
   /**

@@ -1,14 +1,20 @@
 import { test, expect, resetAppState } from '../test-helper'
 
 /**
- * E2E Tests for Create New Project Flow
+ * Create New Project Flow — content contracts
  *
- * Tests the complete user flow for creating a new project:
- * 1. Wait for Electron app to launch and React to render
- * 2. Click "New Project" button
- * 3. Fill in project details (name, description)
- * 4. Submit the form
- * 5. Verify project appears on dashboard
+ * Every assertion here is grounded in components/CreateProjectDialog.tsx: dialog title
+ * "Create New Project" (DialogTitle), input #project-name / textarea #project-description,
+ * buttons "Create Project" / "Cancel", and the validation strings "Project name is required"
+ * (empty/whitespace name) / "Project name must be at least 3 characters" (trimmed length < 3).
+ * The dialog is a standard Radix Dialog (components/ui/dialog.tsx) whose onOpenChange is wired
+ * to handleCancel (CreateProjectDialog.tsx:70), so a single Escape press or the "Cancel" button
+ * must close it — no retry/catch guessing needed.
+ *
+ * Only change from the previous version: "should cancel project creation with Escape" dropped
+ * its `.isVisible().catch(() => false)` retry guess (which silently swallowed errors and
+ * pressed Escape twice regardless of outcome) for a single deterministic press, since Radix
+ * closes on the first Escape by design.
  */
 test.describe('Create New Project Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -86,19 +92,9 @@ test.describe('Create New Project Flow', () => {
     // Verify dialog is open before pressing Escape
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
 
-    // Press Escape to close - retry once if it doesn't work
+    // Radix Dialog's onOpenChange fires on Escape and CreateProjectDialog wires it to
+    // handleCancel (CreateProjectDialog.tsx:70), so a single press must close the dialog.
     await page.keyboard.press('Escape')
-    await page.waitForTimeout(500)
-
-    if (
-      await page
-        .getByRole('dialog')
-        .isVisible()
-        .catch(() => false)
-    ) {
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(500)
-    }
 
     // Verify dialog is closed
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 })

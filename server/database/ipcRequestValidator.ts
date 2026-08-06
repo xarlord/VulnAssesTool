@@ -63,7 +63,7 @@ export function validateNvdSearchRequest(request: unknown): NvdSearchRequest {
   const dangerousPatterns = [
     /(;)\s*(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXEC)/gi, // SQL statement injection
     /(\/\*)|(\*\/)/gi, // Multi-line comments
-    /(\b(OR|AND)\s+[\d\s]+=)/gi, // Boolean-based injection (with number comparison)
+    /\b(OR|AND)[\s\d]+=/gi, // Boolean-based injection (single class avoids overlapping quantifiers)
     /(')\s*(OR|AND)\s+/gi, // Quote-based injection
     /(\\x[0-9a-f]{2})/gi, // Hex escape sequences
   ]

@@ -29,6 +29,10 @@ import type {
 
 const router = Router()
 
+/**
+ * GET /available — report whether the OS-level safe-storage backend is available for
+ * encrypting API keys. Responds `{ success: false, isAvailable: false }` if the check throws.
+ */
 router.get('/available', async (_req, res) => {
   try {
     const response: IsAvailableResponse = {
@@ -41,6 +45,11 @@ router.get('/available', async (_req, res) => {
   }
 })
 
+/**
+ * POST /keys/set — validate the request body (`keyType` + `apiKey`) and store the key
+ * via the safe-storage backend for that key type. Responds `{ success: false, error }` if
+ * validation fails or the underlying store operation reports failure/throws.
+ */
 router.post('/keys/set', async (req, res) => {
   try {
     const validatedRequest = validateSetApiKeyRequest(req.body as SetApiKeyRequest)
@@ -56,6 +65,11 @@ router.post('/keys/set', async (req, res) => {
   }
 })
 
+/**
+ * POST /keys/get — validate the request body (`keyType`) and retrieve the stored API key
+ * for that key type, if any. Responds `{ success: false, apiKey: null, error }` if
+ * validation fails or the lookup throws.
+ */
 router.post('/keys/get', async (req, res) => {
   try {
     const validatedRequest = validateGetApiKeyRequest(req.body as GetApiKeyRequest)
@@ -68,6 +82,11 @@ router.post('/keys/get', async (req, res) => {
   }
 })
 
+/**
+ * POST /keys/delete — validate the request body (`keyType`) and delete the stored API key
+ * for that key type. Responds `{ success: false, error }` if validation fails or the
+ * underlying delete operation reports failure/throws.
+ */
 router.post('/keys/delete', async (req, res) => {
   try {
     const validatedRequest = validateDeleteApiKeyRequest(req.body as DeleteApiKeyRequest)
@@ -83,6 +102,11 @@ router.post('/keys/delete', async (req, res) => {
   }
 })
 
+/**
+ * POST /keys/has — validate the request body (`keyType`) and report whether a key is
+ * currently stored for that key type. Responds `{ success: false, hasKey: false, error }`
+ * if validation fails or the lookup throws.
+ */
 router.post('/keys/has', async (req, res) => {
   try {
     const validatedRequest = validateHasApiKeyRequest(req.body as HasApiKeyRequest)
@@ -95,6 +119,11 @@ router.post('/keys/has', async (req, res) => {
   }
 })
 
+/**
+ * GET /migration — report whether any plaintext-stored API keys still need migrating to
+ * the safe-storage backend. Responds `{ success: false, needsMigration: false, error }`
+ * if the check throws.
+ */
 router.get('/migration', async (_req, res) => {
   try {
     const needsMigrate = await needsMigration()
@@ -112,6 +141,11 @@ router.get('/migration', async (_req, res) => {
   }
 })
 
+/**
+ * POST /migrate — migrate any plaintext-stored API keys into the safe-storage backend,
+ * returning which keys migrated and which failed. Responds `{ success: false, migrated:
+ * [], failed: [], error }` if migration throws.
+ */
 router.post('/migrate', async (_req, res) => {
   try {
     const result = await migratePlaintextKeys()
@@ -131,6 +165,11 @@ router.post('/migrate', async (_req, res) => {
   }
 })
 
+/**
+ * GET /keys/all — return the stored API keys for all known providers (nvd, osv, github)
+ * in one response. Responds `{ success: false, keys: { nvd: null, osv: null, github: null
+ * }, error }` if any lookup throws.
+ */
 router.get('/keys/all', async (_req, res) => {
   try {
     const nvdStorage = createApiKeyStorage('nvd')

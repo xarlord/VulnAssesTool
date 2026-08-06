@@ -248,8 +248,38 @@ describe('CSV Export', () => {
       const header = getComponentCsvHeader()
 
       expect(header).toBe(
-        'ID,Name,Version,Type,Licenses,PURL,Vulnerability Count,Patch Available,Recommended Version,Dependencies Count',
+        'ID,Name,Version,Type,Licenses,License Risk,PURL,Vulnerability Count,Patch Available,Recommended Version,Dependencies Count',
       )
+    })
+  })
+
+  describe('License Risk Column', () => {
+    it('marks a permissive license as allowed', () => {
+      const comp: Component = {
+        id: 'c1',
+        name: 'lib',
+        version: '1.0.0',
+        type: 'library',
+        licenses: ['MIT'],
+        vulnerabilities: [],
+        dependencies: [],
+      }
+      expect(componentToCsvRow(comp).licenseRisk).toBe('allowed')
+    })
+
+    it('flags a copyleft license for review with its category', () => {
+      const comp: Component = {
+        id: 'c2',
+        name: 'lib',
+        version: '1.0.0',
+        type: 'library',
+        licenses: ['GPL-3.0-only'],
+        vulnerabilities: [],
+        dependencies: [],
+      }
+      const risk = componentToCsvRow(comp).licenseRisk
+      expect(risk).toContain('review')
+      expect(risk).toContain('strong-copyleft')
     })
   })
 

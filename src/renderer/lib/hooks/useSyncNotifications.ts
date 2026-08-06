@@ -75,12 +75,16 @@ export function useSyncNotifications() {
           toast.error('Sync Error', event.error || 'An error occurred while syncing offline requests')
           break
 
-        case 'request-processed':
-          // Track if any request failed
-          if (event.result && !event.result.success && !event.result.shouldRetry) {
+        case 'request-processed': {
+          // Track if any request failed. A request can exhaust its retries while still reporting
+          // shouldRetry:true (OfflineQueue breaks the loop at retryCount>=maxRetries), so treat
+          // exhaustion as an error too — otherwise a permanent drop still shows "Sync Completed".
+          const exhaustedRetries = event.request !== undefined && event.request.retryCount >= event.request.maxRetries
+          if (event.result && !event.result.success && (!event.result.shouldRetry || exhaustedRetries)) {
             hadErrorsRef.current = true
           }
           break
+        }
       }
     })
 

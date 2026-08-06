@@ -112,13 +112,23 @@ interface StepItemProps {
 
 function StepItem({ step, onCopyCommand }: StepItemProps) {
   const [copied, setCopied] = React.useState(false)
+  const copyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  React.useEffect(() => {
+    // Clear a pending "copied" reset if the row unmounts within the 2s window, so we never
+    // setState on an unmounted component.
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
 
   const handleCopy = () => {
     if (step.command) {
       navigator.clipboard.writeText(step.command)
       setCopied(true)
       onCopyCommand?.(step.command)
-      setTimeout(() => setCopied(false), 2000)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
     }
   }
 

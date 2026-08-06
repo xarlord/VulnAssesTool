@@ -66,15 +66,12 @@ test.describe('Search Page', () => {
       await expect(nvdButton).toHaveClass(/bg-background|shadow/)
     })
 
-    test('should show FTS badge when available', async ({ page }) => {
+    test('shows the FTS Enabled badge', async ({ page }) => {
+      // The e2e DB is built through the real NvdDatabase class, which runs the FTS5 migration,
+      // so the mode toggle advertises full-text search is available.
       await navigateToSearch(page)
       await page.locator('button:has-text("NVD Database")').click()
-
-      const ftsBadge = page.locator('text=FTS Enabled')
-      await ftsBadge
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      await expect(page.getByText('FTS Enabled')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
     })
 
     test('should update placeholder based on mode', async ({ page }) => {
@@ -136,9 +133,9 @@ test.describe('Search Page', () => {
 
       const input = page.locator('input[data-testid="nvd-search-input"]')
       await input.fill('Count Test')
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
 
-      await expect(page.locator('text=/Found \\d+ result/')).toBeVisible()
+      // Both projects substring-match "Count Test", so the count is exactly 2.
+      await expect(page.getByText(/Found 2 results/)).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
     })
 
     test('should group results by type', async ({ page }) => {
@@ -160,23 +157,21 @@ test.describe('Search Page', () => {
       await input.fill('zzzzzzzznonexistent12345')
       await page.waitForTimeout(E2E_UI_DELAY * 3)
 
-      await expect(page.locator('text=/No results found|No matches found/i')).toBeVisible()
+      await expect(page.locator('text=/No results found|No matches found/i').first()).toBeVisible()
     })
 
-    test('should show suggestions when no exact matches', async ({ page }) => {
+    test('a partial word matches the project directly', async ({ page }) => {
+      // "Suggest" is a substring of "Suggestion Test Project", so the project search matches it
+      // outright (there is no separate suggestions path for a substring hit).
       await createProjectOnly(page, 'Suggestion Test Project')
 
       await navigateToSearch(page)
 
       const input = page.locator('input[data-testid="nvd-search-input"]')
       await input.fill('Suggest')
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
-
-      const suggestionsSection = page.locator('text=Suggestions')
-      await suggestionsSection
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      await expect(page.getByText('Suggestion Test Project', { exact: true })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
     })
 
     test('should clear search with X button', async ({ page }) => {
@@ -208,113 +203,76 @@ test.describe('Search Page', () => {
   })
 
   test.describe('NVD Database Search', () => {
-    test('should search by CVE ID format', async ({ page }) => {
+    // Every assertion below is grounded in the 16 deterministic CVEs in scripts/seed-test-db.js,
+    // queried through the real local NVD database (no network). The 300ms debounce + local fetch
+    // is absorbed by web-first assertions with an explicit timeout rather than fixed sleeps.
+    async function openNvdSearch(page: import('@playwright/test').Page, query: string) {
       await navigateToSearch(page)
       await page.locator('button:has-text("NVD Database")').click()
+      await page.locator('input[data-testid="nvd-search-input"]').fill(query)
+    }
 
-      const input = page.locator('input[data-testid="nvd-search-input"]')
-      await input.fill('CVE-2024-1234')
-      await page.waitForTimeout(E2E_UI_DELAY * 4)
-
-      await page
-        .locator('[data-testid="nvd-result"]')
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
-      await page
-        .locator('text=/No results|Search NVD Database/i')
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test('a valid CVE-ID with no seeded match shows the empty state', async ({ page }) => {
+      // CVE-2024-1234 is a well-formed id that is NOT one of the 16 seeded CVEs.
+      await openNvdSearch(page, 'CVE-2024-1234')
+      await expect(page.getByText('Search NVD Database', { exact: true })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
+      await expect(page.locator('[data-testid="nvd-result"]')).toHaveCount(0)
     })
 
-    test('should search by component name', async ({ page }) => {
-      await navigateToSearch(page)
-      await page.locator('button:has-text("NVD Database")').click()
-
-      const input = page.locator('input[data-testid="nvd-search-input"]')
-      await input.fill('openssl')
-      await page.waitForTimeout(E2E_UI_DELAY * 4)
-
-      const searchStates = page.locator('text=/Searching|Loading|No results|empty/i, [data-testid="nvd-result"]')
-      await expect(searchStates.first()).toBeVisible({ timeout: 10000 })
+    test('a component keyword resolves to the one matching seeded CVE', async ({ page }) => {
+      // Exactly one seeded CVE mentions OpenSSL: CVE-2023-0286 (HIGH).
+      await openNvdSearch(page, 'openssl')
+      const result = page.locator('[data-testid="nvd-result"]')
+      await expect(result).toHaveCount(1, { timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(result.first()).toContainText('CVE-2023-0286')
+      await expect(result.first()).toContainText('HIGH')
+      await expect(result.first()).toContainText(/OpenSSL/i)
     })
 
-    test('should show loading state during search', async ({ page }) => {
-      await navigateToSearch(page)
-      await page.locator('button:has-text("NVD Database")').click()
-
-      const input = page.locator('input[data-testid="nvd-search-input"]')
-      await input.fill('apache')
-      const spinner = page.locator('.animate-spin, [class*="spinner"]')
-      await spinner
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+    test('a keyword search returns the matching CVE with its severity', async ({ page }) => {
+      // "apache" matches the seeded Log4Shell CVE (CVE-2021-44228, CRITICAL).
+      await openNvdSearch(page, 'apache')
+      const result = page.locator('[data-testid="nvd-result"]').filter({ hasText: 'CVE-2021-44228' })
+      await expect(result).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(result).toContainText('CRITICAL')
     })
 
-    test('should display CVE details in results', async ({ page }) => {
-      await navigateToSearch(page)
-      await page.locator('button:has-text("NVD Database")').click()
-
-      const input = page.locator('input[data-testid="nvd-search-input"]')
-      await input.fill('CVE-2024')
-      await page.waitForTimeout(E2E_UI_DELAY * 4)
-
-      const results = page.locator('[data-testid="nvd-result"]')
-      const count = await results.count()
-
-      if (count > 0) {
-        await expect(results.first().locator('text=/CVE-\\d{4}-\\d+/')).toBeVisible()
-      }
+    test('a CVE-year text search returns every seeded CVE from that year', async ({ page }) => {
+      // "CVE-2024" is not a full CVE-ID, so it runs as a text search and matches the five
+      // seeded 2024 CVEs (0001, 0002, 2178, 3094, 4577).
+      await openNvdSearch(page, 'CVE-2024')
+      await expect(page.locator('[data-testid="nvd-result"]')).toHaveCount(5, { timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(page.getByText('Found 5 results in NVD database')).toBeVisible()
     })
 
-    test('should open CVE detail modal on click', async ({ page }) => {
-      await navigateToSearch(page)
-      await page.locator('button:has-text("NVD Database")').click()
-
-      const input = page.locator('input[data-testid="nvd-search-input"]')
-      await input.fill('CVE-2024')
-      await page.waitForTimeout(E2E_UI_DELAY * 4)
-
-      const results = page.locator('[data-testid="nvd-result"]')
-      if ((await results.count()) > 0) {
-        await results.first().click()
-        await page.waitForTimeout(E2E_UI_DELAY)
-
-        const modal = page.locator('[role="dialog"]')
-        await modal
-          .first()
-          .waitFor({ state: 'attached', timeout: 5000 })
-          .catch(() => {})
-      }
+    test('clicking a result opens the CVE detail modal for that CVE', async ({ page }) => {
+      await openNvdSearch(page, 'apache')
+      const result = page.locator('[data-testid="nvd-result"]').filter({ hasText: 'CVE-2021-44228' })
+      await expect(result).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      await result.click()
+      const modal = page.getByRole('dialog')
+      await expect(modal).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+      await expect(modal).toContainText('CVE-2021-44228')
     })
 
-    test('should show NVD sync button', async ({ page }) => {
+    test('shows the NVD sync button in NVD mode', async ({ page }) => {
       await navigateToSearch(page)
       await page.locator('button:has-text("NVD Database")').click()
-
-      const syncButton = page.locator('[data-testid="nvd-sync-button"], button:has-text("Sync")')
-      await syncButton
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      await expect(page.locator('[data-testid="nvd-sync-button"]')).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
     })
 
-    test('should display database stats', async ({ page }) => {
+    test('displays the seeded database size', async ({ page }) => {
       await navigateToSearch(page)
       await page.locator('button:has-text("NVD Database")').click()
-
-      const statsText = page.locator('text=/CVEs in database|total CVEs/i')
-      await statsText
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      // The seeded e2e database contains exactly 16 CVEs.
+      await expect(page.getByText(/16 CVEs in\s+database/).first()).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
     })
   })
 
   test.describe('Keyboard Navigation', () => {
-    test('should navigate results with arrow down', async ({ page }) => {
+    test('ArrowDown highlights the first project result', async ({ page }) => {
       await createProjectOnly(page, 'Nav Test One')
       await createProjectOnly(page, 'Nav Test Two')
 
@@ -322,18 +280,15 @@ test.describe('Search Page', () => {
 
       const input = page.locator('input[data-testid="nvd-search-input"]')
       await input.fill('Nav Test')
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
+      await expect(page.getByText('Nav Test One', { exact: true })).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
 
       await input.press('ArrowDown')
-
-      const selectedItem = page.locator('[class*="ring-2"]')
-      await selectedItem
-        .first()
-        .waitFor({ state: 'attached', timeout: 5000 })
-        .catch(() => {})
+      // The selected row gets the `ring-2 ring-ring` highlight; exactly one row is selected.
+      await expect(page.locator('.ring-2.ring-ring')).toHaveCount(1)
     })
 
-    test('should navigate results with arrow up', async ({ page }) => {
+    test('ArrowUp moves the highlight back to the first result', async ({ page }) => {
+      // Created first → appended first → stable-sorted first among equally-relevant matches.
       await createProjectOnly(page, 'Up Nav Test One')
       await createProjectOnly(page, 'Up Nav Test Two')
 
@@ -341,26 +296,28 @@ test.describe('Search Page', () => {
 
       const input = page.locator('input[data-testid="nvd-search-input"]')
       await input.fill('Up Nav')
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
+      await expect(page.getByText('Up Nav Test One', { exact: true })).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
 
-      await input.press('ArrowDown')
-      await input.press('ArrowDown')
-      await input.press('ArrowUp')
+      await input.press('ArrowDown') // index 0
+      await input.press('ArrowDown') // index 1
+      await input.press('ArrowUp') // back to index 0
+      await expect(page.locator('.ring-2.ring-ring')).toContainText('Up Nav Test One')
     })
 
-    test('should select result with Enter key', async ({ page }) => {
-      const projectName = 'Enter Select Project'
-      await createProjectOnly(page, projectName)
+    test('Enter opens the highlighted project result', async ({ page }) => {
+      await createProjectOnly(page, 'Enter Select Project')
 
       await navigateToSearch(page)
 
       const input = page.locator('input[data-testid="nvd-search-input"]')
       await input.fill('Enter Select')
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
+      await expect(page.getByText('Enter Select Project', { exact: true })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
 
+      await input.press('ArrowDown') // Enter only navigates when a row is selected.
       await input.press('Enter')
-
-      await page.waitForTimeout(E2E_UI_DELAY)
+      await expect(page).toHaveURL(/\/project\//, { timeout: E2E_SELECTOR_TIMEOUT })
     })
 
     test('should clear search with Escape key', async ({ page }) => {

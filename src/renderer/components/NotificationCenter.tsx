@@ -11,6 +11,7 @@ import {
 } from '@/lib/notifications'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function NotificationCenter() {
   const notifications = useNotifications()
@@ -19,6 +20,7 @@ export function NotificationCenter() {
   const navigate = useNavigate()
 
   const [isOpen, setIsOpen] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown when clicking outside
@@ -49,9 +51,12 @@ export function NotificationCenter() {
   }
 
   const handleClearAll = () => {
-    if (confirm('Clear all notifications?')) {
-      clearAllNotifications()
-    }
+    setShowClearConfirm(true)
+  }
+
+  const handleConfirmClearAll = () => {
+    clearAllNotifications()
+    setShowClearConfirm(false)
   }
 
   const getNotificationIcon = (type: string) => {
@@ -199,6 +204,17 @@ export function NotificationCenter() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={showClearConfirm}
+        title="Clear notifications"
+        message="Clear all notifications?"
+        confirmLabel="Clear all"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmClearAll}
+        onCancel={() => setShowClearConfirm(false)}
+      />
     </div>
   )
 }

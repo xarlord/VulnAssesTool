@@ -122,29 +122,29 @@ describe('SbomGeneratorDialog', () => {
       expect(container.firstChild).toBe(null)
     })
 
-    it('should render when open is true', () => {
+    it('should render when open is true', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
-      expect(screen.getByText('Generate SBOM from Excel')).toBeInTheDocument()
+      expect(await screen.findByText('Generate SBOM from Excel')).toBeInTheDocument()
     })
 
-    it('should show upload area on idle state', () => {
+    it('should show upload area on idle state', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
-      expect(screen.getByText(/Click to upload or drag and drop/)).toBeInTheDocument()
-      expect(screen.getByText(/Excel files \(.xlsx, .xls\)/)).toBeInTheDocument()
+      expect(await screen.findByText(/Click to upload or drag and drop/)).toBeInTheDocument()
+      expect(await screen.findByText(/Excel files \(.xlsx, .xls\)/)).toBeInTheDocument()
     })
 
-    it('should display step indicator with correct steps', () => {
+    it('should display step indicator with correct steps', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
-      expect(screen.getByText('Upload')).toBeInTheDocument()
-      expect(screen.getByText('Map Columns')).toBeInTheDocument()
-      expect(screen.getByText('Preview')).toBeInTheDocument()
-      expect(screen.getByText('Generate')).toBeInTheDocument()
-      expect(screen.getByText('Download')).toBeInTheDocument()
+      expect(await screen.findByText('Upload')).toBeInTheDocument()
+      expect(await screen.findByText('Map Columns')).toBeInTheDocument()
+      expect(await screen.findByText('Preview')).toBeInTheDocument()
+      expect(await screen.findByText('Generate')).toBeInTheDocument()
+      expect(await screen.findByText('Download')).toBeInTheDocument()
     })
 
-    it('should show required columns in instructions', () => {
+    it('should show required columns in instructions', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
-      expect(screen.getByText(/Required Excel Columns:/i)).toBeInTheDocument()
+      expect(await screen.findByText(/Required Excel Columns:/i)).toBeInTheDocument()
       const container = screen.getByText(/Required Excel Columns:/i).parentElement?.parentElement
       expect(container?.textContent).toContain('name')
       expect(container?.textContent).toContain('Component name')
@@ -194,7 +194,7 @@ describe('SbomGeneratorDialog', () => {
 
       // Wait for error state - component shows "Error" heading with error message below
       await screen.findByText('Error', {}, { timeout: 3000 })
-      expect(screen.getByText('Failed to parse Excel file')).toBeInTheDocument()
+      expect(await screen.findByText('Failed to parse Excel file')).toBeInTheDocument()
     })
   })
 
@@ -228,8 +228,8 @@ describe('SbomGeneratorDialog', () => {
       fireEvent.change(input, { target: { files: [file] } })
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      expect(screen.getByText('SBOM Field')).toBeInTheDocument()
-      expect(screen.getByText('Excel Column')).toBeInTheDocument()
+      expect(await screen.findByText('SBOM Field')).toBeInTheDocument()
+      expect(await screen.findByText('Excel Column')).toBeInTheDocument()
     })
 
     it('should validate required columns before proceeding', async () => {
@@ -247,7 +247,7 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       // Component should stay on mapping step (not advance to preview)
@@ -256,7 +256,7 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText('Map Columns', {}, { timeout: 2000 })
 
       // Should still show the mapping table, indicating we stayed on this step
-      expect(screen.getByText('SBOM Field')).toBeInTheDocument()
+      expect(await screen.findByText('SBOM Field')).toBeInTheDocument()
     })
   })
 
@@ -280,7 +280,7 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
       // Click next to go to preview
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       // Should show preview step with metadata - component shows "SBOM Metadata" heading
@@ -301,7 +301,7 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
       // Click next to go to preview
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       // Should be in preview step with editable metadata - look for "SBOM Metadata"
@@ -322,19 +322,19 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
       // Click next to go to preview
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       // Wait for preview step - look for Components Preview
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
       // Look for generate button - component shows "Generate SBOM"
-      const generateButton = screen.getByRole('button', { name: /Generate SBOM/i })
+      const generateButton = await screen.findByRole('button', { name: /Generate SBOM/i })
       fireEvent.click(generateButton)
 
       // Component goes to CPE selection step first - click Continue to proceed
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
-      const continueButton = screen.getByRole('button', { name: /Continue/i })
+      const continueButton = await screen.findByRole('button', { name: /Continue/i })
       fireEvent.click(continueButton)
 
       // Wait for generation to complete - success state shows "SBOM Generated Successfully!"
@@ -358,19 +358,19 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
       // Click next to go to preview
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       // Wait for preview step
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
       // Click generate button
-      const generateButton = screen.getByRole('button', { name: /Generate SBOM/i })
+      const generateButton = await screen.findByRole('button', { name: /Generate SBOM/i })
       fireEvent.click(generateButton)
 
       // Component goes to CPE selection step first - click Continue to proceed
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
-      const continueButton = screen.getByRole('button', { name: /Continue/i })
+      const continueButton = await screen.findByRole('button', { name: /Continue/i })
       fireEvent.click(continueButton)
 
       // Wait for success - component shows "SBOM Generated Successfully!"
@@ -396,18 +396,18 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
       // Navigate through steps
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
       // Click generate
-      const generateButton = screen.getByRole('button', { name: /Generate SBOM/i })
+      const generateButton = await screen.findByRole('button', { name: /Generate SBOM/i })
       fireEvent.click(generateButton)
 
       // Component goes to CPE selection step first - click Continue to proceed
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
-      const continueButton = screen.getByRole('button', { name: /Continue/i })
+      const continueButton = await screen.findByRole('button', { name: /Continue/i })
       fireEvent.click(continueButton)
 
       // Wait for success/download step - component shows "Download SBOM" button
@@ -416,26 +416,21 @@ describe('SbomGeneratorDialog', () => {
   })
 
   describe('Dialog Controls', () => {
-    it('should close dialog when close button is clicked', () => {
+    it('should close dialog when close button is clicked', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
 
-      const closeButton = screen.getByRole('button', { name: /close dialog/i })
+      const closeButton = await screen.findByRole('button', { name: 'Close' })
       fireEvent.click(closeButton)
 
       expect(mockOnClose).toHaveBeenCalled()
     })
 
-    it('should close dialog when backdrop is clicked', () => {
+    it('should close dialog when Escape is pressed', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
 
-      const backdrop = screen
-        .getByText(/Generate SBOM from Excel/)
-        .closest('.fixed')
-        ?.querySelector('.bg-black\\/50')
-      if (backdrop) {
-        fireEvent.click(backdrop)
-        expect(mockOnClose).toHaveBeenCalled()
-      }
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(mockOnClose).toHaveBeenCalled()
     })
 
     it('should reset state when dialog is closed and reopened', async () => {
@@ -446,7 +441,7 @@ describe('SbomGeneratorDialog', () => {
       rerender(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
 
       // Should be back to initial state
-      expect(screen.getByText(/Click to upload or drag and drop/)).toBeInTheDocument()
+      expect(await screen.findByText(/Click to upload or drag and drop/)).toBeInTheDocument()
     })
   })
 
@@ -483,7 +478,7 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText('Error', {}, { timeout: 3000 })
 
       // Look for start over button - component shows "Start Over"
-      const startOverButton = screen.getByRole('button', { name: /Start Over/i })
+      const startOverButton = await screen.findByRole('button', { name: /Start Over/i })
       fireEvent.click(startOverButton)
 
       // Should be back to upload state
@@ -536,7 +531,7 @@ describe('SbomGeneratorDialog', () => {
         fireEvent.drop(dropZone, dropEvent)
 
         await screen.findByText('Error', {}, { timeout: 3000 })
-        expect(screen.getByText(/Please upload an Excel file/)).toBeInTheDocument()
+        expect(await screen.findByText(/Please upload an Excel file/)).toBeInTheDocument()
       }
     })
   })
@@ -557,8 +552,10 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
+      // The "Map Columns" heading renders before the mapping selects; wait for the
+      // selects themselves so this doesn't race under CI load.
+      await waitFor(() => expect(document.querySelectorAll('select').length).toBeGreaterThan(0))
       const selects = document.querySelectorAll('select')
-      expect(selects.length).toBeGreaterThan(0)
 
       if (selects.length > 0) {
         fireEvent.change(selects[0], { target: { value: '' } })
@@ -577,7 +574,7 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const cancelButton = screen.getByText('Cancel')
+      const cancelButton = await screen.findByText('Cancel')
       fireEvent.click(cancelButton)
 
       expect(mockOnClose).toHaveBeenCalled()
@@ -600,7 +597,7 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText('SBOM Metadata', {}, { timeout: 3000 })
@@ -623,7 +620,7 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText('SBOM Metadata', {}, { timeout: 3000 })
@@ -646,12 +643,12 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      const backButton = screen.getByText('Back')
+      const backButton = await screen.findByText('Back')
       fireEvent.click(backButton)
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
@@ -675,17 +672,17 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      const generateButton = screen.getByRole('button', { name: /Generate SBOM/i })
+      const generateButton = await screen.findByRole('button', { name: /Generate SBOM/i })
       fireEvent.click(generateButton)
 
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
 
-      const skipAllButtons = screen.getAllByText('Skip All')
+      const skipAllButtons = await screen.findAllByText('Skip All')
       fireEvent.click(skipAllButtons[0])
 
       await screen.findByText(/Generating CycloneDX SBOM/i, {}, { timeout: 5000 })
@@ -702,17 +699,17 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      const generateButton = screen.getByRole('button', { name: /Generate SBOM/i })
+      const generateButton = await screen.findByRole('button', { name: /Generate SBOM/i })
       fireEvent.click(generateButton)
 
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
 
-      const backButtons = screen.getAllByText('Back')
+      const backButtons = await screen.findAllByText('Back')
       fireEvent.click(backButtons[0])
 
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
@@ -734,22 +731,22 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      const generateButton = screen.getByRole('button', { name: /Generate SBOM/i })
+      const generateButton = await screen.findByRole('button', { name: /Generate SBOM/i })
       fireEvent.click(generateButton)
 
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
-      const continueButton = screen.getByRole('button', { name: /Continue/i })
+      const continueButton = await screen.findByRole('button', { name: /Continue/i })
       fireEvent.click(continueButton)
 
       await screen.findByText(/SBOM Generated Successfully/i, {}, { timeout: 5000 })
 
       const downloadSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
-      const downloadButton = screen.getByText('Download SBOM')
+      const downloadButton = await screen.findByText('Download SBOM')
       fireEvent.click(downloadButton)
       expect(downloadSpy).toHaveBeenCalled()
       downloadSpy.mockRestore()
@@ -770,7 +767,7 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Error', {}, { timeout: 3000 })
 
-      const closeButtons = screen.getAllByText('Close')
+      const closeButtons = await screen.findAllByText('Close')
       fireEvent.click(closeButtons[closeButtons.length - 1])
 
       expect(mockOnClose).toHaveBeenCalled()
@@ -792,20 +789,20 @@ describe('SbomGeneratorDialog', () => {
 
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      const nextButton = screen.getByRole('button', { name: /next step/i })
+      const nextButton = await screen.findByRole('button', { name: /next step/i })
       fireEvent.click(nextButton)
 
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      const generateButton = screen.getByRole('button', { name: /Generate SBOM/i })
+      const generateButton = await screen.findByRole('button', { name: /Generate SBOM/i })
       fireEvent.click(generateButton)
 
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
-      const continueButton = screen.getByRole('button', { name: /Continue/i })
+      const continueButton = await screen.findByRole('button', { name: /Continue/i })
       fireEvent.click(continueButton)
 
       await screen.findByText('Error', {}, { timeout: 5000 })
-      expect(screen.getByText('Generation failed')).toBeInTheDocument()
+      expect(await screen.findByText('Generation failed')).toBeInTheDocument()
     })
   })
 
@@ -827,11 +824,11 @@ describe('SbomGeneratorDialog', () => {
         })
 
         await screen.findByText('Map Columns', {}, { timeout: 3000 })
-        expect(screen.getByText('SBOM Field')).toBeInTheDocument()
+        expect(await screen.findByText('SBOM Field')).toBeInTheDocument()
       }
     })
 
-    it('should handle drop with no files gracefully', () => {
+    it('should handle drop with no files gracefully', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
 
       const dropZone = screen.getByText(/Click to upload or drag and drop/).closest('div')
@@ -842,7 +839,7 @@ describe('SbomGeneratorDialog', () => {
           dataTransfer: { files: [] },
         })
 
-        expect(screen.getByText(/Click to upload or drag and drop/)).toBeInTheDocument()
+        expect(await screen.findByText(/Click to upload or drag and drop/)).toBeInTheDocument()
       }
     })
   })
@@ -870,10 +867,10 @@ describe('SbomGeneratorDialog', () => {
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /Generate SBOM/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
     }
 
@@ -881,24 +878,24 @@ describe('SbomGeneratorDialog', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
       await navigateToCpeSelection()
 
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
 
       await screen.findByText('Suggested CPEs:', {}, { timeout: 3000 })
-      expect(screen.getByPlaceholderText(/cpe:2.3:a:vendor:product/)).toBeInTheDocument()
-      expect(screen.getByText('Apply')).toBeInTheDocument()
-      expect(screen.getByText('Skip this component')).toBeInTheDocument()
+      expect(await screen.findByPlaceholderText(/cpe:2.3:a:vendor:product/)).toBeInTheDocument()
+      expect(await screen.findByText('Apply')).toBeInTheDocument()
+      expect(await screen.findByText('Skip this component')).toBeInTheDocument()
     })
 
     it('should select a suggested CPE and update list', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
       await navigateToCpeSelection()
 
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
       await screen.findByText('Suggested CPEs:', {}, { timeout: 3000 })
 
-      const allButtons = screen.getAllByRole('button')
+      const allButtons = await screen.findAllByRole('button')
       const suggestionBtn = allButtons.find((b) => b.textContent?.includes('cpe:2.3:a:facebook:react'))
       if (suggestionBtn) fireEvent.click(suggestionBtn)
 
@@ -911,14 +908,14 @@ describe('SbomGeneratorDialog', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
       await navigateToCpeSelection()
 
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
       await screen.findByText('Or enter a custom CPE:', {}, { timeout: 3000 })
 
-      const cpeInput = screen.getByPlaceholderText(/cpe:2.3:a:vendor:product/)
+      const cpeInput = await screen.findByPlaceholderText(/cpe:2.3:a:vendor:product/)
       fireEvent.change(cpeInput, { target: { value: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*' } })
 
-      fireEvent.click(screen.getByText('Apply'))
+      fireEvent.click(await screen.findByText('Apply'))
 
       await screen.findByText(/Components Missing CPE \(1\)/, {}, { timeout: 3000 })
     })
@@ -929,14 +926,14 @@ describe('SbomGeneratorDialog', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
       await navigateToCpeSelection()
 
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
       await screen.findByText('Or enter a custom CPE:', {}, { timeout: 3000 })
 
-      const cpeInput = screen.getByPlaceholderText(/cpe:2.3:a:vendor:product/)
+      const cpeInput = await screen.findByPlaceholderText(/cpe:2.3:a:vendor:product/)
       fireEvent.change(cpeInput, { target: { value: 'invalid-cpe' } })
 
-      fireEvent.click(screen.getByText('Apply'))
+      fireEvent.click(await screen.findByText('Apply'))
 
       expect(mockIsValidCPE).toHaveBeenCalledWith('invalid-cpe')
     })
@@ -945,11 +942,11 @@ describe('SbomGeneratorDialog', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
       await navigateToCpeSelection()
 
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
       await screen.findByText('Or enter a custom CPE:', {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByText('Apply'))
+      fireEvent.click(await screen.findByText('Apply'))
 
       expect(mockIsValidCPE).not.toHaveBeenCalled()
     })
@@ -958,11 +955,11 @@ describe('SbomGeneratorDialog', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
       await navigateToCpeSelection()
 
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
       await screen.findByText('Skip this component', {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByText('Skip this component'))
+      fireEvent.click(await screen.findByText('Skip this component'))
 
       await waitFor(() => {
         expect(screen.queryByText('Skip this component')).not.toBeInTheDocument()
@@ -973,16 +970,16 @@ describe('SbomGeneratorDialog', () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
       await navigateToCpeSelection()
 
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
       await screen.findByText('Suggested CPEs:', {}, { timeout: 3000 })
 
-      const allButtons = screen.getAllByRole('button')
+      const allButtons = await screen.findAllByRole('button')
       const suggestionBtn = allButtons.find((b) => b.textContent?.includes('cpe:2.3:a:facebook:react'))
       if (suggestionBtn) fireEvent.click(suggestionBtn)
 
       await screen.findByText(/1 of 2 components have CPE/, {}, { timeout: 3000 })
-      expect(screen.getByText(/1 reviewed/)).toBeInTheDocument()
+      expect(await screen.findByText(/1 reviewed/)).toBeInTheDocument()
     })
 
     it('should show Enter CPE manually when no suggestions available', async () => {
@@ -1005,12 +1002,12 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /Generate SBOM/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
 
-      expect(screen.getByText('Enter CPE manually')).toBeInTheDocument()
+      expect(await screen.findByText('Enter CPE manually')).toBeInTheDocument()
     })
   })
 
@@ -1038,10 +1035,10 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /Generate SBOM/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
 
       await screen.findByText(/SBOM Generated Successfully|Generating CycloneDX/i, {}, { timeout: 5000 })
       expect(screen.queryByText(/Components Missing CPE/)).not.toBeInTheDocument()
@@ -1065,12 +1062,15 @@ describe('SbomGeneratorDialog', () => {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
       fireEvent.change(input, { target: { files: [file] } })
-      await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
-      await screen.findByText(/Components Preview/, {}, { timeout: 3000 })
+      // Generous async-wait + per-test budgets: the parse→map→preview re-render chain is CPU-bound
+      // and occasionally exceeds the tight 3s waits under the parallel full-suite run. Correct in
+      // isolation — this only guards against load-induced flakiness.
+      await screen.findByText('Map Columns', {}, { timeout: 15000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+      await screen.findByText(/Components Preview/, {}, { timeout: 15000 })
 
-      expect(screen.getByText(/and 5 more components/)).toBeInTheDocument()
-    })
+      expect(await screen.findByText(/and 5 more components/)).toBeInTheDocument()
+    }, 20_000)
 
     it('should truncate long CPE strings in preview table', async () => {
       const longCpe = 'cpe:2.3:a:very-long-vendor-name:very-long-product-name:1.0.0-beta.1:build123456789:*:*:*:*:*:*:*'
@@ -1093,10 +1093,10 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/, {}, { timeout: 3000 })
 
-      const truncatedEl = screen.getByTitle(longCpe)
+      const truncatedEl = await screen.findByTitle(longCpe)
       expect(truncatedEl.textContent).toContain('...')
     })
   })
@@ -1129,10 +1129,10 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/, {}, { timeout: 3000 })
 
-      expect(screen.getByText(/Components Preview \(1\)/)).toBeInTheDocument()
+      expect(await screen.findByText(/Components Preview \(1\)/)).toBeInTheDocument()
     })
 
     it('should show error when all component creations fail', async () => {
@@ -1149,7 +1149,7 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
 
       await screen.findByText(/No valid components/, {}, { timeout: 3000 })
     })
@@ -1169,7 +1169,7 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText('SBOM Metadata', {}, { timeout: 3000 })
 
       const descInput = document.querySelector('input[placeholder="SBOM for my application"]') as HTMLInputElement
@@ -1188,7 +1188,7 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText('SBOM Metadata', {}, { timeout: 3000 })
 
       const authorInput = document.querySelector('input[placeholder="Your Name or Company"]') as HTMLInputElement
@@ -1205,7 +1205,7 @@ describe('SbomGeneratorDialog', () => {
       mockGenerateCycloneDX.mockResolvedValue(mockSbomOutput)
     })
 
-    it('should stay on idle step when file input change has no file', () => {
+    it('should stay on idle step when file input change has no file', async () => {
       render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
 
       const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -1213,7 +1213,7 @@ describe('SbomGeneratorDialog', () => {
       fireEvent.change(input, { target: { files: [] } })
 
       // Should remain on idle step — upload area still visible, mapping table not shown
-      expect(screen.getByText(/Click to upload or drag and drop/)).toBeInTheDocument()
+      expect(await screen.findByText(/Click to upload or drag and drop/)).toBeInTheDocument()
       expect(screen.queryByText('SBOM Field')).not.toBeInTheDocument()
       expect(screen.queryByText('Excel Column')).not.toBeInTheDocument()
     })
@@ -1246,17 +1246,17 @@ describe('SbomGeneratorDialog', () => {
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /Generate SBOM/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
 
       // Click Continue — triggers handleCpeSelectionConfirm which calls generateCycloneDX
-      fireEvent.click(screen.getByRole('button', { name: /Continue/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Continue/i }))
 
       await screen.findByText('Error', {}, { timeout: 5000 })
-      expect(screen.getByText('CPE generation failed')).toBeInTheDocument()
+      expect(await screen.findByText('CPE generation failed')).toBeInTheDocument()
     })
 
     it('should show error when generation fails without CPE step', async () => {
@@ -1283,14 +1283,14 @@ describe('SbomGeneratorDialog', () => {
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
       // All components have CPEs — should skip CPE step and go straight to generating
-      fireEvent.click(screen.getByRole('button', { name: /Generate SBOM/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
 
       await screen.findByText('Error', {}, { timeout: 5000 })
-      expect(screen.getByText('Direct generation failed')).toBeInTheDocument()
+      expect(await screen.findByText('Direct generation failed')).toBeInTheDocument()
     })
 
     it('should handle drag and drop of .xls file', async () => {
@@ -1312,7 +1312,7 @@ describe('SbomGeneratorDialog', () => {
 
       // .xls should pass the regex check and proceed to mapping
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      expect(screen.getByText('SBOM Field')).toBeInTheDocument()
+      expect(await screen.findByText('SBOM Field')).toBeInTheDocument()
     })
 
     it('should show Change CPE button after selecting a CPE and allow re-editing', async () => {
@@ -1326,19 +1326,19 @@ describe('SbomGeneratorDialog', () => {
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
 
-      fireEvent.click(screen.getByRole('button', { name: /Generate SBOM/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
 
       // Click "Select CPE" for the first component
-      const selectCpeButtons = screen.getAllByText(/Select CPE/)
+      const selectCpeButtons = await screen.findAllByText(/Select CPE/)
       fireEvent.click(selectCpeButtons[0])
       await screen.findByText('Suggested CPEs:', {}, { timeout: 3000 })
 
       // Select a suggested CPE for the first component
-      const allButtons = screen.getAllByRole('button')
+      const allButtons = await screen.findAllByRole('button')
       const suggestionBtn = allButtons.find((b) => b.textContent?.includes('cpe:2.3:a:facebook:react'))
       if (suggestionBtn) fireEvent.click(suggestionBtn)
 
@@ -1347,11 +1347,11 @@ describe('SbomGeneratorDialog', () => {
 
       // The first component now has a CPE and shows "CPE selected" badge + "Change CPE" button
       // Because it was removed from componentsNeedingCpe, we verify via the remaining count
-      expect(screen.getByText(/1 of 2 components have CPE/)).toBeInTheDocument()
-      expect(screen.getByText(/1 reviewed/)).toBeInTheDocument()
+      expect(await screen.findByText(/1 of 2 components have CPE/)).toBeInTheDocument()
+      expect(await screen.findByText(/1 reviewed/)).toBeInTheDocument()
 
       // The remaining component without CPE should still show "Select CPE"
-      const remainingSelectButtons = screen.getAllByText(/Select CPE|Enter CPE manually/)
+      const remainingSelectButtons = await screen.findAllByText(/Select CPE|Enter CPE manually/)
       expect(remainingSelectButtons.length).toBeGreaterThan(0)
     })
 
@@ -1376,30 +1376,30 @@ describe('SbomGeneratorDialog', () => {
       })
       fireEvent.change(input, { target: { files: [file] } })
       await screen.findByText('Map Columns', {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /next step/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
       await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
-      fireEvent.click(screen.getByRole('button', { name: /Generate SBOM/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
       await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
 
       // Should show "Enter CPE manually" (no suggestions)
-      expect(screen.getByText('Enter CPE manually')).toBeInTheDocument()
+      expect(await screen.findByText('Enter CPE manually')).toBeInTheDocument()
 
       // Click to open editing UI — should NOT show "Suggested CPEs:" section
-      fireEvent.click(screen.getByText('Enter CPE manually'))
+      fireEvent.click(await screen.findByText('Enter CPE manually'))
       await screen.findByText('Or enter a custom CPE:', {}, { timeout: 3000 })
       expect(screen.queryByText('Suggested CPEs:')).not.toBeInTheDocument()
 
       // Enter and submit a valid custom CPE
-      const cpeInput = screen.getByPlaceholderText(/cpe:2.3:a:vendor:product/)
+      const cpeInput = await screen.findByPlaceholderText(/cpe:2.3:a:vendor:product/)
       fireEvent.change(cpeInput, { target: { value: 'cpe:2.3:a:vendor:custom-lib:2.0.0:*:*:*:*:*:*:*' } })
-      fireEvent.click(screen.getByText('Apply'))
+      fireEvent.click(await screen.findByText('Apply'))
 
       // After applying custom CPE, the component has a CPE assigned
       // The "Components Missing CPE" count drops to 0, but the component is still listed
       // The progress indicator shows "1 of 1 components have CPE"
       await screen.findByText(/1 of 1 components have CPE/, {}, { timeout: 3000 })
-      expect(screen.getByText(/1 reviewed/)).toBeInTheDocument()
-      expect(screen.getByText(/Components Missing CPE \(0\)/)).toBeInTheDocument()
+      expect(await screen.findByText(/1 reviewed/)).toBeInTheDocument()
+      expect(await screen.findByText(/Components Missing CPE \(0\)/)).toBeInTheDocument()
     })
   })
 })

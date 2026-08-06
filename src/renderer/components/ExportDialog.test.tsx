@@ -10,7 +10,13 @@ vi.mock('@/lib/export', () => ({
   exportAllProjects: vi.fn(),
 }))
 
+// Mock the audit logger so we can assert an EXPORT event is emitted (FR-07.1).
+vi.mock('@/lib/audit', () => ({
+  logExport: vi.fn(),
+}))
+
 const { exportProjectData, exportAllProjects } = await import('@/lib/export')
+const { logExport } = await import('@/lib/audit')
 
 describe('ExportDialog', () => {
   const mockProject: Project = {
@@ -115,6 +121,20 @@ describe('ExportDialog', () => {
       expect(onClose).toHaveBeenCalled()
     })
 
+    it('logs an EXPORT audit event for a single-project export', async () => {
+      const user = userEvent.setup()
+
+      render(<ExportDialog open={true} onClose={vi.fn()} project={mockProject} />)
+
+      const exportButton = screen.getByRole('button', { name: /^Export$/ })
+      await user.click(exportButton)
+
+      // Default data type is 'vulnerabilities'; the fixture has exactly one vulnerability.
+      // Why: a compliance export must itself leave an audit record scoped to what was exported,
+      // not a generic UPDATE — so the trail can prove who exported which vulnerability data when.
+      await waitFor(() => expect(logExport).toHaveBeenCalledWith('vulnerability', 'csv', 1, 'project-1'))
+    })
+
     it('should show exporting state while exporting', async () => {
       const user = userEvent.setup()
       // Mock to keep export pending
@@ -175,6 +195,17 @@ describe('ExportDialog', () => {
 
       expect(exportAllProjects).toHaveBeenCalledWith(mockProjects, 'csv')
       expect(onClose).toHaveBeenCalled()
+    })
+
+    it('logs an EXPORT audit event for an all-projects export', async () => {
+      const user = userEvent.setup()
+
+      render(<ExportDialog open={true} onClose={vi.fn()} projects={mockProjects} />)
+
+      const exportButton = screen.getByRole('button', { name: /^Export$/ })
+      await user.click(exportButton)
+
+      await waitFor(() => expect(logExport).toHaveBeenCalledWith('all', 'csv', mockProjects.length))
     })
 
     it('should show correct preview for all projects', () => {
@@ -325,7 +356,8 @@ describe('ExportDialog', () => {
 
       render(<ExportDialog open={true} onClose={onClose} project={mockProject} />)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      // Radix Dialog renders a close button with the accessible name "Close".
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       await user.click(closeButton)
 
       expect(onClose).toHaveBeenCalled()

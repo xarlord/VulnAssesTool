@@ -66,8 +66,7 @@ describe('CPEMatchDialog', () => {
     it('should render close button', () => {
       renderDialog(true, [createMockComponent()])
 
-      expect(screen.getByTestId('cpe-dialog-close')).toBeInTheDocument()
-      expect(screen.getByLabelText('Close dialog')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
     })
 
     it('should render footer buttons', () => {
@@ -403,20 +402,16 @@ describe('CPEMatchDialog', () => {
     it('should close dialog when close button is clicked', () => {
       renderDialog(true, [createMockComponent()])
 
-      const closeButton = screen.getByTestId('cpe-dialog-close')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       fireEvent.click(closeButton)
 
       expect(mockOnClose).toHaveBeenCalled()
     })
 
-    it('should close dialog when backdrop is clicked', () => {
+    it('should close dialog when Escape is pressed', () => {
       renderDialog(true, [createMockComponent()])
 
-      // Find the backdrop by its aria-hidden attribute
-      const backdrop = document.querySelector('.fixed.inset-0.bg-black\\/50')
-      expect(backdrop).toBeInTheDocument()
-
-      fireEvent.click(backdrop!)
+      fireEvent.keyDown(document, { key: 'Escape' })
       expect(mockOnClose).toHaveBeenCalled()
     })
   })
@@ -572,7 +567,13 @@ describe('CPEMatchDialog', () => {
       const dialog = screen.getByTestId('cpe-match-dialog')
       expect(dialog).toHaveAttribute('role', 'dialog')
       expect(dialog).toHaveAttribute('aria-modal', 'true')
-      expect(dialog).toHaveAttribute('aria-labelledby', 'cpe-dialog-title')
+      // Radix auto-wires aria-labelledby to its own generated DialogTitle id. We no
+      // longer override it with a custom "cpe-dialog-title" id — that defeated Radix's
+      // title detection and logged "DialogContent requires a DialogTitle". Assert the
+      // accessible-name intent: aria-labelledby points at the visible title.
+      const labelledBy = dialog.getAttribute('aria-labelledby')
+      expect(labelledBy).toBeTruthy()
+      expect(document.getElementById(labelledBy as string)).toHaveTextContent('CPE Estimation Required')
     })
 
     it('should have accessible radio button labels', () => {

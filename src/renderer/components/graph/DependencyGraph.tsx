@@ -5,13 +5,19 @@
  * Shows component dependencies with severity-based color coding
  */
 
-import React, { useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EventObject } from 'cytoscape'
+import fcose from 'cytoscape-fcose'
 import { cn } from '@/lib/utils'
 import type { DependencyGraphProps, GraphNodeData } from './types'
 import { SEVERITY_NODE_COLORS, DEFAULT_LAYOUT_CONFIG } from './types'
 import { buildGraphElements, getNodeStyle, getBaseStyles, getPathEdges } from './utils'
+
+// Register the fcose force-directed layout extension once at module load — before any
+// cy.layout({ name: 'fcose' }) runs. Without this the layout throws "No such layout `fcose`"
+// and the whole graph crashes for any project that has components.
+cytoscape.use(fcose)
 
 /**
  * DependencyGraph Component
@@ -190,6 +196,85 @@ export function DependencyGraph({
     }
   }, [])
 
+  // Export the rendered graph as a PNG (FR-11.2-c). Cytoscape ships cy.png(), so
+  // no new dependency is needed; the download trigger mirrors lib/export/json.ts.
+  const handleExportImage = useCallback(() => {
+    if (!cyRef.current) return
+    const dataUrl = cyRef.current.png({ full: true, scale: 2, bg: '#ffffff' })
+    const link = document.createElement('a')
+    link.href = dataUrl
+    link.download = 'dependency-graph.png'
+    link.click()
+  }, [])
+
+  // Keyboard navigation: the canvas is opaque to keyboard/AT, so the node list
+  // below doubles as a listbox that lets keyboard users move between components
+  // (arrow keys) and open a component's details (Enter) — the tap-on-node
+  // equivalent. The active option is kept in sync with the canvas via panning.
+  const [activeNodeIndex, setActiveNodeIndex] = useState(0)
+
+  // Pan the canvas to the active node so sighted keyboard users can see it.
+  const centerNode = useCallback((nodeId: string) => {
+    const cy = cyRef.current
+    if (!cy) return
+    const node = cy.getElementById(nodeId)
+    if (node.length > 0) {
+      cy.center(node)
+    }
+  }, [])
+
+  const moveActiveNode = useCallback(
+    (index: number) => {
+      const clamped = Math.max(0, Math.min(index, components.length - 1))
+      setActiveNodeIndex(clamped)
+      const target = components[clamped]
+      if (target) centerNode(target.id)
+    },
+    [components, centerNode],
+  )
+
+  const activateNode = useCallback(
+    (index: number) => {
+      moveActiveNode(index)
+      const target = components[index]
+      if (target && onNodeClick) onNodeClick(target)
+    },
+    [components, moveActiveNode, onNodeClick],
+  )
+
+  const handleListKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLUListElement>) => {
+      switch (event.key) {
+        case 'ArrowDown':
+        case 'ArrowRight':
+          event.preventDefault()
+          moveActiveNode(activeNodeIndex + 1)
+          break
+        case 'ArrowUp':
+        case 'ArrowLeft':
+          event.preventDefault()
+          moveActiveNode(activeNodeIndex - 1)
+          break
+        case 'Home':
+          event.preventDefault()
+          moveActiveNode(0)
+          break
+        case 'End':
+          event.preventDefault()
+          moveActiveNode(components.length - 1)
+          break
+        case 'Enter':
+        case ' ':
+          event.preventDefault()
+          activateNode(activeNodeIndex)
+          break
+        default:
+          break
+      }
+    },
+    [activeNodeIndex, components.length, moveActiveNode, activateNode],
+  )
+
   // Handle empty state
   if (components.length === 0) {
     return (
@@ -213,13 +298,51 @@ export function DependencyGraph({
     )
   }
 
+  const vulnerableCount = components.filter((component) => component.vulnerabilities.length > 0).length
+  const graphSummary = `Dependency graph of ${components.length} component${
+    components.length === 1 ? '' : 's'
+  }; ${vulnerableCount} with known vulnerabilities.`
+
+  // Clamp for rendering in case the component set shrank below the active index.
+  const activeIndex = Math.min(activeNodeIndex, components.length - 1)
+
   return (
     <div
       className={cn('relative rounded-lg border border-gray-200 bg-white', className)}
       style={{ height: typeof height === 'number' ? `${height}px` : height }}
     >
-      {/* Graph container */}
-      <div ref={containerRef} className="h-full w-full" />
+      {/* Graph container — canvas is opaque to assistive tech, so it is
+          labelled as an image and paired with the sr-only list below. */}
+      <div ref={containerRef} className="h-full w-full" role="img" aria-label={graphSummary} />
+
+      {/* Text alternative + keyboard interface: the graph's nodes as a listbox.
+          Visually hidden until focused, then shown as an overlay so keyboard
+          users can see which component is active. */}
+      <ul
+        role="listbox"
+        aria-label={`${graphSummary} Use the arrow keys to move between components and Enter to open a component's details.`}
+        tabIndex={0}
+        aria-activedescendant={components[activeIndex] ? `graph-node-${components[activeIndex].id}` : undefined}
+        onKeyDown={handleListKeyDown}
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-20 focus:max-h-[85%] focus:w-72 focus:overflow-auto focus:rounded-md focus:border focus:border-gray-200 focus:bg-white focus:p-2 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        {components.map((component, index) => (
+          <li
+            key={component.id}
+            id={`graph-node-${component.id}`}
+            role="option"
+            aria-selected={index === activeIndex}
+            onClick={() => activateNode(index)}
+            className={cn(
+              'cursor-pointer rounded px-2 py-1 text-sm text-gray-700',
+              index === activeIndex && 'bg-blue-100 text-blue-900',
+            )}
+          >
+            {component.name} {component.version} — {component.vulnerabilities.length} known{' '}
+            {component.vulnerabilities.length === 1 ? 'vulnerability' : 'vulnerabilities'}
+          </li>
+        ))}
+      </ul>
 
       {/* Zoom controls */}
       {showControls && (
@@ -271,6 +394,22 @@ export function DependencyGraph({
                 strokeLinejoin="round"
                 strokeWidth={2}
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={handleExportImage}
+            className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            title="Export as Image"
+            aria-label="Export as Image"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
               />
             </svg>
           </button>

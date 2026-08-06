@@ -88,11 +88,10 @@ export async function runFTSMigration(db: BetterDb): Promise<void> {
 
     console.log('[FTS Migration] Created FTS5 sync triggers')
 
-    // Record migration in schema_migrations
-    db.exec(`
-      INSERT INTO schema_migrations (version, applied_at)
-      VALUES (2, datetime('now'))
-    `)
+    // Intentionally do NOT record a schema_migrations row here. Version tracking is owned by
+    // runMigrations() (v2SchemaMigration migration 7 owns FTS5 setup); the old hardcoded
+    // `VALUES (2, ...)` collided with migration 2's own version-2 record on the
+    // schema_migrations primary key. The cves_fts existence check above is the idempotency guard.
 
     console.log('[FTS Migration] FTS5 migration completed successfully')
   } catch (error) {
@@ -102,10 +101,56 @@ export async function runFTSMigration(db: BetterDb): Promise<void> {
 }
 
 /**
+ * SQL for an FTS5 CVE search, ordered by BM25 relevance.
+ *
+ * The base `cves` table is reached via its `id` PRIMARY KEY (an index SEARCH,
+ * not a full SCAN) so latency stays size-invariant on large databases — the
+ * mechanism NFR-02.5 (10GB+) and NFR-02.3 (1M+ rows) depend on. Exported so the
+ * query plan can be asserted in tests.
+ */
+export const FTS_SEARCH_SQL = `
+    SELECT
+      c.id,
+      c.description,
+      c.cvss_score,
+      c.cvss_vector,
+      c.severity,
+      c.published_at,
+      c.modified_at,
+      c.source,
+      f.rank AS search_rank
+    FROM cves c
+    INNER JOIN cves_fts f ON c.id = f.id
+    WHERE cves_fts MATCH ?
+    ORDER BY search_rank
+    LIMIT ? OFFSET ?
+  `
+
+/**
+ * Turn arbitrary user text into a safe FTS5 MATCH expression.
+ *
+ * Tokenizes on non-alphanumeric characters (so `buffer-overflow` and `log4j:"()`
+ * become clean tokens), then emits each token double-quoted with a prefix star:
+ * `buffer overflow` -> `"buffer"* "overflow"*`. Quoting neutralizes FTS syntax
+ * characters that would otherwise throw `fts5: syntax error`; the star gives
+ * token-prefix recall; the implicit AND between tokens narrows like the old
+ * LIKE-AND behavior. Returns null when no alphanumeric token survives, signaling
+ * the caller to skip the FTS path.
+ */
+export function buildFtsMatchExpression(query: string): string | null {
+  const tokens = query
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((t) => t.toLowerCase())
+  if (tokens.length === 0) return null
+  return tokens.map((t) => `"${t}"*`).join(' ')
+}
+
+/**
  * Search CVEs using FTS5
  *
  * @param db The SQLite database instance
- * @param query The search query
+ * @param query The search query (already a valid FTS5 MATCH expression)
  * @param limit Maximum number of results
  * @param offset Number of results to skip
  * @returns Array of CVE IDs matching the query
@@ -117,27 +162,7 @@ export function searchCVEsFTS(
   offset = 0,
 ): Array<{ id: string; rank: number }> {
   // Use FTS5 search with BM25 ranking
-  const results = db
-    .prepare(
-      `
-    SELECT
-      c.id,
-      c.description,
-      c.cvss_score,
-      c.cvss_vector,
-      c.severity,
-      c.published_at,
-      c.modified_at,
-      c.source,
-      cves_fts.rank AS search_rank
-    FROM cves c
-    INNER JOIN cves_fts f ON c.id = f.id
-    WHERE cves_fts MATCH ?
-    ORDER BY search_rank
-    LIMIT ? OFFSET ?
-  `,
-    )
-    .all(query, limit, offset) as Array<{ id: string; search_rank: number }>
+  const results = db.prepare(FTS_SEARCH_SQL).all(query, limit, offset) as Array<{ id: string; search_rank: number }>
 
   const cves: Array<{ id: string; rank: number }> = []
 

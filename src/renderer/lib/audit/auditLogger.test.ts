@@ -62,6 +62,7 @@ describe('Audit Logger', () => {
     },
     cvssVersion: '3.1',
     showCvssBreakdown: true,
+    severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
     maxGraphNodes: 100,
     showVulnerableOnly: false,
   }
@@ -196,7 +197,9 @@ describe('Audit Logger', () => {
       const event = events[0]
       expect(event.actionType).toBe('SETTINGS_CHANGE')
       expect(event.entityType).toBe('settings')
-      expect(event.previousState).toEqual({ changedFields: ['theme', 'fontSize'] })
+      // previousState captures the OLD values of the changed fields (before/after audit trail),
+      // not just their names — a diff viewer/compliance reviewer needs what it changed FROM.
+      expect(event.previousState).toEqual({ theme: 'dark', fontSize: 'default' })
       expect(event.newState).toEqual(newSettings)
     })
 
@@ -209,9 +212,25 @@ describe('Audit Logger', () => {
       logSettingsChange(mockSettings, newSettings)
 
       const events = useAuditStore.getState().events
-      expect(events[0].previousState).toEqual({
-        changedFields: ['theme', 'autoRefresh'],
-      })
+      expect(events[0].previousState).toEqual({ theme: 'dark', autoRefresh: false })
+    })
+
+    it('redacts secret values (nvdApiKey) so they never reach the exportable audit log', () => {
+      // WHY: the audit log is compliance evidence shown in AuditLogPanel and
+      // exportable as CSV/JSON. If the raw NVD API key landed in newState it would
+      // leak the secret out of the app (SR-01 / NFR-06). The field name must still
+      // be recorded so the change stays auditable.
+      const newSettings: Partial<AppSettings> = { nvdApiKey: 'super-secret-key-123' }
+
+      logSettingsChange(mockSettings, newSettings)
+
+      const event = useAuditStore.getState().events[0]
+      // Both states run through sanitizeSettings, so the secret field is redacted on BOTH sides —
+      // capturing before-values must never turn the audit log into a secret-exfiltration channel.
+      expect(event.previousState).toEqual({ nvdApiKey: '[REDACTED]' })
+      expect((event.newState as Record<string, unknown>).nvdApiKey).toBe('[REDACTED]')
+      // The raw secret must not appear anywhere in the persisted event.
+      expect(JSON.stringify(event)).not.toContain('super-secret-key-123')
     })
   })
 

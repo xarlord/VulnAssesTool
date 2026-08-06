@@ -1,24 +1,41 @@
 /**
- * E2E Tests for Database Settings Flow
+ * Database Settings Flow — content contracts
  *
- * Tests the database management settings in the Settings page including:
- * - Sync schedule configuration
- * - Storage management controls
- * - Performance tuning options
- * - Database reset/rebuild functionality
+ * Every control this file exercises is local `Settings.tsx` React state (no network, no
+ * seeded-DB dependency), so nothing here needed `test.skip` for infeasibility. Grounding:
+ *   - pages/Settings.tsx — section `<h2>`s ("Database Management", "Performance Tuning", ...),
+ *     labeled selects (#sync-schedule, #max-database-size, #prune-year, #search-result-limit,
+ *     #cache-size), `role="switch"` toggles with `aria-label="Toggle prune old CVEs"` /
+ *     `"Toggle search cache"`, the Reset/Rebuild buttons and their `ConfirmDialog` (a plain
+ *     `<div>`, NOT `role="dialog"`) titles/messages.
+ *   - shared/constants.ts — SYNC_SCHEDULE_OPTIONS (4 options) / SEARCH_RESULT_LIMIT_OPTIONS /
+ *     CACHE_SIZE_OPTIONS + DEFAULT_DATABASE_SETTINGS (pruneOldCves: false, enableSearchCache:
+ *     true, searchResultLimit: 100) — the deterministic values every fresh mount starts from.
+ *
+ * One real gap surfaced by reading the source: Settings.tsx's mount effect re-hydrates only
+ * `syncSchedule` from `database.getSyncConfig()`; there is no `getStorageConfig` /
+ * `getPerformanceConfig` anywhere in the platform API (lib/platform/types.ts). Storage and
+ * performance settings are write-only from the UI's perspective, so "search result limit
+ * persists after reload" is not actually true — that test is `test.skip`ped with the reason
+ * instead of asserting a false claim.
+ *
+ * Sync schedule IS persisted server-side and nothing in this suite resets that DB state
+ * between tests, so the "change sync schedule" test toggles relative to whatever value is
+ * currently selected rather than assuming a fixed starting value.
  */
 
 import { test, expect, resetAppState } from '../test-helper'
-import { navigateToSettings } from '../shared-helpers'
+import { navigateToSettings, E2E_UI_DELAY } from '../shared-helpers'
+import type { Page } from '@playwright/test'
 
 /**
  * Helper to wait for settings page to load
  */
-async function waitForSettingsLoad(page: import('@playwright/test').Page) {
+async function waitForSettingsLoad(page: Page) {
   // Wait for settings heading to appear
   await page.waitForSelector('h1:has-text("Settings")', { timeout: 10000 })
   // Additional wait for content to render
-  await page.waitForTimeout(500)
+  await page.waitForTimeout(E2E_UI_DELAY)
 }
 
 test.describe('Database Settings Flow', () => {
@@ -30,28 +47,13 @@ test.describe('Database Settings Flow', () => {
 
   test.describe('Navigation', () => {
     test('should navigate to settings page', async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
-
-      // Verify settings page is loaded
-      await expect(
-        page
-          .getByRole('heading', { name: 'Settings', exact: true })
-          .or(page.locator('h1').filter({ hasText: 'Settings' })),
-      ).toBeVisible({ timeout: 5000 })
+      await navigateToSettings(page)
+      await expect(page).toHaveURL(/\/settings$/)
     })
 
     test('should navigate back to dashboard from settings', async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
-
-      await page.waitForTimeout(500)
+      await navigateToSettings(page)
+      await page.waitForTimeout(E2E_UI_DELAY)
 
       // Go back using browser navigation
       await page.goBack()
@@ -63,11 +65,7 @@ test.describe('Database Settings Flow', () => {
 
   test.describe('Database Management Section', () => {
     test.beforeEach(async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
+      await navigateToSettings(page)
       await waitForSettingsLoad(page)
     })
 
@@ -78,120 +76,62 @@ test.describe('Database Settings Flow', () => {
     })
 
     test('should display current database size', async ({ page }) => {
-      // Look for database size display
-      const sizeDisplay = page.locator('text=/Database Size|Current Database Size/i')
-      await expect(sizeDisplay.first()).toBeVisible({ timeout: 5000 })
+      // Look for database size display (Settings.tsx stats grid label). exact: true avoids a
+      // strict-mode collision with the "Maximum Database Size" select label, which contains
+      // "Database Size" as a substring — Playwright's getByText matches substrings by default.
+      await expect(page.getByText('Database Size', { exact: true })).toBeVisible({ timeout: 5000 })
     })
 
     test('should display sync schedule dropdown', async ({ page }) => {
       // Look for sync schedule section
-      const syncScheduleLabel = page.locator('label').filter({ hasText: 'Sync Schedule' })
-      await expect(syncScheduleLabel).toBeVisible({ timeout: 5000 })
-
-      // Look for the select dropdown
-      const syncSelect = page.locator('select').filter({
-        has: page.locator(
-          'option[value="daily"], option[value="weekly"], option[value="monthly"], option[value="manual"]',
-        ),
-      })
-      await expect(syncSelect.first()).toBeVisible({ timeout: 5000 })
+      const syncSelect = page.getByRole('combobox', { name: 'Sync Schedule' })
+      await expect(syncSelect).toBeVisible({ timeout: 5000 })
+      // Options mirror SYNC_SCHEDULE_OPTIONS in shared/constants.ts (daily/weekly/monthly/manual).
+      await expect(syncSelect.locator('option')).toHaveCount(4)
     })
 
     test('should change sync schedule option', async ({ page }) => {
-      // Find sync schedule dropdown
-      const syncSelect = page
-        .locator('label:has-text("Sync Schedule") + select, select')
-        .filter({ has: page.locator('option[value="daily"]') })
-        .first()
+      const syncSelect = page.getByRole('combobox', { name: 'Sync Schedule' })
+      await expect(syncSelect).toBeVisible({ timeout: 5000 })
 
-      if ((await syncSelect.count()) > 0) {
-        // Get current value
-        const currentValue = await syncSelect.inputValue()
+      // syncInterval is persisted server-side (handleSyncScheduleChange -> updateSyncConfig)
+      // and re-hydrated from database.getSyncConfig() on every mount, so an earlier test in
+      // this file may have left a non-default value — toggle relative to the current value.
+      const currentValue = await syncSelect.inputValue()
+      const newValue = currentValue === 'daily' ? 'weekly' : 'daily'
+      await syncSelect.selectOption(newValue)
 
-        // Change to a different value
-        const newValue = currentValue === 'daily' ? 'weekly' : 'daily'
-        await syncSelect.selectOption(newValue)
-
-        // Wait for change to apply
-        await page.waitForTimeout(300)
-
-        // Verify the change
-        const actualValue = await syncSelect.inputValue()
-        expect(actualValue).toBe(newValue)
-      } else {
-        // Skip if dropdown not found
-        test.skip()
-      }
+      await expect(syncSelect).toHaveValue(newValue)
     })
 
     test('should display storage limit options', async ({ page }) => {
       // Look for storage limit section
-      const storageLabel = page.locator('label').filter({ hasText: /Maximum Database Size|Storage Limit/i })
-      await expect(storageLabel).toBeVisible({ timeout: 5000 })
+      await expect(page.getByRole('combobox', { name: 'Maximum Database Size' })).toBeVisible({ timeout: 5000 })
     })
 
     test('should display prune old CVEs toggle', async ({ page }) => {
       // Look for prune toggle section
-      const pruneSection = page.locator('text=/Prune Old CVEs/i')
-      await expect(pruneSection.first()).toBeVisible({ timeout: 5000 })
+      await expect(page.getByText('Prune Old CVEs')).toBeVisible({ timeout: 5000 })
+      // Default from DEFAULT_DATABASE_SETTINGS.storage.pruneOldCves = false.
+      await expect(page.getByRole('switch', { name: 'Toggle prune old CVEs' })).toHaveAttribute('aria-checked', 'false')
     })
 
     test('should toggle prune old CVEs option', async ({ page }) => {
-      // Find the toggle button for prune old CVEs
-      const pruneToggle = page
-        .locator('text=/Prune Old CVEs/i')
-        .locator('..')
-        .locator('button')
-        .filter({
-          has: page.locator('span'),
-        })
-        .first()
+      const pruneToggle = page.getByRole('switch', { name: 'Toggle prune old CVEs' })
+      // Fresh mount always starts from DEFAULT_DATABASE_SETTINGS.storage.pruneOldCves = false —
+      // this local React state is never re-hydrated from the backend on mount.
+      await expect(pruneToggle).toHaveAttribute('aria-checked', 'false')
 
-      if ((await pruneToggle.count()) > 0) {
-        // Get initial state by checking the button's class
-        const initialClass = (await pruneToggle.getAttribute('class')) || ''
-        const initiallyEnabled = initialClass.includes('bg-primary')
-
-        // Click to toggle
-        await pruneToggle.click()
-        await page.waitForTimeout(300)
-
-        // Verify state changed
-        const newClass = (await pruneToggle.getAttribute('class')) || ''
-        const nowEnabled = newClass.includes('bg-primary')
-        expect(nowEnabled).toBe(!initiallyEnabled)
-      } else {
-        // Skip if toggle not found
-        test.skip()
-      }
+      await pruneToggle.click()
+      await expect(pruneToggle).toHaveAttribute('aria-checked', 'true')
     })
 
     test('should show prune year dropdown when prune is enabled', async ({ page }) => {
-      // First enable prune option if not already enabled
-      const pruneToggle = page
-        .locator('text=/Prune Old CVEs/i')
-        .locator('..')
-        .locator('button')
-        .filter({
-          has: page.locator('span'),
-        })
-        .first()
+      // pruneOldCves defaults to false (DEFAULT_DATABASE_SETTINGS.storage), so enable it first.
+      await page.getByRole('switch', { name: 'Toggle prune old CVEs' }).click()
 
-      if ((await pruneToggle.count()) > 0) {
-        const toggleClass = (await pruneToggle.getAttribute('class')) || ''
-        const isEnabled = toggleClass.includes('bg-primary')
-
-        if (!isEnabled) {
-          await pruneToggle.click()
-          await page.waitForTimeout(300)
-        }
-
-        // Now check for the year dropdown
-        const yearDropdown = page.locator('label').filter({ hasText: /Keep CVEs From/i })
-        await expect(yearDropdown).toBeVisible({ timeout: 3000 })
-      } else {
-        test.skip()
-      }
+      // The "Keep CVEs From" select renders only while storageSettings.pruneOldCves is true.
+      await expect(page.getByRole('combobox', { name: 'Keep CVEs From' })).toBeVisible({ timeout: 3000 })
     })
 
     test('should display reset database button', async ({ page }) => {
@@ -243,11 +183,7 @@ test.describe('Database Settings Flow', () => {
 
   test.describe('Performance Tuning Section', () => {
     test.beforeEach(async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
+      await navigateToSettings(page)
       await waitForSettingsLoad(page)
     })
 
@@ -264,178 +200,92 @@ test.describe('Database Settings Flow', () => {
     })
 
     test('should change search result limit', async ({ page }) => {
-      // Find search result limit dropdown
-      const limitSelect = page.locator('label:has-text("Search Result Limit") + select').first()
+      const limitSelect = page.getByRole('combobox', { name: 'Search Result Limit' })
+      // Default from DEFAULT_DATABASE_SETTINGS.performance.searchResultLimit = 100; this local
+      // state is never re-hydrated from the backend, so every fresh mount starts here.
+      await expect(limitSelect).toHaveValue('100')
 
-      if ((await limitSelect.count()) > 0) {
-        // Change to a different value
-        await limitSelect.selectOption('200')
-        await page.waitForTimeout(300)
-
-        // Verify the change
-        const actualValue = await limitSelect.inputValue()
-        expect(actualValue).toBe('200')
-      } else {
-        test.skip()
-      }
+      await limitSelect.selectOption('200')
+      await expect(limitSelect).toHaveValue('200')
     })
 
     test('should display search cache toggle', async ({ page }) => {
       // Look for search cache toggle
-      const cacheToggle = page.locator('text=/Enable Search Cache/i')
-      await expect(cacheToggle.first()).toBeVisible({ timeout: 5000 })
+      await expect(page.getByText('Enable Search Cache')).toBeVisible({ timeout: 5000 })
+      // Default from DEFAULT_DATABASE_SETTINGS.performance.enableSearchCache = true.
+      await expect(page.getByRole('switch', { name: 'Toggle search cache' })).toHaveAttribute('aria-checked', 'true')
     })
 
     test('should toggle search cache option', async ({ page }) => {
-      // Find the toggle button for search cache
-      const cacheToggle = page
-        .locator('text=/Enable Search Cache/i')
-        .locator('..')
-        .locator('button')
-        .filter({
-          has: page.locator('span'),
-        })
-        .first()
+      const cacheToggle = page.getByRole('switch', { name: 'Toggle search cache' })
+      // Enabled by default (DEFAULT_DATABASE_SETTINGS.performance.enableSearchCache = true).
+      await expect(cacheToggle).toHaveAttribute('aria-checked', 'true')
 
-      if ((await cacheToggle.count()) > 0) {
-        // Get initial state
-        const initialClass = (await cacheToggle.getAttribute('class')) || ''
-        const initiallyEnabled = initialClass.includes('bg-primary')
-
-        // Click to toggle
-        await cacheToggle.click()
-        await page.waitForTimeout(300)
-
-        // Verify state changed
-        const newClass = (await cacheToggle.getAttribute('class')) || ''
-        const nowEnabled = newClass.includes('bg-primary')
-        expect(nowEnabled).toBe(!initiallyEnabled)
-
-        // Toggle back to original state
-        await cacheToggle.click()
-        await page.waitForTimeout(300)
-      } else {
-        test.skip()
-      }
+      await cacheToggle.click()
+      await expect(cacheToggle).toHaveAttribute('aria-checked', 'false')
     })
 
     test('should show cache size dropdown when cache is enabled', async ({ page }) => {
-      // First ensure cache is enabled
-      const cacheToggle = page
-        .locator('text=/Enable Search Cache/i')
-        .locator('..')
-        .locator('button')
-        .filter({
-          has: page.locator('span'),
-        })
-        .first()
-
-      if ((await cacheToggle.count()) > 0) {
-        const toggleClass = (await cacheToggle.getAttribute('class')) || ''
-        const isEnabled = toggleClass.includes('bg-primary')
-
-        if (!isEnabled) {
-          await cacheToggle.click()
-          await page.waitForTimeout(300)
-        }
-
-        // Now check for the cache size dropdown
-        const cacheSizeLabel = page.locator('label').filter({ hasText: 'Cache Size' })
-        await expect(cacheSizeLabel).toBeVisible({ timeout: 3000 })
-      } else {
-        test.skip()
-      }
+      // Enabled by default (DEFAULT_DATABASE_SETTINGS.performance.enableSearchCache = true), so
+      // the "Cache Size" select — rendered only while enableSearchCache is true — is visible
+      // without any extra interaction.
+      await expect(page.getByRole('combobox', { name: 'Cache Size' })).toBeVisible({ timeout: 3000 })
     })
   })
 
   test.describe('Settings Persistence', () => {
     test('should persist sync schedule after page reload', async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
+      await navigateToSettings(page)
       await waitForSettingsLoad(page)
 
-      // Find sync schedule combobox using role-based locator
       const syncSelect = page.getByRole('combobox', { name: 'Sync Schedule' })
-      if ((await syncSelect.count()) === 0) {
-        test.skip()
-        return
-      }
-
       await syncSelect.selectOption('monthly')
-      await page.waitForTimeout(500)
+      // Let handleSyncScheduleChange's updateSyncConfig request land before reloading, so the
+      // mount effect's getSyncConfig() read-back sees the write.
+      await page.waitForTimeout(E2E_UI_DELAY)
 
-      // Reload the page
       await page.reload()
       await waitForSettingsLoad(page)
 
-      // Verify the setting persisted
-      const syncSelectAfter = page.getByRole('combobox', { name: 'Sync Schedule' })
-      if ((await syncSelectAfter.count()) > 0) {
-        const value = await syncSelectAfter.inputValue()
-        expect(value).toBe('monthly')
-      }
+      await expect(page.getByRole('combobox', { name: 'Sync Schedule' })).toHaveValue('monthly')
     })
 
-    test('should persist search result limit after page reload', async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
-      await waitForSettingsLoad(page)
-
-      // Find search result limit combobox using role-based locator
-      const limitSelect = page.getByRole('combobox', { name: 'Search Result Limit' })
-      if ((await limitSelect.count()) === 0) {
-        test.skip()
-        return
-      }
-
-      // Verify it has a valid value before reload
-      const valueBefore = await limitSelect.inputValue()
-      expect(valueBefore).toBeTruthy()
-
-      // Reload the page
-      await page.reload()
-      await waitForSettingsLoad(page)
-
-      // Verify the select still exists and has a valid value after reload
-      const limitSelectAfter = page.getByRole('combobox', { name: 'Search Result Limit' })
-      if ((await limitSelectAfter.count()) > 0) {
-        const value = await limitSelectAfter.inputValue()
-        // The select should have a valid option value (may reset to default on reload)
-        expect(value).toBeTruthy()
-      }
+    test.skip('should persist search result limit after page reload', async () => {
+      // Not actually implemented: Settings.tsx's mount effect re-hydrates only `syncSchedule`
+      // from database.getSyncConfig(); there is no getStorageConfig/getPerformanceConfig in the
+      // platform API (lib/platform/types.ts) at all, so searchResultLimit is plain useState
+      // seeded from DEFAULT_DATABASE_SETTINGS and always resets to 100 on reload.
     })
   })
 
   test.describe('Error Handling', () => {
     test('settings page should load without errors', async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
-
+      await navigateToSettings(page)
       await waitForSettingsLoad(page)
 
-      // Look for error indicators
-      const errorElements = page.locator('text=/error|failed|crashed|not found/i')
-      const hasErrors = (await errorElements.count()) > 0
-
-      // Page should load without obvious errors
-      expect(hasErrors).toBe(false)
+      // A full, uninterrupted render produces exactly these section headings, in DOM order
+      // (ProfilesSection, AppearanceSection, NotificationsSection, CvssSection, then Settings.tsx's
+      // api/database/backup/performance/data-management/threat-intel/danger-zone sections). A
+      // missing, reordered, or renamed entry means a section failed to mount (e.g. a thrown
+      // render error).
+      const sectionHeadings = await page.locator('#main-content h2').allTextContents()
+      expect(sectionHeadings).toEqual([
+        'Settings Profiles',
+        'Appearance',
+        'Notifications',
+        'CVSS',
+        'API Configuration',
+        'Database Management',
+        'Backup & Recovery',
+        'Performance Tuning',
+        'Data Management',
+        'Threat Intelligence',
+        'Danger Zone',
+      ])
     })
 
     test('should handle database errors gracefully', async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
+      await navigateToSettings(page)
       await waitForSettingsLoad(page)
 
       // Check that the database section is visible even if there are backend errors
@@ -446,11 +296,7 @@ test.describe('Database Settings Flow', () => {
 
   test.describe('Responsive Design', () => {
     test('settings page should be responsive at different viewport sizes', async ({ page }) => {
-      const navigated = await navigateToSettings(page)
-      if (!navigated) {
-        test.skip()
-        return
-      }
+      await navigateToSettings(page)
       await waitForSettingsLoad(page)
 
       // Test at tablet size
@@ -479,11 +325,7 @@ test.describe('Database Settings Accessibility', () => {
   })
 
   test('settings page should have proper heading structure', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      test.skip()
-      return
-    }
+    await navigateToSettings(page)
     await waitForSettingsLoad(page)
 
     // Check for main heading
@@ -497,36 +339,29 @@ test.describe('Database Settings Accessibility', () => {
   })
 
   test('form controls should have associated labels', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      test.skip()
-      return
-    }
+    await navigateToSettings(page)
     await waitForSettingsLoad(page)
 
-    // Check that select elements have labels
-    const selects = page.locator('select')
+    // Reveal the conditional selects (prune-year, cache-size is already visible by default)
+    // so they're in the DOM to check too.
+    await page.getByRole('switch', { name: 'Toggle prune old CVEs' }).click()
+
+    // Every <select> in Settings.tsx is id'd and paired with a <label htmlFor>. This fails if a
+    // future select is added without one.
+    const main = page.locator('#main-content')
+    const selects = main.locator('select[id]')
     const selectCount = await selects.count()
+    expect(selectCount).toBeGreaterThan(0)
 
     for (let i = 0; i < selectCount; i++) {
-      const select = selects.nth(i)
-      // Check if the select has an associated label
-      const id = await select.getAttribute('id')
-      if (id) {
-        const label = page.locator(`label[for="${id}"]`)
-        const hasLabel = (await label.count()) > 0
-        // Some selects may have implicit labels (wrapped in label element)
-        // Label presence is optional for this test
-      }
+      const id = await selects.nth(i).getAttribute('id')
+      if (!id) throw new Error('select is missing an id attribute')
+      await expect(main.locator(`label[for="${id}"]`)).toHaveCount(1)
     }
   })
 
   test('buttons should have accessible names', async ({ page }) => {
-    const navigated = await navigateToSettings(page)
-    if (!navigated) {
-      test.skip()
-      return
-    }
+    await navigateToSettings(page)
     await waitForSettingsLoad(page)
 
     // Check that buttons have accessible names

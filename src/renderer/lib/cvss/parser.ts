@@ -1,5 +1,16 @@
-import type { CvssBreakdown, CvssMetrics, CvssScores, CvssMetricExplanation } from '@@/types'
+import type { CvssBreakdown, CvssMetrics, CvssScores, CvssMetricExplanation, SeverityThresholds } from '@@/types'
 import { CVSS_METRIC_VALUES } from '@@/constants'
+
+/**
+ * CVSS v3.x spec severity cutoffs. Used as the default when no custom thresholds
+ * are supplied, so every existing caller keeps identical behavior (FR-10.5).
+ */
+export const DEFAULT_SEVERITY_THRESHOLDS: SeverityThresholds = {
+  critical: 9.0,
+  high: 7.0,
+  medium: 4.0,
+  low: 0.1,
+}
 
 /**
  * CVSS Vector Parser
@@ -11,7 +22,10 @@ import { CVSS_METRIC_VALUES } from '@@/constants'
  * @param vectorString - CVSS vector string (e.g., "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
  * @returns Parsed CVSS breakdown or null if invalid
  */
-export function parseCvssVector(vectorString: string): CvssBreakdown | null {
+export function parseCvssVector(
+  vectorString: string,
+  thresholds: SeverityThresholds = DEFAULT_SEVERITY_THRESHOLDS,
+): CvssBreakdown | null {
   // Validate format
   if (!vectorString || !vectorString.startsWith('CVSS:3.')) {
     return null
@@ -43,7 +57,7 @@ export function parseCvssVector(vectorString: string): CvssBreakdown | null {
     const scores = calculateBaseScore(metrics)
 
     // Determine severity
-    const severity = getSeverityFromScore(scores.baseScore)
+    const severity = getSeverityFromScore(scores.baseScore, thresholds)
 
     // Generate explanations
     const explanations = generateMetricExplanations(metrics)
@@ -62,6 +76,21 @@ export function parseCvssVector(vectorString: string): CvssBreakdown | null {
   }
 }
 
+// Vector-string prefixes (AV, AC, …) map to the full metric keys that
+// CVSS_METRIC_VALUES is keyed by. Without this every prefix except the
+// hand-cased 'S' looked up an undefined bucket, so parseCvssVector threw
+// and returned null for every valid vector.
+const PREFIX_TO_METRIC_KEY: Record<string, keyof typeof CVSS_METRIC_VALUES> = {
+  AV: 'attackVector',
+  AC: 'attackComplexity',
+  PR: 'privilegesRequired',
+  UI: 'userInteraction',
+  S: 'scope',
+  C: 'confidentialityImpact',
+  I: 'integrityImpact',
+  A: 'availabilityImpact',
+}
+
 /**
  * Parse a specific metric value from the vector parts
  */
@@ -72,11 +101,20 @@ function parseMetricValue(parts: string[], prefix: string): string {
   }
 
   const value = part.split(':')[1]
-  const mappingKey = prefix === 'S' ? 'scope' : prefix
+  const mappingKey = PREFIX_TO_METRIC_KEY[prefix]
+  if (!mappingKey) {
+    throw new Error(`Unknown metric prefix: ${prefix}`)
+  }
 
-  // Map to full name
-  const mapping = (CVSS_METRIC_VALUES as Record<string, Record<string, string>>)[mappingKey]
-  return mapping[value] || value
+  // Map short code (e.g. 'N') to full name (e.g. 'Network'). An unrecognized
+  // code (e.g. 'AV:Z') makes the whole vector invalid — throw so parseCvssVector
+  // returns null rather than passing the raw letter through as a metric name.
+  const mapping = CVSS_METRIC_VALUES[mappingKey] as Record<string, string>
+  const fullName = mapping[value]
+  if (!fullName) {
+    throw new Error(`Invalid value "${value}" for metric ${prefix}`)
+  }
+  return fullName
 }
 
 /**
@@ -240,11 +278,14 @@ function getUserInteractionValue(ui: string): number {
 /**
  * Get severity from CVSS score
  */
-export function getSeverityFromScore(score: number): 'critical' | 'high' | 'medium' | 'low' | 'none' {
-  if (score >= 9.0) return 'critical'
-  if (score >= 7.0) return 'high'
-  if (score >= 4.0) return 'medium'
-  if (score > 0) return 'low'
+export function getSeverityFromScore(
+  score: number,
+  thresholds: SeverityThresholds = DEFAULT_SEVERITY_THRESHOLDS,
+): 'critical' | 'high' | 'medium' | 'low' | 'none' {
+  if (score >= thresholds.critical) return 'critical'
+  if (score >= thresholds.high) return 'high'
+  if (score >= thresholds.medium) return 'medium'
+  if (score >= thresholds.low) return 'low'
   return 'none'
 }
 

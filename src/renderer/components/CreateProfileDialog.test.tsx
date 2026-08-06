@@ -25,6 +25,7 @@ const mockSettings: AppSettings = {
   },
   cvssVersion: '3.1',
   showCvssBreakdown: true,
+  severityThresholds: { critical: 9.0, high: 7.0, medium: 4.0, low: 0.1 },
   maxGraphNodes: 500,
   showVulnerableOnly: false,
 }
@@ -135,7 +136,7 @@ describe('CreateProfileDialog', () => {
     it('should render close button', () => {
       renderDialog(true)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       expect(closeButton).toBeInTheDocument()
     })
   })
@@ -319,23 +320,18 @@ describe('CreateProfileDialog', () => {
     it('should close when close button (X) is clicked', () => {
       renderDialog(true)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       fireEvent.click(closeButton)
 
       expect(mockOnClose).toHaveBeenCalled()
       expect(mockOnCreate).not.toHaveBeenCalled()
     })
 
-    it('should close when backdrop is clicked', () => {
+    it('should close when Escape is pressed', () => {
       renderDialog(true)
 
-      const backdrop = document.querySelector('.bg-black\\/50')
-      expect(backdrop).toBeInTheDocument()
-
-      if (backdrop) {
-        fireEvent.click(backdrop)
-        expect(mockOnClose).toHaveBeenCalled()
-      }
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(mockOnClose).toHaveBeenCalled()
     })
 
     it('should reset form after successful creation', () => {

@@ -40,11 +40,28 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
   const [actionTypeFilter, setActionTypeFilter] = useState<string[]>([])
   const [entityTypeFilter, setEntityTypeFilter] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [dateRangeFilter, setDateRangeFilter] = useState<'all' | '7days' | '30days' | '90days'>('all')
   const [showFilters, setShowFilters] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
 
   const actionTypes = ['CREATE', 'UPDATE', 'DELETE', 'SCAN', 'EXPORT', 'SETTINGS_CHANGE', 'BULK_OPERATION']
   const entityTypes = ['project', 'sbom', 'vulnerability', 'component', 'settings', 'profile', 'notification']
+  const dateRanges = [
+    { value: 'all' as const, label: 'All time' },
+    { value: '7days' as const, label: 'Last 7 days' },
+    { value: '30days' as const, label: 'Last 30 days' },
+    { value: '90days' as const, label: 'Last 90 days' },
+  ]
+
+  // Resolve the selected preset into a concrete {start, end} window (undefined = all time),
+  // shared by the on-screen query and the export menu so both stay consistent.
+  function resolveDateRange(): { start: Date; end: Date } | undefined {
+    if (dateRangeFilter === 'all') return undefined
+    const days = parseInt(dateRangeFilter.replace('days', ''), 10)
+    const end = new Date()
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000)
+    return { start, end }
+  }
 
   // Action type colors
   const getActionColor = (actionType: string) => {
@@ -63,7 +80,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
   // Load events
   useEffect(() => {
     loadEvents()
-  }, [currentPage, sort, actionTypeFilter, entityTypeFilter, searchQuery])
+  }, [currentPage, sort, actionTypeFilter, entityTypeFilter, searchQuery, dateRangeFilter])
 
   function loadEvents() {
     const filter: AuditEventFilter = {}
@@ -73,6 +90,8 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
     if (actionTypeFilter.length > 0) filter.actionType = actionTypeFilter as any
     if (entityTypeFilter.length > 0) filter.entityType = entityTypeFilter as any
     if (searchQuery) filter.searchQuery = searchQuery
+    const dateRange = resolveDateRange()
+    if (dateRange) filter.dateRange = dateRange
 
     const result = useAuditStore
       .getState()
@@ -89,6 +108,8 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
     if (actionTypeFilter.length > 0) filter.actionType = actionTypeFilter as any
     if (entityTypeFilter.length > 0) filter.entityType = [...(filter.entityType || []), ...entityTypeFilter] as any
     if (searchQuery) filter.searchQuery = searchQuery
+    const dateRange = resolveDateRange()
+    if (dateRange) filter.dateRange = dateRange
     return Object.keys(filter).length > 0 ? filter : undefined
   }
 
@@ -198,6 +219,29 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                 placeholder="Search in descriptions and entity IDs..."
                 className="w-full pl-10 pr-3 py-2 border rounded-md"
               />
+            </div>
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="mb-3">
+            <label className="block text-sm font-medium mb-1">Date Range</label>
+            <div className="flex flex-wrap gap-2">
+              {dateRanges.map((range) => (
+                <button
+                  key={range.value}
+                  onClick={() => {
+                    setDateRangeFilter(range.value)
+                    setCurrentPage(1)
+                  }}
+                  className={`px-2 py-1 text-xs rounded ${
+                    dateRangeFilter === range.value
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                      : 'text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-400'
+                  }`}
+                >
+                  {range.label}
+                </button>
+              ))}
             </div>
           </div>
 

@@ -97,11 +97,14 @@ describe('Database Schema Migrations', () => {
 
   describe('runMigrations', () => {
     it('should not apply migrations when already at target version', () => {
-      const result = runMigrations(db, 12)
+      // Derive the head version so this stays correct as migrations are added.
+      const migrations = getMigrations()
+      const latest = migrations[migrations.length - 1].version
+      const result = runMigrations(db, latest)
 
       expect(result.success).toBe(true)
       expect(result.migrationsApplied).toBe(0)
-      expect(result.toVersion).toBe(12)
+      expect(result.toVersion).toBe(latest)
     })
 
     it('should apply migrations in order', () => {
@@ -195,6 +198,20 @@ describe('Database Schema Migrations', () => {
       expect(columns).toContain('year')
       expect(columns).toContain('status')
       expect(columns).toContain('retry_count')
+    })
+  })
+
+  describe('Migration 14: Sync Bandwidth Limit', () => {
+    it('adds bandwidth_limit_kbps to sync_status defaulting to 0/unlimited (FR-10.3)', () => {
+      runMigrations(db, 0)
+
+      const tableInfo = db.pragma('table_info(sync_status)') as Array<{ name: string; dflt_value: unknown }>
+      const column = tableInfo.find((row) => row.name === 'bandwidth_limit_kbps')
+
+      expect(column).toBeDefined()
+      // WHY default 0: an unset limit MUST mean "unlimited" so a DB upgraded from
+      // an older version keeps syncing at full speed rather than silently throttling.
+      expect(Number(column?.dflt_value)).toBe(0)
     })
   })
 

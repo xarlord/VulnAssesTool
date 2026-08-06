@@ -8,9 +8,12 @@ import type { ComplianceMetrics } from '@/lib/analytics'
 
 interface ComplianceStatusProps {
   compliance: ComplianceMetrics
+  // Real next-review date derived from the last assessment + cadence (M3); null when nothing
+  // has been assessed yet. Optional so the widget renders safely without it.
+  nextReviewDate?: Date | null
 }
 
-export function ComplianceStatus({ compliance }: ComplianceStatusProps) {
+export function ComplianceStatus({ compliance, nextReviewDate }: ComplianceStatusProps) {
   const getComplianceStatus = (score: number) => {
     if (score >= 90) return { color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle }
     if (score >= 70) return { color: 'text-yellow-600', bgColor: 'bg-yellow-100', icon: AlertCircle }
@@ -115,7 +118,7 @@ export function ComplianceStatus({ compliance }: ComplianceStatusProps) {
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Next compliance review</span>
           <span className="font-medium text-foreground">
-            {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}
+            {nextReviewDate ? nextReviewDate.toLocaleDateString() : 'Not scheduled'}
           </span>
         </div>
       </div>

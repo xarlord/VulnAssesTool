@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { CreateProjectDialog } from './CreateProjectDialog'
 import { useStore } from '@/store/useStore'
+import { isValidUlid } from '@/lib/audit'
 
 // Mock the store
 const mockAddProject = vi.fn()
 const mockStore = {
   addProject: mockAddProject,
+  projects: [] as { name: string }[],
 }
 vi.mock('@/store/useStore', () => ({
   useStore: (selector?: (state: typeof mockStore) => unknown) => {
@@ -22,11 +24,39 @@ describe('CreateProjectDialog', () => {
     vi.clearAllMocks()
     mockAddProject.mockReset()
     mockOnClose.mockReset()
+    mockStore.projects = []
   })
 
   const renderDialog = (open: boolean = true) => {
     return render(<CreateProjectDialog open={open} onClose={mockOnClose} />)
   }
+
+  describe('Duplicate name validation (FR-01.1)', () => {
+    // WHY: the PRD requires unique project names. Two indistinguishable projects would corrupt
+    // the Dashboard list, search results, and exports — so creation must be blocked, not silently
+    // allowed. These fail if the uniqueness guard is removed.
+    it('should show an error and not create a project when the name already exists', () => {
+      mockStore.projects = [{ name: 'Test Project' }]
+      renderDialog(true)
+
+      fireEvent.change(screen.getByLabelText(/Project Name/), { target: { value: 'Test Project' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Project' }))
+
+      expect(screen.getByText('A project with this name already exists')).toBeInTheDocument()
+      expect(mockAddProject).not.toHaveBeenCalled()
+    })
+
+    it('should treat names as duplicate case-insensitively and ignoring surrounding whitespace', () => {
+      mockStore.projects = [{ name: 'Test Project' }]
+      renderDialog(true)
+
+      fireEvent.change(screen.getByLabelText(/Project Name/), { target: { value: '  test project  ' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Project' }))
+
+      expect(screen.getByText('A project with this name already exists')).toBeInTheDocument()
+      expect(mockAddProject).not.toHaveBeenCalled()
+    })
+  })
 
   describe('Rendering', () => {
     it('should not render dialog when open is false', () => {
@@ -67,7 +97,7 @@ describe('CreateProjectDialog', () => {
     it('should render close button', () => {
       renderDialog(true)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       expect(closeButton).toBeInTheDocument()
     })
   })
@@ -194,6 +224,25 @@ describe('CreateProjectDialog', () => {
       expect(mockOnClose).toHaveBeenCalled()
     })
 
+    it('should create a project with a valid ULID id and createdAt/updatedAt timestamps', async () => {
+      renderDialog(true)
+
+      const nameInput = screen.getByLabelText(/Project Name/)
+      fireEvent.change(nameInput, { target: { value: 'Test Project' } })
+
+      const submitButton = screen.getByText('Create Project')
+      fireEvent.click(submitButton)
+
+      // FR-01.1: ids were previously `project-${Date.now()}-${Math.random()}` —
+      // not time-ordered/collision-resistant like the rest of the app's entities.
+      // A malformed id here would silently break audit-log correlation.
+      expect(mockAddProject).toHaveBeenCalledTimes(1)
+      const createdProject = mockAddProject.mock.calls[0][0]
+      expect(isValidUlid(createdProject.id)).toBe(true)
+      expect(createdProject.createdAt).toBeInstanceOf(Date)
+      expect(createdProject.updatedAt).toBeInstanceOf(Date)
+    })
+
     it('should trim whitespace from project name', async () => {
       renderDialog(true)
 
@@ -263,7 +312,7 @@ describe('CreateProjectDialog', () => {
     it('should close dialog when close button (X) is clicked', () => {
       renderDialog(true)
 
-      const closeButton = screen.getByLabelText('Close dialog')
+      const closeButton = screen.getByRole('button', { name: 'Close' })
       fireEvent.click(closeButton)
 
       expect(mockOnClose).toHaveBeenCalled()

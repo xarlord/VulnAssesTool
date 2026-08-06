@@ -1,390 +1,162 @@
-import { test, expect, resetAppState } from '../test-helper'
-import {
-  E2E_SELECTOR_TIMEOUT,
-  E2E_UI_DELAY,
-  createTestProject,
-  navigateToVulnerabilitiesTab,
-  isFeatureImplemented,
-} from '../shared-helpers'
+import { test } from '../test-helper'
 
 /**
- * E2E Tests for Patch Information Display
+ * Patch Information Display — content contracts
  *
- * Tests the complete patch information functionality including:
- * - Patch availability badges
- * - Patch link cards
- * - Remediation steps
- * - Fixed version display
+ * This suite targets patch-availability badges, patch link cards, remediation steps, and
+ * fixed-version display. All of that content comes from vulnerability enrichment
+ * (`Vulnerability.patchInfo` / `patchedVersions`, src/shared/types.ts:180,224-230) that is
+ * populated by `NvdProvider.extractPatchInfo` (src/renderer/lib/api/providers/nvdProvider.ts:92-176),
+ * a client-side path used only for LIVE NVD API queries. The e2e suite's only offline-real
+ * vulnerability comes from scanning `e2e/fixtures/sbom-with-vulns.json` against the seeded local
+ * NVD SQLite database (see workflows/sbom-vulnerability-scan.spec.ts and
+ * critical-flows/vulnerability-details.spec.ts for that scan → CVE-2021-44228 pipeline) — a scan
+ * driven entirely by `server/database/nvdDb.ts` (grep for "patchInfo"/"patchedVersions" under
+ * server/ finds zero matches) and the seed fixture `scripts/seed-test-db.js:229-243`, which gives
+ * CVE-2021-44228 only id/description/cvss/severity/dates — no `references` row at all. So a
+ * scanned vulnerability offline has core NVD fields but never `patchInfo`/`patchedVersions`.
  *
- * NOTE: Many of these tests require the patch information feature to be fully implemented.
- * Tests will skip if the feature is not available.
+ * Consequences for what actually renders, without any network/enrichment:
+ *   - VulnerabilityDetailModal.tsx:95,341-345 — the entire "Remediation" section (which is the
+ *     ONLY place PatchAvailabilityBadge, PatchLinkCard and RemediationSteps are rendered, at
+ *     lines 349, 374 and 379) is gated on `vulnerability.patchInfo` and simply does not render
+ *     when it's undefined. There is no "No patch information available" / "No fixed version"
+ *     fallback string — the block is entirely absent, not an empty state.
+ *   - VulnerabilitiesTab.tsx:474-476,538-547 — the row-level "Patch"/"Mitigation"/"Exploit" tag
+ *     badges require `vuln.references` entries tagged "Patch"/"Vendor Advisory"/"Mitigation";
+ *     the seeded CVE-2021-44228 has no references, so none of those badges ever fire either.
+ *   - The three patch subcomponents (components/patch/PatchAvailabilityBadge.tsx,
+ *     PatchLinkCard.tsx, RemediationSteps.tsx) are unit-tested directly in their own
+ *     `*.test.tsx` files, and `hasAvailablePatch()` (pages/project-detail/helpers.ts:47-52) is
+ *     unit-tested in helpers.test.tsx:40-65 — that is where this logic's correctness is verified.
+ *
+ * The original file used broad regex-OR text locators (e.g. `text=/Affected|Version|<|>=/`,
+ * `text=/Published|Updated/`, `text=/Critical|High Priority|.../`) that would coincidentally
+ * match unrelated, always-present modal content (the "Affected Components" heading, the Timeline
+ * "Published" date, the severity badge, the CVE-ID copy button, the generic footer "View on NVD"
+ * link) even though none of the actual patch/remediation features they claim to test exist
+ * offline. Keeping those as "passing" would be a false-positive that can never fail when the
+ * real patch/remediation code changes (Rule 9), so every test below is an honest `test.skip`
+ * with the concrete reason, preserving each original test name 1:1.
  */
 
 test.describe('Patch Information Display', () => {
-  test.beforeEach(async ({ page }) => {
-    await resetAppState(page)
-    await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
-  })
-
-  // ==========================================================================
-  // Patch Availability Badge Tests
-  // ==========================================================================
-
   test.describe('Patch Availability Badge', () => {
-    test('should show patch available badge for fixable vulnerabilities', async ({ page }) => {
-      await createTestProject(page, 'Patchable Vuln Test')
-      await navigateToVulnerabilitiesTab(page)
-
-      const hasFeature = await isFeatureImplemented(page, 'text=/Patch Available|Fixed Version|Fixable/i')
-
-      if (!hasFeature) {
-        test.skip(true, 'Patch availability badge feature not yet implemented')
-        return
-      }
-
-      const patchBadge = page.locator('text=/Patch Available|Fixed Version|Fixable/i')
-      await expect(patchBadge.first()).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+    test.skip('should show patch available badge for fixable vulnerabilities', async () => {
+      // hasAvailablePatch() (helpers.ts:50-52) — unit-tested in helpers.test.tsx:43-49 — never
+      // sees a truthy patchInfo/patchedVersions from an offline scan, and there is no row-level
+      // "Patch Available"/"Fixable" badge in VulnerabilitiesTab.tsx at all.
     })
 
-    test('should show fixed version number in badge', async ({ page }) => {
-      await createTestProject(page, 'Fixed Version Test')
-      await navigateToVulnerabilitiesTab(page)
-
-      const versionBadge = page.locator('text=/\\d+\\.\\d+\\.\\d+|v\\d+/')
-      const hasVersion = (await versionBadge.count()) > 0
-
-      if (!hasVersion) {
-        test.skip(true, 'Fixed version badge not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasVersion).toBe(true)
+    test.skip('should show fixed version number in badge', async () => {
+      // Fixed-version display is `patchInfo.fixedVersions` (VulnerabilityDetailModal.tsx:354-368),
+      // rendered only inside the patchInfo-gated Remediation section — never true offline.
     })
 
-    test('should show no patch badge when no fix available', async ({ page }) => {
-      await createTestProject(page, 'No Fix Test')
-      await navigateToVulnerabilitiesTab(page)
-
-      const noFixBadge = page.locator('text=/No Fix|No Patch|Unfixed/i')
-      const hasNoFix = (await noFixBadge.count()) > 0
-
-      if (!hasNoFix) {
-        test.skip(true, 'No-fix badge not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasNoFix).toBe(true)
+    test.skip('should show no patch badge when no fix available', async () => {
+      // There is no "no patch"/"unfixed" empty-state badge: PatchAvailabilityBadge only renders
+      // inside the Remediation block (VulnerabilityDetailModal.tsx:95,341-349), which is entirely
+      // absent (not an empty state) when patchInfo is undefined, which is always true offline.
     })
 
-    test('should show patch confidence indicator', async ({ page }) => {
-      await createTestProject(page, 'Patch Confidence Test')
-      await navigateToVulnerabilitiesTab(page)
-
-      const confidenceIndicator = page.locator('text=/Official|Vendor|Community|Verified/i')
-      const hasConfidence = (await confidenceIndicator.count()) > 0
-
-      if (!hasConfidence) {
-        test.skip(true, 'Patch confidence indicator not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasConfidence).toBe(true)
+    test.skip('should show patch confidence indicator', async () => {
+      // No "Official/Vendor/Community/Verified" confidence indicator exists anywhere in the
+      // codebase; PatchAvailabilityBadge only renders patchInfo.patchAvailability
+      // (components/patch/PatchAvailabilityBadge.tsx:28-34), which never populates offline.
     })
   })
-
-  // ==========================================================================
-  // Patch Link Card Tests
-  // ==========================================================================
 
   test.describe('Patch Link Card', () => {
-    test('should display patch link card in vulnerability detail', async ({ page }) => {
-      await createTestProject(page, 'Patch Link Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) {
-        test.skip(true, 'No vulnerability detail available - no vuln data')
-        return
-      }
-
-      const patchSection = page.locator('text=/Patch|Fix|Remediation/i')
-      const hasPatchSection = (await patchSection.count()) > 0
-
-      if (!hasPatchSection) {
-        test.skip(true, 'Patch section not found in vulnerability detail')
-        return
-      }
-
-      await expect(patchSection.first()).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+    test.skip('should display patch link card in vulnerability detail', async () => {
+      // PatchLinkCard only renders inside the patchInfo-gated Remediation section
+      // (VulnerabilityDetailModal.tsx:371-376), never reached by an offline scan; its own
+      // rendering is unit-tested directly in components/patch/PatchLinkCard.test.tsx.
     })
 
-    test('should show patch source link', async ({ page }) => {
-      await createTestProject(page, 'Patch Source Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const patchLink = page.locator('a[href*="nvd.nist.gov"], a[href*="github.com"], a[href*="cve.org"]')
-      const hasLink = (await patchLink.count()) > 0
-
-      if (!hasLink) {
-        test.skip(true, 'External patch link not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasLink).toBe(true)
+    test.skip('should show patch source link', async () => {
+      // No patchInfo.patchLinks render offline. The `a[href*="nvd.nist.gov"]` locator would only
+      // coincidentally match the modal's unrelated, always-present footer "View on NVD" CVE-page
+      // link (VulnerabilityDetailModal.tsx:518-526) — not an actual patch link.
     })
 
-    test('should show affected version range', async ({ page }) => {
-      await createTestProject(page, 'Version Range Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const versionRange = page.locator('text=/Affected|Version|<|>=|<=|>/i')
-      const hasVersionRange = (await versionRange.count()) > 0
-
-      if (!hasVersionRange) {
-        test.skip(true, 'Version range info not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasVersionRange).toBe(true)
+    test.skip('should show affected version range', async () => {
+      // patchInfo.affectedVersionRanges is never populated (nvdProvider.ts:173: "NVD doesn't
+      // provide version ranges in references") and isn't rendered anywhere. The broad
+      // `Affected|Version|<|>=` regex would only coincidentally match the unrelated "Affected
+      // Components" heading (VulnerabilityDetailModal.tsx:443), not real version-range data.
     })
 
-    test('should show patch date if available', async ({ page }) => {
-      await createTestProject(page, 'Patch Date Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const dateInfo = page.locator('text=/\\d{4}-\\d{2}-\\d{2}|Published|Updated/i')
-      const hasDate = (await dateInfo.count()) > 0
-
-      if (!hasDate) {
-        test.skip(true, 'Patch date info not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasDate).toBe(true)
+    test.skip('should show patch date if available', async () => {
+      // Neither PatchInfo nor PatchLink (src/shared/types.ts:224-250) has any date field. The
+      // `Published|Updated` regex would only coincidentally match the Timeline section's
+      // unrelated CVE "Published" date (VulnerabilityDetailModal.tsx:462-467).
     })
   })
-
-  // ==========================================================================
-  // Remediation Steps Tests
-  // ==========================================================================
 
   test.describe('Remediation Steps', () => {
-    test('should display remediation steps', async ({ page }) => {
-      await createTestProject(page, 'Remediation Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) {
-        test.skip(true, 'No vulnerability detail available')
-        return
-      }
-
-      const remediation = page.locator('text=/Remediation|Steps|How to Fix|Recommendation/i')
-      const hasRemediation = (await remediation.count()) > 0
-
-      if (!hasRemediation) {
-        test.skip(true, 'Remediation section not found')
-        return
-      }
-
-      await expect(remediation.first()).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+    test.skip('should display remediation steps', async () => {
+      // RemediationSteps only renders inside the patchInfo-gated Remediation section
+      // (VulnerabilityDetailModal.tsx:379), never reached offline; its content is unit-tested
+      // directly in components/patch/RemediationSteps.test.tsx.
     })
 
-    test('should show upgrade command if applicable', async ({ page }) => {
-      await createTestProject(page, 'Upgrade Command Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const upgradeCommand = page.locator('text=/npm|yarn|pnpm|pip|gem|mvn|gradle/i')
-      const hasCommand = (await upgradeCommand.count()) > 0
-
-      if (!hasCommand) {
-        test.skip(true, 'Upgrade command not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasCommand).toBe(true)
+    test.skip('should show upgrade command if applicable', async () => {
+      // RemediationSteps.tsx:133-145 does render a `step.command` code block when present, but
+      // NvdProvider.generateRemediationAdvice (nvdProvider.ts:221-294) never sets `command` on any
+      // step, and the whole section never renders offline regardless (patchInfo is undefined).
     })
 
-    test('should show workaround if no patch available', async ({ page }) => {
-      await createTestProject(page, 'Workaround Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const workaround = page.locator('text=/Workaround|Mitigation|Alternative/i')
-      const hasWorkaround = (await workaround.count()) > 0
-
-      if (!hasWorkaround) {
-        test.skip(true, 'Workaround info not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasWorkaround).toBe(true)
+    test.skip('should show workaround if no patch available', async () => {
+      // RemediationSteps.tsx:78-90 does render a "Temporary Workarounds" list when
+      // `advice.workarounds` is set, but NvdProvider.generateRemediationAdvice never populates
+      // `workarounds`, and the whole section never renders offline regardless.
     })
 
-    test('should show severity of remediation action', async ({ page }) => {
-      await createTestProject(page, 'Priority Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const priority = page.locator('text=/Critical|High Priority|Immediate|Urgent/i')
-      const hasPriority = (await priority.count()) > 0
-
-      if (!hasPriority) {
-        test.skip(true, 'Priority indicator not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasPriority).toBe(true)
+    test.skip('should show severity of remediation action', async () => {
+      // No remediation-priority indicator renders anywhere offline. The broad
+      // `Critical|High Priority|Immediate|Urgent` regex would only coincidentally match the
+      // unrelated, always-present severity badge (VulnerabilityDetailModal.tsx:128-132).
     })
   })
-
-  // ==========================================================================
-  // Copy to Clipboard Tests
-  // ==========================================================================
 
   test.describe('Copy to Clipboard', () => {
-    test('should have copy button for fixed version', async ({ page }) => {
-      await createTestProject(page, 'Copy Button Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const copyButton = page.locator('button[aria-label*="copy"], button:has-text("Copy")')
-      const hasCopy = (await copyButton.count()) > 0
-
-      if (!hasCopy) {
-        test.skip(true, 'Copy button not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasCopy).toBe(true)
+    test.skip('should have copy button for fixed version', async () => {
+      // There is no "copy fixed version" control. The modal's only copy button copies the CVE ID
+      // (VulnerabilityDetailModal.tsx:111-127, aria-label `Copy {id} to clipboard`) — an unrelated
+      // feature that happens to match the same `button:has-text("Copy")` selector.
     })
 
-    test('should copy version to clipboard', async ({ page }) => {
-      await createTestProject(page, 'Copy Action Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const copyButton = page.locator('button[aria-label*="copy"], button:has-text("Copy")').first()
-      if (!(await copyButton.isVisible().catch(() => false))) {
-        test.skip(true, 'Copy button not found')
-        return
-      }
-
-      await copyButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      const feedback = page.locator('text=/Copied|Success/i')
-      const hasFeedback = await feedback.isVisible().catch(() => false)
-
-      if (!hasFeedback) {
-        test.skip(true, 'Copy feedback not shown - feature may not be fully implemented')
-        return
-      }
-
-      expect(hasFeedback).toBe(true)
+    test.skip('should copy version to clipboard', async () => {
+      // Same gap as above: the modal's only copy button copies the CVE ID and shows "Copied ...
+      // to clipboard" (VulnerabilityDetailModal.tsx:30-40) — there is no fixed version to copy.
     })
   })
-
-  // ==========================================================================
-  // Multiple Patches Tests
-  // ==========================================================================
 
   test.describe('Multiple Patches', () => {
-    test('should show all available patches', async ({ page }) => {
-      await createTestProject(page, 'Multiple Patches Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const patchEntries = page.locator('[data-testid="patch-entry"], .patch-card, .remediation-item')
-      const count = await patchEntries.count()
-
-      if (count === 0) {
-        test.skip(true, 'No patch entries found - feature may not be fully implemented')
-        return
-      }
-
-      expect(count).toBeGreaterThan(0)
+    test.skip('should show all available patches', async () => {
+      // `[data-testid="patch-entry"]`, `.patch-card`, `.remediation-item` do not exist anywhere in
+      // the codebase (grep found zero matches) — this UI was never built, and multiple-patch
+      // entries would need patchInfo.patchLinks/fixedVersions regardless, never populated offline.
     })
 
-    test('should indicate recommended patch', async ({ page }) => {
-      await createTestProject(page, 'Recommended Patch Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) return
-
-      const recommended = page.locator('text=/Recommended|Preferred|Latest/i')
-      const hasRecommended = (await recommended.count()) > 0
-
-      if (!hasRecommended) {
-        test.skip(true, 'Recommended patch indicator not found - feature may not be implemented')
-        return
-      }
-
-      expect(hasRecommended).toBe(true)
+    test.skip('should indicate recommended patch', async () => {
+      // No "Recommended/Preferred/Latest patch" indicator exists anywhere in the codebase; patch
+      // data itself never populates from an offline scan regardless.
     })
   })
 
-  // ==========================================================================
-  // Accessibility Tests
-  // ==========================================================================
-
   test.describe('Accessibility', () => {
-    test('should have accessible patch information', async ({ page }) => {
-      await createTestProject(page, 'Accessibility Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) {
-        test.skip(true, 'No vulnerability detail available')
-        return
-      }
-
-      const headings = page.locator('h1, h2, h3')
-      const count = await headings.count()
-
-      expect(count).toBeGreaterThan(0)
+    test.skip('should have accessible patch information', async () => {
+      // The original assertion (heading count > 0) is not patch-specific: Description/Timeline/
+      // CWE headings render in the detail modal regardless of patchInfo, so it can never fail when
+      // patch-accessibility markup changes. The modal's real heading contract (CVE id as an <h2>)
+      // is already asserted in critical-flows/vulnerability-details.spec.ts.
     })
 
-    test('should have keyboard accessible patch links', async ({ page }) => {
-      await createTestProject(page, 'Keyboard Test')
-      const hasDetail = await openVulnerabilityDetail(page)
-      if (!hasDetail) {
-        test.skip(true, 'No vulnerability detail available')
-        return
-      }
-
-      const links = page.locator('a[href]')
-      const count = await links.count()
-
-      if (count > 0) {
-        await page.keyboard.press('Tab')
-        await page.keyboard.press('Tab')
-      } else {
-        test.skip(true, 'No links found for keyboard navigation test')
-      }
+    test.skip('should have keyboard accessible patch links', async () => {
+      // Same gap as "should show patch source link": no patchInfo.patchLinks render offline, so
+      // there are no patch links to tab through — only the unrelated footer "View on NVD" link
+      // exists, which this test cannot meaningfully attribute to patch information.
     })
   })
 })
-
-// ==========================================================================
-// Helper Functions
-// ==========================================================================
-
-/**
- * Open vulnerability detail modal
- */
-async function openVulnerabilityDetail(page: import('@playwright/test').Page): Promise<boolean> {
-  await page.getByRole('tab', { name: /vulnerabilities/i }).click()
-  await page.waitForTimeout(E2E_UI_DELAY)
-
-  const vulnRow = page.locator('tr:has-text("CVE-"), [data-testid="vuln-row"]').first()
-  const hasVulnRow = await vulnRow.isVisible().catch(() => false)
-
-  if (!hasVulnRow) {
-    return false
-  }
-
-  await vulnRow.click()
-  await page.waitForTimeout(E2E_UI_DELAY)
-
-  const modal = page.locator('[role="dialog"]')
-  const hasModal = await modal.isVisible().catch(() => false)
-  return hasModal
-}

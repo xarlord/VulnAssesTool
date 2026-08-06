@@ -4,13 +4,18 @@
  */
 
 import { useState } from 'react'
-import { Settings, Filter, Calendar, Download, RefreshCw, X, Check } from 'lucide-react'
+import { Settings, Filter, Calendar, Download, RefreshCw, Check } from 'lucide-react'
 import type { Project } from '@@/types'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 interface DashboardConfigProps {
   dateRange: { start: Date; end: Date }
   projectScope: 'all' | 'selected'
   projects: Project[]
+  // Parent-owned selection (H4): the picker reports changes up rather than keeping its own
+  // state that the dashboard never reads, so "Selected Projects" actually filters the view.
+  selectedProjectIds: string[]
+  onSelectedProjectsChange: (ids: string[]) => void
   onDateRangeChange: (range: { start: Date; end: Date }) => void
   onProjectScopeChange: (scope: 'all' | 'selected') => void
   onExportReport: () => void
@@ -29,6 +34,8 @@ export function DashboardConfig({
   dateRange,
   projectScope,
   projects,
+  selectedProjectIds,
+  onSelectedProjectsChange,
   onDateRangeChange,
   onProjectScopeChange,
   onExportReport,
@@ -36,7 +43,6 @@ export function DashboardConfig({
   isRefreshing = false,
 }: Props) {
   const [localOpen, setLocalOpen] = useState(false)
-  const [selectedProjects, setSelectedProjects] = useState<string[]>([])
 
   const isOpen = open !== undefined ? open : localOpen
   const setIsOpen = onClose ? () => onClose() : () => setLocalOpen(false)
@@ -58,13 +64,10 @@ export function DashboardConfig({
   }
 
   const handleToggleProject = (projectId: string) => {
-    setSelectedProjects((prev) => {
-      if (prev.includes(projectId)) {
-        return prev.filter((id) => id !== projectId)
-      } else {
-        return [...prev, projectId]
-      }
-    })
+    const next = selectedProjectIds.includes(projectId)
+      ? selectedProjectIds.filter((id) => id !== projectId)
+      : [...selectedProjectIds, projectId]
+    onSelectedProjectsChange(next)
   }
 
   const handleExport = () => {
@@ -91,33 +94,12 @@ export function DashboardConfig({
   return (
     <>
       <TriggerButton />
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/50" onClick={setIsOpen} aria-hidden="true" />
-
-        {/* Dialog */}
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dialog-title"
-          className="relative z-50 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg max-h-[90vh] overflow-y-auto"
-        >
-          {/* Close Button */}
-          <button
-            onClick={setIsOpen}
-            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            aria-label="Close dialog"
-          >
-            <X className="h-4 w-4" />
-          </button>
-
-          {/* Header */}
-          <div className="mb-4">
-            <h2 id="dialog-title" className="text-lg font-semibold">
-              Dashboard Configuration
-            </h2>
-            <p className="text-sm text-muted-foreground">Customize your executive dashboard view and export options</p>
-          </div>
+      <Dialog open={isOpen} onOpenChange={(next) => !next && setIsOpen()}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Dashboard Configuration</DialogTitle>
+            <DialogDescription>Customize your executive dashboard view and export options</DialogDescription>
+          </DialogHeader>
 
           {/* Content */}
           <div className="space-y-6">
@@ -189,7 +171,7 @@ export function DashboardConfig({
                           >
                             <input
                               type="checkbox"
-                              checked={selectedProjects.includes(project.id)}
+                              checked={selectedProjectIds.includes(project.id)}
                               onChange={() => handleToggleProject(project.id)}
                               className="rounded"
                             />
@@ -204,7 +186,7 @@ export function DashboardConfig({
               <p className="text-xs text-muted-foreground">
                 {projectScope === 'all'
                   ? `Showing data from all ${projects.length} project(s)`
-                  : `Showing data from ${selectedProjects.length} selected project(s)`}
+                  : `Showing data from ${selectedProjectIds.length} selected project(s)`}
               </p>
             </div>
           </div>
@@ -227,8 +209,8 @@ export function DashboardConfig({
               Export Report
             </button>
           </div>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

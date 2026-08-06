@@ -137,16 +137,16 @@ function getTourConfig(tourId: string): TourConfig | undefined {
 export function OnboardingTour({
   tourId = 'main-onboarding',
   startImmediately = false,
-  onComplete: _onCompleteCallback,
-  onSkip: _onSkipCallback,
+  onComplete,
+  onSkip,
 }: OnboardingTourProps) {
   const driverRef = useRef<ReturnType<typeof driver> | null>(null)
   const {
     startTour,
     nextStep: _nextTourStep,
     prevStep: _prevTourStep,
-    skipTour: _skipTourAction,
-    completeTour: _completeTourAction,
+    skipTour,
+    completeTour,
     activeTourId,
   } = useTourStore()
 
@@ -179,8 +179,18 @@ export function OnboardingTour({
       doneBtnText: 'Finish',
       steps: driverSteps,
       onDestroyStarted: () => {
-        // Called when user clicks close or finishes
+        // Fires on BOTH finishing the last step and closing early. Distinguish them so completion
+        // vs. skip is actually recorded — these store actions and props were dead because nothing
+        // ever called them (re-opening the tour was a silent no-op).
+        const finished = driverRef.current ? !driverRef.current.hasNextStep() : false
         handleDestroy()
+        if (finished) {
+          completeTour()
+          onComplete?.()
+        } else {
+          skipTour()
+          onSkip?.()
+        }
       },
       onHighlightStarted: (_element, _step, opts) => {
         // Update store with current step
@@ -206,7 +216,7 @@ export function OnboardingTour({
     // Start the tour
     startTour(tourId)
     driverObj.drive()
-  }, [tourConfig, tourId, startTour, handleDestroy])
+  }, [tourConfig, tourId, startTour, handleDestroy, completeTour, skipTour, onComplete, onSkip])
 
   // Handle completion
   useEffect(() => {
@@ -250,6 +260,7 @@ export function OnboardingTour({
 /**
  * Hook to programmatically control tours
  */
+// eslint-disable-next-line react-refresh/only-export-components -- hook intentionally co-located with the tour component (dev-only fast-refresh hint)
 export function useOnboardingTour() {
   const { startTour, skipTour, completeTour, shouldShowTour, getTourStatus, markAsLaunched, hasLaunchedBefore } =
     useTourStore()

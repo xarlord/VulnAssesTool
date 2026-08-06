@@ -1,198 +1,183 @@
 /**
- * False Positive Filter Workflow Tests
+ * False Positive Filter Workflow — content contracts
  *
- * Tests the real FPF data flow: SBOM upload → FPF config → filter execution → review results.
- * Uses the actual FalsePositiveFilter service (Tier 1 + Tier 2 filters) with optional Database.
+ * The FPF page auto-populates a default SystemConfig on mount (FalsePositiveFilter.tsx's
+ * `useEffect`), so its dashboard, config wizard, and miss-filter panel all render fully
+ * designed content for a fresh project with zero SBOM/vulnerability data — no scan needed.
+ * Every kept test below asserts that designed content instead of the previous
+ * `isVisible().catch(() => false)` / `if (count > 0)` guards that could never fail. Grounding:
+ *   - pages/FalsePositiveFilter.tsx — h1 "False Positive Filter" + "Project: <name>"; tabs
+ *     'Dashboard'/'Review Filtered'/'Configuration'/'Miss-Filter Detection'; the Review tab's
+ *     no-result state "No Filter Results" / "Run the filter to see results here."
+ *   - components/FPF/FilterDashboard.tsx — ConfigurationStatus "Configuration Active" +
+ *     "<name> v<version> - Tier: <tier>"; zero-value StatCards; EffectivenessMetrics'
+ *     "No filter results yet. Run the filter to see effectiveness metrics."
+ *   - components/FPF/ConfigWizard.tsx — h2 "FPF Configuration Wizard" + step footer
+ *     "Step 1 of 5: Project Information"
+ *   - components/FPF/MissFilterPanel.tsx — h3 "Miss-Filter Detection" + "No miss-filters detected"
+ *   - pages/ProjectDetail.tsx — "False Positive Filter" header button → /project/:id/fpf
+ *   - shell/Sidebar.tsx — contextual "Overview" link back to the project detail page
+ *
+ * Filtering real findings (Run Filter producing non-zero results, Review Filtered rows,
+ * flagged miss-filter items) needs a scanned project with populated vulnerabilities. As in
+ * the sibling vulnerability-lifecycle/security-assessment specs, this suite treats scan-derived
+ * vulnerability data as non-deterministic offline, so those paths are skipped with reasons
+ * rather than asserted against fabricated data.
  */
 
-import { test, expect } from '../test-helper'
-import {
-  createTestProject,
-  uploadSbomFile,
-  navigateToProjectDetail,
-  E2E_UI_DELAY,
-  E2E_SELECTOR_TIMEOUT,
-} from '../shared-helpers'
-import path from 'node:path'
-
-const FIXTURES_DIR = path.join(import.meta.dirname, '..', 'fixtures', 'sbom')
+import { test, expect, resetAppState } from '../test-helper'
+import type { Page } from '@playwright/test'
+import { createProjectOnly, navigateToProjectDetail, E2E_SELECTOR_TIMEOUT } from '../shared-helpers'
 
 /**
- * Helper to navigate to the FPF page from project detail
+ * Create a project, open its detail page, and click through to the False Positive
+ * Filter page via the real header button (grounded in ProjectDetail.tsx).
  */
-async function navigateToFPF(page: import('@playwright/test').Page, projectId: string): Promise<void> {
-  // Try navigating via URL (SPA)
-  await page.evaluate((id: string) => {
-    const nav = (window as unknown as Record<string, unknown>).__navigate
-    if (typeof nav === 'function') nav(`/project/${id}/fpf`)
-  }, projectId)
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForTimeout(E2E_UI_DELAY)
+async function openFalsePositiveFilter(page: Page, projectName: string): Promise<void> {
+  await createProjectOnly(page, projectName)
+  await navigateToProjectDetail(page, projectName)
 
-  // Verify we're on the FPF page
-  const fpfHeading = page.getByRole('heading', { name: /false positive filter/i })
-  if (!(await fpfHeading.isVisible().catch(() => false))) {
-    // Try clicking the FPF button if it exists
-    const fpfButton = page.getByRole('button', { name: /false positive|fpf|filter/i }).first()
-    if (await fpfButton.isVisible().catch(() => false)) {
-      await fpfButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-    }
-  }
+  await page.getByRole('button', { name: 'False Positive Filter' }).click()
+  await expect(page).toHaveURL(/\/project\/[^/]+\/fpf$/)
+  await expect(
+    page.locator('#main-content').getByRole('heading', { level: 1, name: 'False Positive Filter' }),
+  ).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
 }
 
-test.describe('False Positive Filter', () => {
-  test('FPF dashboard shows project info after SBOM upload', async ({ page }) => {
-    const projectName = `FPF Dashboard ${Date.now()}`
-    await createTestProject(page, projectName)
-
-    const sbomPath = path.join(FIXTURES_DIR, 'sample-cyclonedx.json')
-    await uploadSbomFile(page, sbomPath)
-
-    // Get project ID from URL
-    const url = page.url()
-    const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
-
-    await navigateToFPF(page, projectId)
-
-    // The FPF page should load with the project name
-    const projectNameElement = page.getByText(projectName)
-    if (await projectNameElement.isVisible().catch(() => false)) {
-      await expect(projectNameElement).toBeVisible()
-    }
+test.describe('False Positive Filter Workflow', () => {
+  test.beforeEach(async ({ page }) => {
+    await resetAppState(page)
+    await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible({ timeout: 10000 })
   })
 
-  test('FPF config tab allows interface configuration', async ({ page }) => {
-    const projectName = `FPF Config ${Date.now()}`
-    await createTestProject(page, projectName)
+  test.describe('Opening the filter', () => {
+    test('should open the false-positive filter from the project detail header', async ({ page }) => {
+      const projectName = `FPF Open ${Date.now()}`
+      await openFalsePositiveFilter(page, projectName)
 
-    const sbomPath = path.join(FIXTURES_DIR, 'sample-cyclonedx.json')
-    await uploadSbomFile(page, sbomPath)
+      const main = page.locator('#main-content')
+      await expect(main.getByText(`Project: ${projectName}`)).toBeVisible()
+    })
+  })
 
-    const url = page.url()
-    const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
-    await navigateToFPF(page, projectId)
+  test.describe('Dashboard', () => {
+    test('should show the designed FPF tabs in order', async ({ page }) => {
+      await openFalsePositiveFilter(page, `FPF Tabs ${Date.now()}`)
+      const main = page.locator('#main-content')
 
-    // Navigate to Configuration tab
-    const configTab = page.getByRole('tab', { name: /configuration/i })
-    if (await configTab.isVisible().catch(() => false)) {
-      await configTab.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+      const tabNames = await main.getByRole('tab').allTextContents()
+      expect(tabNames.map((t) => t.trim())).toEqual([
+        'Dashboard',
+        'Review Filtered',
+        'Configuration',
+        'Miss-Filter Detection',
+      ])
+    })
 
-      // Config wizard should be visible
-      const configContent = page.locator('[class*="config"], [class*="wizard"]').first()
-      if (await configContent.isVisible().catch(() => false)) {
-        await expect(configContent).toBeVisible()
+    test('should show the default dashboard content for a fresh project', async ({ page }) => {
+      const projectName = `FPF Dashboard ${Date.now()}`
+      await openFalsePositiveFilter(page, projectName)
+      const main = page.locator('#main-content')
+
+      // Config auto-populates on mount (project name, version 1.0.0, tier development).
+      await expect(main.locator('[data-testid="config-status-valid"]')).toContainText(
+        `${projectName} v1.0.0 - Tier: development`,
+      )
+
+      // No filter has run yet, so every summary stat defaults to zero.
+      for (const label of ['Total Vulnerabilities', 'Filtered (FP)', 'Kept (Real)', 'Escalated']) {
+        await expect(main.locator('[data-testid="stat-card"]').filter({ hasText: label })).toContainText('0')
       }
-    }
-  })
 
-  test('running FPF filter on vulnerabilities shows results', async ({ page }) => {
-    const projectName = `FPF Run ${Date.now()}`
-    await createTestProject(page, projectName)
+      await expect(main.locator('[data-testid="no-filter-results"]')).toContainText(
+        'No filter results yet. Run the filter to see effectiveness metrics.',
+      )
+    })
 
-    const sbomPath = path.join(FIXTURES_DIR, 'sample-cyclonedx.json')
-    await uploadSbomFile(page, sbomPath)
+    test('should keep zero totals and stay on the dashboard after filtering an empty project', async ({ page }) => {
+      await openFalsePositiveFilter(page, `FPF Run ${Date.now()}`)
+      const main = page.locator('#main-content')
 
-    const url = page.url()
-    const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
-    await navigateToFPF(page, projectId)
-
-    // Click "Run Filter" button on dashboard
-    const runFilterButton = page.getByRole('button', { name: /run filter|start filter|filter now/i }).first()
-    if (await runFilterButton.isVisible().catch(() => false)) {
+      const runFilterButton = main.getByRole('button', { name: 'Run Filter' })
+      await expect(runFilterButton).toBeEnabled({ timeout: E2E_SELECTOR_TIMEOUT })
       await runFilterButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY * 3)
 
-      // After filtering, should either:
-      // 1. Navigate to review tab, or
-      // 2. Show results on dashboard
-      const reviewTab = page.getByRole('tab', { name: /review/i })
-      const resultsElement = page.getByText(/filtered|kept|total|results/i)
+      // A batch result with 0 results does not trigger the "results.length > 0" tab switch,
+      // so the Dashboard tab stays selected instead of jumping to Review Filtered.
+      await expect(main.getByRole('tab', { name: 'Dashboard' })).toHaveAttribute('aria-selected', 'true')
 
-      const hasResults = await resultsElement
-        .first()
-        .isVisible()
-        .catch(() => false)
-      const onReviewTab = await reviewTab.getAttribute('aria-selected').catch(() => 'false')
-
-      if (hasResults || onReviewTab === 'true') {
-        // Filter ran successfully
-        await expect(resultsElement.first()).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
-      }
-    }
+      // The placeholder is replaced by the real (all-zero) effectiveness metrics section.
+      await expect(main.locator('[data-testid="effectiveness-metrics"]')).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
+      await expect(main.locator('[data-testid="no-filter-results"]')).not.toBeVisible()
+      await expect(
+        main.locator('[data-testid="stat-card"]').filter({ hasText: 'Total Vulnerabilities' }),
+      ).toContainText('0')
+    })
   })
 
-  test('FPF with empty project shows appropriate message', async ({ page }) => {
-    const projectName = `FPF Empty ${Date.now()}`
-    await createTestProject(page, projectName)
+  test.describe('Review Filtered tab', () => {
+    test('should show the no-results empty state before running a filter', async ({ page }) => {
+      await openFalsePositiveFilter(page, `FPF Review ${Date.now()}`)
+      const main = page.locator('#main-content')
 
-    // Don't upload any SBOM - empty project
-    const url = page.url()
-    const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
-    await navigateToFPF(page, projectId)
+      await main.getByRole('tab', { name: 'Review Filtered' }).click()
+      await expect(main.getByRole('heading', { level: 3, name: 'No Filter Results' })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
+      await expect(main.getByText('Run the filter to see results here.')).toBeVisible()
+    })
 
-    // Run filter on empty project
-    const runFilterButton = page.getByRole('button', { name: /run filter|start filter|filter now/i }).first()
-    if (await runFilterButton.isVisible().catch(() => false)) {
-      await runFilterButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY * 2)
-
-      // Should handle gracefully - either no results message or empty state
-      const emptyState = page.getByText(/no vulnerabilities|no results|empty/i)
-      if (await emptyState.isVisible().catch(() => false)) {
-        await expect(emptyState).toBeVisible()
-      }
-    }
+    test.skip('should list real filtered vulnerabilities after a scan', async () => {
+      // Infeasible offline: Review Filtered only renders rows once Run Filter has processed a
+      // scanned project's vulnerabilities, which requires network/OSV or seeded-CVE matching
+      // that this suite treats as non-deterministic (see vulnerability-lifecycle.spec.ts).
+    })
   })
 
-  test('FPF miss-filter detection tab is accessible', async ({ page }) => {
-    const projectName = `FPF Miss ${Date.now()}`
-    await createTestProject(page, projectName)
+  test.describe('Configuration tab', () => {
+    test('should open the configuration wizard on step 1', async ({ page }) => {
+      await openFalsePositiveFilter(page, `FPF Config ${Date.now()}`)
+      const main = page.locator('#main-content')
 
-    const sbomPath = path.join(FIXTURES_DIR, 'sample-cyclonedx.json')
-    await uploadSbomFile(page, sbomPath)
-
-    const url = page.url()
-    const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
-    await navigateToFPF(page, projectId)
-
-    // Navigate to Miss-Filter Detection tab
-    const missFilterTab = page.getByRole('tab', { name: /miss.filter/i })
-    if (await missFilterTab.isVisible().catch(() => false)) {
-      await missFilterTab.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
-
-      // Miss-filter panel should be visible
-      const missFilterContent = page.getByText(/confidence|threshold|detection/i)
-      if (await missFilterContent.isVisible().catch(() => false)) {
-        await expect(missFilterContent.first()).toBeVisible()
-      }
-    }
+      await main.getByRole('tab', { name: 'Configuration' }).click()
+      await expect(main.getByRole('heading', { level: 2, name: 'FPF Configuration Wizard' })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
+      await expect(main.getByText('Step 1 of 5: Project Information')).toBeVisible()
+    })
   })
 
-  test('FPF page navigation back to project works', async ({ page }) => {
-    const projectName = `FPF Nav ${Date.now()}`
-    await createTestProject(page, projectName)
+  test.describe('Miss-Filter Detection tab', () => {
+    test('should show the no-miss-filters empty state', async ({ page }) => {
+      await openFalsePositiveFilter(page, `FPF Miss ${Date.now()}`)
+      const main = page.locator('#main-content')
 
-    const sbomPath = path.join(FIXTURES_DIR, 'minimal-cyclonedx.json')
-    await uploadSbomFile(page, sbomPath)
+      await main.getByRole('tab', { name: 'Miss-Filter Detection' }).click()
+      await expect(main.getByRole('heading', { level: 3, name: 'Miss-Filter Detection' })).toBeVisible({
+        timeout: E2E_SELECTOR_TIMEOUT,
+      })
+      await expect(main.getByText('No miss-filters detected')).toBeVisible()
+    })
 
-    const url = page.url()
-    const projectId = url.split('/project/')[1]?.split('/')[0] || url.split('/').pop() || ''
-    await navigateToFPF(page, projectId)
+    test.skip('should flag a real miss-filter detection', async () => {
+      // Infeasible offline: MissFilterPanel only has items once a filter batch has run against
+      // scanned vulnerabilities with confidence/recency/KEV data to evaluate.
+    })
+  })
 
-    // Click "Back to Project" link
-    const backButton = page.getByRole('button', { name: /back to project/i })
-    if (await backButton.isVisible().catch(() => false)) {
-      await backButton.click()
-      await page.waitForTimeout(E2E_UI_DELAY)
+  test.describe('Navigation', () => {
+    test('should navigate back to the project via the sidebar Overview link', async ({ page }) => {
+      const projectName = `FPF Nav ${Date.now()}`
+      await openFalsePositiveFilter(page, projectName)
 
-      // Should be back on project detail page
-      const projectHeading = page.getByRole('heading', { name: new RegExp(projectName, 'i') })
-      if (await projectHeading.isVisible().catch(() => false)) {
-        await expect(projectHeading).toBeVisible()
-      }
-    }
+      // Contextual project link in the shell sidebar (outside #main-content).
+      await page.getByRole('link', { name: 'Overview' }).click()
+      await expect(page).toHaveURL(/\/project\/[^/]+$/)
+      await expect(
+        page.locator('#main-content').getByRole('heading', { level: 1, name: new RegExp(projectName, 'i') }),
+      ).toBeVisible({ timeout: E2E_SELECTOR_TIMEOUT })
+    })
   })
 })

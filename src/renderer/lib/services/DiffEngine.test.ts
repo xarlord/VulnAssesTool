@@ -663,4 +663,17 @@ describe('Edge Cases', () => {
     const result = engine.computeDiff([oldComponent], [newComponent])
     expect(result.modified).toHaveLength(1)
   })
+
+  it('treats a version bump on a short/partial CPE as a modification, not remove+add (L3)', () => {
+    const engine = new DiffEngine({ hashFunction: simpleHash })
+    // A <5-part CPE with an embedded version. The old key kept the version, so a bump read as
+    // remove+add; now the short-CPE case falls back to name+type so it reads as one modified item.
+    const oldComponent = createMockComponent({ name: 'partiallib', version: '1.0.0', cpe: 'partiallib:1.0.0' })
+    const newComponent = createMockComponent({ name: 'partiallib', version: '2.0.0', cpe: 'partiallib:2.0.0' })
+
+    const result = engine.computeDiff([oldComponent], [newComponent])
+    expect(result.added).toHaveLength(0)
+    expect(result.removed).toHaveLength(0)
+    expect(result.modified).toHaveLength(1)
+  })
 })
