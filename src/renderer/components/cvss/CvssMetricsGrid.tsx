@@ -50,9 +50,46 @@ export const CvssMetricsGrid = React.memo(function CvssMetricsGrid({
           ))}
         </div>
       )}
+
+      {isExpanded && breakdown.temporalMetrics && <TemporalMetricsBlock temporal={breakdown.temporalMetrics} />}
     </div>
   )
 })
+
+interface TemporalMetricsBlockProps {
+  temporal: NonNullable<CvssBreakdown['temporalMetrics']>
+}
+
+/**
+ * Renders the optional CVSS temporal metrics (E/RL/RC) when the vector supplies them (FR-04.3).
+ * Only the metrics actually present are shown, so a base-only vector renders nothing here.
+ */
+function TemporalMetricsBlock({ temporal }: TemporalMetricsBlockProps) {
+  const rows: Array<{ label: string; value: string }> = []
+  if (temporal.exploitCodeMaturity) rows.push({ label: 'Exploit Code Maturity', value: temporal.exploitCodeMaturity })
+  if (temporal.remediationLevel) rows.push({ label: 'Remediation Level', value: temporal.remediationLevel })
+  if (temporal.reportConfidence) rows.push({ label: 'Report Confidence', value: temporal.reportConfidence })
+
+  if (rows.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="space-y-2">
+      <h5 className="text-xs font-semibold text-gray-700">Temporal Metrics</h5>
+      <div className="grid gap-3 md:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-700">{row.label}</span>
+              <span className="text-xs font-bold text-gray-900">{row.value}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 interface MetricCardProps {
   explanation: {

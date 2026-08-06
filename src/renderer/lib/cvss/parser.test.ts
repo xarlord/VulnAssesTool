@@ -93,3 +93,49 @@ describe('parseCvssVector threshold threading (FR-10.5)', () => {
     expect(parseCvssVector(vector, { critical: 10.0, high: 7.0, medium: 4.0, low: 0.1 })?.severity).toBe('high')
   })
 })
+
+describe('parseCvssVector temporal metrics E/RL/RC (FR-04.3)', () => {
+  const BASE = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'
+
+  it('leaves temporalMetrics undefined when the vector has no temporal metrics', () => {
+    // WHY: a base-only vector must not fabricate temporal data — the UI keys the Temporal
+    // Metrics block off this field being present, so a false object would render an empty section.
+    expect(parseCvssVector(BASE)?.temporalMetrics).toBeUndefined()
+  })
+
+  it('parses all three temporal metrics to their full names', () => {
+    const result = parseCvssVector(`${BASE}/E:F/RL:O/RC:C`)
+    expect(result?.temporalMetrics).toEqual({
+      exploitCodeMaturity: 'Functional',
+      remediationLevel: 'Official Fix',
+      reportConfidence: 'Confirmed',
+    })
+  })
+
+  it('disambiguates the "U" code per metric (Unproven vs Unavailable vs Unknown)', () => {
+    // WHY: 'U' is a different value in each temporal metric; a single shared table would
+    // mislabel two of the three. This is the exact bug a naive implementation introduces.
+    const result = parseCvssVector(`${BASE}/E:U/RL:U/RC:U`)
+    expect(result?.temporalMetrics).toEqual({
+      exploitCodeMaturity: 'Unproven',
+      remediationLevel: 'Unavailable',
+      reportConfidence: 'Unknown',
+    })
+  })
+
+  it('includes only the temporal metrics actually present in the vector', () => {
+    const result = parseCvssVector(`${BASE}/RL:W`)
+    expect(result?.temporalMetrics).toEqual({ remediationLevel: 'Workaround' })
+  })
+
+  it('accepts an explicit X (Not Defined), distinct from an absent metric', () => {
+    // E:X is a stated value, not the same as omitting E — the plan requires the two be distinguishable.
+    expect(parseCvssVector(`${BASE}/E:X`)?.temporalMetrics).toEqual({ exploitCodeMaturity: 'Not Defined' })
+  })
+
+  it('returns null for an invalid temporal code (fail-loud parity with base metrics)', () => {
+    // A malformed temporal code invalidates the whole vector, matching how an invalid base metric
+    // (e.g. AV:Z) is handled — a bad vector is rejected, not silently downgraded.
+    expect(parseCvssVector(`${BASE}/E:Q`)).toBeNull()
+  })
+})
