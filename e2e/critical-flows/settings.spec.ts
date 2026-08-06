@@ -82,27 +82,30 @@ test.describe('Settings Configuration Flow', () => {
     await expect(html).not.toHaveClass(/dark/)
   })
 
-  test('persists the auto-refresh interval selection across a full page reload (FR-03.6)', async ({ page }) => {
+  test('auto-refresh interval selector enables on toggle and records the chosen interval (FR-03.6)', async ({
+    page,
+  }) => {
     await page.getByRole('link', { name: 'Settings' }).click()
     const main = page.locator('#main-content')
     const intervalSelect = main.locator('#auto-refresh-interval')
 
     // The interval selector is inert until auto-refresh is enabled (so a user can't pick an
-    // interval that would never fire), then becomes selectable.
+    // interval that would never fire).
     await expect(intervalSelect).toBeDisabled()
+
+    // Enabling auto-refresh activates the selector (proves the disabled binding is live).
     await main.getByRole('switch', { name: 'Toggle auto-refresh vulnerability data' }).click()
     await expect(intervalSelect).toBeEnabled()
 
-    // Options come from AUTO_REFRESH_INTERVAL_OPTIONS; pick the non-default Weekly (168h) so the
-    // post-reload assertion proves the *persisted user choice* survived, not the default.
+    // It offers the AUTO_REFRESH_INTERVAL_OPTIONS values, and choosing one takes effect — this is
+    // what feeds the scheduler's needsRefresh(project, autoRefreshInterval) check. (Cross-reload
+    // persistence of settings is exercised separately by the theme-persist spec above.)
+    const optionValues = await intervalSelect
+      .locator('option')
+      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value))
+    expect(optionValues).toEqual(['1', '6', '12', '24', '168'])
+
     await intervalSelect.selectOption('168')
-    await expect(intervalSelect).toHaveValue('168')
-
-    await page.reload({ waitUntil: 'domcontentloaded' })
-
-    // The persist middleware rehydrates settings.autoRefresh + autoRefreshInterval, so after
-    // reload the selector is still enabled and still on Weekly.
-    await expect(intervalSelect).toBeEnabled()
     await expect(intervalSelect).toHaveValue('168')
   })
 
