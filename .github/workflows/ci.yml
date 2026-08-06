@@ -97,14 +97,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     strategy:
-      # Run each Playwright project as its own job: the full 5-project suite in a
-      # single run exceeds playwright.config's 30-min globalTimeout, so it was
-      # failing on timeout (not on test failures). Per-project keeps each run well
-      # under the limit and shows per-project results. ubuntu only — cross-OS E2E
-      # adds little for a browser app and triples cost.
+      # Run each Playwright project as its own job: the full suite in a single run
+      # exceeds playwright.config's 30-min globalTimeout, so it was failing on timeout
+      # (not on test failures). Per-project keeps each run well under the limit and
+      # shows per-project results. ubuntu only — cross-OS E2E adds little for a browser
+      # app and triples cost. 'visual' is excluded: its toHaveScreenshot baselines are
+      # committed only for win32 (the dev platform), so a Linux runner has no baseline
+      # to diff against and every shot fails "snapshot doesn't exist". Run visual
+      # locally on Windows (npx playwright test --project=visual).
       fail-fast: false
       matrix:
-        project: [critical-flows, features, workflows, visual, a11y]
+        project: [critical-flows, features, workflows, a11y]
 
     steps:
       - name: Checkout repository
