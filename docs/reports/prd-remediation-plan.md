@@ -13,6 +13,35 @@
 - By effort: {"S":32,"M":23,"L":7}
 - Product-code changes: 37 of 62
 
+> **The per-item statuses BELOW are stale** (recorded 2026-07-31, before waves 3–6 landed and PR #8 merged). See the re-validation directly below for the actual state at HEAD.
+
+## Re-validation at HEAD — 2026-08-06 (post PR #8 merge)
+
+All 59 items were re-audited against the current code (branch off master, includes merged waves 1–6). **The overwhelming majority are now DONE** — waves 3–6 closed them but the per-item labels below were never updated. Corrected counts:
+
+- **DONE at HEAD: ~44** (every FR/NFR/SR not listed in the gap table below)
+- **Genuinely remaining: 15** (4 OPEN, 11 PARTIAL) — the ONLY actionable work:
+
+| ID                  | real status | remaining work                                                                                                                                                                    | kind       | effort            |
+| ------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------- |
+| FR-03.6             | OPEN        | auto-refresh scheduler: setInterval→needsRefresh→refresh, interval `<select>` wired to autoRefreshInterval, battery guard (pauseOnBattery), new-critical-vuln notification, tests | product    | L                 |
+| FR-04.3             | OPEN        | parse temporal metrics (E/RL/RC) in cvss/parser.ts, render TemporalMetrics block in CvssMetricsGrid.tsx, tests                                                                    | product    | M                 |
+| NFR-08.4            | PARTIAL     | BDD suite doesn't run: fix `test:bdd` script (points at nonexistent file), ESM/tsx loader for cucumber.mjs, wire into CI                                                          | test infra | M                 |
+| NFR-07.1 / NFR-08.1 | PARTIAL     | coverage floors 84/75/87/85 → climb to PRD's 95%                                                                                                                                  | test       | L (multi-session) |
+| FR-02.3 (c)         | PARTIAL     | unit tests for handleRemoveSbom cascade (ProjectDetail.tsx:150)                                                                                                                   | test       | S                 |
+| FR-01.1             | PARTIAL     | 1,000-concurrent-project capacity perf test                                                                                                                                       | test       | S                 |
+| FR-10.1             | PARTIAL     | e2e: system-theme via emulateMedia; font-size reload persistence                                                                                                                  | test       | S                 |
+| NFR-01.1            | OPEN        | startup <3s test against a production build (time-to-content-marker)                                                                                                              | test       | S                 |
+| NFR-01.3            | PARTIAL     | realistic-latency scan companion test (<60s API budget)                                                                                                                           | test       | S                 |
+| NFR-01.4            | OPEN        | 100-project dashboard render <2s test                                                                                                                                             | test       | S                 |
+| NFR-01.6            | OPEN        | 100ms interaction-latency test (median of N: Ctrl+K, sidebar toggle)                                                                                                              | test       | S                 |
+| NFR-02.2            | OPEN        | 50,000-item VirtualList test                                                                                                                                                      | test       | S                 |
+| NFR-02.3            | PARTIAL     | 1,000,000-row query-correctness test (searchCVEsByText et al.)                                                                                                                    | test       | M                 |
+| NFR-02.5            | PARTIAL     | EXPLAIN-plan (no full-scan) assertions for searchCVEsByCPE/searchCVEsByProduct                                                                                                    | test       | S                 |
+| NFR-04.5            | PARTIAL     | add ProjectDetail (+ VEX/graph) routes to a11y CORE_PAGES                                                                                                                         | test       | S                 |
+
+Only **FR-03.6** and **FR-04.3** are product-code features; the rest are test/coverage/infra hardening. Everything else in this document is DONE — ignore the stale per-item labels that follow.
+
 ## Execution sequence (waves — each wave is PR-sized; eslint + build:all + vitest green, then targeted e2e, after each)
 
 **Wave 0 — Verify the 10 FIXED_SINCE_REPORT claims** before skipping them (the re-validation agents may be over-optimistic, mirroring how the original report was over-pessimistic). Spot-check each against HEAD; demote any that aren't actually done back into a wave.
