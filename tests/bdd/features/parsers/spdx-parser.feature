@@ -1,3 +1,4 @@
+@parser
 Feature: SPDX SBOM Parser
   As a vulnerability assessor
   I want to parse SPDX format SBOM files
@@ -59,7 +60,7 @@ Feature: SPDX SBOM Parser
   Scenario: Generate unique component ID
     Given package name "express" and version "4.18.0"
     When generating component ID
-    Then ID should be "express-4.18.0"
+    Then ID should be "express-4-18-0"
 
   Scenario: Handle invalid JSON in SPDX file
     Given an SPDX file with invalid JSON

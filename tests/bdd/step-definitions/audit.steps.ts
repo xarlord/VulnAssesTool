@@ -29,7 +29,6 @@ import {
   logBulkOperation,
   logAuditEvent,
 } from '../../../src/renderer/lib/audit/auditLogger.ts'
-import { generateULID } from '../../../src/renderer/lib/audit/ulid.ts'
 import { useAuditStore } from '../../../src/renderer/lib/audit/auditStore.ts'
 
 // Test context interface
@@ -75,12 +74,12 @@ Before({ tags: '@audit' }, async function () {
   context.vulnerabilityCount = 0
 
   // Clear audit store
-  useAuditStore.getState().clear()
+  useAuditStore.getState().resetStore()
 })
 
 After({ tags: '@audit' }, async function () {
   // Cleanup audit store
-  useAuditStore.getState().clear()
+  useAuditStore.getState().resetStore()
 })
 
 // ============================================================================
@@ -166,6 +165,11 @@ Then('an audit event should be created with action {string}', function (action: 
   expect(event.actionType).to.equal(action as AuditActionType)
 })
 
+Then('an audit event should be created', function () {
+  const event = getLastAuditEvent()
+  expect(event).to.exist
+})
+
 Then('entity type should be {string}', function (entityType: string) {
   const event = getLastAuditEvent()
   expect(event!.entityType).to.equal(entityType as AuditEntityType)
@@ -235,7 +239,9 @@ When('the project is deleted', function () {
 
 Then('new state should be null', function () {
   const event = getLastAuditEvent()
-  expect(event!.newState).to.be.null
+  // logProjectDelete leaves newState unset (there is no "new" state on deletion),
+  // so it comes back as undefined rather than an explicit null.
+  expect(event!.newState).to.not.exist
 })
 
 Then('previous state should contain project details', function () {
@@ -274,7 +280,7 @@ Then('metadata should describe the scan', function () {
   const event = getLastAuditEvent()
   expect(event!.metadata).to.be.an('object')
   expect(event!.metadata).to.have.property('description')
-  expect(event!.metadata!.description).to.include('scanned')
+  expect(event!.metadata!.description).to.include('Scanned')
 })
 
 // Scenario: Log vulnerability refresh
@@ -310,10 +316,7 @@ When('SBOM file {string} is uploaded', function (filename: string) {
   }
 })
 
-Then('entity type should be {string}', function (entityType: string) {
-  const event = getLastAuditEvent()
-  expect(event!.entityType).to.equal(entityType as AuditEntityType)
-})
+// (uses the shared "Then entity type should be {string}" registered above)
 
 Then('new state should contain filename and format', function () {
   const event = getLastAuditEvent()
@@ -349,11 +352,11 @@ Then('previous state should contain the filename', function () {
 })
 
 // Scenario: Log settings change
-Given('application settings have {string}:{string}', function (key: string, value: string) {
+Given('application settings have {string}: {string}', function (key: string, value: string) {
   context.testSettings = createTestSettings({ [key]: value })
 })
 
-When('settings are changed to {string}:{string}', function (key: string, value: string) {
+When('settings are changed to {string}: {string}', function (key: string, value: string) {
   try {
     const newSettings = { ...context.testSettings!, [key]: value }
     logSettingsChange(context.testSettings!, newSettings)
@@ -593,7 +596,9 @@ Then('the ULID should be time-sortable', function () {
   if (events.length >= 2) {
     const id1 = events[events.length - 2].id
     const id2 = events[events.length - 1].id
-    expect(id1).to.be.lessThan(id2) // Lexicographic sort = time sort for ULIDs
+    // ULIDs are Crockford Base32 strings, not numbers/dates, so compare them
+    // lexicographically rather than via chai's numeric/date-only `lessThan`.
+    expect(id1 < id2).to.equal(true) // Lexicographic sort = time sort for ULIDs
   }
 })
 
@@ -662,10 +667,13 @@ Then('only February events should be returned', function () {
 })
 
 Then('results should be ordered by timestamp', function () {
-  // Verify events are ordered by ULID (which encodes timestamp)
+  // addEvent appends to the store, so `events` is already in creation order;
+  // verify via the real `timestamp` field rather than `id` — ULIDs generated
+  // within the same millisecond (as happens in this tight test loop) have a
+  // random suffix and aren't guaranteed to sort the same way as `timestamp`.
   const events = useAuditStore.getState().events
   for (let i = 1; i < events.length; i++) {
-    expect(events[i - 1].id).to.be.lessThan(events[i].id)
+    expect(events[i - 1].timestamp.getTime() <= events[i].timestamp.getTime()).to.equal(true)
   }
 })
 

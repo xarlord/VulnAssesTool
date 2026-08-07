@@ -8,13 +8,16 @@ This document describes the comprehensive BDD (Behavior Driven Development) test
 
 ### Test Framework Stack
 
-| Component       | Technology         | Purpose                        |
-| --------------- | ------------------ | ------------------------------ |
-| Test Runner     | Vitest             | Fast, Vite-native test runner  |
-| BDD Framework   | @cucumber/cucumber | Gherkin feature file execution |
-| Assertions      | Vitest expect      | Assertion library              |
-| Mocking         | Vitest vi          | Function and timer mocking     |
-| Browser Testing | Playwright         | E2E browser automation         |
+| Component        | Technology         | Purpose                                                       |
+| ---------------- | ------------------ | ------------------------------------------------------------- |
+| BDD Framework    | @cucumber/cucumber | Gherkin feature file execution, run via `cucumber-js`         |
+| TS transpilation | tsx                | Runs the TypeScript step-definition/support files under ESM   |
+| Assertions       | Vitest expect      | Assertion library (also supports the chai `.to.` interface)   |
+| Browser Testing  | Playwright         | Only for the few scenarios tagged `@ui` (excluded by default) |
+
+Note: there is no `tests/bdd-simple.test.ts` / Vitest-based BDD runner — `npm run test:bdd` runs
+`cucumber-js` directly. See `tests/bdd/README.md` for the exact invocation and the current list
+of excluded scenarios.
 
 ### Directory Structure
 
@@ -38,34 +41,35 @@ tests/
 │   │   └── sbom-generator/    # SBOM generation features
 │   │       └── sbom-generator.feature
 │   ├── step-definitions/      # Step implementation files
-│   │   ├── database.steps.ts
 │   │   ├── audit.steps.ts
 │   │   ├── analytics.steps.ts
 │   │   ├── parsers.steps.ts
 │   │   ├── export.steps.ts
-│   │   ├── hybrid-scanner.steps.ts
-│   │   ├── update-scheduler.steps.ts
+│   │   ├── example.steps.ts
 │   │   └── sbom-generator.steps.ts
 │   └── support/               # Test support utilities
 │       ├── world.ts           # Custom World implementation
 │       └── hooks.ts           # Before/After hooks
-└── bdd-simple.test.ts         # Simple BDD sanity tests
 ```
+
+No `database.steps.ts` / `hybrid-scanner.steps.ts` / `update-scheduler.steps.ts` exist — the
+three `database/*.feature` files are tagged `@wip` and excluded from the default run (see
+"Feature Coverage Summary" and `tests/bdd/README.md`).
 
 ## Feature Coverage Summary
 
-| Feature Area            | Scenarios | Status         | Priority |
-| ----------------------- | --------- | -------------- | -------- |
-| NVD Database Operations | 25        | ✅ Implemented | High     |
-| Hybrid Scanner          | 15        | ✅ Implemented | High     |
-| Update Scheduler        | 10        | ✅ Implemented | Medium   |
-| Audit Logging           | 20        | ✅ Implemented | High     |
-| Metrics Calculator      | 20        | ✅ Implemented | Medium   |
-| SPDX Parser             | 8         | ✅ Implemented | High     |
-| CycloneDX Parser        | 7         | ✅ Implemented | High     |
-| Export Formats          | 15        | ✅ Implemented | Medium   |
-| SBOM Generator          | 10        | ✅ Implemented | High     |
-| **Total**               | **130**   |                |          |
+| Feature Area                                       | Scenarios           | Status                                                                        | Priority |
+| -------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------- | -------- |
+| NVD Database Operations                            | 25                  | ❌ Excluded (`@wip`) — no step defs; described API doesn't exist (see README) | High     |
+| Hybrid Scanner                                     | 15                  | ❌ Excluded (`@wip`) — `hybridScanner.ts` is a stub                           | High     |
+| Update Scheduler                                   | 10                  | ❌ Excluded (`@wip`) — real scheduler is interval-check, not cron-style       | Medium   |
+| Audit Logging                                      | 20                  | ✅ Passing                                                                    | High     |
+| Metrics Calculator                                 | 20                  | ✅ Passing                                                                    | Medium   |
+| SPDX Parser                                        | 15                  | ✅ Passing                                                                    | High     |
+| CycloneDX Parser                                   | 4                   | ✅ Passing                                                                    | High     |
+| Export Formats                                     | 14 + 1 `@wip` (PDF) | ✅ Passing (PDF export excluded, see README)                                  | Medium   |
+| SBOM Generator                                     | 8 + 10 `@wip`       | ✅ Passing (10 UI-only scenarios excluded, see README)                        | High     |
+| **Total (in the default `npm run test:bdd` gate)** | **82**              | **✅ All passing**                                                            |          |
 
 ## Module Coverage
 
@@ -320,15 +324,14 @@ Feature: SBOM Generator
 npm run test:bdd
 ```
 
-### Run Specific Feature Tests
+### Run a specific feature or tag
 
 ```bash
-# Using vitest directly
-npx vitest run tests/bdd-simple.test.ts
-
-# Using cucumber directly (if configured)
-npx cucumber-js tests/bdd/features/database/nvd-database.feature
+cross-env TSX_TSCONFIG_PATH=tests/bdd/tsconfig.json NODE_OPTIONS="--import tsx" cucumber-js --tags "@audit"
 ```
+
+(Cucumber's `paths` is fixed by `cucumber.mjs` to `tests/bdd/features/**/*.feature`, so
+filtering by `--tags` rather than passing a file path is the reliable way to scope a run.)
 
 ### Run with Coverage
 
@@ -445,11 +448,8 @@ jobs:
 ### Debug Mode
 
 ```bash
-# Run with verbose output
-npx vitest run --reporter=verbose tests/bdd-simple.test.ts
-
-# Run specific test
-npx vitest run -t "should scan component"
+# Run a single scenario/feature by tag
+cross-env TSX_TSCONFIG_PATH=tests/bdd/tsconfig.json NODE_OPTIONS="--import tsx" cucumber-js --tags "@audit"
 ```
 
 ## References

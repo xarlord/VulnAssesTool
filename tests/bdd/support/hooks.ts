@@ -199,18 +199,6 @@ Before({ tags: '@ui' }, async function (this: CustomWorld) {
 })
 
 /**
- * Before hook for scenarios tagged with @database
- * Ensures database is ready
- */
-Before({ tags: '@database' }, async function (this: CustomWorld) {
-  console.log('Setting up database test environment...')
-
-  // Initialize database if needed
-  const Database = (await import('../../src/main/database/index.js')).default
-  this.setState('database', Database)
-})
-
-/**
  * After hook for scenarios tagged with @api
  * Cleans up API resources
  */
@@ -219,15 +207,10 @@ After({ tags: '@api' }, async function (this: CustomWorld) {
   // Add API cleanup logic here
 })
 
-/**
- * After hook for scenarios tagged with @database
- * Cleans up database resources
- */
-After({ tags: '@database' }, async function (this: CustomWorld) {
-  console.log('Cleaning up database resources...')
-
-  const db = this.getState('database')
-  if (db && db.close) {
-    await db.close()
-  }
-})
+// NOTE: There used to be @database Before/After hooks here that imported
+// `../../src/main/database/index.js`. That path was part of the pre-migration
+// Electron app and was deleted (see commit acd0518, client/server migration).
+// There is no current equivalent default DB module to repoint to — the
+// database-focused step definitions that would use `@database` manage their
+// own state instead (see tests/bdd/README.md "Excluded features" note). The
+// hooks were removed rather than left pointing at a nonexistent module.

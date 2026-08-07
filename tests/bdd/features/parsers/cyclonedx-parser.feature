@@ -1,3 +1,4 @@
+@parser
 Feature: CycloneDX SBOM Parser
   As a vulnerability assessor
   I want to parse CycloneDX format SBOM files

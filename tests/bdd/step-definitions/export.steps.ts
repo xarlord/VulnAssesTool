@@ -66,14 +66,25 @@ Before({ tags: '@export' }, async function () {
   if (typeof document === 'undefined') {
     const globalAny = global as any
     globalAny.document = {
-      createElement: () => ({
-        href: '',
-        download: '',
-        click: () => {
-          context.downloadTriggered = true
-        },
-        style: {},
-      }),
+      createElement: () => {
+        const link = {
+          href: '',
+          click: () => {
+            context.downloadTriggered = true
+          },
+          style: {},
+        }
+        // downloadCsv/downloadJson/downloadPdf set `link.download = filename`;
+        // capture it into context so the "file should have correct name" step
+        // can assert on it (there's no other handle back to this mock element).
+        Object.defineProperty(link, 'download', {
+          get: () => context.testFilename,
+          set: (value: string) => {
+            context.testFilename = value
+          },
+        })
+        return link
+      },
       body: { appendChild: () => {}, removeChild: () => {} },
     }
     globalAny.URL = {
@@ -144,9 +155,40 @@ function parseCsvLines(csvContent: string): string[] {
   return csvContent.split(/\r?\n/).filter((line) => line.trim().length > 0)
 }
 
+// A minimal CSV field splitter (handles quoted fields with escaped `""`).
+// The previous implementation used `row.match(/("([^"]|"")*"|[^,]*)/g)`,
+// but that pattern also matches an empty string at every comma boundary
+// (`"a,b,c".match(...)` yields `["a","","b","","c",""]`), silently doubling
+// the field count and putting real values at every *even* index — so code
+// reading e.g. the last column via `columns[columns.length - 1]` always got
+// the empty artifact instead. This walks the string once instead.
 function parseCsvRow(row: string): string[] {
-  const matches = row.match(/("([^"]|"")*"|[^,]*)/g)
-  return matches ? matches.map((m) => m.replace(/^"|"$/g, '').replace(/""/g, '"')) : []
+  const fields: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < row.length; i++) {
+    const char = row[i]
+    if (inQuotes) {
+      if (char === '"' && row[i + 1] === '"') {
+        current += '"'
+        i++
+      } else if (char === '"') {
+        inQuotes = false
+      } else {
+        current += char
+      }
+    } else if (char === '"') {
+      inQuotes = true
+    } else if (char === ',') {
+      fields.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  fields.push(current)
+  return fields
 }
 
 // ============================================================================
@@ -164,6 +206,15 @@ Given('{int} vulnerabilities exist', function (count: number) {
 })
 
 When('I export to CSV format', function () {
+  try {
+    context.csvContent = exportVulnerabilitiesToCsv(context.testVulnerabilities)
+    context.testError = null
+  } catch (error) {
+    context.testError = error as Error
+  }
+})
+
+When('I export to CSV', function () {
   try {
     context.csvContent = exportVulnerabilitiesToCsv(context.testVulnerabilities)
     context.testError = null
@@ -336,10 +387,7 @@ Then('all vulnerabilities should be included', function () {
 })
 
 // Scenario: Export to PDF format
-Given('vulnerabilities exist', function () {
-  context.testVulnerabilities = [createTestVulnerability('CVE-2024-1234', 'high')]
-})
-
+// (reuses the `Given('vulnerabilities exist', ...)` registered above for the JSON scenario)
 When('I export to PDF format', function () {
   try {
     const project = {
@@ -389,14 +437,11 @@ Then('filename should include current date', function () {
 })
 
 Then('extension should be {string}', function (extension: string) {
-  expect(context.testFilename).to.endWith(extension)
+  expect(context.testFilename).to.satisfy((f: string) => f.endsWith(extension))
 })
 
 // Scenario: Sanitize filename for export
-Given('entity name {string}', function (entityName: string) {
-  context.testFilename = entityName
-})
-
+// (reuses the `Given('entity name {string}', ...)` registered above)
 When('I generate filename', function () {
   try {
     context.testFilename = sanitizeFilename(context.testFilename)
@@ -490,16 +535,14 @@ Then('event details should be included', function () {
 })
 
 // Scenario: Export with filters applied
-Given('{int} vulnerabilities exist', function (count: number) {
-  for (let i = 0; i < count; i++) {
-    const severity: Vulnerability['severity'] = i < 20 ? 'critical' : i < 50 ? 'high' : 'medium'
-    context.testVulnerabilities.push(createTestVulnerability(`CVE-2024-${1000 + i}`, severity))
-  }
-})
-
+// (reuses the `Given('{int} vulnerabilities exist', ...)` registered above; the
+// "only CRITICAL..." assertion below computes its expected count from the same
+// generated array, so it doesn't depend on a particular severity distribution)
 When('I export with severity filter {string}', function (severity: string) {
   try {
-    const filtered = context.testVulnerabilities.filter((v) => v.severity === severity)
+    // Vulnerability['severity'] values are lowercase; the Gherkin step text is
+    // uppercase for readability ("CRITICAL"), so normalize before comparing.
+    const filtered = context.testVulnerabilities.filter((v) => v.severity === severity.toLowerCase())
     context.csvContent = exportVulnerabilitiesToCsv(filtered)
     context.testError = null
   } catch (error) {
@@ -513,25 +556,13 @@ Then('only CRITICAL vulnerabilities should be exported', function () {
   expect(lines.length - 1).to.equal(expectedCount) // -1 for header
 })
 
-// Additional scenarios for component export
+// Additional scenario data for component export (uses the `When('I export
+// components to CSV', ...)` / `Then('component count should match', ...)`
+// registered above alongside `Given('{int} components exist', ...)`)
 Given('I have {int} components to export', function (count: number) {
   for (let i = 0; i < count; i++) {
     context.testComponents.push(createTestComponent(`comp-${i}`, `component-${i}`, `${i}.0.0`))
   }
-})
-
-When('I export components to CSV', function () {
-  try {
-    context.csvContent = exportComponentsToCsv(context.testComponents)
-    context.testError = null
-  } catch (error) {
-    context.testError = error as Error
-  }
-})
-
-Then('component count should match', function () {
-  const lines = parseCsvLines(context.csvContent)
-  expect(lines.length - 1).to.equal(context.testComponents.length)
 })
 
 // Scenario: Export components JSON

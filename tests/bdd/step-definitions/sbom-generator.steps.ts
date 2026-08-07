@@ -1,438 +1,352 @@
-import { Given, When, Then } from '@cucumber/cucumber'
-import { expect } from '@playwright/test'
-import { parseCycloneDX } from '@/renderer/lib/parsers/cyclonedx'
-import * as XLSX from 'xlsx'
+/**
+ * BDD Step Definitions for Excel-to-CycloneDX SBOM Generation
+ *
+ * Covers the scenarios in sbom-generator.feature whose behavior lives in
+ * real, non-UI logic: src/renderer/lib/generators/excelParser.ts (parsing,
+ * validation, column mapping) and cyclonedxGenerator.ts (SBOM generation,
+ * PURL validation). Steps drive those functions directly rather than a
+ * browser, the same way audit.steps.ts/analytics.steps.ts do.
+ *
+ * Scenarios that are genuinely UI-only (dialog open/close, preview
+ * edit/remove, progress indicators, template download, mapping persistence,
+ * multi-sheet dropdowns, project auto-upload) or depend on unimplemented
+ * behavior (XML output) are tagged @wip in the feature file — see the note
+ * at the top of that file for the full list and why.
+ */
 
-// Helper type for test data
-interface ExcelRow {
-  name?: string
-  version?: string
-  type?: string
-  license?: string
-  purl?: string
-  cpe?: string
-  description?: string
-  supplier?: string
-  group?: string
-  [key: string]: string | undefined
+import { Given, When, Then, Before, After, type DataTable } from '@cucumber/cucumber'
+import { expect } from 'vitest'
+import * as XLSX from 'xlsx'
+import type { Component } from '../../../src/shared/types.ts'
+import {
+  parseExcel,
+  validateRow,
+  mapRowToComponent,
+  type ExcelRow,
+} from '../../../src/renderer/lib/generators/excelParser.ts'
+import {
+  createSbom,
+  validatePurl,
+  type MetadataOptions,
+} from '../../../src/renderer/lib/generators/cyclonedxGenerator.ts'
+
+// Test context interface
+interface TestContext {
+  excelBuffer: ArrayBuffer | null
+  parsedRows: ExcelRow[]
+  validRows: ExcelRow[]
+  invalidRows: Array<{ row: ExcelRow; errors: string[] }>
+  components: Component[]
+  metadataOptions: MetadataOptions | undefined
+  generatedSbom: string | null
+  testError: Error | null
 }
 
-// Helper to create test Excel file
-function createTestExcelFile(data: ExcelRow[]): Buffer {
-  const worksheet = XLSX.utils.json_to_sheet(data)
+const context: TestContext = {
+  excelBuffer: null,
+  parsedRows: [],
+  validRows: [],
+  invalidRows: [],
+  components: [],
+  metadataOptions: undefined,
+  generatedSbom: null,
+  testError: null,
+}
+
+Before({ tags: '@sbom-generator' }, async function () {
+  context.excelBuffer = null
+  context.parsedRows = []
+  context.validRows = []
+  context.invalidRows = []
+  context.components = []
+  context.metadataOptions = undefined
+  context.generatedSbom = null
+  context.testError = null
+})
+
+After({ tags: '@sbom-generator' }, async function () {
+  // No external resources to clean up.
+})
+
+/** Build an .xlsx file (as an ArrayBuffer, matching what a real file upload yields) from a data table. */
+function buildExcelBuffer(rows: Array<Record<string, string>>): ArrayBuffer {
+  const worksheet = XLSX.utils.json_to_sheet(rows)
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Components')
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+  const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  return buffer
 }
 
-// Helper to parse CycloneDX file
-async function parseSbomFile(fileContent: string) {
-  return await parseCycloneDX(fileContent, 'test.json')
-}
-
-// World object for sharing state between steps
-interface SbomGeneratorWorld {
-  excelFile?: Buffer
-  generatedSbom?: string
-  parsedComponents?: any[]
-  columnMappings?: Map<string, string>
-}
-
-// Initialize world
-const world: SbomGeneratorWorld = {}
+// ============================================================================
+// BACKGROUND (no real app instance in this suite; parsing/generation is
+// exercised directly against the buffer built by the scenario's Given step)
+// ============================================================================
 
 Given('I am using the VulnAssessTool application', function () {
-  // Application is loaded by test framework
+  // No-op: this suite drives the generator/parser modules directly.
 })
 
 Given('the application has successfully loaded', function () {
-  // Verify app is running - this would be checked via UI or API
+  // No-op — see above.
 })
 
 Given('I am on the Dashboard page', function () {
-  // Navigate to dashboard - would use Playwright page object
+  // No-op — see above.
 })
 
-Given('I have a valid Excel file with components using the standard template', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
+// ============================================================================
+// GIVEN — build the Excel fixture for each scenario
+// ============================================================================
+
+Given('I have a valid Excel file with components using the standard template', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have an Excel file with custom column headers', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
+Given('I have an Excel file with custom column headers', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have an Excel file with only name and version columns', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
+Given('I have an Excel file with only name and version columns', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have an Excel file with incomplete data', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
+Given('I have an Excel file with incomplete data', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have an Excel file with mixed valid and invalid data', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
+Given('I have an Excel file with mixed valid and invalid data', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have a valid Excel file with components', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
+Given('I have a valid Excel file with components', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have a comprehensive Excel file with all fields', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
+Given('I have a comprehensive Excel file with all fields', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have an Excel file with {string}+ components', function (count: string) {
-  const numComponents = parseInt(count)
-  const data: ExcelRow[] = []
-
-  for (let i = 0; i < numComponents; i++) {
-    data.push({
-      name: `component-${i}`,
-      version: `1.${i}.0`,
-      type: 'library',
-      license: 'MIT',
-      purl: `pkg:npm/component-${i}@1.${i}.0`,
-    })
-  }
-
-  world.excelFile = createTestExcelFile(data)
+Given('I have an Excel file with components including PURLs', function (dataTable: DataTable) {
+  context.excelBuffer = buildExcelBuffer(dataTable.hashes())
 })
 
-Given('I have an Excel file with components including PURLs', function (dataTable: any) {
-  const data = dataTable.hashes() as ExcelRow[]
-  world.excelFile = createTestExcelFile(data)
-})
-
-Given('I have previously mapped custom columns for a project', function (dataTable: any) {
-  world.columnMappings = new Map()
-  const mappings = dataTable.hashes()
-  mappings.forEach((row: any) => {
-    const [key, value] = Object.entries(row)[0]
-    if (key && value) {
-      world.columnMappings?.set(key, value)
-    }
-  })
-})
-
-Given('I have a file that is not a valid Excel file', function (dataTable: any) {
-  const fileInfo = dataTable.hashes()[0]
-  // Create a text file instead of Excel
-  world.excelFile = Buffer.from('This is not an Excel file', 'utf-8')
-})
-
-Given('I have an existing project in VulnAssessTool', function () {
-  // Would set up a test project via API
-})
-
-Given('I have uploaded an Excel file and reviewed the preview', function () {
-  // Simulate having already uploaded and previewed
-  const data: ExcelRow[] = [{ name: 'react', version: '18.2.0', type: 'library', license: 'MIT' }]
-  world.excelFile = createTestExcelFile(data)
-})
+// ============================================================================
+// WHEN — parse + validate + map (the "upload" and "review preview" steps)
+// ============================================================================
 
 When('I navigate to the SBOM Generator dialog', function () {
-  // Would click menu item or button to open dialog
+  // No-op — no dialog in this suite; see file header.
 })
 
-When('I upload the Excel file', function () {
-  // Would trigger file upload in UI
-  // In real implementation, this would use Playwright's file upload
+When('I upload the Excel file', async function () {
+  if (!context.excelBuffer) throw new Error('No Excel buffer built by the Given step')
+  context.parsedRows = await parseExcel(context.excelBuffer)
+
+  context.validRows = []
+  context.invalidRows = []
+  for (const row of context.parsedRows) {
+    const result = validateRow(row)
+    if (result.valid) {
+      context.validRows.push(row)
+    } else {
+      context.invalidRows.push({ row, errors: result.errors })
+    }
+  }
+  context.components = context.validRows.map((row) => mapRowToComponent(row))
 })
 
 When('I review the parsed components preview', function () {
-  // Would verify preview is shown
-})
-
-When('I click {string}', function (buttonText: string) {
-  // Would click the specified button
+  // No-op — components are already available on context from the upload step.
 })
 
 When('I map {string} to {string}', function (sourceColumn: string, targetField: string) {
-  if (!world.columnMappings) {
-    world.columnMappings = new Map()
+  // parseExcel's column detection is automatic (detectColumnMapping) and has
+  // no override parameter, so there's nothing to record here — the "custom
+  // column mapping" scenario instead exercises detectColumnMapping's
+  // fallback partial-match logic (e.g. "License ID" ~ "license") directly.
+  void sourceColumn
+  void targetField
+})
+
+When('I enter project metadata:', function (dataTable: DataTable) {
+  const rows = dataTable.raw()
+  const metadata: MetadataOptions = {}
+  for (const [key, value] of rows) {
+    if (key === 'Project Name') metadata.name = value
+    if (key === 'Version') metadata.version = value
+    if (key === 'Description') metadata.description = value
+    if (key === 'Author') metadata.author = value
   }
-  world.columnMappings.set(sourceColumn, targetField)
+  context.metadataOptions = metadata
 })
 
-When('I enter project metadata:', function (dataTable: any) {
-  const metadata = dataTable.hashes()[0]
-  // Would fill in metadata form fields
+When('I click {string}', async function (buttonText: string) {
+  if (buttonText !== 'Generate SBOM') return
+  const output = await createSbom(context.components, { metadata: context.metadataOptions, pretty: false })
+  context.generatedSbom = output.content
 })
 
-When('I select XML format as output', function () {
-  // Would select XML option in format dropdown
-})
+// ============================================================================
+// THEN — assertions against the real parse/validate/generate output
+// ============================================================================
 
-When('I check {string}', function (checkboxLabel: string) {
-  // Would check the specified checkbox
-})
-
-When('I select my project from the list', function () {
-  // Would select a project from dropdown
-})
-
-When('I attempt to upload the file', function () {
-  // Would attempt file upload
-})
-
-When('I click the {string} button', function (buttonText: string) {
-  // Would click the specified button
-})
+function parsedSbom(): Record<string, unknown> {
+  if (!context.generatedSbom) throw new Error('No SBOM was generated')
+  return JSON.parse(context.generatedSbom) as Record<string, unknown>
+}
 
 Then('I should download a valid CycloneDX JSON file', function () {
-  // Verify download was triggered and file is valid JSON
-  expect(world.generatedSbom).toBeDefined()
+  expect(context.generatedSbom).to.be.a('string')
+  expect(() => parsedSbom()).to.not.throw()
 })
 
 Then('the file should contain all {int} components from Excel', function (count: number) {
-  // Would parse generated SBOM and count components
-  expect(world.parsedComponents).toBeDefined()
+  const sbom = parsedSbom()
+  expect(sbom.components).to.have.lengthOf(count)
 })
 
-Then('the file should be CycloneDX {string} compliant', function (version: string) {
-  // Would validate against CycloneDX schema
-  const sbom = JSON.parse(world.generatedSbom || '{}')
-  expect(sbom.bomFormat).toBe('CycloneDX')
-  expect(sbom.specVersion).toBe(version)
+Then('the file should be CycloneDX {float} compliant', function (version: number) {
+  const sbom = parsedSbom()
+  expect(sbom.bomFormat).to.equal('CycloneDX')
+  expect(sbom.specVersion).to.equal(String(version))
 })
 
 Then('each component should have the correct name, version, and license', function () {
-  // Would verify component properties
+  const sbom = parsedSbom()
+  const components = sbom.components as Array<Record<string, unknown>>
+  for (const [i, component] of components.entries()) {
+    expect(component.name).to.equal(context.validRows[i].name)
+    expect(component.version).to.equal(context.validRows[i].version)
+    expect(component.licenses).to.be.an('array').that.is.not.empty
+  }
 })
 
 Then('the file should contain all {int} components', function (count: number) {
-  // Would verify component count
+  const sbom = parsedSbom()
+  expect(sbom.components).to.have.lengthOf(count)
 })
 
 Then('the components should use the correctly mapped values', function () {
-  // Would verify mappings were applied
+  const sbom = parsedSbom()
+  const components = sbom.components as Array<Record<string, unknown>>
+  expect(components.map((c) => c.name)).to.deep.equal(context.validRows.map((r) => r.name))
+  expect(components.map((c) => c.version)).to.deep.equal(context.validRows.map((r) => r.version))
 })
 
 Then('the components should have default type {string}', function (defaultType: string) {
-  // Would verify default type was applied
+  const sbom = parsedSbom()
+  const components = sbom.components as Array<Record<string, unknown>>
+  for (const component of components) {
+    expect(component.type).to.equal(defaultType)
+  }
 })
 
 Then('the components should not have license information', function () {
-  // Would verify license is not present
+  const sbom = parsedSbom()
+  const components = sbom.components as Array<Record<string, unknown>>
+  for (const component of components) {
+    expect(component.licenses).to.be.undefined
+  }
 })
 
 Then('I should see validation errors for rows with missing data', function () {
-  // Would verify error messages are shown
+  expect(context.invalidRows.length).to.be.greaterThan(0)
 })
 
 Then('the error should indicate which rows have missing required fields', function () {
-  // Would verify specific error messages
+  const allErrors = context.invalidRows.flatMap((r) => r.errors)
+  expect(allErrors.some((e) => e.includes('name'))).to.equal(true)
+  expect(allErrors.some((e) => e.includes('version'))).to.equal(true)
 })
 
 Then('I should be able to correct the data or proceed with valid rows only', function () {
-  // Would verify correction options
+  // "Proceed with valid rows only": the rows that did validate are still
+  // available and mappable to components even though others failed.
+  expect(context.validRows.length).to.be.greaterThan(0)
+  expect(() => context.validRows.map((row) => mapRowToComponent(row))).to.not.throw()
 })
 
 Then('the generated SBOM should include the metadata', function () {
-  // Would verify metadata in SBOM
-  const sbom = JSON.parse(world.generatedSbom || '{}')
-  expect(sbom.metadata).toBeDefined()
+  const sbom = parsedSbom()
+  expect(sbom.metadata).to.be.an('object')
 })
 
 Then('the metadata component should have type {string}', function (type: string) {
-  // Would verify metadata component type
-  const sbom = JSON.parse(world.generatedSbom || '{}')
-  expect(sbom.metadata?.component?.type).toBe(type)
+  const sbom = parsedSbom()
+  const metadata = sbom.metadata as Record<string, unknown>
+  const component = metadata.component as Record<string, unknown>
+  expect(component.type).to.equal(type)
 })
 
 Then('the metadata should contain the timestamp', function () {
-  // Would verify timestamp is present
-  const sbom = JSON.parse(world.generatedSbom || '{}')
-  expect(sbom.metadata?.timestamp).toBeDefined()
+  const sbom = parsedSbom()
+  const metadata = sbom.metadata as Record<string, unknown>
+  expect(metadata.timestamp).to.be.a('string')
 })
 
 Then('the parser should skip empty rows', function () {
-  // Would verify empty rows were skipped
+  // 5 data-table rows in, one fully blank — parseExcel drops it before
+  // validation even sees it, so only 4 rows should have reached validation.
+  expect(context.parsedRows.length).to.equal(4)
 })
 
 Then('the parser should show warnings for invalid rows', function () {
-  // Would verify warnings are displayed
+  expect(context.invalidRows.length).to.be.greaterThan(0)
 })
 
 Then('the preview should only show valid components', function () {
-  // Would verify preview content
+  expect(context.components).to.have.lengthOf(context.validRows.length)
 })
 
-Then('I should be able to generate SBOM with {int} valid components', function (count: number) {
-  // Would verify only valid components included
-})
-
-Then('I should download a valid CycloneDX XML file', function () {
-  // Would verify XML file was downloaded
-})
-
-Then('the XML file should be well-formed', function () {
-  // Would verify XML can be parsed
-})
-
-Then('the XML file should contain all components from Excel', function () {
-  // Would verify XML content
-})
-
-Then('I should see a preview table with parsed components', function () {
-  // Would verify preview table is visible
-})
-
-Then('the preview should show all component fields', function () {
-  // Would verify all fields are displayed
-})
-
-Then('I should be able to edit component data in the preview', function () {
-  // Would verify editing capability
-})
-
-Then('I should be able to remove components from the preview', function () {
-  // Would verify removal capability
-})
-
-Then('I should be able to cancel and return to the dialog', function () {
-  // Would verify cancel works
-})
-
-Then('the file should be parsed within {int} seconds', function (seconds: number) {
-  // Would measure parsing time
-})
-
-Then('the preview should load with pagination or virtual scrolling', function () {
-  // Would verify performance optimizations
-})
-
-Then('I should be able to generate SBOM without performance issues', function () {
-  // Would verify generation completes successfully
-})
-
-Then('the application should remember my previous mappings', function () {
-  // Would verify mappings are persisted
-})
-
-Then('I should not need to manually map columns again', function () {
-  // Would verify auto-mapping works
-})
-
-Then('I should be able to proceed directly to generation', function () {
-  // Would verify flow can skip mapping step
-})
-
-Then('I should see a clear error message', function () {
-  // Would verify error is shown
-})
-
-Then('the error message should indicate the file format is not supported', function () {
-  // Would verify error message content
-})
-
-Then('the dialog should remain open for me to try again', function () {
-  // Would verify dialog is still open
+Then('I should be able to generate SBOM with {int} valid components', async function (count: number) {
+  const output = await createSbom(context.components)
+  const sbom = JSON.parse(output.content) as { components: unknown[] }
+  expect(sbom.components).to.have.lengthOf(count)
 })
 
 Then('I should see validation warnings for invalid PURLs', function () {
-  // Would verify PURL validation warnings
+  const invalidPurlRows = context.validRows.filter((row) => row.purl && !validatePurl(row.purl))
+  expect(invalidPurlRows.length).to.be.greaterThan(0)
 })
 
 Then('I should be able to correct or ignore invalid PURLs', function () {
-  // Would user can handle warnings
+  // "Ignore": drop the malformed purl but keep the rest of the component.
+  context.components = context.components.map((component) =>
+    component.purl && !validatePurl(component.purl) ? { ...component, purl: undefined } : component,
+  )
+  for (const component of context.components) {
+    if (component.purl) expect(validatePurl(component.purl)).to.equal(true)
+  }
 })
 
-Then('the valid PURLs should be included in the generated SBOM', function () {
-  // Would verify valid PURLs are in output
+Then('the valid PURLs should be included in the generated SBOM', async function () {
+  const output = await createSbom(context.components)
+  const sbom = JSON.parse(output.content) as { components: Array<Record<string, unknown>> }
+  const withPurl = sbom.components.filter((c) => typeof c.purl === 'string')
+  expect(withPurl.length).to.be.greaterThan(0)
+  for (const component of withPurl) {
+    expect(validatePurl(component.purl as string)).to.equal(true)
+  }
 })
 
 Then('the generated SBOM should include all optional fields', function () {
-  // Would verify all fields present
+  const sbom = parsedSbom()
+  const component = (sbom.components as Array<Record<string, unknown>>)[0]
+  expect(component.description).to.be.a('string')
+  expect(component.purl).to.be.a('string')
+  expect(component.cpe).to.be.a('string')
 })
 
 Then('the component should have the complete set of metadata', function () {
-  // Would verify component metadata
+  const sbom = parsedSbom()
+  const component = (sbom.components as Array<Record<string, unknown>>)[0]
+  expect(component.licenses).to.be.an('array').that.is.not.empty
+  expect(component.supplier).to.deep.equal({ name: context.validRows[0].supplier })
 })
 
 Then('the CPE and PURL should be properly formatted', function () {
-  // Would verify CPE and PURL formats
-})
-
-Then('I should download the Excel template file', function () {
-  // Would verify template download
-})
-
-Then('the template should include all standard columns', function () {
-  // Would verify template structure
-})
-
-Then('the template should include an Instructions sheet', function () {
-  // Would verify instructions sheet exists
-})
-
-Then('the template should include sample data', function () {
-  // Would verify sample data present
-})
-
-Then('the dialog should close', function () {
-  // Would verify dialog is closed
-})
-
-Then('no SBOM file should be generated', function () {
-  // Would verify no file was created
-})
-
-Then('I should return to the previous page', function () {
-  // Would verify navigation
-})
-
-Then('my uploaded data should not be saved', function () {
-  // Would verify no data persisted
-})
-
-Then('I should see a dropdown to select the sheet', function () {
-  // Would verify sheet selector exists
-})
-
-Then('the default selection should be the first sheet', function () {
-  // Would verify default selection
-})
-
-Then('I should be able to switch between sheets', function () {
-  // Would verify sheet switching works
-})
-
-Then('the preview should update based on selected sheet', function () {
-  // Would verify preview updates
-})
-
-Then('the SBOM should be generated and downloaded', function () {
-  // Would verify both actions completed
-})
-
-Then('the SBOM should be automatically uploaded to the selected project', function () {
-  // Would verify automatic upload
-})
-
-Then('I should see a success message confirming both actions', function () {
-  // Would verify success message
-})
-
-Then('I should see a progress indicator', function () {
-  // Would verify progress indicator shown
-})
-
-Then('the progress should show parsing status', function () {
-  // Would verify parsing progress
-})
-
-Then('the progress should show generation status', function () {
-  // Would verify generation progress
-})
-
-Then('I should be able to see estimated time remaining', function () {
-  // Would verify ETA display
+  const sbom = parsedSbom()
+  const component = (sbom.components as Array<Record<string, unknown>>)[0]
+  expect(validatePurl(component.purl as string)).to.equal(true)
+  expect(component.cpe as string).to.match(/^cpe:2\.3:/)
 })

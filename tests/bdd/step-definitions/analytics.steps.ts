@@ -77,10 +77,13 @@ function createTestProject(name: string, overrides: Partial<Project> = {}): Proj
     id: `proj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name,
     description: `Test project ${name}`,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: overrides.createdAt || now,
+    // Trend scenarios below rely on this being overridable — without it, every
+    // project lands in the same "current week" bucket regardless of the
+    // `updatedAt` they pass in, and weekly trend/period calculations collapse.
+    updatedAt: overrides.updatedAt || now,
     lastScanAt: overrides.lastScanAt || now,
-    lastVulnDataRefresh: now,
+    lastVulnDataRefresh: overrides.lastVulnDataRefresh || now,
     sbomFiles: overrides.sbomFiles || [],
     components: overrides.components || [],
     vulnerabilities: overrides.vulnerabilities || [],
@@ -198,19 +201,22 @@ Then('severity counts should be aggregated', function () {
 })
 
 // Scenario: Calculate average health score
+// calculateProjectHealthScore = 100 - (vulns/components)*10 - critical*5 - high*2
+// + (fixable/vulns)*5. With components fixed at 10 and no critical/high vulns,
+// totalVulns of 23/43/13 land close to the 80/60/90 the scenario names (the
+// patch-ratio bonus varies slightly with the count, hence closeTo(..., 5) below).
 Given('project A has health score {int}', function (score: number) {
-  // Health score is calculated, not stored. Create project with appropriate stats
-  const stats = createStatisticsWithVulns(10, 5) // Will result in ~80 health score
+  const stats = createStatisticsWithVulns(10, 23)
   context.testProjects.push(createTestProject('Project A', { statistics: stats }))
 })
 
 Given('project B has health score {int}', function (score: number) {
-  const stats = createStatisticsWithVulns(10, 15) // Will result in ~60 health score
+  const stats = createStatisticsWithVulns(10, 43)
   context.testProjects.push(createTestProject('Project B', { statistics: stats }))
 })
 
 Given('project C has health score {int}', function (score: number) {
-  const stats = createStatisticsWithVulns(10, 2) // Will result in ~90 health score
+  const stats = createStatisticsWithVulns(10, 13)
   context.testProjects.push(createTestProject('Project C', { statistics: stats }))
 })
 
@@ -254,9 +260,7 @@ Given('vulnerable component percentage is below {int}%', function (percentage: n
   context.testProjects.push(createTestProject('Excellent Project', { statistics: stats }))
 })
 
-Then('risk level should be {string}', function (riskLevel: string) {
-  expect(context.testOverallMetrics!.riskLevel).to.equal(riskLevel as any)
-})
+// (uses the shared "Then risk level should be {string}" registered above)
 
 // Scenario: Calculate vulnerable component percentage
 Given('{int} total components exist', function (count: number) {
@@ -339,8 +343,10 @@ Then('score should be reduced by vulnerability ratio', function () {
 
 Then('extra penalty should apply for critical vulns', function () {
   const metrics = context.testProjectMetrics![0]
-  // With 2 critical vulns, score should be significantly reduced
-  expect(metrics.healthScore).to.be.lessThan(80)
+  // calculateProjectHealthScore deducts 5 points per critical + 2 per high on top
+  // of the vulnerability-ratio deduction, so the score must land below what the
+  // ratio-only deduction would give (100 - vulnRatio*10 = 95 here).
+  expect(metrics.healthScore).to.be.lessThan(95)
 })
 
 Then('score should be between 0 and 100', function () {
@@ -390,7 +396,7 @@ Then('risk score should be 0-100', function () {
 
 // Scenario: Calculate trend metrics over weeks
 Given('projects have activity over 12 weeks', function () {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 12; i++) {
     const scanDate = new Date()
     scanDate.setDate(scanDate.getDate() - i * 7) // Different weeks
     const stats = createStatisticsWithVulns(10, i * 2)
@@ -429,48 +435,15 @@ Then('each period should show scans completed', function () {
   })
 })
 
-// Scenario: Determine vulnerability trend is increasing
+// Scenario: Determine vulnerability trend is increasing / decreasing
+// (shared by both scenarios below — the {int} average is what drives the
+// increasing-vs-decreasing direction relative to the "previous" 4 weeks, so a
+// flat per-project count for the block is enough; no need for two near-duplicate step defs.)
 Given('recent 4 weeks average {int} vulnerabilities', function (avg: number) {
-  // Add projects from recent 4 weeks
   for (let i = 0; i < 4; i++) {
     const updateDate = new Date()
     updateDate.setDate(updateDate.getDate() - i * 7)
-    const stats = createStatisticsWithVulns(10, avg + i * 5) // Increasing
-    context.testProjects.push(
-      createTestProject(`Recent Project ${i}`, {
-        statistics: stats,
-        updatedAt: updateDate,
-      }),
-    )
-  }
-})
-
-Given('previous 4 weeks average {int} vulnerabilities', function (avg: number) {
-  // Add projects from previous 4 weeks
-  for (let i = 0; i < 4; i++) {
-    const updateDate = new Date()
-    updateDate.setDate(updateDate.getDate() - (28 + i * 7))
-    const stats = createStatisticsWithVulns(10, avg) // Steady
-    context.testProjects.push(
-      createTestProject(`Older Project ${i}`, {
-        statistics: stats,
-        updatedAt: updateDate,
-      }),
-    )
-  }
-})
-
-Then('vulnerability trend should be {string}', function (trend: string) {
-  expect(context.testTrendMetrics!.vulnerabilityTrend).to.equal(trend as any)
-})
-
-// Scenario: Determine vulnerability trend is decreasing
-Given('recent 4 weeks average {int} vulnerabilities', function (avg: number) {
-  // Add projects from recent 4 weeks with decreasing vulns
-  for (let i = 0; i < 4; i++) {
-    const updateDate = new Date()
-    updateDate.setDate(updateDate.getDate() - i * 7)
-    const stats = createStatisticsWithVulns(10, avg - i * 5) // Decreasing
+    const stats = createStatisticsWithVulns(10, avg)
     context.testProjects.push(
       createTestProject(`Recent Project ${i}`, {
         statistics: stats,
@@ -484,7 +457,7 @@ Given('previous 4 weeks average {int} vulnerabilities', function (avg: number) {
   for (let i = 0; i < 4; i++) {
     const updateDate = new Date()
     updateDate.setDate(updateDate.getDate() - (28 + i * 7))
-    const stats = createStatisticsWithVulns(10, avg) // Higher baseline
+    const stats = createStatisticsWithVulns(10, avg)
     context.testProjects.push(
       createTestProject(`Older Project ${i}`, {
         statistics: stats,
@@ -557,15 +530,16 @@ When('I calculate productivity metrics', function () {
 })
 
 Then('scan frequency should be {int} per week', function (frequency: number) {
-  expect(context.testProductivityMetrics!.scanFrequency).to.equal(frequency)
+  // ProductivityMetrics has no `scanFrequency` field (that's on TrendMetrics);
+  // `scansThisWeek` is the productivity-side count this scenario is really after.
+  expect(context.testProductivityMetrics!.scansThisWeek).to.equal(frequency)
 })
 
 // Scenario: Calculate compliance metrics
 Given('{int} critical vulnerabilities exist', function (count: number) {
-  const vulns = Array.from(
-    { length: count },
-    (_, i) => createTestVulnerability(`CVE-2024-${1000 + i}`, 'critical', 40), // 40 days old = SLA exceeded
-  )
+  // Fresh (5 days old) by default, i.e. within the 30-day critical SLA; the
+  // step below ages a subset of these past the SLA window.
+  const vulns = Array.from({ length: count }, (_, i) => createTestVulnerability(`CVE-2024-${1000 + i}`, 'critical', 5))
   const stats = createStatisticsWithVulns(10, count, count, 0, 0, 0)
   context.testProjects.push(
     createTestProject('Critical Project', {
@@ -575,8 +549,15 @@ Given('{int} critical vulnerabilities exist', function (count: number) {
   )
 })
 
-Given('{int} are older than 30 days (SLA exceeded)', function (count: number) {
-  // Vulns were already created 40 days ago in the previous step
+// Parens must be escaped: unescaped `(text)` in a Cucumber Expression means
+// "text" is optional, so it would never match the literal "(SLA exceeded)".
+Given('{int} are older than 30 days \\(SLA exceeded\\)', function (count: number) {
+  const lastProject = context.testProjects[context.testProjects.length - 1]
+  const oldDate = new Date()
+  oldDate.setDate(oldDate.getDate() - 40) // 40 days old = past the 30-day critical SLA
+  for (let i = 0; i < count && i < lastProject.vulnerabilities.length; i++) {
+    lastProject.vulnerabilities[i].publishedAt = oldDate
+  }
 })
 
 When('I calculate compliance metrics', function () {
@@ -592,19 +573,30 @@ Then('SLA critical compliance should be {int}%', function (percentage: number) {
   expect(context.testComplianceMetrics!.slaCompliance.slaCritical).to.be.closeTo(percentage, 1)
 })
 
-// Scenario: Calculate scan coverage
+// Scenario: Calculate scan coverage / data freshness
+// Both scanned-recently and refreshed-recently default to well outside their
+// respective windows (60 days back), so the projects NOT overridden by the
+// steps below are genuinely "not recently scanned/refreshed" rather than
+// trivially recent (createTestProject would otherwise default both to "now").
 Given('{int} projects exist', function (count: number) {
+  const sixtyDaysAgo = new Date()
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
   for (let i = 0; i < count; i++) {
-    context.testProjects.push(createTestProject(`Project ${i}`))
+    context.testProjects.push(
+      createTestProject(`Project ${i}`, { lastScanAt: sixtyDaysAgo, lastVulnDataRefresh: sixtyDaysAgo }),
+    )
   }
 })
 
 Given('{int} were scanned in the last 30 days', function (count: number) {
-  const thirtyDaysAgo = new Date()
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  // Spread within the last 5-12 days: comfortably inside the 30-day window,
+  // with margin so clock precision between this step and the metrics
+  // calculation can't push a boundary case outside the window.
+  const recentBase = new Date()
+  recentBase.setDate(recentBase.getDate() - 5)
 
   for (let i = 0; i < count; i++) {
-    context.testProjects[i].lastScanAt = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000)
+    context.testProjects[i].lastScanAt = new Date(recentBase.getTime() - i * 24 * 60 * 60 * 1000)
   }
 })
 
@@ -613,18 +605,14 @@ Then('scan coverage should be {int}%', function (percentage: number) {
 })
 
 // Scenario: Calculate data freshness
-Given('{int} projects exist', function (count: number) {
-  for (let i = 0; i < count; i++) {
-    context.testProjects.push(createTestProject(`Fresh Project ${i}`))
-  }
-})
-
+// (uses the shared "Given {int} projects exist" registered above)
 Given('{int} had data refreshed in last 7 days', function (count: number) {
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  // Spread across the last few hours: comfortably inside the 7-day window,
+  // with margin so clock precision can't push a boundary case outside it.
+  const recentBase = new Date()
 
   for (let i = 0; i < count; i++) {
-    context.testProjects[i].lastVulnDataRefresh = new Date(sevenDaysAgo.getTime() + i * 24 * 60 * 60 * 1000)
+    context.testProjects[i].lastVulnDataRefresh = new Date(recentBase.getTime() - i * 60 * 60 * 1000)
   }
 })
 
@@ -688,21 +676,10 @@ Then('components analyzed should be summed', function () {
 })
 
 // Scenario: Handle empty project list
+// (uses the shared "When I calculate overall metrics" / "Then total projects
+// should be {int}" registered at the top of this file)
 Given('no projects exist', function () {
   context.testProjects = []
-})
-
-When('I calculate overall metrics', function () {
-  try {
-    context.testOverallMetrics = calculateOverallMetrics(context.testProjects)
-    context.testError = null
-  } catch (error) {
-    context.testError = error as Error
-  }
-})
-
-Then('total projects should be {int}', function (count: number) {
-  expect(context.testOverallMetrics!.totalProjects).to.equal(count)
 })
 
 Then('all counts should be 0', function () {
