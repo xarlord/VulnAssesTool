@@ -376,11 +376,12 @@ vi.mock('@/lib/services/intelligence/enrichVulnerabilities', () => ({
   enrichVulnerabilities: vi.fn((vulns: unknown[]) => Promise.resolve(vulns)),
 }))
 
-// Spy on the audit logger's SCAN event while keeping every other export real, so the scan
-// flow emits a real, filterable SCAN event (FR-07.1) and we can assert it independently.
+// Spy on the audit logger's SCAN and SBOM-removal events while keeping every other export
+// real, so the scan flow emits a real, filterable SCAN event (FR-07.1) and handleRemoveSbom's
+// compliance audit trail entry (FR-02.3c) can be asserted independently.
 vi.mock('@/lib/audit', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/audit')>()
-  return { ...actual, logVulnerabilityScan: vi.fn() }
+  return { ...actual, logVulnerabilityScan: vi.fn(), logSbomRemove: vi.fn() }
 })
 
 // Mock the store
@@ -393,7 +394,7 @@ vi.mock('@/store/useStore', () => ({ useStore: () => mockUseStore() }))
 
 // Import mocked modules
 const { matchVulnerabilitiesForComponents } = await import('@/lib/api/vulnMatcher')
-const { logVulnerabilityScan } = await import('@/lib/audit')
+const { logVulnerabilityScan, logSbomRemove } = await import('@/lib/audit')
 const { refreshVulnerabilityData } = await import('@/lib/refresh')
 const { toast } = await import('@/components/Toaster')
 const { formatVulnerabilityId } = await import('@/lib/utils/vulnIdFormat')
@@ -980,6 +981,59 @@ describe('ProjectDetail', () => {
           }),
         }),
       )
+    })
+
+    // FR-02.3(c): handleRemoveSbom's component/vulnerability/statistics cascade is covered
+    // above (TC-SBOM-004 and its two neighbors); this test covers the one remaining
+    // uncascaded side effect — the compliance audit trail entry — which none of them assert.
+    // It fails if the removal handler stops recording (or mis-records) the audit event or the
+    // user-facing confirmation toast, even though the component/vuln cascade itself still works.
+    it('records a compliance audit event and confirmation toast when an SBOM is removed', async () => {
+      const user = userEvent.setup()
+      const projectWithSbom = createMockProject({
+        sbomFiles: [
+          {
+            id: 'sbom-1',
+            filename: 'bom.json',
+            format: 'cyclonedx',
+            uploadedAt: new Date(),
+            componentCount: 2,
+          },
+        ],
+        components: [
+          {
+            id: 'comp-1',
+            name: 'lodash',
+            version: '4.17.21',
+            type: 'library',
+            purl: 'pkg:npm/lodash@4.17.21',
+            licenses: ['MIT'],
+            vulnerabilities: [],
+            sbomFileId: 'sbom-1',
+          },
+          {
+            id: 'comp-2',
+            name: 'react',
+            version: '18.2.0',
+            type: 'framework',
+            purl: 'pkg:npm/react@18.2.0',
+            licenses: ['MIT'],
+            vulnerabilities: [],
+            sbomFileId: 'sbom-1',
+          },
+        ],
+        vulnerabilities: [],
+      })
+      renderProjectDetail(projectWithSbom)
+
+      await user.click(screen.getByText('Remove'))
+
+      // Audit trail: must name the exact project and file removed, not a generic entry.
+      expect(logSbomRemove).toHaveBeenCalledWith('test-project-id', 'Test Project', 'bom.json')
+
+      // User-facing confirmation must reflect the real removed-component count (2), not 0
+      // or a stale value — this is what would catch the toast being wired to the wrong data.
+      expect(toast.success).toHaveBeenCalledWith('SBOM Removed', expect.stringContaining('2'))
     })
   })
 
