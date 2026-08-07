@@ -75,11 +75,23 @@ const toastIcons = {
   warning: AlertTriangle,
 }
 
+// Tint + border mark the toast type; body text uses foreground (not the tinted
+// color) because e.g. text-blue-600/text-green-600 on their own bg-*/15 tint
+// dropped as low as 3.07:1 in dark mode, below WCAG AA 4.5:1 (NFR-04.5) — same
+// fix pattern as SettingsProfileCard.tsx. The icon keeps the tinted color
+// separately (iconStyles) since it's decorative, not body text axe evaluates.
 const toastStyles = {
-  success: 'bg-green-500/15 text-green-600 border-green-500/50',
-  error: 'bg-destructive/15 text-destructive border-destructive/50',
-  info: 'bg-blue-500/15 text-blue-600 border-blue-500/50',
-  warning: 'bg-yellow-500/15 text-yellow-600 border-yellow-500/50',
+  success: 'bg-green-500/15 text-foreground border-green-500/50',
+  error: 'bg-destructive/15 text-foreground border-destructive/50',
+  info: 'bg-blue-500/15 text-foreground border-blue-500/50',
+  warning: 'bg-yellow-500/15 text-foreground border-yellow-500/50',
+}
+
+const iconStyles = {
+  success: 'text-green-600',
+  error: 'text-destructive',
+  info: 'text-blue-600',
+  warning: 'text-yellow-600',
 }
 
 export function Toaster() {
@@ -106,7 +118,7 @@ export function Toaster() {
             role={isUrgent ? 'alert' : 'status'}
             className={`flex w-full max-w-md items-start gap-3 rounded-lg border p-4 shadow-lg animate-in slide-in-from-right-full ${toastStyles[toast.type]}`}
           >
-            <Icon className="h-5 w-5 shrink-0 mt-0.5" />
+            <Icon className={`h-5 w-5 shrink-0 mt-0.5 ${iconStyles[toast.type]}`} />
             <div className="flex-1 min-w-0">
               <div className="font-medium">{toast.title}</div>
               {toast.message && <div className="mt-1 text-sm opacity-90">{toast.message}</div>}

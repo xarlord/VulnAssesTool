@@ -115,6 +115,7 @@ const defaultSettings: AppSettings = {
   dataRetentionDays: 30,
   autoRefresh: false,
   autoRefreshInterval: 24,
+  pauseOnBattery: true,
   vulnDataCacheTTL: 1,
   vulnProviders: {
     nvd: { enabled: true, priority: 1, rateLimit: { requestsPerHour: 50 } },
@@ -234,6 +235,27 @@ describe('Settings', () => {
       </MemoryRouter>,
     )
   }
+
+  describe('Auto-refresh interval (FR-03.6)', () => {
+    it('updates autoRefreshInterval when a new interval is chosen', () => {
+      // WHY: the interval selector is the user-facing control that makes the (previously dead)
+      // autoRefreshInterval setting actually drive the scheduler — it must persist the choice.
+      mockSettings.autoRefresh = true
+      renderSettings()
+
+      fireEvent.change(screen.getByLabelText('Refresh interval'), { target: { value: '168' } })
+
+      expect(mockUpdateSettings).toHaveBeenCalledWith({ autoRefreshInterval: 168 })
+    })
+
+    it('disables the interval selector while auto-refresh is off', () => {
+      // Default mockSettings has autoRefresh:false — the selector renders but must be inert so a
+      // user can't pick an interval that would never fire.
+      renderSettings()
+
+      expect(screen.getByLabelText('Refresh interval')).toBeDisabled()
+    })
+  })
 
   describe('Rendering', () => {
     it('should render Settings header', () => {

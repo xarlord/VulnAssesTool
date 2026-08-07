@@ -106,10 +106,15 @@ export const useStore = create<AppState>()(
         const currentActiveProfile = profiles.find((p) => p.id === currentActiveId)
         const activeProfile = currentActiveProfile || profiles.find((p) => p.isDefault) || profiles[0]
 
+        // Populate the profile list + active id only — do NOT overwrite live `settings`. Those are
+        // persisted (zustand persist) and hold the user's most recent choices, including ad-hoc
+        // edits (theme, autoRefresh, interval, …) not saved into any profile. This action runs on
+        // every Settings-page mount (ProfilesSection), so clobbering settings here silently
+        // reverted those edits on reload. Applying a profile's settings is the explicit job of
+        // switchSettingsProfile(); load must not do it implicitly.
         set({
           settingsProfiles: profiles,
           activeProfileId: activeProfile?.id || '',
-          settings: activeProfile?.settings || DEFAULT_SETTINGS,
         })
       },
       createSettingsProfile: (name, description, settings) => {

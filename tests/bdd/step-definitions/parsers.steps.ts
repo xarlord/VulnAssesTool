@@ -17,6 +17,9 @@ import { parseCycloneDX, validateCycloneDX, getCycloneDXVersion } from '../../..
 interface TestContext {
   testFileContent: string
   testFilename: string
+  // Which parser the shared "When I parse the file" / "When I validate the
+  // file" steps should dispatch to for the current scenario.
+  testFormat: 'spdx' | 'cyclonedx' | ''
   parseResult: {
     components: Component[]
     vulnerabilities: Vulnerability[]
@@ -28,15 +31,18 @@ interface TestContext {
   } | null
   testError: Error | null
   testComponents: Component[]
+  testBoolResult: boolean | null
 }
 
 // Global test context
 const context: TestContext = {
   testFileContent: '',
   testFilename: '',
+  testFormat: '',
   parseResult: null,
   testError: null,
   testComponents: [],
+  testBoolResult: null,
 }
 
 // ============================================================================
@@ -47,9 +53,11 @@ Before({ tags: '@parser' }, async function () {
   // Reset context
   context.testFileContent = ''
   context.testFilename = ''
+  context.testFormat = ''
   context.parseResult = null
   context.testError = null
   context.testComponents = []
+  context.testBoolResult = null
 })
 
 After({ tags: '@parser' }, async function () {
@@ -114,7 +122,8 @@ function createValidCycloneDXJson(componentCount: number = 1): string {
       licenses: [{ expression: 'Apache-2.0' }],
       purl: `pkg:npm/component-${i}@1.0.0`,
       cpe: i === 0 ? 'cpe:2.3:a:nginx:nginx:1.18.0:*:*:*:*:*:*:*' : undefined,
-      hash:
+      // CycloneDX field is `hashes` (plural) — the parser reads comp.hashes[0].content.
+      hashes:
         i === 0
           ? [
               {
@@ -165,12 +174,18 @@ function createValidCycloneDXJson(componentCount: number = 1): string {
 // Scenario: Parse valid SPDX JSON file
 Given('a valid SPDX JSON file {string}', function (filename: string) {
   context.testFilename = filename
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
+// Shared by both the SPDX and CycloneDX feature files: which parser to invoke
+// is decided by context.testFormat, set by the scenario's "Given" step.
 When('I parse the file', async function () {
   try {
-    context.parseResult = await parseSpdx(context.testFileContent, context.testFilename)
+    context.parseResult =
+      context.testFormat === 'cyclonedx'
+        ? await parseCycloneDX(context.testFileContent, context.testFilename)
+        : await parseSpdx(context.testFileContent, context.testFilename)
     context.testError = null
   } catch (error) {
     context.testError = error as Error
@@ -195,6 +210,7 @@ Then('format version should be detected', function () {
 // Scenario: Parse SPDX with multiple packages
 Given('an SPDX file with {int} packages', function (count: number) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(count)
 })
 
@@ -209,6 +225,7 @@ Then('component count should be {int}', function (count: number) {
 // Scenario: Parse SPDX with component versions
 Given('an SPDX package with version {string}', function (version: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
@@ -218,9 +235,15 @@ Then('component version should be {string}', function (version: string) {
 })
 
 // Scenario: Parse SPDX with licenses
+// Builds a 3-package doc so this single Given covers both the plain-license
+// scenario (reads components[0], "Apache-2.0") and the license-expression
+// scenario below (reads components[1], "MIT OR Apache-2.0") without
+// registering the same step pattern twice.
 Given('an SPDX package with license {string}', function (license: string) {
+  void license // captured for Gherkin readability only; the fixture below covers both cases
   context.testFilename = 'bom.spdx.json'
-  context.testFileContent = createValidSpdxJson(1)
+  context.testFormat = 'spdx'
+  context.testFileContent = createValidSpdxJson(3)
 })
 
 Then('component licenses should include {string}', function (license: string) {
@@ -229,12 +252,8 @@ Then('component licenses should include {string}', function (license: string) {
 })
 
 // Scenario: Parse SPDX with license expression
-Given('an SPDX package with license {string}', function (licenseExpression: string) {
-  context.testFilename = 'bom.spdx.json'
-  // Create SPDX with MIT OR Apache-2.0 (package index 1)
-  const json = JSON.parse(createValidSpdxJson(3))
-  context.testFileContent = JSON.stringify(json)
-})
+// (uses the shared "Given an SPDX package with license {string}" registered
+// above, which already builds the 3-package doc this scenario needs)
 
 Then('both {string} and {string} should be extracted', function (lic1: string, lic2: string) {
   const component = context.parseResult!.components[1] // Index 1 has MIT OR Apache-2.0
@@ -245,6 +264,7 @@ Then('both {string} and {string} should be extracted', function (lic1: string, l
 // Scenario: Parse SPDX with purl reference
 Given('an SPDX package with purl {string}', function (purl: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
@@ -256,6 +276,7 @@ Then('component purl should be {string}', function (purl: string) {
 // Scenario: Parse SPDX with CPE reference
 Given('an SPDX package with CPE {string}', function (cpe: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   // Create SPDX with CPE (package index 2)
   const json = JSON.parse(createValidSpdxJson(3))
   context.testFileContent = JSON.stringify(json)
@@ -270,6 +291,7 @@ Then('component CPE should be set', function () {
 // Scenario: Parse SPDX with package description
 Given('an SPDX package with description {string}', function (description: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
@@ -281,6 +303,7 @@ Then('component description should be {string}', function (description: string) 
 // Scenario: Determine component type from download location
 Given('an SPDX package with download location {string}', function (location: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
@@ -292,6 +315,7 @@ Then('component type should be {string}', function (type: string) {
 // Scenario: Determine container type
 Given('an SPDX package with download location containing {string}', function (keyword: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   // Create a custom SPDX with docker in download location
   const json = JSON.parse(createValidSpdxJson(1))
   json.packages[0].downloadLocation = 'https://registry-1.docker.io/library/nginx:latest'
@@ -299,19 +323,35 @@ Given('an SPDX package with download location containing {string}', function (ke
   context.testFileContent = JSON.stringify(json)
 })
 
-Then('component type should be {string}', function (type: string) {
-  const component = context.parseResult!.components[0]
-  expect(component.type).to.equal(type)
-})
+// (uses the shared "Then component type should be {string}" registered above)
 
 // Scenario: Generate unique component ID
 Given('package name {string} and version {string}', function (name: string, version: string) {
   context.testFilename = 'bom.spdx.json'
-  context.testFileContent = createValidSpdxJson(1)
+  context.testFormat = 'spdx'
+  // Minimal doc with the exact name/version under test, rather than the
+  // generic helper's fixed values, since the ID is derived from these.
+  context.testFileContent = JSON.stringify({
+    spdxVersion: 'SPDX-2.3',
+    dataLicense: 'CC0-1.0',
+    SPDXID: 'SPDXRef-DOCUMENT',
+    name: 'Test SBOM',
+    documentNamespace: 'https://example.com/test',
+    packages: [
+      {
+        SPDXID: 'SPDXRef-Package-0',
+        name,
+        versionInfo: version,
+        downloadLocation: 'NOASSERTION',
+        filesAnalyzed: false,
+      },
+    ],
+  })
 })
 
-When('generating component ID', function () {
-  // ID is generated during parsing
+When('generating component ID', async function () {
+  // The ID is derived during parsing, so parse the doc built above.
+  context.parseResult = await parseSpdx(context.testFileContent, context.testFilename)
 })
 
 Then('ID should be {string}', function (expectedId: string) {
@@ -322,6 +362,7 @@ Then('ID should be {string}', function (expectedId: string) {
 // Scenario: Handle invalid JSON in SPDX file
 Given('an SPDX file with invalid JSON', function () {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = '{ invalid json content'
 })
 
@@ -345,12 +386,17 @@ Then('error should indicate invalid JSON', function () {
 // Scenario: Validate SPDX file format
 Given('a valid SPDX JSON file', function () {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
+// Shared by both the SPDX and CycloneDX feature files; see "I parse the file" above.
 When('I validate the file', async function () {
   try {
-    const isValid = await validateSpdx(context.testFileContent, context.testFilename)
+    const isValid =
+      context.testFormat === 'cyclonedx'
+        ? await validateCycloneDX(context.testFileContent, context.testFilename)
+        : await validateSpdx(context.testFileContent, context.testFilename)
     context.testError = null
     context.parseResult = isValid ? context.parseResult : null
   } catch (error) {
@@ -365,26 +411,27 @@ Then('validation should succeed', function () {
 // Scenario: Detect SPDX file type
 Given('a file with dataLicense {string}', function (dataLicense: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
 When("I check if it's an SPDX file", function () {
   try {
-    const isSpdx = isSpdxFile(context.testFileContent, context.testFilename)
+    context.testBoolResult = isSpdxFile(context.testFileContent, context.testFilename)
     context.testError = null
-    context.parseResult = isSpdx ? context.parseResult : null
   } catch (error) {
     context.testError = error as Error
   }
 })
 
 Then('result should be true', function () {
-  expect(context.parseResult).to.not.be.null
+  expect(context.testBoolResult).to.equal(true)
 })
 
 // Scenario: Get SPDX version from file
 Given('an SPDX file with spdxVersion {string}', function (spdxVersion: string) {
   context.testFilename = 'bom.spdx.json'
+  context.testFormat = 'spdx'
   context.testFileContent = createValidSpdxJson(1)
 })
 
@@ -411,21 +458,18 @@ Then('version should be {string}', function (expectedVersion: string) {
 // Scenario: Parse valid CycloneDX JSON file
 Given('a valid CycloneDX JSON file {string}', function (filename: string) {
   context.testFilename = filename
+  context.testFormat = 'cyclonedx'
   context.testFileContent = createValidCycloneDXJson(1)
 })
 
-Then('components should be extracted', function () {
-  expect(context.parseResult!.components).to.be.an('array')
-  expect(context.parseResult!.components.length).to.be.greaterThan(0)
-})
-
-Then('format should be {string}', function (format: string) {
-  expect(context.parseResult!.metadata.format).to.equal(format)
-})
+// (uses the shared "Then components should be extracted" / "Then format
+// should be {string}" defined above in the SPDX section — the assertions are
+// format-agnostic, they just read context.parseResult)
 
 // Scenario: Parse CycloneDX with nested components
 Given('a CycloneDX file with component dependencies', function () {
   context.testFilename = 'bom.json'
+  context.testFormat = 'cyclonedx'
   // Create CycloneDX with nested components
   const json = JSON.parse(createValidCycloneDXJson(1))
   json.components[0].components = [
@@ -452,6 +496,7 @@ Then('dependencies should be tracked', function () {
 // Scenario: Parse CycloneDX with vulnerability data
 Given('a CycloneDX file with vulnerability information', function () {
   context.testFilename = 'bom.json'
+  context.testFormat = 'cyclonedx'
   context.testFileContent = createValidCycloneDXJson(1)
 })
 
@@ -469,6 +514,7 @@ Then('component-vulnerability links should be established', function () {
 // Scenario: Extract component hashes from CycloneDX
 Given('a CycloneDX component with SHA-256 hash', function () {
   context.testFilename = 'bom.json'
+  context.testFormat = 'cyclonedx'
   context.testFileContent = createValidCycloneDXJson(1)
 })
 
@@ -481,18 +527,11 @@ Then('component hash should be extracted', function () {
 // Additional helper scenario for validating CycloneDX
 Given('a valid CycloneDX JSON file', function () {
   context.testFilename = 'bom.json'
+  context.testFormat = 'cyclonedx'
   context.testFileContent = createValidCycloneDXJson(1)
 })
 
-When('I validate the file', async function () {
-  try {
-    const isValid = await validateCycloneDX(context.testFileContent, context.testFilename)
-    context.testError = null
-    context.parseResult = isValid ? context.parseResult : null
-  } catch (error) {
-    context.testError = error as Error
-  }
-})
+// (uses the shared "When I validate the file" dispatcher registered above)
 
 Then('CycloneDX validation should succeed', function () {
   expect(context.testError).to.be.null
@@ -501,6 +540,7 @@ Then('CycloneDX validation should succeed', function () {
 // Scenario: Get CycloneDX version
 Given('a CycloneDX file with specVersion {string}', function (version: string) {
   context.testFilename = 'bom.json'
+  context.testFormat = 'cyclonedx'
   context.testFileContent = createValidCycloneDXJson(1)
 })
 

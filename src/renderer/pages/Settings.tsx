@@ -27,7 +27,7 @@ import {
   Save,
   History,
 } from 'lucide-react'
-// AUTO_REFRESH_INTERVAL_OPTIONS and CACHE_TTL_OPTIONS removed - unused
+// CACHE_TTL_OPTIONS removed - unused
 import {
   SYNC_SCHEDULE_OPTIONS,
   SEARCH_RESULT_LIMIT_OPTIONS,
@@ -35,6 +35,7 @@ import {
   DATABASE_SIZE_OPTIONS,
   PRUNE_YEAR_OPTIONS,
   DEFAULT_DATABASE_SETTINGS,
+  AUTO_REFRESH_INTERVAL_OPTIONS,
 } from '@@/constants'
 import type { SyncSchedule, DatabaseStorageSettings, DatabasePerformanceSettings } from '@@/types'
 import { PageHeader } from '@/components/PageHeader'
@@ -869,31 +870,79 @@ export function Settings() {
                 </div>
 
                 {/* Auto Refresh */}
-                <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-4">
-                  <div className="flex items-center gap-3">
-                    <RotateCw className="h-5 w-5 text-muted-foreground" />
+                <div className="space-y-3 rounded-lg border border-border bg-muted p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <RotateCw className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium">Auto-refresh Vulnerability Data</div>
+                        <p className="text-sm text-muted-foreground">
+                          Automatically refresh vulnerability data on a schedule while the app is open
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => updateSettings({ autoRefresh: !settings.autoRefresh })}
+                      role="switch"
+                      aria-checked={settings.autoRefresh}
+                      aria-label="Toggle auto-refresh vulnerability data"
+                      className={`relative h-6 w-11 rounded-full transition-colors ${
+                        settings.autoRefresh ? 'bg-primary' : 'bg-muted-foreground'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                          settings.autoRefresh ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Refresh interval — disabled (not hidden) while auto-refresh is off (FR-03.6). */}
+                  <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+                    <label htmlFor="auto-refresh-interval" className="text-sm font-medium">
+                      Refresh interval
+                    </label>
+                    <select
+                      id="auto-refresh-interval"
+                      value={settings.autoRefreshInterval}
+                      disabled={!settings.autoRefresh}
+                      onChange={(e) => updateSettings({ autoRefreshInterval: Number(e.target.value) })}
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {AUTO_REFRESH_INTERVAL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Pause on battery guard (FR-03.6). */}
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="font-medium">Auto-refresh Vulnerability Data</div>
-                      <p className="text-sm text-muted-foreground">
-                        Automatically refresh vulnerability data when viewing projects
+                      <div className="text-sm font-medium">Pause on battery</div>
+                      <p className="text-xs text-muted-foreground">
+                        Skip scheduled refreshes while the device is running on battery power
                       </p>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => updateSettings({ autoRefresh: !settings.autoRefresh })}
-                    role="switch"
-                    aria-checked={settings.autoRefresh}
-                    aria-label="Toggle auto-refresh vulnerability data"
-                    className={`relative h-6 w-11 rounded-full transition-colors ${
-                      settings.autoRefresh ? 'bg-primary' : 'bg-muted-foreground'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
-                        settings.autoRefresh ? 'translate-x-6' : 'translate-x-1'
+                    <button
+                      onClick={() => updateSettings({ pauseOnBattery: !settings.pauseOnBattery })}
+                      role="switch"
+                      aria-checked={settings.pauseOnBattery}
+                      aria-label="Toggle pause auto-refresh on battery"
+                      disabled={!settings.autoRefresh}
+                      className={`relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        settings.pauseOnBattery ? 'bg-primary' : 'bg-muted-foreground'
                       }`}
-                    />
-                  </button>
+                    >
+                      <span
+                        className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                          settings.pauseOnBattery ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

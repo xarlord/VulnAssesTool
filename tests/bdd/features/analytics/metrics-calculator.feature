@@ -1,3 +1,4 @@
+@analytics
 Feature: Executive Metrics Calculator
   As an executive
   I want aggregated metrics across all projects

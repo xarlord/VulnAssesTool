@@ -49,6 +49,7 @@ export const DEFAULT_SETTINGS = {
   dataRetentionDays: 30,
   autoRefresh: false,
   autoRefreshInterval: 24 as const, // hours
+  pauseOnBattery: true, // conservative default: don't drain a battery with background refreshes
   vulnDataCacheTTL: 1 as const, // hours
   // New provider settings with defaults
   vulnProviders: {

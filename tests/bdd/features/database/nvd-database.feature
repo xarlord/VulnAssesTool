@@ -1,3 +1,4 @@
+@wip
 Feature: NVD Database Operations
   As a vulnerability assessor
   I want to store and query CVE data locally

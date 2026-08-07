@@ -1,3 +1,4 @@
+@audit
 Feature: Audit Logging
   As a compliance officer
   I want all state changes to be logged with full context

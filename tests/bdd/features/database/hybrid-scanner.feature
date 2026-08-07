@@ -1,3 +1,4 @@
+@wip
 Feature: Hybrid Vulnerability Scanner
   As a vulnerability assessor
   I want to scan components using local database first with API fallback

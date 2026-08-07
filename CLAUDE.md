@@ -87,7 +87,7 @@ Run after every change:
 
 ## Active Remediation Plan
 
-See `coding-guide-fixed.md` for full details. Current status:
+See `docs/archive/coding-guide-fixed.md` for full details (this remediation is complete — the guide is archived as a historical record). Current status:
 
 | PR   | Status | Description                                                           |
 | ---- | ------ | --------------------------------------------------------------------- |

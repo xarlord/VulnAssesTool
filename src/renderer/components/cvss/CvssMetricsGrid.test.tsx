@@ -183,4 +183,40 @@ describe('CvssMetricsGrid', () => {
     expect(container.querySelectorAll('.text-red-600').length).toBe(0)
     expect(container.querySelectorAll('.text-green-600').length).toBeGreaterThan(0)
   })
+
+  describe('temporal metrics (FR-04.3)', () => {
+    it('renders the Temporal Metrics block with each present metric when expanded', () => {
+      const breakdown = createMockBreakdown({
+        temporalMetrics: {
+          exploitCodeMaturity: 'Functional',
+          remediationLevel: 'Official Fix',
+          reportConfidence: 'Confirmed',
+        },
+      })
+      render(<CvssMetricsGrid breakdown={breakdown} expanded={true} />)
+
+      expect(screen.getByText('Temporal Metrics')).toBeInTheDocument()
+      expect(screen.getByText('Exploit Code Maturity')).toBeInTheDocument()
+      expect(screen.getByText('Functional')).toBeInTheDocument()
+      expect(screen.getByText('Remediation Level')).toBeInTheDocument()
+      expect(screen.getByText('Official Fix')).toBeInTheDocument()
+      expect(screen.getByText('Report Confidence')).toBeInTheDocument()
+      expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    })
+
+    it('renders no Temporal Metrics block for a base-only breakdown', () => {
+      // WHY: the block is keyed off breakdown.temporalMetrics; without this guard a base-only
+      // vector would show an empty "Temporal Metrics" heading.
+      const breakdown = createMockBreakdown()
+      render(<CvssMetricsGrid breakdown={breakdown} expanded={true} />)
+      expect(screen.queryByText('Temporal Metrics')).not.toBeInTheDocument()
+    })
+
+    it('does not render temporal metrics while collapsed', () => {
+      const breakdown = createMockBreakdown({ temporalMetrics: { remediationLevel: 'Workaround' } })
+      render(<CvssMetricsGrid breakdown={breakdown} expanded={false} />)
+      expect(screen.queryByText('Temporal Metrics')).not.toBeInTheDocument()
+      expect(screen.queryByText('Workaround')).not.toBeInTheDocument()
+    })
+  })
 })

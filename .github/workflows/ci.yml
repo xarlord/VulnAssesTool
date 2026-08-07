@@ -52,6 +52,9 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
+      - name: Run BDD tests
+        run: npm run test:bdd
+
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == 20
         uses: codecov/codecov-action@v4

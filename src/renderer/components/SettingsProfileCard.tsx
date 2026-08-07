@@ -53,7 +53,9 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
       {/* Default Badge */}
       {profile.isDefault && (
         <div className="mb-2">
-          <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+          {/* Tint marks the badge; text uses foreground (not text-primary) — text-primary on
+              bg-primary/10 is only 3.01:1 in dark mode, below WCAG AA 4.5:1 (NFR-04.5). */}
+          <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-foreground">
             Default
           </span>
         </div>
@@ -97,7 +99,7 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
             Switch to Profile
           </button>
         ) : (
-          <div className="flex-1 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary text-center">
+          <div className="flex-1 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-foreground text-center">
             Active Profile
           </div>
         )}

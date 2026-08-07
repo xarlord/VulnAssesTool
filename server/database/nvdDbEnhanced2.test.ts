@@ -1655,3 +1655,125 @@ describe('searchCVEsByText with FTS5', () => {
     expect(instance.searchCVEsByText('---')).toEqual([])
   })
 })
+
+// ===========================================================================
+// NFR-02.5 — Scalability (Database Size 10GB+): index usage at scale
+//
+// Literally provisioning a 10GB+ database in the automated suite is impractical.
+// The credible proxy: an indexed query's latency is size-invariant, so proving
+// searchCVEsByCPE/searchCVEsByProduct resolve their CVE rows via an index — never
+// a full SCAN of the (potentially 10GB+) `cves` table — is what actually guards
+// them from becoming unusably slow at that scale.
+//
+// Scope note (verified, not assumed): searchCVEsByCPE's `cpe_matches` side does a
+// substring `LIKE '%text%'` scan by design (a leading-wildcard pattern can never
+// use an index) — that is a `cpe_matches` scan, not a `cves` scan, and is the
+// known, accepted tradeoff for free-text CPE substring search. What every one of
+// these queries must NEVER do, at any scale, is fall back to a full scan of
+// `cves` itself to resolve the matched rows — that table is the one whose size
+// actually tracks the PRD's 10GB+/1M+-row figures. Both queries below join back
+// to `cves` on its primary key, so this asserts that join stays index-backed.
+//
+// Rather than hand-copying nvdDb.ts's SQL into this file (which would drift
+// silently if the real query changed), these tests spy on the raw db's `prepare`/
+// `Statement.all` to capture the ACTUAL SQL text and bound parameters the
+// production methods send to better-sqlite3, then re-run each captured query
+// under EXPLAIN QUERY PLAN. A future change that starts resolving `cves` rows by
+// a full scan (e.g. losing the primary-key join, or a rewrite that scans `cves`
+// directly) fails this test even though it never touches this file.
+// ===========================================================================
+describe('NFR-02.5 — index usage at scale (searchCVEsByCPE / searchCVEsByProduct)', () => {
+  let instance: NvdDatabase
+  let rawDb: InstanceType<typeof Database>
+
+  type PrepareFn = (sql: string) => { all: (...params: unknown[]) => unknown[] }
+
+  /** Records every SQL statement + bound args issued via `db.prepare(...).all(...)`. */
+  function captureQueries(db: InstanceType<typeof Database>): Array<{ sql: string; args: unknown[] }> {
+    const calls: Array<{ sql: string; args: unknown[] }> = []
+    const capturable = db as unknown as { prepare: PrepareFn }
+    const originalPrepare = capturable.prepare.bind(capturable)
+    vi.spyOn(capturable, 'prepare').mockImplementation((sql: string) => {
+      const stmt = originalPrepare(sql)
+      return {
+        all: (...args: unknown[]) => {
+          calls.push({ sql, args })
+          return stmt.all(...args)
+        },
+      }
+    })
+    return calls
+  }
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    rawDb = asAccess(instance).db as InstanceType<typeof Database>
+
+    // createSchemaDb() above only carries the base v1 schema. Add the two
+    // production indexes these methods actually rely on: idx_cpe_matches_cpe23_uri
+    // (nvdDb.ts runMigrations, migration 1) and the cpe_product covering index
+    // (v2SchemaMigration.ts migration_13_cpe_product_index) — done here, not in
+    // the shared helper, so the ~200 other tests using it are untouched.
+    rawDb.exec('CREATE INDEX IF NOT EXISTS idx_cpe_matches_cpe23_uri ON cpe_matches(cpe23_uri)')
+    rawDb.exec('ALTER TABLE cpe_matches ADD COLUMN cpe_product TEXT')
+    rawDb.exec('CREATE INDEX IF NOT EXISTS idx_cpe_product_lookup ON cpe_matches(cpe_product, vulnerable, cpe23_uri)')
+
+    rawDb
+      .prepare(
+        `INSERT INTO cves (id, description, cvss_score, severity, published_at, modified_at, source)
+         VALUES ('CVE-2024-1111', 'fixture', 7.0, 'HIGH', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', 'NVD')`,
+      )
+      .run()
+    rawDb
+      .prepare(
+        `INSERT INTO cpe_matches (cve_id, cpe23_uri, cpe_product, vulnerable, version_start_including, version_end_excluding)
+         VALUES ('CVE-2024-1111', 'cpe:2.3:a:vendor:widgetproduct:*:*:*:*:*:*:*:*', 'widgetproduct', 1, '1.0', '2.0')`,
+      )
+      .run()
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('searchCVEsByCPE resolves matched CVE rows via the cves primary-key index, never a full scan of cves', () => {
+    const calls = captureQueries(rawDb)
+
+    instance.searchCVEsByCPE('cpe:2.3:a:vendor:widgetproduct')
+
+    // The literal substring path runs unconditionally on every call.
+    const literalCall = calls.find((c) => c.sql.includes('cp.cpe23_uri LIKE') && c.sql.includes('LIMIT ?'))
+    expect(literalCall).toBeDefined()
+    if (!literalCall) throw new Error('literal CPE-match query was not issued')
+
+    const plan = rawDb.prepare('EXPLAIN QUERY PLAN ' + literalCall.sql).all(...literalCall.args) as Array<{
+      detail: string
+    }>
+    const details = plan.map((r) => r.detail)
+
+    // cves (alias `c`) must be reached by SEARCH-ing its primary key, not scanned —
+    // this is the join step whose cost would grow with a 10GB+/1M+-row cves table
+    // if the index were ever dropped or the join rewritten.
+    expect(details.some((d) => /SEARCH c USING INDEX/i.test(d))).toBe(true)
+    expect(details.some((d) => /SCAN TABLE cves|SCAN c\b/i.test(d))).toBe(false)
+  })
+
+  it('searchCVEsByProduct reaches cpe_matches via the cpe_product covering index, never a full scan', () => {
+    const calls = captureQueries(rawDb)
+
+    instance.searchCVEsByProduct('widgetproduct')
+
+    const productCall = calls.find((c) => c.sql.includes('cp.cpe_product = ?'))
+    expect(productCall).toBeDefined()
+    if (!productCall) throw new Error('exact cpe_product query was not issued')
+
+    const plan = rawDb.prepare('EXPLAIN QUERY PLAN ' + productCall.sql).all(...productCall.args) as Array<{
+      detail: string
+    }>
+    const details = plan.map((r) => r.detail)
+
+    expect(details.some((d) => /USING INDEX idx_cpe_product_lookup/i.test(d))).toBe(true)
+    expect(details.some((d) => /\bSCAN\b/i.test(d))).toBe(false)
+  })
+})

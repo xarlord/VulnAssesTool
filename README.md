@@ -151,11 +151,11 @@ Visual test captures and UI review screenshots are available in `docs/ui-reviews
 - SQL injection prevention on all database queries
 - File size limits enforced (50MB max)
 - Content-type validation for uploads
-- IPC request validation and rate limiting
+- API request validation and rate limiting
 
-#### IPC Rate Limiting
+#### API Rate Limiting
 
-- Per-channel request limits prevent abuse
+- Per-route request limits prevent abuse
 - Priority queuing for critical operations
 - Sliding window time-based tracking
 - Configurable thresholds for different operations
@@ -609,7 +609,7 @@ vuln-assess-tool/
 - CycloneDX XML parsing support (in addition to JSON)
 - ISO 21434 PDF report generation (jsPDF)
 - Audit log export (CSV, JSON, PDF)
-- PDF report generation via Electron printToPDF
+- Executive & CVSS report PDF export (jsPDF)
 - About dialog update checker (GitHub Releases API)
 - Executive Dashboard real data refresh
 - Auto-updater interval scheduling
@@ -653,8 +653,8 @@ For issues, questions, or suggestions, please open an issue on GitHub repository
 ---
 
 **Version:** 2.0.0
-**Last Updated:** March 2026
+**Last Updated:** 2026-08-07
 **Status:** Production Ready
 **Accessibility Score:** 92/100 _(Lighthouse audit, March 2026)_
-**Test Coverage:** 95%+
+**Test Coverage:** ~85% _(CI floors: 84% stmts / 75% branch / 87% funcs / 85% lines)_
 **Bundle Size:** ~570KB (gzip) _(as of March 2026)_

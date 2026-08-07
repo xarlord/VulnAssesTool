@@ -1,5 +1,5 @@
 import { Given, When, Then } from '@cucumber/cucumber'
-import { expect } from '@vitest/expect'
+import { expect } from 'vitest'
 import { CustomWorld } from '../support/world'
 
 // Example steps demonstrating the setup

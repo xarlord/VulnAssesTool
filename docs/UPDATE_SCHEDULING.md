@@ -2,24 +2,28 @@
 
 ## Overview
 
-VulnAssessTool supports automatic updates for both the NVD vulnerability database and the application itself. This guide covers configuring and managing update schedules.
+VulnAssessTool supports automatic sync scheduling for the NVD vulnerability database. This
+guide covers configuring and managing that schedule.
+
+> **Note:** VulnAssessTool was migrated from an Electron desktop app to an Express server +
+> browser web app. The Electron-era application auto-updater (installer downloads, release
+> channels, in-app "Check for Updates") described in earlier revisions of this guide no longer
+> exists — the server is deployed/updated like any other Node service (e.g. `git pull` +
+> `npm run build:all` + restart, or a container image rebuild). This guide now covers only the
+> live feature: NVD database refresh scheduling.
 
 ---
 
 ## Table of Contents
 
-1. [Update Types](#update-types)
-2. [NVD Database Updates](#nvd-database-updates)
-3. [Application Updates](#application-updates)
-4. [Scheduling Configuration](#scheduling-configuration)
-5. [Update Behavior](#update-behavior)
-6. [Troubleshooting](#troubleshooting)
+1. [NVD Database Updates](#nvd-database-updates)
+2. [Scheduling Configuration](#scheduling-configuration)
+3. [Update Behavior](#update-behavior)
+4. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Update Types
-
-VulnAssestTool has two types of updates:
 
 ### NVD Database Updates
 
@@ -28,14 +32,6 @@ VulnAssestTool has two types of updates:
 - **Size:** Incremental (2-5 MB per day)
 - **Impact:** Enables vulnerability scanning
 - **Requirement:** Essential for application functionality
-
-### Application Updates
-
-- **What:** VulnAssessTool software itself
-- **Frequency:** As needed (releases)
-- **Size:** Variable (50-200 MB)
-- **Impact:** New features, bug fixes
-- **Requirement:** Optional but recommended
 
 ---
 
@@ -70,29 +66,23 @@ The National Vulnerability Database (NVD) is updated daily by NIST. Each update 
 
 #### Automatic Updates
 
-1. Go to **Settings** → **Update Schedule**
-2. Enable **"Auto-update NVD database"**
-3. Select frequency:
-   - **Daily:** Updates at 2:00 AM local time
-   - **Weekly:** Updates every Sunday at 2:00 AM
-   - **Monthly:** Updates on the 1st of each month at 2:00 AM
-4. Click **Save**
+1. Go to **Settings** → **Database Management**
+2. Select the **Sync Schedule**:
+   - **Daily:** Syncs roughly every 24 hours since the last successful sync
+   - **Weekly:** Syncs roughly every 7 days since the last successful sync
+   - **Monthly:** Syncs roughly every 30 days since the last successful sync
+   - **Manual:** Never syncs automatically — trigger sync yourself
+3. The schedule is saved immediately
+
+The scheduler runs a rolling interval from the last completed sync (not a fixed clock time),
+so exact sync times will drift slightly rather than always firing at the same time of day.
 
 #### Manual Updates
 
-1. Check the database status indicator on the dashboard
-2. If stale (orange/red icon), click **"Refresh"**
-3. Update runs immediately
-4. Progress is shown in the status bar
-
-#### Update on Startup
-
-To update every time the application starts:
-
-1. Go to **Settings** → **Update Schedule**
-2. Enable **"Update on startup"**
-3. Updates run when VulnAssessTool launches
-4. Can be combined with scheduled updates
+1. Check the database status indicator on the dashboard, or the stats on the **Settings** >
+   **Database Management** page
+2. If stale, click **"Sync Now"**
+3. Update runs immediately; progress is shown inline
 
 ### Update Process
 
@@ -117,7 +107,6 @@ To update every time the application starts:
    - Commit transaction
    - Update metadata timestamp
    - Show notification
-   - Log event to audit log
 
 #### Update Duration
 
@@ -165,159 +154,50 @@ When database is outdated:
 
 ---
 
-## Application Updates
+## Application Updates (removed)
 
-### Release Channels
-
-VulnAssessTool uses the following release channels:
-
-| Channel    | Stability | Updates              | Use Case            |
-| ---------- | --------- | -------------------- | ------------------- |
-| **Stable** | High      | Tested releases      | Production use      |
-| **Beta**   | Medium    | Pre-release features | Early adopters      |
-| **Dev**    | Low       | Latest code          | Development/testing |
-
-### Checking for Updates
-
-#### Manual Check
-
-1. Go to **Settings** → **About**
-2. Click **"Check for Updates"**
-3. If update available:
-   - Current version shown
-   - New version shown
-   - Release notes displayed
-4. Click **"Download Update"** to proceed
-
-#### Automatic Check
-
-1. Go to **Settings** → **Update Schedule**
-2. Enable **"Check for app updates"**
-3. Select frequency:
-   - **Daily**
-   - **Weekly**
-   - **Monthly**
-4. When update found:
-   - Notification appears
-   - Click to view details
-   - Choose to update now or later
-
-### Update Process
-
-#### Updating on Windows
-
-1. Click **"Download Update"**
-2. Update downloads in background
-3. When ready, click **"Install Now"**
-4. Application closes and installs
-5. VulnAssessTool restarts automatically
-
-#### Updating on macOS
-
-1. Click **"Download Update"**
-2. Update downloads to Downloads folder
-3. Open the downloaded .dmg file
-4. Drag VulnAssessTool to Applications folder
-5. Replace existing version
-
-#### Updating on Linux
-
-1. Download the new AppImage or package
-2. Make it executable: `chmod +x VulnAssessTool.AppImage`
-3. Replace the existing file
-
-### Rollback
-
-If an update causes issues:
-
-1. Go to **Settings** → **About**
-2. Click **"Installation History"**
-3. Select previous version
-4. Click **"Rollback"**
-5. Application restarts with previous version
-
-**Note:** Rollback is only available for the previous version.
+> The Electron-era application auto-updater — release channels, in-app "Check for Updates",
+> per-OS installer downloads, and rollback — was removed when VulnAssessTool migrated to an
+> Express server + browser web app (see the note in [Overview](#overview)). Deploying a new
+> server version is an ops task (pull the release, `npm run build:all`, restart the process or
+> redeploy the container), not an in-app flow.
 
 ---
 
 ## Scheduling Configuration
 
-### Update Schedule Settings
+### Sync Schedule Settings
 
 Access schedule settings:
 
-1. Go to **Settings** → **Update Schedule**
-2. Configure each update type:
+1. Go to **Settings** → **Database Management**
+2. Configure the **Sync Schedule**:
 
-#### NVD Database Settings
-
-- **Auto-update:** Enable/disable automatic updates
-- **Frequency:** Daily/Weekly/Monthly
-- **Time:** Time of day to run (2:00 AM default)
-- **On startup:** Update when application launches
-- **Rate limiting:** Respect API rate limits
-
-#### Application Settings
-
-- **Check for updates:** Enable/disable automatic checks
-- **Frequency:** Daily/Weekly/Monthly
-- **Channel:** Stable/Beta/Dev
-- **Auto-download:** Download updates automatically
-- **Auto-install:** Install updates automatically
+- **Frequency:** Daily / Weekly / Monthly / Manual
+- **Rate limiting:** Respects the NVD API rate limit automatically (5 req/30s without an API
+  key, 50 req/30s with one)
 
 ### Advanced Schedule Options
 
-#### Custom Update Times
-
-To set a custom update time:
-
-1. Go to **Settings** → **Update Schedule** → **Advanced**
-2. Enable **"Custom update time"**
-3. Set hour and minute
-4. Click **Save**
-
-**Note:** Updates run at the configured time in your local timezone.
-
-#### Update Windows
-
-To limit updates to specific times:
-
-1. Go to **Settings** → **Update Schedule** → **Advanced**
-2. Enable **"Update window"**
-3. Set start and end times
-4. Updates only run within this window
-
-**Example:** Only allow updates between 10 PM and 6 AM to avoid work hours.
-
 #### Bandwidth Throttling
 
-To limit update bandwidth:
+To limit sync bandwidth:
 
-1. Go to **Settings** → **Update Schedule** → **Advanced**
-2. Enable **"Limit bandwidth"**
-3. Set maximum download speed (KB/s)
-4. Updates respect this limit
+1. Go to **Settings** → **Database Management**
+2. Set **Bandwidth Limit (KB/s, 0 = unlimited)**
+
+Sync downloads respect this limit.
 
 ---
 
 ## Update Behavior
 
-### Concurrent Updates
-
-If multiple updates are scheduled:
-
-1. Application updates take priority
-2. NVD updates pause during app updates
-3. NVD updates resume after app update completes
-4. Failed updates are retried after 1 hour
-
 ### Update Conflicts
 
-If manual and scheduled updates conflict:
+If a manual sync and a scheduled sync conflict:
 
-- Manual update takes precedence
-- Scheduled update is skipped for that cycle
-- Next scheduled update runs normally
+- Only one sync runs at a time; a second request is rejected with "Sync already in progress"
+- The scheduled sync resumes normally on its next cycle
 
 ### Background Updates
 
@@ -325,30 +205,14 @@ NVD database updates run in the background:
 
 - Application remains usable
 - Scan results may use stale data during update
-- Progress shown in status bar
+- Progress shown inline
 - Completion notification appears
-
-Application updates require:
-
-- Application restart
-- Save work before updating
-- Active scans are cancelled
-- Cannot run in background
 
 ### Offline Updates
 
-For air-gapped or offline systems:
-
-1. On an online system:
-   - Go to **Settings** → **Update Schedule**
-   - Click **"Export Database"**
-   - Save to portable media (USB drive)
-
-2. On the offline system:
-   - Go to **Settings** → **Update Schedule**
-   - Click **"Import Database"**
-   - Select exported file from portable media
-   - Database updates immediately
+For air-gapped or offline systems, use **Settings** → **Backup & Recovery** to create a
+backup on an online instance, move the backup file to the offline system via portable media,
+and restore it there. See [Database Setup Guide](DATABASE_SETUP.md#database-backup).
 
 ---
 
@@ -361,19 +225,16 @@ For air-gapped or offline systems:
 **Solutions:**
 
 1. **Check Schedule:**
-   - Verify schedule is enabled
-   - Confirm correct time is set
-   - Check system clock is accurate
+   - Verify the schedule isn't set to "Manual"
+   - Check the server host's system clock is accurate
 
-2. **Check Application Running:**
-   - Updates only run when app is open
-   - Enable "Update on startup" if needed
-   - Keep application running overnight
+2. **Check the Server Process:**
+   - The sync scheduler only runs while the server process is running
+   - Confirm the server hasn't crashed or been restarted (a restart resets the rolling
+     interval, starting the countdown from the restart time)
 
 3. **Check Logs:**
-   - Go to **Settings** → **Audit Log**
-   - Filter for "database.update" events
-   - Look for error messages
+   - Review the server console output for sync errors
 
 ### Updates Failing
 
@@ -397,9 +258,9 @@ For air-gapped or offline systems:
    - Free up disk space
 
 4. **Check Database Lock:**
-   - Close other database connections
-   - Restart VulnAssessTool
-   - Check for background processes
+   - Close other processes/connections accessing the same data directory
+   - Restart the server
+   - Check for other background processes
 
 ### Slow Updates
 
@@ -416,10 +277,9 @@ For air-gapped or offline systems:
    - Reduce update frequency
    - Use manual updates when convenient
 
-3. **Optimize Database:**
-   - Go to **Settings** → **Database Maintenance**
-   - Click **"Optimize Database"**
-   - Run **"Rebuild Indexes"**
+3. **Rebuild Indexes:**
+   - Go to **Settings** → **Database Management**
+   - Click **"Rebuild Indexes"**
 
 ### Update Data Corruption
 
@@ -429,13 +289,12 @@ For air-gapped or offline systems:
 
 1. **Verify Update:**
    - Check CVE count increased
-   - Review audit log for errors
    - Test scan with known vulnerability
 
-2. **Force Full Update:**
-   - Go to **Settings** → **Update Schedule** → **Advanced**
-   - Click **"Force full sync"**
-   - Full database re-download runs
+2. **Force Full Re-import:**
+   - Go to **Settings** → **Database Management**
+   - Click **"Bulk Download"** to re-download and re-import recent years (requires an NVD API
+     key)
 
 3. **Reset Database:**
    - Last resort: delete and re-create database
@@ -449,28 +308,22 @@ For air-gapped or offline systems:
 
 For most organizations:
 
-- **NVD Database:** Weekly (Sunday nights)
-- **Application:** Weekly (check, manual install)
-- **On Startup:** Disabled (use scheduled updates only)
+- **NVD Database:** Weekly
 
 For security teams:
 
-- **NVD Database:** Daily (early morning)
-- **Application:** Weekly (auto-download, manual install)
-- **On Startup:** Enabled (always fresh)
+- **NVD Database:** Daily
 
 For low-risk environments:
 
-- **NVD Database:** Monthly (first Sunday)
-- **Application:** Monthly (check and install)
-- **On Startup:** Disabled
+- **NVD Database:** Monthly
 
 ### Update Monitoring
 
 Regularly monitor update health:
 
-1. **Check Status:** Review database status weekly
-2. **Review Logs:** Check audit log for failed updates
+1. **Check Status:** Review database status weekly (Settings > Database Management)
+2. **Review Logs:** Check the server console output for failed syncs
 3. **Verify Freshness:** Ensure CVE count is increasing
 4. **Test Scans:** Run test scans after updates
 
@@ -503,7 +356,7 @@ Perform regular maintenance:
 
 ### Q: Can I update offline?
 
-**A:** Yes. Export the database from an online system and import it to the offline system. See [Offline Updates](#offline-updates).
+**A:** Yes. Create a backup on an online system and restore it on the offline system. See [Offline Updates](#offline-updates).
 
 ### Q: What happens if an update is interrupted?
 
@@ -525,40 +378,24 @@ Perform regular maintenance:
 
 ## API Reference
 
-### Update Schedule Configuration
+### Sync Schedule Configuration
+
+`GET`/`PUT` `/api/database/config/sync` — the actual request/response shape used by the
+Settings page:
 
 ```json
 {
-  "nvdDatabase": {
-    "autoUpdate": true,
-    "frequency": "weekly",
-    "time": "02:00",
-    "onStartup": false,
-    "apiKey": "your-api-key"
-  },
-  "application": {
-    "checkForUpdates": true,
-    "frequency": "weekly",
-    "channel": "stable",
-    "autoDownload": false,
-    "autoInstall": false
-  },
-  "advanced": {
-    "customTime": "02:00",
-    "updateWindow": {
-      "enabled": false,
-      "start": "22:00",
-      "end": "06:00"
-    },
-    "bandwidthLimit": {
-      "enabled": false,
-      "maxKbps": 500
-    }
+  "success": true,
+  "config": {
+    "syncInterval": "weekly",
+    "bandwidthLimitKBps": 0
   }
 }
 ```
 
+`syncInterval` is one of `manual` | `daily` | `weekly` | `monthly`.
+
 ---
 
-**Last Updated:** 2026-02-10
-**Version:** 0.1.0
+**Last Updated:** 2026-08-07
+**Version:** 2.0.0

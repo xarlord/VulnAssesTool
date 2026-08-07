@@ -1,55 +1,81 @@
 # BDD Testing with Cucumber.js
 
-This directory contains Behavior-Driven Development (BDD) tests using Cucumber.js.
+This directory contains Behavior-Driven Development (BDD) tests using Cucumber.js (NFR-08.4).
+Step definitions call the app's real logic modules directly (parsers, exporters, analytics,
+audit log, SBOM generator) — the same way a unit test would — rather than driving a browser,
+except for the handful of scenarios tagged `@ui`.
 
 ## Directory Structure
 
 ```
 tests/bdd/
 ├── features/              # Feature files (.feature)
+│   ├── analytics/
+│   ├── audit/
+│   ├── database/          # @wip — see "Excluded scenarios" below
+│   ├── export/
+│   ├── parsers/
+│   ├── sbom-generator/
 │   └── example.feature
-├── step-definitions/      # Step definition implementations
-│   └── example.steps.ts
-├── support/              # Support files
-│   ├── world.ts         # Custom World class for test context
-│   └── hooks.ts         # Before/After hooks
-├── tsconfig.json        # TypeScript configuration for BDD tests
-└── README.md           # This file
+├── step-definitions/      # Step definition implementations (*.steps.ts)
+├── support/
+│   ├── world.ts           # Custom World class (browser/page for @ui, scenario state)
+│   └── hooks.ts           # Before/After hooks
+├── tsconfig.json           # Path aliases (@/, @@/) for the step-definition files
+└── README.md               # This file
 ```
 
 ## Running Tests
-
-### Run all BDD tests
 
 ```bash
 npm run test:bdd
 ```
 
-### Run tests in parallel
+This runs `cucumber-js` (via `tsx`, so the TypeScript step definitions and the `@/`/`@@/`
+path aliases they import from `src/` resolve correctly) with `--tags "not @ui and not @wip"` —
+the default gate excludes browser-driven scenarios (no server running) and known-excluded
+scenarios (see below). The equivalent explicit invocation, if you need to tweak flags:
 
 ```bash
-npm run test:bdd:parallel
+cross-env TSX_TSCONFIG_PATH=tests/bdd/tsconfig.json NODE_OPTIONS="--import tsx" cucumber-js --tags "not @ui and not @wip"
 ```
 
-### Run tests with HTML report
+### Run a subset by tag
 
 ```bash
-npm run test:bdd:html
+cross-env TSX_TSCONFIG_PATH=tests/bdd/tsconfig.json NODE_OPTIONS="--import tsx" cucumber-js --tags "@audit"
 ```
 
-### Run tests with pretty formatter
+`npm run test:bdd:watch` currently runs the same thing — cucumber-js has no built-in watch
+mode, so there's no file-watching rerun-on-save behavior; it's kept as an alias so the script
+name exists.
 
-```bash
-npm run test:bdd:pretty
-```
+## Excluded scenarios (`@wip`, `@ui`)
 
-### Run tests by tag
+The default gate (`npm run test:bdd`) excludes:
 
-```bash
-npm run test:bdd:tags "@smoke"
-npm run test:bdd:tags "@smoke and @ui"
-npm run test:bdd:tags "@smoke or @api"
-```
+- **`tests/bdd/features/database/*.feature`** (`nvd-database.feature`, `hybrid-scanner.feature`,
+  `update-scheduler.feature`) — tagged `@wip` at the Feature level. No step definitions exist for
+  these, and the modules they describe don't match the current codebase: `hybridScanner.ts` is a
+  stub (always returns empty results), there's no raw CRUD/transaction `nvdDb.ts` module (only
+  `nvdDbFts.ts`, a different FTS/IPC-wrapper API), and `autoRefreshScheduler.ts` is an
+  interval-check loop, not the cron-style daily/weekly/monthly scheduler with timezone support
+  the scenarios describe. Writing real step defs against these would either test a stub
+  (vacuous) or invent behavior the app doesn't have.
+- **10 scenarios in `sbom-generator.feature`** — tagged `@wip` individually (see the comment
+  above each in the feature file). They're UI-only concerns with no non-UI equivalent to drive
+  (dialog open/close, inline preview edit/remove, progress indicators, template download, column
+  mapping persistence, multi-sheet dropdown, project auto-upload) or depend on unimplemented
+  behavior (`generateCycloneDX` throws for `format: 'xml'`). The other 8 scenarios in that
+  feature run for real against `excelParser.ts`/`cyclonedxGenerator.ts`.
+- **`export-formats.feature` → "Export to PDF format"** — tagged `@wip`. jsPDF's default export
+  only resolves to the real constructor under a browser/Vite bundle's ESM interop; under plain
+  Node (tsx) `import jsPDF from 'jspdf'` yields the raw CJS module object, not the class.
+- **`example.feature` → "Verify World context"** — tagged `@ui`; it launches a real Playwright
+  browser via `CustomWorld.initBrowser()`, which this suite doesn't run against a live server.
+
+Do not silently delete a feature/scenario to make the suite pass — if something can't be made to
+pass, tag it `@wip` (or `@ui` if it's browser-only) and add a comment explaining why, as above.
 
 ## Writing Feature Files
 
@@ -71,119 +97,63 @@ Feature: Feature Name
 
 ## Writing Step Definitions
 
-Step definitions are implemented in TypeScript in `tests/bdd/step-definitions/`:
+Step definitions are implemented in TypeScript in `tests/bdd/step-definitions/`. Import `expect`
+from `vitest` (not `@vitest/expect`, which doesn't export it), and import the real modules
+under test from `src/renderer/lib/...` / `server/...` — see `audit.steps.ts` or
+`analytics.steps.ts` for the established pattern:
 
 ```typescript
-import { Given, When, Then, And } from '@cucumber/cucumber'
-import { CustomWorld } from '../support/world'
+import { Given, When, Then } from '@cucumber/cucumber'
+import { expect } from 'vitest'
+import { someRealFunction } from '../../../src/renderer/lib/some/module.ts'
 
-Given('a precondition', async function (this: CustomWorld) {
+Given('a precondition', function () {
   // Implementation
 })
 
-When('I take an action', async function (this: CustomWorld) {
+When('I take an action', function () {
   // Implementation
 })
 
-Then('I expect an outcome', async function (this: CustomWorld) {
-  // Assertions using @vitest/expect
-  expect(result).toBe(expected)
+Then('I expect an outcome', function () {
+  expect(someRealFunction()).toBe(expected)
 })
 ```
 
-## Tags
+Register `Before`/`After` hooks scoped to a tag matching the feature (e.g. `{ tags: '@audit' }`)
+to reset shared test-context state between scenarios — and remember to tag the feature file
+itself with that same tag, or the hook silently never runs (this caused real cross-scenario
+state leakage before it was caught).
 
-Use tags to organize and filter tests:
+## Tags in use
 
-- `@smoke` - Critical smoke tests
-- `@ui` - UI-based tests
-- `@api` - API tests
-- `@database` - Database tests
-- `@slow` - Slow-running tests (60s timeout)
-- `@very-slow` - Very slow tests (120s timeout)
-- `@retry` - Tests that should be retried on failure
+- `@ui` — drives a real Playwright browser (`CustomWorld.initBrowser()`); excluded from the
+  default gate since there's no server running.
+- `@wip` — known-excluded scenario/feature; see "Excluded scenarios" above. Always pair with a
+  comment explaining why.
+- `@audit`, `@export`, `@analytics`, `@parser`, `@sbom-generator` — scope the matching
+  Before/After reset hooks in each step-definition file to that feature.
 
 ## World Context
 
-The CustomWorld class provides:
-
-### Browser/Page Management
-
-- `initBrowser()` - Initialize browser and page
-- `navigateTo(url)` - Navigate to URL
-- `takeScreenshot(name)` - Capture screenshot
-
-### Test Data Storage
-
-- `set(key, value)` - Store test data
-- `get(key)` - Retrieve test data
-- `has(key)` - Check if key exists
-
-### Scenario State
-
-- `setState(key, value)` - Set scenario state
-- `getState(key)` - Get scenario state
-
-### Error Tracking
-
-- `addError(error)` - Track errors
-- `hasErrors()` - Check for errors
-- `getErrors()` - Get all errors
-- `clearErrors()` - Clear error list
+The `CustomWorld` class (used by `@ui` scenarios) provides Playwright browser/page management,
+generic test-data storage (`set`/`get`/`has`), scenario state (`setState`/`getState`), and error
+tracking. Non-`@ui` step-definition files mostly use their own local `context` object instead
+(see `audit.steps.ts`).
 
 ## Configuration
 
-### Cucumber Configuration
-
-Located at project root: `cucumber.config.ts`
-
-### TypeScript Configuration
-
-Located at: `tests/bdd/tsconfig.json`
-
-### Environment Variables
-
-- `BASE_URL` - Base URL for UI tests (default: http://localhost:5173)
-- `API_BASE_URL` - Base URL for API tests (default: http://localhost:3000)
-- `TEST_TIMEOUT` - Default test timeout in ms (default: 10000)
-- `SCREENSHOTS` - Enable screenshots (default: true)
-- `HEADLESS` - Run headless mode (default: true)
-- `CUCUMBER_PARALLEL` - Enable parallel execution (default: false)
-
-## Reports
-
-Test reports are generated in `test-results/`:
-
-- `cucumber-report.html` - HTML report
-- `cucumber-pretty.txt` - Pretty formatted text report
-- `cucumber-summary.txt` - Test summary
-- `screenshots/` - Test screenshots
-- `videos/` - Test recordings (if enabled)
-
-## Best Practices
-
-1. **Keep scenarios independent** - Each scenario should be able to run independently
-2. **Use descriptive names** - Make feature and scenario names clear and meaningful
-3. **Organize by tags** - Use tags to group related tests
-4. **Reuse steps** - Create reusable step definitions
-5. **Clean up resources** - Use hooks for setup and teardown
-6. **Handle async properly** - Always use async/await for asynchronous operations
-7. **Write meaningful assertions** - Clear, specific assertions make debugging easier
+- Cucumber config: `cucumber.mjs` (project root)
+- TypeScript path aliases for step definitions: `tests/bdd/tsconfig.json`
 
 ## Troubleshooting
 
-### TypeScript errors
+### `ERR_MODULE_NOT_FOUND` for `@/...` or `@@/...`
 
-Ensure `ts-node` is properly configured and all type definitions are installed.
+`TSX_TSCONFIG_PATH=tests/bdd/tsconfig.json` is required — the root `tsconfig.json` has no path
+aliases, only `tests/bdd/tsconfig.json` does.
 
-### Browser not launching
+### "Multiple step definitions match" (ambiguous)
 
-Check that Playwright browsers are installed: `npx playwright install`
-
-### Timeouts
-
-Increase timeout using `@slow` or `@very-slow` tags, or adjust in hooks.
-
-### Parallel execution issues
-
-Some tests may not work well in parallel. Use tags to exclude them.
+Two `Given`/`When`/`Then` calls registered the identical Cucumber Expression pattern. Search the
+step-definition files for the exact pattern text; keep one, delete/merge the other.

@@ -32,7 +32,7 @@ The main dashboard consists of:
 
 ### Accessing the Dashboard
 
-The dashboard is the default view when you launch VulnAssessTool. To return to the dashboard from another page:
+The dashboard is the default view when you open VulnAssessTool in your browser. To return to the dashboard from another page:
 
 - Click the **VulnAssessTool** logo in the top-left
 - Or use the breadcrumbs navigation
@@ -374,7 +374,6 @@ Shows application health:
 
 - **Notifications:** Unread notification count
 - **Scans:** Active scan count
-- **Updates:** Available application updates
 
 ### Notification Center
 
@@ -492,5 +491,5 @@ If the dashboard is slow to load:
 
 ---
 
-**Last Updated:** 2026-02-10
-**Version:** 0.1.0
+**Last Updated:** 2026-08-07
+**Version:** 2.0.0

@@ -276,6 +276,23 @@ describe('useStore', () => {
       expect(getProfiles).toHaveBeenCalled()
     })
 
+    it('does not overwrite live (persisted/ad-hoc) settings when loading profiles', () => {
+      // WHY: loadSettingsProfiles runs on every Settings-page mount. It used to reset `settings`
+      // to the active profile's (or default) settings, silently discarding ad-hoc edits that the
+      // persist middleware had just rehydrated (e.g. an enabled autoRefresh reverting on reload).
+      // Loading the profile LIST must not touch the live settings — only switchSettingsProfile does.
+      vi.mocked(getProfiles).mockReturnValue([mockProfile]) // mockProfile.settings has autoRefresh:false
+
+      const { result } = renderHook(() => useStore())
+      act(() => {
+        useStore.setState({ settings: { ...DEFAULT_SETTINGS, autoRefresh: true, autoRefreshInterval: 168 } })
+        result.current.loadSettingsProfiles()
+      })
+
+      expect(result.current.settings.autoRefresh).toBe(true)
+      expect(result.current.settings.autoRefreshInterval).toBe(168)
+    })
+
     it('should preserve active profile when loading profiles', () => {
       const mockProfiles = [
         mockProfile,

@@ -444,14 +444,20 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
               {nameOnlyNoise.hidden === 1 ? '' : 'es'} hidden.{' '}
               <button
                 onClick={() => setHideNameOnlyMatches(false)}
-                className="font-medium text-primary hover:underline"
+                // text-foreground, not text-primary: text-primary on this amber-tinted
+                // background composited to only 2.79:1 in dark mode, below WCAG AA 4.5:1
+                // (NFR-04.5). Always-on underline keeps it identifiable as a link.
+                className="font-medium text-foreground underline hover:no-underline"
               >
                 Reveal
               </button>
             </div>
           )}
           {hideNameOnlyMatches && nameOnlyNoise.keptHighRisk > 0 && (
-            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            // Tint + border mark this as a warning; text uses foreground (not text-destructive)
+            // — text-destructive on bg-destructive/10 composited to only 3.64:1 in dark mode,
+            // below WCAG AA 4.5:1 (NFR-04.5). Same fix pattern as the severity headers above.
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-foreground">
               {nameOnlyNoise.keptHighRisk} high-risk finding
               {nameOnlyNoise.keptHighRisk === 1 ? '' : 's'} kept visible despite low match confidence (KEV / high EPSS /
               critical or high severity).
@@ -479,7 +485,20 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                 // existing four-group split (default, unchanged output); CVSS / publication-date
                 // collapse into a single flat, neutrally-styled section whose row order reflects the
                 // chosen sort.
-                type SectionStyle = { label: string; color: string; bgColor: string; borderColor: string }
+                // `color` tints the (decorative) icon; `textColor` styles the actual heading/count
+                // text — kept separate because plain text-destructive on this header's
+                // bg-background composites to only 4.19:1 in dark mode, below WCAG AA's 4.5:1
+                // (NFR-04.5), while the other three severities' `dark:` variants already clear
+                // it. Text falls back to foreground (icon still carries the color cue) rather
+                // than picking a new ad hoc red, matching the Sidebar active-nav-item fix
+                // (560d9fd: keep the tint/accent, switch the text to foreground).
+                type SectionStyle = {
+                  label: string
+                  color: string
+                  textColor: string
+                  bgColor: string
+                  borderColor: string
+                }
                 let groupedVulns: Record<string, Vulnerability[]>
                 let severityConfig: Record<string, SectionStyle>
                 if (sortField === 'cvss' || sortField === 'date') {
@@ -493,6 +512,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                           ? 'All vulnerabilities (highest CVSS first)'
                           : 'All vulnerabilities (newest first)',
                       color: 'text-foreground',
+                      textColor: 'text-foreground',
                       bgColor: 'bg-muted/30',
                       borderColor: 'border-border',
                     },
@@ -509,24 +529,28 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                     critical: {
                       label: 'Critical',
                       color: 'text-destructive',
+                      textColor: 'text-foreground',
                       bgColor: 'bg-destructive/10',
                       borderColor: 'border-destructive/30',
                     },
                     high: {
                       label: 'High',
                       color: 'text-orange-700 dark:text-orange-400',
+                      textColor: 'text-orange-700 dark:text-orange-400',
                       bgColor: 'bg-orange-500/10',
                       borderColor: 'border-orange-500/30',
                     },
                     medium: {
                       label: 'Medium',
                       color: 'text-amber-700 dark:text-amber-400',
+                      textColor: 'text-amber-700 dark:text-amber-400',
                       bgColor: 'bg-yellow-600/10',
                       borderColor: 'border-yellow-600/30',
                     },
                     low: {
                       label: 'Low',
                       color: 'text-blue-700 dark:text-blue-400',
+                      textColor: 'text-blue-700 dark:text-blue-400',
                       bgColor: 'bg-blue-500/10',
                       borderColor: 'border-blue-500/30',
                     },
@@ -569,9 +593,9 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                             >
                               <div className="flex items-center gap-2">
                                 <AlertTriangle className={`h-5 w-5 ${config.color}`} />
-                                <h3 className={`font-semibold ${config.color}`}>{config.label}</h3>
+                                <h3 className={`font-semibold ${config.textColor}`}>{config.label}</h3>
                               </div>
-                              <span className={`text-sm font-medium ${config.color}`}>
+                              <span className={`text-sm font-medium ${config.textColor}`}>
                                 {vulns.length} {vulns.length === 1 ? 'vulnerability' : 'vulnerabilities'}
                               </span>
                             </div>
@@ -721,7 +745,12 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                           </button>
                                           <button
                                             onClick={() => onViewVulnerability(vuln)}
-                                            className="text-sm text-primary hover:underline whitespace-nowrap"
+                                            // text-foreground, not text-primary: text-primary on
+                                            // bg-background composites to only 3.53:1 in dark mode,
+                                            // below WCAG AA 4.5:1 (NFR-04.5). Always-on underline
+                                            // (not just hover) keeps it identifiable as a link
+                                            // without relying on color alone.
+                                            className="text-sm text-foreground underline hover:no-underline whitespace-nowrap"
                                           >
                                             View Details
                                           </button>

@@ -62,6 +62,9 @@ export function parseCvssVector(
     // Generate explanations
     const explanations = generateMetricExplanations(metrics)
 
+    // Temporal metrics (E/RL/RC) are optional extensions to the base vector (FR-04.3).
+    const temporalMetrics = parseTemporalMetrics(parts)
+
     return {
       vectorString,
       version: version as '3.0' | '3.1',
@@ -69,6 +72,7 @@ export function parseCvssVector(
       scores,
       severity,
       explanations,
+      ...(temporalMetrics ? { temporalMetrics } : {}),
     }
   } catch (error) {
     console.error('Error parsing CVSS vector:', error)
@@ -89,6 +93,69 @@ const PREFIX_TO_METRIC_KEY: Record<string, keyof typeof CVSS_METRIC_VALUES> = {
   C: 'confidentialityImpact',
   I: 'integrityImpact',
   A: 'availabilityImpact',
+}
+
+// Temporal-metric code maps (CVSS v3.1 §3). Each metric has its OWN meaning for a code —
+// notably 'U' is Unproven (E), Unavailable (RL), or Unknown (RC) — so they can't share one
+// table. 'X' (Not Defined) is included: an explicit E:X in a vector is still a stated value.
+const EXPLOIT_CODE_MATURITY: Record<
+  string,
+  NonNullable<NonNullable<CvssBreakdown['temporalMetrics']>['exploitCodeMaturity']>
+> = { X: 'Not Defined', U: 'Unproven', P: 'Proof-of-Concept', F: 'Functional', H: 'High' }
+const REMEDIATION_LEVEL: Record<
+  string,
+  NonNullable<NonNullable<CvssBreakdown['temporalMetrics']>['remediationLevel']>
+> = {
+  X: 'Not Defined',
+  O: 'Official Fix',
+  T: 'Temporary Fix',
+  W: 'Workaround',
+  U: 'Unavailable',
+}
+const REPORT_CONFIDENCE: Record<
+  string,
+  NonNullable<NonNullable<CvssBreakdown['temporalMetrics']>['reportConfidence']>
+> = {
+  X: 'Not Defined',
+  C: 'Confirmed',
+  R: 'Reasonable',
+  U: 'Unknown',
+}
+
+/**
+ * Parse the optional temporal metrics (E/RL/RC) from a vector's parts. Returns undefined when
+ * none are present. A present-but-unrecognized code (e.g. `E:Q`) throws so parseCvssVector
+ * returns null for the whole vector — fail-loud parity with the base-metric path (a malformed
+ * vector is invalid, not silently downgraded). An explicit `X` is a real value ('Not Defined')
+ * and is distinguished from an absent metric.
+ */
+function parseTemporalMetrics(parts: string[]): NonNullable<CvssBreakdown['temporalMetrics']> | undefined {
+  const resolve = <T extends string>(prefix: string, map: Record<string, T>): T | undefined => {
+    const part = parts.find((p) => p.startsWith(`${prefix}:`))
+    if (!part) {
+      return undefined
+    }
+    const code = part.split(':')[1]
+    const value = map[code]
+    if (!value) {
+      throw new Error(`Invalid value "${code}" for temporal metric ${prefix}`)
+    }
+    return value
+  }
+
+  const exploitCodeMaturity = resolve('E', EXPLOIT_CODE_MATURITY)
+  const remediationLevel = resolve('RL', REMEDIATION_LEVEL)
+  const reportConfidence = resolve('RC', REPORT_CONFIDENCE)
+
+  if (!exploitCodeMaturity && !remediationLevel && !reportConfidence) {
+    return undefined
+  }
+
+  return {
+    ...(exploitCodeMaturity ? { exploitCodeMaturity } : {}),
+    ...(remediationLevel ? { remediationLevel } : {}),
+    ...(reportConfidence ? { reportConfidence } : {}),
+  }
 }
 
 /**

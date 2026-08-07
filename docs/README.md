@@ -1,6 +1,10 @@
 # VulnAssesTool Documentation Index
 
-**Last Updated:** April 2026
+**Last Updated:** 2026-08-07
+
+VulnAssesTool is an **Express (backend) + React/Vite (frontend) + TypeScript** web application
+for vulnerability assessment. (It was migrated off Electron — see commit `acd0518`; any older doc
+that still describes a desktop/Electron app has been moved to [archive/](archive/).)
 
 ## Getting Started
 
@@ -12,51 +16,55 @@
 
 ## API & Technical Reference
 
-| Document                                                   | Description                                               |
-| ---------------------------------------------------------- | --------------------------------------------------------- |
-| [API.md](API.md)                                           | Complete IPC, external API, and internal module reference |
-| [AUDIT_LOG.md](AUDIT_LOG.md)                               | Audit logging system and export formats                   |
-| [DASHBOARD.md](DASHBOARD.md)                               | Dashboard and Executive Dashboard architecture            |
-| [CONTAINER_SCANNING.md](CONTAINER_SCANNING.md)             | Container image scanning (Docker/Podman) usage guide      |
-| [WATCHDOG_QUICK_REFERENCE.md](WATCHDOG_QUICK_REFERENCE.md) | Watchdog autonomous testing system reference              |
+| Document                                       | Description                                          |
+| ---------------------------------------------- | ---------------------------------------------------- |
+| [API.md](API.md)                               | REST API (`/api/*`), WebSocket channel, and modules  |
+| [AUDIT_LOG.md](AUDIT_LOG.md)                   | Audit logging system and export formats              |
+| [DASHBOARD.md](DASHBOARD.md)                   | Dashboard and Executive Dashboard architecture       |
+| [CONTAINER_SCANNING.md](CONTAINER_SCANNING.md) | Container image scanning (Docker/Podman) usage guide |
 
 ## Setup & Deployment
 
-| Document                                         | Description                           |
-| ------------------------------------------------ | ------------------------------------- |
-| [DEPLOYMENT.md](DEPLOYMENT.md)                   | Build and package for production      |
-| [DATABASE_SETUP.md](DATABASE_SETUP.md)           | Database setup and sync configuration |
-| [DATABASE_USER_GUIDE.md](DATABASE_USER_GUIDE.md) | CVE database user guide               |
-| [UPDATE_SCHEDULING.md](UPDATE_SCHEDULING.md)     | Auto-updater scheduling configuration |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md)         | Common issues and solutions           |
+| Document                                         | Description                              |
+| ------------------------------------------------ | ---------------------------------------- |
+| [DEPLOYMENT.md](DEPLOYMENT.md)                   | Build and run the server/client for prod |
+| [DATABASE_SETUP.md](DATABASE_SETUP.md)           | Database setup and sync configuration    |
+| [DATABASE_USER_GUIDE.md](DATABASE_USER_GUIDE.md) | CVE database user guide                  |
+| [UPDATE_SCHEDULING.md](UPDATE_SCHEDULING.md)     | CVE data refresh scheduling              |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md)         | Common issues and solutions              |
 
 ## Guides
 
-| Document                                                                   | Description                          |
-| -------------------------------------------------------------------------- | ------------------------------------ |
-| [sbom-generator-guide.md](sbom-generator-guide.md)                         | SBOM generation user guide           |
-| [excel-sbom-template-instructions.md](excel-sbom-template-instructions.md) | Excel SBOM template instructions     |
-| [bdd-test-design.md](bdd-test-design.md)                                   | BDD test design and step definitions |
+| Document                                                                   | Description                                             |
+| -------------------------------------------------------------------------- | ------------------------------------------------------- |
+| [sbom-generator-guide.md](sbom-generator-guide.md)                         | SBOM generation user guide                              |
+| [sbom-cataloging-guidelines.md](sbom-cataloging-guidelines.md)             | Per-artifact SBOM/scan playbooks (Android, Yocto, MCU…) |
+| [excel-sbom-template-instructions.md](excel-sbom-template-instructions.md) | Excel SBOM template instructions                        |
+| [bdd-test-design.md](bdd-test-design.md)                                   | BDD test design and step definitions                    |
 
-## Plans & Reports
+## Design Plans (active)
 
-| Document                                                                                                     | Description                                           |
-| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| [plans/2026-02-26-v2-expansion-design.md](plans/2026-02-26-v2-expansion-design.md)                           | v2.0 expansion design (KEV/EPSS, executive dashboard) |
-| [plans/2026-02-27-kev-epss-design.md](plans/2026-02-27-kev-epss-design.md)                                   | KEV/EPSS intelligence design                          |
-| [plans/2026-03-23-watchdog-orchestrator-design.md](plans/2026-03-23-watchdog-orchestrator-design.md)         | Watchdog orchestrator design                          |
-| [plans/2026-03-24-comprehensive-e2e-test-expansion.md](plans/2026-03-24-comprehensive-e2e-test-expansion.md) | E2E test expansion plan                               |
-| [plans/2026-03-30-codebase-improvement-plan.md](plans/2026-03-30-codebase-improvement-plan.md)               | Codebase improvement action items                     |
-| [plans/2026-04-16-codebase-review-findings.md](plans/2026-04-16-codebase-review-findings.md)                 | Codebase review findings                              |
-| [plans/2026-04-16-test-structure-audit.md](plans/2026-04-16-test-structure-audit.md)                         | Test structure audit                                  |
-| [reports/spec-traceability-matrix.md](reports/spec-traceability-matrix.md)                                   | Requirements traceability matrix                      |
-| [reports/unused-code-findings.md](reports/unused-code-findings.md)                                           | Dead code analysis                                    |
+| Document                                                                               | Description                                        |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| [plans/2026-07-22-cpe-near-match-design.md](plans/2026-07-22-cpe-near-match-design.md) | CPE near-match search design (impl pending)        |
+| [plans/2026-07-22-vex-round-trip-design.md](plans/2026-07-22-vex-round-trip-design.md) | VEX round-trip import/export design (impl pending) |
 
-## UI Reviews
+## Status & Reports
+
+| Document                                                                                     | Description                                                    |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [reports/prd-remediation-plan.md](reports/prd-remediation-plan.md)                           | **Canonical** PRD requirement remediation status               |
+| [reports/requirement-validation-2026-07-25.md](reports/requirement-validation-2026-07-25.md) | Requirement validation snapshot (superseded by the plan above) |
+| [reports/bug-hunt-fixes-2026-08-02.md](reports/bug-hunt-fixes-2026-08-02.md)                 | Bug hunt #1 findings and fixes (resolved)                      |
+| [reports/bug-hunt-2026-08-03.md](reports/bug-hunt-2026-08-03.md)                             | Bug hunt #2 findings and fixes (resolved)                      |
+
+## UI Reviews (historical)
 
 | Document                                                                                               | Description                           |
 | ------------------------------------------------------------------------------------------------------ | ------------------------------------- |
 | [ui-reviews/2026-03-19-complete-review.md](ui-reviews/2026-03-19-complete-review.md)                   | Initial UI review                     |
+| [ui-reviews/2026-03-19-follow-up-review.md](ui-reviews/2026-03-19-follow-up-review.md)                 | Follow-up UI review (post-fixes)      |
+| [ui-reviews/visual-test-report-2026-03-19.md](ui-reviews/visual-test-report-2026-03-19.md)             | Visual test report                    |
 | [ui-reviews/2026-03-20-accessibility-audit.md](ui-reviews/2026-03-20-accessibility-audit.md)           | Accessibility audit (92/100 baseline) |
 | [ui-reviews/2026-03-23-accessibility-fixes.md](ui-reviews/2026-03-23-accessibility-fixes.md)           | Accessibility fixes applied           |
 | [ui-reviews/2026-03-23-visual-consistency-audit.md](ui-reviews/2026-03-23-visual-consistency-audit.md) | Visual consistency audit (9/10)       |
@@ -71,4 +79,5 @@
 
 ## Archive
 
-Historical documents from completed phases are stored in [archive/](archive/).
+Historical documents from completed phases and the pre-migration (Electron-era) codebase are stored
+in [archive/](archive/). These are point-in-time records and are **not** maintained.
