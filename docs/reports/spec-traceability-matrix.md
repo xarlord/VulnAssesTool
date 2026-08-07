@@ -1,407 +1,136 @@
 # Specification Traceability Matrix
 
-**Generated:** 2026-03-24
-**Project:** VulnAssesTool v2.0
-**Source Documents:**
+**Generated:** 2026-08-07
+**Project:** VulnAssesTool (Express/Node backend + React/Vite frontend web app)
 
-- [2026-02-26-v2-expansion-design.md](../plans/2026-02-26-v2-expansion-design.md)
-- [2026-02-27-kev-epss-design.md](../plans/2026-02-27-kev-epss-design.md)
-- [2026-03-19-phase4-branding-design.md](../plans/2026-03-19-phase4-branding-design.md)
-- [2026-03-23-watchdog-orchestrator-design.md](../plans/2026-03-23-watchdog-orchestrator-design.md)
+**Method:** Every requirement ID below was matched to real implementation and test files by
+grepping the current working tree (branch `fix/prd-gap-remediation`) and spot-checking the hits —
+paths are confirmed to exist, not inferred from naming convention alone. Status is taken from
+`docs/reports/prd-remediation-plan.md` → **"Re-validation at HEAD — 2026-08-06"** section, which is
+the canonical live status document; this matrix is a point-in-time index into it and will drift if
+that plan changes without a corresponding re-generation here. Where a cell shows `—`, no covering
+test file was found for that requirement.
 
-**Test Locations:**
+The previous version of this file (archived at `docs/archive/spec-traceability-matrix.md`) covered
+the Electron-era, Watchdog-orchestrator codebase and is stale — it referenced deleted
+main/renderer-process files and a "Phase 4/5" plan structure that no longer exists. This is a
+full replacement, not an update.
 
-- BDD Features: `tests/bdd/features/**/*.feature`
-- E2E Tests: `e2e/**/*.spec.ts`
-- Unit Tests: `tests/**/*.test.ts`
+## Summary
 
----
+| Group                | Rows traced | DONE   | PARTIAL | GAP   |
+| -------------------- | ----------- | ------ | ------- | ----- |
+| Functional (FR)      | 37          | 34     | 3       | 0     |
+| Non-Functional (NFR) | 8           | 3      | 5       | 0     |
+| Security (SR)        | 3           | 2      | 1       | 0     |
+| Compliance (CR)      | 3           | 3      | 0       | 0     |
+| **Total**            | **51**      | **42** | **9**   | **0** |
 
-## Executive Summary
-
-| Metric             | Value |
-| ------------------ | ----- |
-| Total Requirements | 85    |
-| Covered by Tests   | 52    |
-| Overall Coverage   | 61%   |
-| BDD Features       | 10    |
-| E2E Test Files     | 31    |
-| Unit Test Files    | 10    |
-| Critical Gaps      | 8     |
-| High Priority Gaps | 12    |
-
----
-
-## Phase Coverage Summary
-
-| Phase                      | Total | Covered | Coverage | Status        |
-| -------------------------- | ----- | ------- | -------- | ------------- |
-| Phase 1: Foundation        | 19    | 16      | 84%      | ✅ Good       |
-| Phase 2: Security Features | 21    | 14      | 67%      | ⚠️ Acceptable |
-| Phase 3: UX Excellence     | 32    | 18      | 56%      | ⚠️ Acceptable |
-| Phase 4: Branding          | 23    | 8       | 35%      | 🔴 Needs Work |
+No item is marked GAP: `prd-remediation-plan.md`'s HEAD re-validation found the two remaining
+product-feature gaps (FR-03.6 auto-refresh, FR-04.3 CVSS temporal metrics) already shipped
+(commits `c5094d3`, `fcf24b8`); everything else genuinely outstanding is test/coverage/infra
+hardening on already-implemented features, hence PARTIAL rather than GAP.
 
 ---
 
-## BDD Feature Coverage
+## Functional Requirements
 
-| Feature File               | Scenarios | Requirements Covered             |
-| -------------------------- | --------- | -------------------------------- |
-| sbom-generator.feature     | 20        | SBOM generation from Excel       |
-| nvd-database.feature       | 26        | Database operations, CVE queries |
-| cyclonedx-parser.feature   | 4         | SBOM parsing                     |
-| spdx-parser.feature        | 4         | SPDX parsing                     |
-| metrics-calculator.feature | 23        | Executive dashboard metrics      |
-| audit-logging.feature      | 20        | Audit trail, compliance          |
-| export-formats.feature     | 14        | Export functionality             |
-| hybrid-scanner.feature     | 16        | Multi-provider scanning          |
-| update-scheduler.feature   | 8         | Database updates                 |
-| example.feature            | 1         | Smoke test                       |
+| ID      | Requirement                                           | Implementation                                                                                                                                                                                                                                                                    | Covering tests                                                                                                                                  | Status                                                                                                                                                                  |
+| ------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-01.1 | Project creation                                      | `server/routes/projects.ts`; `src/renderer/components/CreateProjectDialog.tsx`                                                                                                                                                                                                    | `server/routes/projects.test.ts`; `src/renderer/components/CreateProjectDialog.test.tsx`                                                        | PARTIAL — implemented + unit tested; missing the PRD's explicit "support 1,000 concurrent projects" capacity/perf test                                                  |
+| FR-01.2 | Project edit/delete (+ cascade)                       | `src/renderer/pages/ProjectDetail.tsx`; `server/routes/projects.ts`                                                                                                                                                                                                               | `src/renderer/pages/ProjectDetail.test.tsx`; `server/routes/projects.test.ts`                                                                   | DONE                                                                                                                                                                    |
+| FR-02.1 | CycloneDX support (JSON+XML)                          | `src/renderer/lib/parsers/cyclonedx.ts`                                                                                                                                                                                                                                           | `src/renderer/lib/parsers/cyclonedx.test.ts`; `src/renderer/lib/parsers/cyclonedx.xml.test.ts`; `e2e/workflows/sbom-vulnerability-scan.spec.ts` | DONE                                                                                                                                                                    |
+| FR-02.2 | SPDX support (JSON/tag-value/RDF)                     | `src/renderer/lib/parsers/spdx.ts`; `src/renderer/components/SbomUploadDialog.tsx`                                                                                                                                                                                                | `src/renderer/lib/parsers/spdx.test.ts`; `src/renderer/components/SbomUploadDialog.test.tsx`                                                    | DONE                                                                                                                                                                    |
+| FR-02.3 | Multiple SBOM files per project                       | `src/renderer/components/SbomUploadDialog.tsx` (merge/dedupe); `src/renderer/pages/ProjectDetail.tsx` (`handleRemoveSbom` cascade)                                                                                                                                                | `src/renderer/components/SbomUploadDialog.test.tsx`                                                                                             | PARTIAL — merge/dedupe and per-file metadata are implemented and tested; `handleRemoveSbom`'s removal cascade (`ProjectDetail.tsx:~150`) has no dedicated test coverage |
+| FR-03.1 | Local DB scanning                                     | `src/renderer/lib/api/vulnMatcher.ts`; `server/database/nvd/`                                                                                                                                                                                                                     | `src/renderer/lib/api/vulnMatcher.test.ts`; `server/database/nvd/*.test.ts`                                                                     | DONE                                                                                                                                                                    |
+| FR-03.2 | NVD API v2.0 integration                              | `server/database/nvd/nvdApiV2Client.ts`; `server/database/nvd/nvdImportManager.ts`                                                                                                                                                                                                | `server/database/nvd/*.test.ts`                                                                                                                 | DONE                                                                                                                                                                    |
+| FR-03.3 | OSV integration                                       | `src/renderer/lib/api/osv.ts`                                                                                                                                                                                                                                                     | `src/renderer/lib/api/osv.test.ts`                                                                                                              | DONE                                                                                                                                                                    |
+| FR-03.4 | Hybrid scanning (NVD+OSV merge)                       | `src/renderer/lib/api/vulnMatcher.ts` (`queryOsvWithCache`, source-priority merge with `osv.ts`). Note: `src/renderer/lib/database/hybridScanner.ts` exists but is dead code — not imported anywhere in `src/` or `server/`; the real hybrid-scan logic lives in `vulnMatcher.ts` | `src/renderer/lib/api/vulnMatcher.test.ts`                                                                                                      | DONE                                                                                                                                                                    |
+| FR-03.5 | Manual refresh (+ cache-bust)                         | `src/renderer/lib/refresh/refreshService.ts`; `src/renderer/pages/project-detail/useProjectScan.ts`                                                                                                                                                                               | `src/renderer/lib/refresh/refreshService.test.ts`                                                                                               | DONE                                                                                                                                                                    |
+| FR-03.6 | Automatic refresh (scheduled)                         | `src/renderer/lib/refresh/autoRefreshScheduler.ts` (interval + battery guard + new-critical toast); `src/renderer/pages/Settings.tsx`                                                                                                                                             | `src/renderer/lib/refresh/autoRefreshScheduler.test.ts`                                                                                         | DONE (shipped `c5094d3`)                                                                                                                                                |
+| FR-04.1 | Vulnerability listing                                 | `src/renderer/pages/project-detail/VulnerabilitiesTab.tsx`; `src/renderer/lib/api/vulnMatcher.ts` (`sortBySeverity`)                                                                                                                                                              | `src/renderer/pages/project-detail/VulnerabilitiesTab.test.tsx`                                                                                 | DONE                                                                                                                                                                    |
+| FR-04.2 | Vulnerability detail view                             | `src/renderer/components/VulnerabilityDetailModal.tsx`                                                                                                                                                                                                                            | corresponding `.test.tsx`                                                                                                                       | DONE                                                                                                                                                                    |
+| FR-04.3 | CVSS breakdown (incl. temporal)                       | `src/renderer/lib/cvss/parser.ts`; `src/renderer/components/CvssMetricsGrid.tsx`                                                                                                                                                                                                  | `src/renderer/lib/cvss/parser.test.ts`                                                                                                          | DONE (shipped `fcf24b8`)                                                                                                                                                |
+| FR-04.4 | Patch information                                     | `src/renderer/lib/api/vulnMatcher.ts`; patch-availability rendering in `VulnerabilitiesTab.tsx`                                                                                                                                                                                   | `src/renderer/lib/api/vulnMatcher.test.ts`                                                                                                      | DONE                                                                                                                                                                    |
+| FR-05.1 | Health score calculation                              | `src/renderer/lib/health/healthScore.ts`                                                                                                                                                                                                                                          | `src/renderer/lib/health/healthScore.test.ts`                                                                                                   | DONE                                                                                                                                                                    |
+| FR-05.2 | Health categories                                     | `src/renderer/lib/health/healthScore.ts`                                                                                                                                                                                                                                          | `src/renderer/lib/health/healthScore.test.ts`                                                                                                   | DONE                                                                                                                                                                    |
+| FR-05.3 | Health dashboard visualization                        | `src/renderer/pages/project-detail/HealthTab.tsx`; `src/renderer/lib/health/healthHistory.ts`; `src/renderer/components/executive/widgets/ProjectHealthComparison.tsx`                                                                                                            | `src/renderer/pages/project-detail/HealthTab.test.tsx`; `src/renderer/lib/health/healthHistory.test.ts`; `ProjectHealthComparison.test.tsx`     | DONE                                                                                                                                                                    |
+| FR-06.1 | Aggregate metrics (incl. exploited count)             | `src/renderer/lib/analytics/metricsCalculator.ts`; `src/renderer/components/executive/widgets/RiskGauge.tsx`                                                                                                                                                                      | `src/renderer/lib/analytics/metricsCalculator.test.ts`; `RiskGauge.test.tsx`                                                                    | DONE                                                                                                                                                                    |
+| FR-06.2 | Executive widgets (incl. Top-10 critical, 6-mo trend) | `src/renderer/components/executive/widgets/TopCriticalVulnerabilities.tsx`; `VulnerabilityTrendChart.tsx`; `src/renderer/lib/analytics/metricsCalculator.ts`                                                                                                                      | `TopCriticalVulnerabilities.test.tsx`; `metricsCalculator.test.ts`; `e2e/features/executive-dashboard.spec.ts`                                  | DONE                                                                                                                                                                    |
+| FR-06.3 | Dashboard customization                               | `src/renderer/lib/dashboard/dashboardLayout.ts`; `src/renderer/components/executive/widgets/DashboardLayoutEditor.tsx`; `src/renderer/store/useStore.ts`                                                                                                                          | `DashboardLayoutEditor.test.tsx`; `src/renderer/store/useStore.test.ts`                                                                         | DONE                                                                                                                                                                    |
+| FR-07.1 | Audit logging                                         | `src/renderer/lib/audit/auditLogger.ts`; `src/renderer/lib/audit/auditMiddleware.ts`; `src/renderer/lib/audit/ulid.ts`                                                                                                                                                            | `auditLogger.test.ts`; `auditMiddleware.test.ts`; `ulid.test.ts`                                                                                | DONE                                                                                                                                                                    |
+| FR-07.2 | Audit log viewing                                     | `src/renderer/pages/AuditLog.tsx`; `src/renderer/components/audit/AuditLogPanel.tsx`                                                                                                                                                                                              | `src/renderer/components/audit/AuditLogPanel.test.tsx`; `e2e/features/audit-log.spec.ts`                                                        | DONE                                                                                                                                                                    |
+| FR-07.3 | Audit export (CSV/JSON/PDF)                           | `src/renderer/lib/audit/auditExporters.ts`; `src/renderer/components/audit/AuditExportDialog.tsx`                                                                                                                                                                                 | `auditExporters.test.ts`; `AuditExportDialog.test.tsx`                                                                                          | DONE                                                                                                                                                                    |
+| FR-08.1 | Global search                                         | `src/renderer/pages/Search.tsx`; `src/renderer/lib/search/searchIndex.ts`; `src/renderer/lib/search/savedSearches.ts`                                                                                                                                                             | `src/renderer/pages/Search.test.tsx`; `searchIndex.test.ts`; `savedSearches.test.ts`                                                            | DONE                                                                                                                                                                    |
+| FR-08.2 | Component filtering (+ presets)                       | `src/renderer/components/FilterPresets.tsx`; `src/renderer/pages/project-detail/ComponentsTab.tsx`                                                                                                                                                                                | `FilterPresets.test.tsx`; `ComponentsTab.test.tsx`                                                                                              | DONE                                                                                                                                                                    |
+| FR-08.3 | Vulnerability filtering (+ presets)                   | `src/renderer/pages/project-detail/VulnerabilitiesTab.tsx`; `src/renderer/components/FilterPresets.tsx`                                                                                                                                                                           | `VulnerabilitiesTab.test.tsx`; `FilterPresets.test.tsx`                                                                                         | DONE                                                                                                                                                                    |
+| FR-09.1 | Data export (CSV/JSON/PDF)                            | `src/renderer/lib/export/csv.ts`; `json.ts`; `pdf.ts`                                                                                                                                                                                                                             | `csv.test.ts`; `json.test.ts`; `pdf.test.ts`                                                                                                    | DONE                                                                                                                                                                    |
+| FR-09.2 | Vulnerability reports (exec PDF)                      | `src/renderer/lib/services/reports/executiveReportPdf.ts`; `reportGenerator.ts`; `src/renderer/lib/analytics/reportBuilder.ts`                                                                                                                                                    | corresponding `*.test.ts` under `src/renderer/lib/services/reports/`                                                                            | DONE                                                                                                                                                                    |
+| FR-09.3 | Compliance reports (SOC2/ISO/HIPAA)                   | `src/renderer/components/ComplianceReportDialog.tsx`; `src/renderer/lib/services/fpf/iso21434ReportGenerator.ts`                                                                                                                                                                  | `ComplianceReportDialog.test.tsx`; `iso21434ReportGenerator.test.ts`                                                                            | DONE                                                                                                                                                                    |
+| FR-10.1 | Theme/appearance                                      | `src/renderer/pages/settings/AppearanceSection.tsx`                                                                                                                                                                                                                               | —                                                                                                                                               | PARTIAL — implemented; missing e2e for system-theme detection (`emulateMedia`) and font-size persistence across reload                                                  |
+| FR-10.2 | Settings profiles                                     | `src/renderer/pages/settings/ProfilesSection.tsx`; `src/renderer/lib/settings/profiles.ts`; `src/renderer/components/CreateProfileDialog.tsx`                                                                                                                                     | `ProfilesSection.test.tsx`                                                                                                                      | DONE                                                                                                                                                                    |
+| FR-10.3 | Database configuration                                | `server/routes/database.ts`; `src/renderer/pages/Settings.tsx`                                                                                                                                                                                                                    | `server/routes/database.test.ts`; `src/renderer/pages/Settings.test.tsx`                                                                        | DONE                                                                                                                                                                    |
+| FR-10.4 | Notification preferences                              | `src/renderer/lib/notifications/notificationService.ts`; `notificationsStore.ts`; `src/renderer/pages/settings/NotificationsSection.tsx`                                                                                                                                          | `notificationService.test.ts`; `notificationsStore.test.ts`; `NotificationsSection.test.tsx`                                                    | DONE                                                                                                                                                                    |
+| FR-10.5 | CVSS configuration                                    | `src/renderer/pages/settings/CvssSection.tsx`                                                                                                                                                                                                                                     | `CvssSection.test.tsx`                                                                                                                          | DONE                                                                                                                                                                    |
+| FR-11.1 | Dependency graph generation                           | `src/renderer/components/graph/utils.ts` (`buildGraphElements`, `detectCycles`)                                                                                                                                                                                                   | `src/renderer/components/graph/DependencyGraph.test.tsx`                                                                                        | DONE                                                                                                                                                                    |
+| FR-11.2 | Dependency graph visualization                        | `src/renderer/components/graph/DependencyGraph.tsx`; `src/renderer/pages/DependencyGraphPage.tsx`                                                                                                                                                                                 | `DependencyGraph.test.tsx`; `DependencyGraphPage.test.tsx`                                                                                      | DONE                                                                                                                                                                    |
 
----
+## Non-Functional Requirements
 
-## Phase 1: Foundation (84%)
+PRD's NFR sections are stated as metric tables rather than individually-numbered sub-requirements;
+rows below correspond to `prd-remediation-plan.md`'s NFR-0X.Y numbering (by table-row order within
+each NFR-0X group) where a specific metric is called out as still-gapped.
 
-### Covered Requirements
+| ID     | Requirement                                                    | Implementation                                                                                                                                | Covering tests / gap                                                                                                                                                                                                                                                                 | Status  |
+| ------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| NFR-01 | Performance budgets                                            | App startup, SBOM import, scan, dashboard load, search, UI responsiveness — implemented across the app; no dedicated perf-budget test harness | — (no test asserts the specific budgets). Remaining per remediation plan: NFR-01.1 startup <3s (OPEN, no test), NFR-01.3 realistic-latency scan <60s companion test (PARTIAL), NFR-01.4 100-project dashboard <2s (OPEN), NFR-01.6 100ms interaction-latency median (OPEN)           | PARTIAL |
+| NFR-02 | Scalability (projects/components/vulns/DB size)                | Local NVD DB via `better-sqlite3` + FTS5 (`server/database/nvd/`); virtualized lists in renderer                                              | Remaining per remediation plan: NFR-02.2 50,000-item `VirtualList` test (OPEN), NFR-02.3 1,000,000-row query-correctness test for `searchCVEsByText` et al. (PARTIAL), NFR-02.5 EXPLAIN-plan/no-full-scan assertions for `searchCVEsByCPE`/`searchCVEsByProduct` (PARTIAL)           | PARTIAL |
+| NFR-03 | Reliability (crash rate, data loss, auto-recovery, backup)     | `server/routes/backup.ts`; DB-write guards (e.g. `dbSeedingService`'s closed-DB guard)                                                        | `server/routes/backup.test.ts`; `server/database/dbSeedingService.test.ts`                                                                                                                                                                                                           | DONE    |
+| NFR-04 | Usability (learning curve, help, errors, keyboard, WCAG AA)    | Onboarding tour, command palette, `ErrorBoundary`; a11y contrast fix for active-nav (commit `560d9fd`)                                        | `e2e/a11y/accessibility.spec.ts` (`CORE_PAGES`). Remaining: NFR-04.5 PARTIAL — `ProjectDetail` (+ VEX/graph) routes not yet added to `CORE_PAGES`                                                                                                                                    | PARTIAL |
+| NFR-05 | Compatibility (browser/server runtime)                         | Express server + Vite/React client, no OS-specific renderer code                                                                              | `e2e/**` runs cross-browser via Playwright projects (`playwright.config.ts`)                                                                                                                                                                                                         | DONE    |
+| NFR-06 | Security hardening (CSP, TLS, input validation, rate limiting) | `server/app.ts` (helmet/CSP); `server/middleware/rateLimit.ts`; `server/database/ipcRequestValidator.ts`-style guards in routes               | corresponding route/middleware `*.test.ts`                                                                                                                                                                                                                                           | DONE    |
+| NFR-07 | Maintainability (coverage, lint, docs, build time)             | ESLint zero-warnings gate (`a0a9081`); JSDoc pass (`6b7393b`)                                                                                 | `vitest.config.ts` coverage `thresholds` block (statements 84 / branches 75 / functions 87 / lines 85). Remaining: NFR-07.1 PARTIAL — floor is 84/75/87/85, PRD target is 95%                                                                                                        | PARTIAL |
+| NFR-08 | Testability (unit/integration/E2E/BDD)                         | Vitest unit suite; `e2e/**` Playwright; `tests/bdd/features/**/*.feature` (10 feature files)                                                  | `vitest.config.ts` thresholds (see NFR-07); `e2e/**`. Remaining: NFR-08.1 PARTIAL (same coverage-floor gap as NFR-07.1); NFR-08.4 PARTIAL — `package.json`'s `test:bdd` script runs only `tests/bdd-simple.test.ts`, not the real Cucumber feature files under `tests/bdd/features/` | PARTIAL |
 
-| ID     | Requirement             | Test Case                            | Status |
-| ------ | ----------------------- | ------------------------------------ | ------ |
-| P1-001 | ErrorBoundary component | error-recovery.spec.ts               | ✅     |
-| P1-002 | Global error boundary   | error-recovery.spec.ts               | ✅     |
-| P1-003 | Retry mechanism         | error-recovery.spec.ts               | ✅     |
-| P1-006 | Backup UI in Settings   | database-settings.spec.ts            | ✅     |
-| P1-008 | CacheManager service    | nvd-database.feature (Scenarios 7-9) | ✅     |
-| P1-009 | Cache CVE integration   | hybrid-scanner.feature               | ✅     |
-| P1-010 | Cache configuration UI  | settings.spec.ts                     | ✅     |
-| P1-014 | OfflineQueue service    | offline-sync.spec.ts                 | ✅     |
-| P1-015 | Offline indicator       | offline-sync.spec.ts                 | ✅     |
-| P1-016 | Sync-on-reconnect       | offline-sync.spec.ts                 | ✅     |
-| P1-017 | Unit tests              | tests/\*_/_.test.ts                  | ✅     |
-| P1-018 | E2E tests               | e2e/\*_/_.spec.ts                    | ✅     |
-| P1-020 | CycloneDX parsing       | cyclonedx-parser.feature             | ✅     |
-| P1-021 | SPDX parsing            | spdx-parser.feature                  | ✅     |
-| P1-022 | Database initialization | nvd-database.feature                 | ✅     |
-| P1-023 | CVE CRUD operations     | nvd-database.feature                 | ✅     |
+## Security Requirements
 
-### Uncovered Requirements
+| ID    | Requirement                                                                     | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                             | Covering tests                                                                                                                                        | Status                                                                                                                                                                                                                                                                                                                  |
+| ----- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SR-01 | Data protection (encrypted API keys, no telemetry, input sanitization)          | API-key encryption in secure storage layer; server-side input validation in `server/routes/*.ts`                                                                                                                                                                                                                                                                                                                                           | encrypted-storage tests + `tests/policy/telemetryConsent.test.ts` (regression guard proving no telemetry code exists)                                 | DONE                                                                                                                                                                                                                                                                                                                    |
+| SR-02 | Code security (dependency updates, SAST, review of DB ops)                      | `.github/dependabot.yml`; `.github/workflows/codeql.yml`; `server/middleware/rateLimit.ts` + CSP in `server/app.ts`                                                                                                                                                                                                                                                                                                                        | CI-verified via `codeql.yml` runs; no local unit test (CI-gate, not code)                                                                             | DONE                                                                                                                                                                                                                                                                                                                    |
+| SR-03 | Update security (code signing, verified sources, checksum validation, rollback) | `.github/workflows/release.yml` has Windows/macOS "code signing" steps, but they are `echo`-only stubs (`echo "Setting up Windows code signing..."`), not verified signing; `server/services/syftProvision.ts` does real checksum-verified downloads, but that's for the bundled Syft _tool_, not app releases; `server/database/migrations/v2SchemaMigration.ts`'s `rollbackToVersion` covers DB-migration rollback, not release rollback | `syftProvision.test.ts` (Syft-tool checksum only); no test covers `release.yml`'s signing step or a release-checksum/rollback flow for the app itself | PARTIAL — not called out in the remediation plan's 13-item gap table (so treated as in-scope-DONE there), but direct inspection shows release-signing is a CI stub and no app-release checksum/rollback test exists; flagged here as a discrepancy between the plan and the code rather than silently inheriting "DONE" |
 
-| ID     | Requirement             | Finding | Risk   |
-| ------ | ----------------------- | ------- | ------ |
-| P1-004 | BackupService scheduler | F-041   | High   |
-| P1-005 | Backup IPC handlers     | F-041   | High   |
-| P1-007 | Restore from backup     | F-041   | High   |
-| P1-011 | DiffEngine service      | F-042   | Medium |
+## Compliance Requirements
 
----
-
-## Phase 2: Security Features (67%)
-
-### Covered Requirements
-
-| ID     | Requirement              | Test Case                              | Status |
-| ------ | ------------------------ | -------------------------------------- | ------ |
-| P2-001 | kev_catalog table        | nvd-database.feature                   | ✅     |
-| P2-004 | is_kev column            | kev-epss-intelligence.spec.ts          | ✅     |
-| P2-005 | KEV badge component      | kev-epss-intelligence.spec.ts          | ✅     |
-| P2-007 | epss columns             | kev-epss-intelligence.spec.ts          | ✅     |
-| P2-008 | EPSS column in vuln list | kev-epss-intelligence.spec.ts          | ✅     |
-| P2-009 | Risk prioritization sort | kev-epss-intelligence.spec.ts          | ✅     |
-| P2-014 | FPF decisions → VEX      | fpf.spec.ts, fpf-comprehensive.spec.ts | ✅     |
-| P2-015 | Hybrid scanner           | hybrid-scanner.feature                 | ✅     |
-| P2-016 | Multi-provider scanning  | hybrid-scanner.feature                 | ✅     |
-| P2-017 | API fallback             | hybrid-scanner.feature                 | ✅     |
-| P2-020 | Unit tests               | tests/\*_/_.test.ts                    | ✅     |
-| P2-021 | E2E tests                | e2e/critical-flows/\*.spec.ts          | ✅     |
-| P2-022 | Audit logging            | audit-logging.feature                  | ✅     |
-| P2-023 | Audit query filters      | audit-logging.feature                  | ✅     |
-
-### Uncovered Requirements
-
-| ID     | Requirement              | Finding | Risk     |
-| ------ | ------------------------ | ------- | -------- |
-| P2-002 | KevService daily sync    | F-033   | Critical |
-| P2-003 | KEV sync in NVD workflow | F-033   | Critical |
-| P2-006 | EpssService              | F-034   | Critical |
-| P2-010 | VexGenerator service     | F-036   | High     |
-| P2-011 | VexParser service        | F-036   | High     |
-| P2-012 | VEX export               | F-036   | High     |
-| P2-013 | VEX import               | F-036   | High     |
-| P2-018 | ContainerScanner         | F-037   | Medium   |
+| ID    | Requirement                                                           | Implementation                                                                                                              | Covering tests                                                                                    | Status |
+| ----- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------ |
+| CR-01 | Supply chain compliance (CISA/NTIA SBOM, EO 14028)                    | CycloneDX/SPDX parsing (`src/renderer/lib/parsers/`) covers NTIA minimum elements                                           | `cyclonedx.test.ts`; `spdx.test.ts`                                                               | DONE   |
+| CR-02 | Industry standards (OWASP SCVS, ISO 27001, SOC 2)                     | Audit trail (`src/renderer/lib/audit/`), compliance report templates (`ComplianceReportDialog.tsx`)                         | `AuditLogPanel.test.tsx`; `ComplianceReportDialog.test.tsx`                                       | DONE   |
+| CR-03 | Data formats (CycloneDX 1.0-1.6, SPDX 2.2-2.3, CVSS 3.0/3.1, CPE 2.3) | `src/renderer/lib/parsers/cyclonedx.ts` (`SUPPORTED_CYCLONEDX_SPEC_VERSIONS`); `spdx.ts`; `src/renderer/lib/cvss/parser.ts` | `cyclonedx.test.ts` (`CR-03.1` describe block); `spdx.test.ts`; `cvss/parser.test.ts` (`CR-03.3`) | DONE   |
 
 ---
 
-## Phase 3: UX Excellence (56%)
+## Remaining gaps (mirrors the 13-item table in `prd-remediation-plan.md`)
 
-### Covered Requirements
+All 13 are test/coverage/infrastructure hardening on already-implemented features — no undelivered
+product functionality remains per the remediation plan's HEAD re-validation.
 
-| ID     | Requirement               | Test Case                    | Status |
-| ------ | ------------------------- | ---------------------------- | ------ |
-| P3-005 | First-launch tour trigger | first-run-experience.spec.ts | ✅     |
-| P3-006 | Help → Show Tour menu     | onboarding-tour.spec.ts      | ✅     |
-| P3-007 | CommandPalette            | command-palette.spec.ts      | ✅     |
-| P3-010 | Ctrl+Shift+P shortcut     | command-palette.spec.ts      | ✅     |
-| P3-012 | DependencyGraph           | dependency-graph.spec.ts     | ✅     |
-| P3-017 | Path analysis             | dependency-graph.spec.ts     | ✅     |
-| P3-020 | DashboardEditor           | executive-dashboard.spec.ts  | ✅     |
-| P3-024 | ReportGenerator           | export-dialog.spec.ts        | ✅     |
-| P3-029 | Export → Executive Report | export-dialog.spec.ts        | ✅     |
-| P3-030 | Unit tests                | Partial (path tests done)    | ✅     |
-| P3-031 | E2E tests                 | e2e/features/\*.spec.ts      | ✅     |
-| P3-032 | Accessibility audit       | visual-regression.spec.ts    | ✅     |
-| P3-033 | Metrics calculator        | metrics-calculator.feature   | ✅     |
-| P3-034 | Health score              | metrics-calculator.feature   | ✅     |
-| P3-035 | Risk level                | metrics-calculator.feature   | ✅     |
-| P3-036 | Trend analysis            | metrics-calculator.feature   | ✅     |
-| P3-037 | Compliance metrics        | metrics-calculator.feature   | ✅     |
-| P3-038 | Productivity metrics      | metrics-calculator.feature   | ✅     |
+1. **NFR-08.4** — `test:bdd` script points at `tests/bdd-simple.test.ts`, not the real Cucumber `.feature` files; needs ESM/tsx loader wiring + CI hookup.
+2. **NFR-07.1 / NFR-08.1** — coverage floors (84/75/87/85 in `vitest.config.ts`) need to climb to PRD's 95% target (multi-session effort).
+3. **FR-02.3 (c)** — no unit tests for `handleRemoveSbom`'s removal cascade (`ProjectDetail.tsx:~150`).
+4. **FR-01.1** — no 1,000-concurrent-project capacity/perf test.
+5. **FR-10.1** — no e2e for system-theme detection (`emulateMedia`) or font-size persistence across reload.
+6. **NFR-01.1** — no startup-<3s test against a production build.
+7. **NFR-01.3** — no realistic-latency scan companion test for the <60s API budget.
+8. **NFR-01.4** — no 100-project dashboard-render-<2s test.
+9. **NFR-01.6** — no 100ms interaction-latency test (median of N interactions).
+10. **NFR-02.2** — no 50,000-item `VirtualList` scale test.
+11. **NFR-02.3** — no 1,000,000-row query-correctness test.
+12. **NFR-02.5** — no EXPLAIN-plan/no-full-scan assertions for CPE/product search queries.
+13. **NFR-04.5** — a11y `CORE_PAGES` list doesn't yet include `ProjectDetail` (+ VEX/graph) routes.
 
-### Uncovered Requirements
+Additionally flagged by this traceability pass (not in the remediation plan's 13-item table, so
+worth a separate look):
 
-| ID     | Requirement              | Finding          | Risk   |
-| ------ | ------------------------ | ---------------- | ------ |
-| P3-001 | Install Driver.js        | N/A (dependency) | -      |
-| P3-002 | OnboardingTour component | F-031            | Medium |
-| P3-003 | tourStore                | F-031            | Medium |
-| P3-004 | Tour steps config        | F-031            | Medium |
-| P3-008 | commandRegistry          | F-038            | Low    |
-| P3-009 | Register app actions     | F-038            | Low    |
-| P3-011 | Install Cytoscape.js     | N/A (dependency) | -      |
-| P3-013 | Force-directed layout    | F-039            | Low    |
-| P3-014 | Severity color coding    | F-039            | Low    |
-| P3-015 | Zoom/pan controls        | F-039            | Medium |
-| P3-016 | Node click → details     | F-039            | Medium |
-| P3-018 | /project/:id/graph route | F-039            | Medium |
-| P3-019 | layoutStore              | -                | Low    |
-| P3-021 | Drag-and-drop widgets    | -                | Medium |
-| P3-022 | Layout persistence       | -                | Medium |
-| P3-023 | Preset templates         | -                | Low    |
-| P3-025 | HTML report templates    | F-040            | Medium |
-| P3-026 | PDF generation           | F-040            | Medium |
-| P3-027 | Company logo upload      | F-040            | Low    |
-| P3-028 | ReportPreview modal      | F-040            | Medium |
-
----
-
-## Phase 4: Branding (35%)
-
-### Covered Requirements
-
-| ID     | Requirement        | Test Case                    | Status |
-| ------ | ------------------ | ---------------------------- | ------ |
-| P4-001 | App icons          | visual-regression.spec.ts    | ✅     |
-| P4-002 | Splash screen      | first-run-experience.spec.ts | ✅     |
-| P4-003 | About dialog       | navigation.spec.ts           | ✅     |
-| P4-004 | Error boundary     | error-recovery.spec.ts       | ✅     |
-| P4-005 | Skeleton loaders   | visual-regression.spec.ts    | ✅     |
-| P4-006 | Empty states       | visual-regression.spec.ts    | ✅     |
-| P4-007 | Bundle analysis    | Build process                | ✅     |
-| P4-008 | Visual consistency | visual-regression.spec.ts    | ✅     |
-
-### Uncovered Requirements
-
-| ID     | Requirement         | Finding                     | Risk   |
-| ------ | ------------------- | --------------------------- | ------ |
-| P4-009 | Theme customization | -                           | Medium |
-| P4-010 | Brand colors        | -                           | Low    |
-| P4-011 | Logo placement      | -                           | Low    |
-| P4-012 | Typography          | -                           | Low    |
-| P4-013 | Icon set            | -                           | Low    |
-| P4-014 | Animation system    | -                           | Low    |
-| P4-015 | Loading states      | -                           | Medium |
-| P4-016 | Toast notifications | notification-center.spec.ts | ✅     |
-| P4-017 | Modal styling       | -                           | Low    |
-| P4-018 | Table styling       | -                           | Low    |
-| P4-019 | Form styling        | -                           | Low    |
-| P4-020 | Button styling      | -                           | Low    |
-| P4-021 | Card styling        | -                           | Low    |
-| P4-022 | Badge styling       | -                           | Low    |
-| P4-023 | Progress indicators | -                           | Medium |
-
----
-
-## E2E Test Inventory
-
-### Critical Flows (19 files)
-
-| Test File                               | Tests | Requirements Covered      |
-| --------------------------------------- | ----- | ------------------------- |
-| create-project.spec.ts                  | 6     | Project CRUD, validation  |
-| navigation.spec.ts                      | 9     | Navigation, routing, tabs |
-| upload-sbom.spec.ts                     | 2     | SBOM upload dialog        |
-| fpf.spec.ts                             | 2     | FPF navigation buttons    |
-| fpf-comprehensive.spec.ts               | 12    | FPF full functionality    |
-| offline-sync.spec.ts                    | 12    | Offline mode, sync        |
-| first-run-experience.spec.ts            | 8     | Onboarding flow           |
-| database-status.spec.ts                 | 6     | Database health UI        |
-| database-settings.spec.ts               | 8     | Database configuration    |
-| cve-database-sync.spec.ts               | 6     | CVE database sync         |
-| vulnerability-details.spec.ts           | 10    | Vulnerability UI          |
-| notification-center.spec.ts             | 6     | Notifications             |
-| sbom-generator.spec.ts                  | 10    | SBOM generation           |
-| error-recovery.spec.ts                  | 8     | Error handling            |
-| settings.spec.ts                        | 10    | Settings UI               |
-| component-vulnerabilities-popup.spec.ts | 4     | Vulnerability popup       |
-| patch-information.spec.ts               | 6     | Patch info display        |
-| simple-test.spec.ts                     | 1     | Smoke test                |
-| bulk-actions.spec.ts                    | 4     | Bulk operations           |
-
-### Features (11 files)
-
-| Test File                     | Tests | Requirements Covered     |
-| ----------------------------- | ----- | ------------------------ |
-| search-page.spec.ts           | 8     | Search functionality     |
-| command-palette.spec.ts       | 6     | Command palette          |
-| dependency-graph.spec.ts      | 8     | Dependency visualization |
-| executive-dashboard.spec.ts   | 10    | Executive metrics        |
-| health-dashboard.spec.ts      | 6     | Health monitoring        |
-| kev-epss-intelligence.spec.ts | 24    | KEV/EPSS features        |
-| onboarding-tour.spec.ts       | 6     | Onboarding tour          |
-| export-dialog.spec.ts         | 8     | Export functionality     |
-| bulk-actions.spec.ts          | 4     | Bulk operations          |
-| patch-information.spec.ts     | 6     | Patch information        |
-
-### Workflows (3 files)
-
-| Test File                       | Tests | Requirements Covered   |
-| ------------------------------- | ----- | ---------------------- |
-| vulnerability-lifecycle.spec.ts | 8     | Vulnerability workflow |
-| project-management.spec.ts      | 6     | Project workflow       |
-| security-assessment.spec.ts     | 8     | Assessment workflow    |
-
-### Visual (1 file)
-
-| Test File                 | Tests | Requirements Covered |
-| ------------------------- | ----- | -------------------- |
-| visual-regression.spec.ts | 12    | Visual snapshots     |
-
----
-
-## Unit/Integration Test Inventory
-
-| Test File              | Purpose                | Status |
-| ---------------------- | ---------------------- | ------ |
-| bdd-simple.test.ts     | BDD smoke test         | ✅     |
-| apiIntegration.test.ts | API integration        | ✅     |
-| ftsIntegration.test.ts | Full-text search       | ✅     |
-| nvdIntegration.test.ts | NVD operations         | ✅     |
-| performance.test.ts    | Performance benchmarks | ✅     |
-| bulkImport.test.ts     | Bulk import            | ✅     |
-| junitExporter.test.ts  | JUnit export           | ✅     |
-| parser.test.ts         | SBOM parsing           | ✅     |
-| sarifExporter.test.ts  | SARIF export           | ✅     |
-| scanCommand.test.ts    | CLI scan command       | ✅     |
-
----
-
-## Recommended Actions
-
-### Critical Priority (Phase 2)
-
-1. **KEV Sync Tests**
-
-   ```typescript
-   // e2e/critical-flows/kev-sync.spec.ts
-   test('should sync KEV catalog on startup', async ({ page }) => {
-     // Verify KEV data loaded from bundled baseline
-     // Test manual sync button
-     // Verify daily auto-sync
-   })
-   ```
-
-2. **EPSS API Tests**
-
-   ```typescript
-   // e2e/critical-flows/epss-api.spec.ts
-   test('should fetch EPSS scores from API', async ({ page }) => {
-     // Test on-demand EPSS lookup
-     // Verify caching (24h TTL)
-     // Test fallback when API unavailable
-   })
-   ```
-
-3. **VEX Roundtrip Tests**
-   ```typescript
-   // e2e/critical-flows/vex-roundtrip.spec.ts
-   test('should generate and parse VEX documents', async ({ page }) => {
-     // Generate VEX from FPF decisions
-     // Import VEX from file
-     // Verify status propagation
-   })
-   ```
-
-### High Priority (Phase 1 & 4)
-
-4. **Backup/Restore Tests**
-
-   ```typescript
-   // e2e/critical-flows/backup-restore.spec.ts
-   test('should backup and restore database', async ({ page }) => {
-     // Create backup
-     // Verify backup file
-     // Restore from backup
-   })
-   ```
-
-5. **SBOM Diff Tests**
-   ```typescript
-   // e2e/features/sbom-diff.spec.ts
-   test('should detect component changes', async ({ page }) => {
-     // Upload SBOM v1
-     // Upload SBOM v2
-     // Verify diff detection
-   })
-   ```
-
-### Medium Priority (Phase 3)
-
-6. **Layout Persistence Tests**
-7. **Report Generation Tests**
-8. **Accessibility Audit Tests**
-
----
-
-## Traceability Annotation Format
-
-To improve future traceability, add annotations to test files:
-
-```typescript
-/**
- * @requirement P2-005
- * @test-case TC-KEV-001
- * @coverage full
- */
-test('should display KEV badge on exploited vulnerabilities', async ({ page }) => {
-  // Test implementation
-})
-```
-
-### In Feature Files
-
-```gherkin
-@requirement P2-005 @coverage full
-Scenario: Display KEV badge for exploited vulnerabilities
-  Given a vulnerability with KEV status
-  When I view the vulnerability list
-  Then I should see a KEV badge
-```
-
----
-
-## Gap Analysis by Category
-
-| Category           | Total | Covered | Coverage | Priority |
-| ------------------ | ----- | ------- | -------- | -------- |
-| Database           | 12    | 11      | 92%      | Low      |
-| Scanning           | 8     | 7       | 88%      | Low      |
-| Export             | 6     | 5       | 83%      | Low      |
-| UI Components      | 18    | 10      | 56%      | Medium   |
-| Intelligence       | 8     | 4       | 50%      | Critical |
-| Compliance         | 6     | 3       | 50%      | High     |
-| Backup/Restore     | 4     | 0       | 0%       | High     |
-| Container Scanning | 4     | 0       | 0%       | Medium   |
-
----
-
-**Document Status:** Updated
-**Next Review:** After Phase 4 completion
-**Owner:** QA Team
+- **SR-03** — `release.yml`'s Windows/macOS code-signing steps are `echo`-only placeholders; no
+  test or CI gate verifies an actual signed/checksummed release artifact for the app itself.

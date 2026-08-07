@@ -24,9 +24,9 @@ This guide provides step-by-step instructions for managing the CVE database in V
 
 Before using the CVE database features:
 
-- [ ] VulnAssessTool installed
+- [ ] VulnAssessTool server running and reachable in your browser
 - [ ] Internet connection (for initial sync)
-- [ ] At least 2 GB free disk space
+- [ ] At least 2 GB free disk space on the server host
 - [ ] NVD API key (optional but recommended)
 
 ### Getting an NVD API Key
@@ -44,7 +44,7 @@ An API key significantly improves sync performance:
 
 ### Adding Your API Key
 
-1. Open VulnAssessTool
+1. Open VulnAssessTool in your browser
 2. Go to **Settings** (gear icon)
 3. Find **API Configuration** section
 4. Enter your API key in the **NVD API Key** field
@@ -353,20 +353,9 @@ To start fresh with a clean database:
 
 ### Backing Up the Database
 
-**To backup:**
-
-1. Close VulnAssessTool
-2. Navigate to database directory:
-   - Windows: `%APPDATA%\vuln-assess-tool\nvd-database\`
-   - macOS: `~/Library/Application Support/vuln-assess-tool/nvd-database/`
-   - Linux: `~/.config/vuln-assess-tool/nvd-database/`
-3. Copy all files to backup location
-
-**To restore:**
-
-1. Close VulnAssessTool
-2. Copy backup files to database directory
-3. Restart VulnAssessTool
+Use **Settings** > **Backup & Recovery** to create, verify, restore, and delete backups from
+the UI. Backups are stored in the server's backup directory (`<DATA_DIR>/backups`) and pruned
+automatically once the configured retention count is exceeded.
 
 ---
 
@@ -448,5 +437,5 @@ To start fresh with a clean database:
 
 ---
 
-**Last Updated:** 2026-02-25
-**Version:** 0.2.0
+**Last Updated:** 2026-08-07
+**Version:** 2.0.0

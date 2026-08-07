@@ -1,5 +1,12 @@
 # PRD Remediation Plan — all open requirements
 
+> **CURRENT STATUS (2026-08-07) — read this first.** ~46 of 59 requirements are DONE. Both
+> remaining product features (FR-03.6 auto-refresh, FR-04.3 CVSS temporal metrics) shipped. The
+> **only** remaining work is 13 test/coverage/infra items — see
+> [Re-validation at HEAD — 2026-08-06](#re-validation-at-head--2026-08-06-post-pr-8-merge) below.
+> The `## Summary` counts and per-item labels that follow are the ORIGINAL 2026-07-31 snapshot,
+> kept for history — they are stale; trust the re-validation section.
+
 **Generated:** 2026-07-31 from a per-group re-validation of docs/reports/requirement-validation-2026-07-25.md against current HEAD.
 **Scope:** 62 sub-requirements audited; **52 still actionable** (10 already fixed since the report).
 

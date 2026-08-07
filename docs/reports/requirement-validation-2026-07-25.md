@@ -1,5 +1,10 @@
 # Requirement-Based Validation — VulnAssessTool
 
+> **SUPERSEDED (2026-08-07).** This 2026-07-25 snapshot was re-validated against HEAD and is now
+> largely out of date (it was over-pessimistic — most GAP/SHALLOW items were already implemented).
+> For the current state see [reports/prd-remediation-plan.md](prd-remediation-plan.md), which is the
+> canonical status doc. This file is retained as the original validation record.
+
 **Date:** 2026-07-25  
 **Source of truth:** [PRD.md](../../PRD.md) (FR-01…FR-11, NFR-01…08, SR/CR)  
 **Method:** Traceability audit of every PRD sub-requirement against implementation + covering tests (graded VERIFIED / SHALLOW / GAP / NA), plus a deep-dive of critical Must-Haves validated against real data (parser fixtures, targeted unit tests, and live-server API calls).  

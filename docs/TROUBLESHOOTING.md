@@ -40,11 +40,11 @@ This guide covers common issues, error messages, and solutions for VulnAssessToo
 **Steps to resolve:**
 
 1. Check internet connection
-2. Restart VulnAssessTool
+2. Reload the page in your browser
 3. Go to Settings > Database Management
 4. If "Sync in progress" shows incorrectly:
    - Click "Cancel Sync" if available
-   - Or restart the application
+   - Or restart the server process
 
 ### Sync Stuck at 0%
 
@@ -137,10 +137,8 @@ This guide covers common issues, error messages, and solutions for VulnAssessToo
 
 **Diagnosis:**
 
-1. Check database file exists:
-   - Windows: `%APPDATA%\vuln-assess-tool\nvd-database\nvd.db`
-   - macOS: `~/Library/Application Support/vuln-assess-tool/nvd-database/nvd.db`
-   - Linux: `~/.config/vuln-assess-tool/nvd-database/nvd.db`
+1. Check the database file exists in the data directory (default `~/.vulnassesstool`, or the
+   path set via the `DATA_DIR` environment variable): `nvd-data.db`
 
 2. Check file size:
    - Should be > 10MB if synced
@@ -158,13 +156,10 @@ This guide covers common issues, error messages, and solutions for VulnAssessToo
    - Perform full sync
 
 3. **Manual Reset:**
-   - Close VulnAssessTool
-   - Delete all files in database directory:
-     - `nvd.db`
-     - `nvd.db-shm`
-     - `nvd.db-wal`
-     - `.metadata.json`
-   - Restart application
+   - Stop the server
+   - Delete all database files in the data directory: `nvd-data.db`, `nvd-data.db-shm`,
+     `nvd-data.db-wal`
+   - Restart the server
    - Perform full sync
 
 ### Database Locked Errors
@@ -176,15 +171,14 @@ This guide covers common issues, error messages, and solutions for VulnAssessToo
 
 **Causes:**
 
-- Another VulnAssessTool instance running
-- Another application accessing the database
-- Improper shutdown left lock file
+- Another VulnAssessTool server process running against the same data directory
+- Another process accessing the database file directly
+- Improper shutdown left stale WAL/SHM files
 
 **Solutions:**
 
-1. Close all VulnAssessTool instances
-2. Delete `.lock` file in database directory (if exists)
-3. Restart application
+1. Stop all VulnAssessTool server processes pointed at the same `DATA_DIR`
+2. Restart the server
 
 ### Schema Migration Errors
 
@@ -425,33 +419,31 @@ This guide covers common issues, error messages, and solutions for VulnAssessToo
 
 ## UI and Application Errors
 
-### Application Won't Start
+### Application Won't Start / Page Won't Load
 
 **Symptoms:**
 
-- No window appears
-- Crash on startup
-- Blank screen
+- Browser can't reach the server (connection refused)
+- Server crashes on startup
+- Blank page after loading
 
 **Solutions:**
 
-1. **Check Logs:**
-   - Windows: `%APPDATA%\vuln-assess-tool\logs\`
-   - macOS: `~/Library/Logs/vuln-assess-tool/`
-   - Linux: `~/.local/share/vuln-assess-tool/logs/`
+1. **Check Server Logs:**
+   - Review the server process's console output for startup errors
+   - The server also creates a log directory at `<DATA_DIR>/logs`
 
-2. **Clear Cache:**
-   - Delete `cache` folder in app data directory
-   - Restart application
+2. **Clear Search Cache:**
+   - Settings > Performance > Clear Cache
+   - Reload the page in your browser (clear the browser cache if a stale build is served)
 
 3. **Reset Settings:**
-   - Delete `config.json` in app data directory
-   - Restart application
+   - Settings > (danger zone) > Reset Settings restores client-side defaults
+   - This does not affect the CVE database or backups
 
-4. **Reinstall:**
-   - Uninstall completely
-   - Download latest version
-   - Fresh install
+4. **Restart the Server:**
+   - Stop and restart the `npm start` (or your process manager's) server process
+   - Verify the port isn't already in use by another instance
 
 ### Settings Not Saving
 
@@ -463,8 +455,8 @@ This guide covers common issues, error messages, and solutions for VulnAssessToo
 **Solutions:**
 
 1. **Check Permissions:**
-   - Ensure write access to app data directory
-   - Run as administrator (Windows) if needed
+   - Ensure the server process has write access to the data directory (`DATA_DIR`)
+   - Run the server process with elevated permissions (Windows) if needed
 
 2. **Check Disk Space:**
    - Ensure adequate free space
@@ -534,10 +526,10 @@ If this guide doesn't resolve your issue:
    - Include system information
 
 3. **Provide Logs:**
-   - Attach relevant log files
-   - Located in app data directory
+   - Attach relevant log output
+   - The server's log directory is at `<DATA_DIR>/logs`
 
 ---
 
-**Last Updated:** 2026-02-25
-**Version:** 0.2.0
+**Last Updated:** 2026-08-07
+**Version:** 2.0.0

@@ -48,9 +48,9 @@ VulnAssessTool uses a local NVD (National Vulnerability Database) SQLite databas
 
 ## Initial Setup
 
-### First Launch
+### First Start
 
-When you first launch VulnAssessTool, the application will:
+When the server first starts, it will:
 
 1. Create the database directory if it doesn't exist
 2. Initialize an empty SQLite database with optimized schema
@@ -77,7 +77,7 @@ An NVD API key significantly improves sync performance:
 
 ### Starting Initial Sync
 
-1. Open VulnAssessTool
+1. Open VulnAssessTool in your browser
 2. Navigate to **Settings** > **Database Management**
 3. Configure your sync schedule (recommend: Weekly for most users)
 4. Click **"Sync Now"** to start the initial download
@@ -293,16 +293,14 @@ VulnAssessTool handles rate limits automatically:
 
 **Solution:**
 
-1. Close VulnAssessTool
-2. Navigate to database directory:
-   - **Windows**: `%APPDATA%\vuln-assess-tool\nvd-database\`
-   - **macOS**: `~/Library/Application Support/vuln-assess-tool/nvd-database/`
-   - **Linux**: `~/.config/vuln-assess-tool/nvd-database/`
+1. Stop the server
+2. Navigate to the data directory (default `~/.vulnassesstool`, or the path set via the
+   `DATA_DIR` environment variable)
 3. Delete all database files:
-   - `nvd.db`
-   - `nvd.db-shm`
-   - `nvd.db-wal`
-4. Restart VulnAssessTool
+   - `nvd-data.db`
+   - `nvd-data.db-shm`
+   - `nvd-data.db-wal`
+4. Restart the server
 5. Perform full sync to rebuild database
 
 ### Slow Performance
@@ -343,8 +341,8 @@ VulnAssessTool handles rate limits automatically:
    - Free up system memory
    - Ensure at least 4GB RAM available
 
-2. **Use 64-bit Version**
-   - 32-bit builds limited to 2GB address space
+2. **Increase Node Heap Size**
+   - Set `--max-old-space-size` on the server process if it's memory-constrained
 
 3. **Manual Sync in Batches**
    - Sync recent years first
@@ -356,38 +354,21 @@ VulnAssessTool handles rate limits automatically:
 
 ### Custom Database Location
 
-To store the database in a custom location:
+To store the database in a custom location, set the `DATA_DIR` environment variable on the
+server host before starting it:
 
-1. Close VulnAssessTool
-2. Create configuration file:
-   - **Windows**: `%APPDATA%\vuln-assess-tool\config.json`
-   - **macOS**: `~/Library/Application Support/vuln-assess-tool/config.json`
-   - **Linux**: `~/.config/vuln-assess-tool/config.json`
-3. Add:
-   ```json
-   {
-     "databasePath": "/path/to/custom/location"
-   }
-   ```
-4. Restart VulnAssessTool
+```bash
+DATA_DIR=/path/to/custom/location npm start
+```
+
+Restart the server for the change to take effect. The active path is shown read-only in
+**Settings** > **Database Management** > **Storage Location**.
 
 ### Database Backup
 
-**To backup:**
-
-1. Close VulnAssessTool
-2. Navigate to database directory
-3. Copy all files:
-   - `nvd.db`
-   - `nvd.db-shm`
-   - `nvd.db-wal`
-   - `.metadata.json`
-
-**To restore:**
-
-1. Close VulnAssessTool
-2. Copy backup files to database directory
-3. Restart VulnAssessTool
+Use **Settings** > **Backup & Recovery** to create, verify, restore, and delete backups from
+the UI — no manual file copying required. Backups are retained per the configured count and
+stored in the server's backup directory (`<DATA_DIR>/backups`).
 
 ### Configuration File Options
 
@@ -473,5 +454,5 @@ For additional help:
 
 ---
 
-**Last Updated:** 2026-02-25
-**Version:** 0.2.0
+**Last Updated:** 2026-08-07
+**Version:** 2.0.0

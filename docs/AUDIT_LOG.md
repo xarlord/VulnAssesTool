@@ -41,7 +41,7 @@ The audit log is a chronological record of all significant events in VulnAssessT
 
 ### Opening the Audit Log
 
-1. Launch VulnAssessTool
+1. Open VulnAssessTool in your browser
 2. Click the **Settings** gear icon in the top-right
 3. Navigate to the **Audit Log** tab
 4. The audit log panel displays recent events
@@ -465,5 +465,5 @@ interface AuditEvent {
 
 ---
 
-**Last Updated:** 2026-02-10
-**Version:** 0.1.0
+**Last Updated:** 2026-08-07
+**Version:** 2.0.0

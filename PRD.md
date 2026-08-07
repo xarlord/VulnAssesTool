@@ -1,9 +1,11 @@
 # VulnAssessTool - Product Requirements Document (PRD)
 
-**Version:** 1.0
-**Last Updated:** 2026-02-12
+**Version:** 1.1
+**Last Updated:** 2026-08-07
 **Product Owner:** VulnAssessTool Development Team
-**Status:** Draft
+**Status:** Active — reflects the shipped v2.0 architecture. VulnAssessTool was migrated from an
+Electron desktop app to a self-hosted **Express (Node) + React** web application (commit `acd0518`);
+this PRD has been updated to that reality.
 
 ---
 
@@ -13,7 +15,7 @@ VulnAssessTool is a web-based vulnerability assessment application designed for 
 
 ### Product Vision
 
-To become the industry-standard open-source desktop application for SBOM vulnerability assessment, enabling organizations to proactively manage supply chain security through comprehensive scanning, monitoring, and reporting capabilities.
+To become the industry-standard open-source web application for SBOM vulnerability assessment, enabling organizations to proactively manage supply chain security through comprehensive scanning, monitoring, and reporting capabilities.
 
 ---
 
@@ -44,7 +46,7 @@ Modern software development relies heavily on open-source and third-party compon
 
 ### Solution
 
-VulnAssessTool provides an offline-first desktop application that:
+VulnAssessTool provides a self-hosted, offline-capable web application that:
 
 - Imports and parses standard SBOM formats (CycloneDX, SPDX)
 - Matches components against local NVD database for fast vulnerability lookup
@@ -647,13 +649,13 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### NFR-02: Scalability
 
-| Dimension              | Requirement                                    |
-| ---------------------- | ---------------------------------------------- |
-| Projects               | Support 1,000+ projects                        |
-| Components per Project | Support 50,000+ components                     |
-| Vulnerabilities        | Handle 1,000,000+ vulnerability records        |
-| Concurrent Users       | Single-user desktop (future: multi-user cloud) |
-| Database Size          | Handle 10GB+ NVD database                      |
+| Dimension              | Requirement                                            |
+| ---------------------- | ------------------------------------------------------ |
+| Projects               | Support 1,000+ projects                                |
+| Components per Project | Support 50,000+ components                             |
+| Vulnerabilities        | Handle 1,000,000+ vulnerability records                |
+| Concurrent Users       | Single-instance self-hosted (future: multi-user cloud) |
+| Database Size          | Handle 10GB+ NVD database                              |
 
 ### NFR-03: Reliability
 
@@ -676,22 +678,24 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### NFR-05: Compatibility
 
-| Platform     | Version                   | Support Level |
-| ------------ | ------------------------- | ------------- |
-| Windows      | 10/11                     | Full support  |
-| macOS        | 11+ (Big Sur+)            | Full support  |
-| Linux        | Ubuntu 20.04+, Fedora 35+ | Full support  |
-| Architecture | x64, ARM64                | Full support  |
+VulnAssessTool is a self-hosted web application: a Node/Express server that serves the React
+frontend, accessed through a modern browser.
+
+| Surface          | Requirement                                | Support Level |
+| ---------------- | ------------------------------------------ | ------------- |
+| Browser (client) | Chrome/Edge 110+, Firefox 110+, Safari 16+ | Full support  |
+| Server runtime   | Node.js 20+ on Windows, macOS, Linux       | Full support  |
+| Architecture     | x64, ARM64                                 | Full support  |
 
 ### NFR-06: Security
 
-| Requirement     | Description                          |
-| --------------- | ------------------------------------ |
-| Data at Rest    | Encrypt sensitive configuration data |
-| Data in Transit | HTTPS/TLS 1.3 for API calls          |
-| Local Storage   | No plaintext storage of API keys     |
-| Updates         | Code signing for application updates |
-| Sandboxing      | Electron context isolation enabled   |
+| Requirement     | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| Data at Rest    | Encrypt sensitive configuration data                      |
+| Data in Transit | HTTPS/TLS 1.3 for API calls                               |
+| Local Storage   | No plaintext storage of API keys                          |
+| Updates         | Integrity-checked CVE data + dependency updates           |
+| Hardening       | CSP headers, server-side input validation + rate limiting |
 
 ### NFR-07: Maintainability
 
@@ -727,9 +731,9 @@ VulnAssessTool provides an offline-first desktop application that:
 #### SR-02: Code Security
 
 - Regular dependency updates for known vulnerabilities
-- Static analysis before releases
+- Static analysis before releases (ESLint, CodeQL)
 - Security review of all database operations
-- Context isolation in Electron
+- Content Security Policy and strict server-side input sanitization
 
 #### SR-03: Update Security
 
@@ -800,11 +804,10 @@ VulnAssessTool provides an offline-first desktop application that:
 
 #### DR-01: Build Process
 
-- Automated builds via CI/CD
-- Multi-platform builds (Windows, macOS, Linux)
-- Code signing for each platform
-- Deterministic builds for reproducibility
-- Automated testing before release
+- Automated builds via CI/CD (GitHub Actions)
+- Client bundle (Vite) + server compile (tsc) via `npm run build:all`
+- Automated testing (unit + E2E) before release
+- Reproducible builds from a tagged commit
 
 #### DR-02: Release Channels
 
@@ -816,13 +819,14 @@ VulnAssessTool provides an offline-first desktop application that:
 
 #### DR-03: Distribution
 
-- GitHub Releases for all versions
-- Automatic update notifications
-- Delta updates for efficiency
-- Offline installer support
-- Portable version option (Windows)
+- GitHub Releases (source + build instructions) for all versions
+- Optional container image for self-hosting
+- In-app update notifications (checks the GitHub Releases API)
 
 ### System Requirements
+
+These describe the **host running the server**. The client needs only a modern browser (see
+NFR-05) — there is nothing to install on the client.
 
 #### Minimum Requirements
 
@@ -844,12 +848,12 @@ VulnAssessTool provides an offline-first desktop application that:
 
 ### Installation
 
-#### DR-04: Installation Methods
+#### DR-04: Deployment Methods
 
-- Windows: MSI installer with admin option
-- macOS: DMG with drag-to-install
-- Linux: AppImage, DEB, RPM packages
-- All platforms: Portable binary option
+- From source: `npm ci && npm run build:all && npm start` (Node.js 20+); default port 3001
+- Optional container image for self-hosting
+- Reverse proxy (nginx/Caddy) recommended for network exposure and TLS termination
+- See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide
 
 #### DR-05: First-Run Experience
 
@@ -866,7 +870,7 @@ VulnAssessTool provides an offline-first desktop application that:
 
 **Status:** ✅ Complete
 
-- [x] Electron + React application structure
+- [x] Express (Node) + React application structure (migrated from Electron, commit `acd0518`)
 - [x] CycloneDX and SPDX SBOM parsing
 - [x] Local NVD database integration
 - [x] Basic vulnerability scanning
