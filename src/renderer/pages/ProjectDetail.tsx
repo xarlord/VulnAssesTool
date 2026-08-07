@@ -299,7 +299,11 @@ export function ProjectDetail() {
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+                // Filled destructive style (matches components/ui/button.tsx's "destructive"
+                // variant), not text-destructive-on-bg-secondary: that combination composited
+                // to only 3.28:1 in dark mode, below WCAG AA 4.5:1 (NFR-04.5).
+                // text-destructive-foreground on bg-destructive is designed for AA contrast.
+                className="rounded-md border border-transparent bg-destructive px-3 py-2 text-sm text-destructive-foreground hover:bg-destructive/90"
               >
                 Delete
               </button>

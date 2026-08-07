@@ -7,6 +7,7 @@
 
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
+import path from 'node:path'
 
 // =============================================================================
 // Timeout Constants
@@ -549,13 +550,33 @@ export async function createProjectWithIntelligenceData(page: Page): Promise<voi
 }
 
 /**
- * Create a project with multiple vulnerabilities
- * NOTE: This is a placeholder - actual data seeding requires fixture implementation
+ * Create a project seeded with REAL vulnerabilities via the actual scan pipeline:
+ * upload the fixtures/sbom-with-vulns.json fixture, run "Scan for Vulnerabilities",
+ * and wait for it to resolve against the offline seeded NVD database. Used by tests
+ * that need a meaningfully-populated project (e.g. the a11y gate) rather than an
+ * empty one. Mirrors the real-scan test in
+ * e2e/workflows/sbom-vulnerability-scan.spec.ts. Leaves the caller on the project's
+ * detail page with the Vulnerabilities tab active.
+ *
+ * NOTE: a real scan against the local NVD database can take up to ~90s — callers
+ * must raise their own test timeout (`test.setTimeout(...)`) before calling this.
  * @param page - Playwright page object
+ * @param name - Project name
  */
-export async function createProjectWithMultipleVulnerabilities(page: Page): Promise<void> {
-  await createTestProject(page, 'Multiple Vulns Test Project')
-  // TODO: Seed multiple vulnerabilities via fixtures
+export async function createProjectWithMultipleVulnerabilities(page: Page, name: string): Promise<void> {
+  await createTestProject(page, name)
+
+  const sbomPath = path.join(import.meta.dirname, 'fixtures', 'sbom-with-vulns.json')
+  await uploadSbomFile(page, sbomPath)
+
+  const scanButton = page.getByRole('button', { name: /scan for vulnerabilities/i })
+  await expect(scanButton).toBeEnabled({ timeout: 10000 })
+  await scanButton.click()
+
+  await navigateToVulnerabilitiesTab(page)
+  // Log4Shell (from the fixture's log4j component) is the scan's proof-of-life:
+  // waiting on it confirms the scan actually resolved real CVEs, not just finished.
+  await expect(page.getByText('CVE-2021-44228').first()).toBeVisible({ timeout: 120_000 })
 }
 
 /**

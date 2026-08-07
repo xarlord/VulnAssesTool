@@ -313,7 +313,11 @@ function RemediationItem({
         {onViewComponent && (
           <button
             onClick={() => onViewComponent(component)}
-            className="ml-2 text-sm text-primary hover:underline whitespace-nowrap"
+            // text-foreground, not text-primary: text-primary on this row's bg-background
+            // composites to only 3.53:1 in dark mode, below WCAG AA 4.5:1 (NFR-04.5). The
+            // underline (always-on, not just on hover) keeps it identifiable as a link
+            // without relying on color alone.
+            className="ml-2 text-sm text-foreground underline hover:no-underline whitespace-nowrap"
           >
             View Details
           </button>
