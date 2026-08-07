@@ -60,5 +60,16 @@ export default defineConfig({
       name: 'a11y',
       testMatch: /a11y\/.*\.spec\.ts$/,
     },
+    {
+      // Perf budgets (NFR-01.1/01.4/01.6) measure real wall-clock time against the
+      // built app, so they are sensitive to whatever else is running on the
+      // machine (CI runner contention, local background load). Deliberately NOT
+      // included in the CI e2e matrix (.github/workflows/ci.yml's `project:` list)
+      // so a noisy run can't flake the required gate. Run manually via
+      // `npm run test:e2e:perf` (see package.json) when validating a perf-sensitive
+      // change.
+      name: 'perf',
+      testMatch: /perf\/.*\.spec\.ts$/,
+    },
   ],
 })

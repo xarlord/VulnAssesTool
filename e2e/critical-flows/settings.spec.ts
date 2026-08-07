@@ -82,6 +82,55 @@ test.describe('Settings Configuration Flow', () => {
     await expect(html).not.toHaveClass(/dark/)
   })
 
+  test('should resolve the system theme from an OS dark-mode preference (FR-10.1)', async ({ page }) => {
+    // App.tsx's theme effect resolves settings.theme === 'system' via
+    // matchMedia('(prefers-color-scheme: dark)') — emulateMedia overrides that query for
+    // the whole browsing context, so this exercises the real OS-preference branch instead
+    // of just asserting the 'system' button exists.
+    await page.emulateMedia({ colorScheme: 'dark' })
+
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+    const html = page.locator('html')
+
+    await main.getByRole('button', { name: 'system', exact: true }).click()
+    await expect(html).toHaveClass(/dark/)
+    await expect(html).not.toHaveClass(/light/)
+  })
+
+  test('should resolve the system theme from an OS light-mode preference (FR-10.1)', async ({ page }) => {
+    // The inverse of the dark-mode case above: without it, a regression that always
+    // resolves 'system' to 'dark' regardless of the OS preference would still pass every
+    // other test in this file.
+    await page.emulateMedia({ colorScheme: 'light' })
+
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+    const html = page.locator('html')
+
+    await main.getByRole('button', { name: 'system', exact: true }).click()
+    await expect(html).toHaveClass(/light/)
+    await expect(html).not.toHaveClass(/dark/)
+  })
+
+  test('should persist the selected font size across a full page reload (FR-10.1)', async ({ page }) => {
+    await page.getByRole('link', { name: 'Settings' }).click()
+    const main = page.locator('#main-content')
+    const html = page.locator('html')
+
+    // Default font size is 'default' (14px, DEFAULT_SETTINGS); switch to the non-default
+    // 'large' (16px, App.tsx's fontSizes map) so the post-reload assertion proves the
+    // *persisted user choice* survived, not the compiled default happening to match.
+    await main.getByRole('button', { name: /large/i }).click()
+    await expect(html).toHaveCSS('font-size', '16px')
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+
+    // On reload the persist middleware rehydrates settings from localStorage before App's
+    // font-size effect runs, so the real rendered font-size must still reflect 'large'.
+    await expect(html).toHaveCSS('font-size', '16px')
+  })
+
   test('auto-refresh interval selector enables on toggle and records the chosen interval (FR-03.6)', async ({
     page,
   }) => {
