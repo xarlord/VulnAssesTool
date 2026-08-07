@@ -107,6 +107,12 @@ test.describe('Settings Configuration Flow', () => {
 
     await intervalSelect.selectOption('168')
     await expect(intervalSelect).toHaveValue('168')
+
+    // The choice survives a full reload: the persist middleware rehydrates settings and (since
+    // the loadSettingsProfiles clobber was removed) ProfilesSection's mount no longer resets them.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(intervalSelect).toBeEnabled()
+    await expect(intervalSelect).toHaveValue('168')
   })
 
   test('should navigate back to dashboard from settings', async ({ page }) => {
