@@ -15,6 +15,7 @@ This document defines comprehensive E2E tests for VulnAssesTool features that cu
 ## Test Architecture
 
 ### Directory Structure
+
 ```
 e2e/
 ├── critical-flows/          # Existing tests (keep)
@@ -60,6 +61,7 @@ import type { Page } from '@playwright/test'
 **Test Scenarios:**
 
 #### 1.1 Page Load Tests
+
 ```typescript
 test.describe('Dependency Graph Page Load', () => {
   test('should display graph page with header elements', async ({ page }) => {
@@ -95,6 +97,7 @@ test.describe('Dependency Graph Page Load', () => {
 ```
 
 #### 1.2 Filter Tests
+
 ```typescript
 test.describe('Dependency Graph Filters', () => {
   test('should filter by critical severity', async ({ page }) => {
@@ -134,6 +137,7 @@ test.describe('Dependency Graph Filters', () => {
 ```
 
 #### 1.3 Navigation Tests
+
 ```typescript
 test.describe('Dependency Graph Navigation', () => {
   test('should navigate back to project detail', async ({ page }) => {
@@ -165,6 +169,7 @@ test.describe('Dependency Graph Navigation', () => {
 ```
 
 #### 1.4 Empty State Tests
+
 ```typescript
 test.describe('Dependency Graph Empty States', () => {
   test('should handle project with no components', async ({ page }) => {
@@ -184,6 +189,7 @@ test.describe('Dependency Graph Empty States', () => {
 ```
 
 #### 1.5 Responsive Design Tests
+
 ```typescript
 test.describe('Dependency Graph Responsive Design', () => {
   test.use({ viewport: { width: 768, height: 1024 } })
@@ -206,6 +212,7 @@ test.describe('Dependency Graph Responsive Design', () => {
 **Test Scenarios:**
 
 #### 2.1 Page Load Tests
+
 ```typescript
 test.describe('Executive Dashboard Page Load', () => {
   test('should display executive dashboard header', async ({ page }) => {
@@ -230,6 +237,7 @@ test.describe('Executive Dashboard Page Load', () => {
 ```
 
 #### 2.2 Widget Tests
+
 ```typescript
 test.describe('Executive Dashboard Widgets', () => {
   test('should display risk gauge widget', async ({ page }) => {
@@ -268,6 +276,7 @@ test.describe('Executive Dashboard Widgets', () => {
 ```
 
 #### 2.3 Filter Tests
+
 ```typescript
 test.describe('Executive Dashboard Filters', () => {
   test('should filter by date range', async ({ page }) => {
@@ -295,6 +304,7 @@ test.describe('Executive Dashboard Filters', () => {
 ```
 
 #### 2.4 Export Tests
+
 ```typescript
 test.describe('Executive Dashboard Export', () => {
   test('should show export report button', async ({ page }) => {
@@ -316,6 +326,7 @@ test.describe('Executive Dashboard Export', () => {
 ```
 
 #### 2.5 Navigation Tests
+
 ```typescript
 test.describe('Executive Dashboard Navigation', () => {
   test('should navigate back to main dashboard', async ({ page }) => {
@@ -332,7 +343,7 @@ test.describe('Executive Dashboard Navigation', () => {
 
     // Click on a project link in a widget
     const projectLink = page.locator('a[href^="/project/"]').first()
-    if (await projectLink.count() > 0) {
+    if ((await projectLink.count()) > 0) {
       await projectLink.click()
       await expect(page).toHaveURL(/\/project\//)
     }
@@ -349,6 +360,7 @@ test.describe('Executive Dashboard Navigation', () => {
 **Test Scenarios:**
 
 #### 3.1 Open/Close Tests
+
 ```typescript
 test.describe('Command Palette Open/Close', () => {
   test('should open with Ctrl+Shift+P', async ({ page }) => {
@@ -390,6 +402,7 @@ test.describe('Command Palette Open/Close', () => {
 ```
 
 #### 3.2 Search Tests
+
 ```typescript
 test.describe('Command Palette Search', () => {
   test('should filter commands by search query', async ({ page }) => {
@@ -426,6 +439,7 @@ test.describe('Command Palette Search', () => {
 ```
 
 #### 3.3 Navigation Tests
+
 ```typescript
 test.describe('Command Palette Navigation', () => {
   test('should navigate with arrow down key', async ({ page }) => {
@@ -464,6 +478,7 @@ test.describe('Command Palette Navigation', () => {
 ```
 
 #### 3.4 Execution Tests
+
 ```typescript
 test.describe('Command Palette Execution', () => {
   test('should execute command with Enter key', async ({ page }) => {
@@ -501,6 +516,7 @@ test.describe('Command Palette Execution', () => {
 ```
 
 #### 3.5 Category Tests
+
 ```typescript
 test.describe('Command Palette Categories', () => {
   test('should group commands by category', async ({ page }) => {
@@ -531,6 +547,7 @@ test.describe('Command Palette Categories', () => {
 **Test Scenarios:**
 
 #### 4.1 Page Load Tests
+
 ```typescript
 test.describe('Search Page Load', () => {
   test('should display search page header', async ({ page }) => {
@@ -561,6 +578,7 @@ test.describe('Search Page Load', () => {
 ```
 
 #### 4.2 Project Search Tests
+
 ```typescript
 test.describe('Search Page Project Search', () => {
   test('should search projects by name', async ({ page }) => {
@@ -613,6 +631,7 @@ test.describe('Search Page Project Search', () => {
 ```
 
 #### 4.3 NVD Search Tests
+
 ```typescript
 test.describe('Search Page NVD Search', () => {
   test('should switch to NVD mode', async ({ page }) => {
@@ -650,14 +669,18 @@ test.describe('Search Page NVD Search', () => {
     await page.waitForTimeout(E2E_UI_DELAY * 3)
 
     // Either results or "no results" should appear
-    const hasResults = await page.locator('[data-testid="nvd-result"]').count() > 0
-    const hasEmptyState = await page.locator('text=No results').isVisible().catch(() => false)
+    const hasResults = (await page.locator('[data-testid="nvd-result"]').count()) > 0
+    const hasEmptyState = await page
+      .locator('text=No results')
+      .isVisible()
+      .catch(() => false)
     expect(hasResults || hasEmptyState || true).toBe(true)
   })
 })
 ```
 
 #### 4.4 Keyboard Navigation Tests
+
 ```typescript
 test.describe('Search Page Keyboard Navigation', () => {
   test('should navigate results with arrow keys', async ({ page }) => {
@@ -694,12 +717,14 @@ test.describe('Search Page Keyboard Navigation', () => {
 ### 5. KEV/EPSS Intelligence (`kev-epss-intelligence.spec.ts`)
 
 **Files:**
+
 - `src/renderer/components/vulnerabilities/KevBadge.tsx`
 - `src/renderer/components/vulnerabilities/EpssCell.tsx`
 
 **Test Scenarios:**
 
 #### 5.1 KEV Badge Tests
+
 ```typescript
 test.describe('KEV Badge Display', () => {
   test('should display KEV badge for known exploited vulnerabilities', async ({ page }) => {
@@ -727,6 +752,7 @@ test.describe('KEV Badge Display', () => {
 ```
 
 #### 5.2 EPSS Cell Tests
+
 ```typescript
 test.describe('EPSS Cell Display', () => {
   test('should display EPSS percentile', async ({ page }) => {
@@ -761,6 +787,7 @@ test.describe('EPSS Cell Display', () => {
 ```
 
 #### 5.3 Risk Score Tests
+
 ```typescript
 test.describe('Risk Score Calculation', () => {
   test('should display combined risk score', async ({ page }) => {
@@ -780,7 +807,7 @@ test.describe('Risk Score Calculation', () => {
 
     // Click risk score column header to sort
     const riskHeader = page.locator('th:has-text("Risk")')
-    if (await riskHeader.count() > 0) {
+    if ((await riskHeader.count()) > 0) {
       await riskHeader.click()
       await page.waitForTimeout(E2E_UI_DELAY)
     }
@@ -859,7 +886,7 @@ test.describe('Health Dashboard', () => {
     await navigateToProjectDetail(page)
 
     const healthTab = page.getByRole('tab', { name: /health/i })
-    if (await healthTab.count() > 0) {
+    if ((await healthTab.count()) > 0) {
       await healthTab.click()
       await expect(page.locator('text=/Health|Score/i')).toBeVisible()
     }
@@ -912,7 +939,7 @@ test.describe('Onboarding Tour', () => {
 
     // Click "Next" button on tour
     const nextButton = page.locator('button:has-text("Next")')
-    if (await nextButton.count() > 0) {
+    if ((await nextButton.count()) > 0) {
       await nextButton.click()
       await page.waitForTimeout(E2E_UI_DELAY)
     }
@@ -922,7 +949,7 @@ test.describe('Onboarding Tour', () => {
     await resetAppState(page)
 
     const skipButton = page.locator('button:has-text("Skip")')
-    if (await skipButton.count() > 0) {
+    if ((await skipButton.count()) > 0) {
       await skipButton.click()
 
       // Tour should disappear
@@ -934,7 +961,7 @@ test.describe('Onboarding Tour', () => {
     // Complete tour first
     await resetAppState(page)
     const skipButton = page.locator('button:has-text("Skip")')
-    if (await skipButton.count() > 0) {
+    if ((await skipButton.count()) > 0) {
       await skipButton.click()
     }
 
@@ -964,7 +991,7 @@ test.describe('Bulk Actions', () => {
 
     // Look for bulk mode toggle or select all
     const bulkButton = page.locator('button:has-text("Select All"), button:has-text("Bulk")')
-    if (await bulkButton.count() > 0) {
+    if ((await bulkButton.count()) > 0) {
       await bulkButton.first().click()
     }
   })
@@ -994,12 +1021,12 @@ test.describe('Bulk Actions', () => {
     await selectMultipleProjects(page)
 
     const deleteButton = page.locator('button:has-text("Delete")')
-    if (await deleteButton.count() > 0) {
+    if ((await deleteButton.count()) > 0) {
       await deleteButton.click()
 
       // Confirm deletion
       const confirmButton = page.locator('button:has-text("Confirm")')
-      if (await confirmButton.count() > 0) {
+      if ((await confirmButton.count()) > 0) {
         await confirmButton.click()
       }
     }
@@ -1012,6 +1039,7 @@ test.describe('Bulk Actions', () => {
 ### 10. Patch Information (`patch-information.spec.ts`)
 
 **Files:**
+
 - `src/renderer/components/patch/PatchAvailabilityBadge.tsx`
 - `src/renderer/components/patch/PatchLinkCard.tsx`
 
@@ -1188,7 +1216,7 @@ async function openCommandPalette(page: Page): Promise<void> {
  */
 async function navigateToHealthTab(page: Page): Promise<void> {
   const healthTab = page.getByRole('tab', { name: /health/i })
-  if (await healthTab.count() > 0) {
+  if ((await healthTab.count()) > 0) {
     await healthTab.click()
     await page.waitForTimeout(E2E_UI_DELAY)
   }
@@ -1225,22 +1253,26 @@ e2e/fixtures/
 ## Implementation Priority
 
 ### Phase 1: Core Features (Week 1)
+
 1. Search Page (`search-page.spec.ts`)
 2. Command Palette (`command-palette.spec.ts`)
 3. Dependency Graph (`dependency-graph.spec.ts`)
 
 ### Phase 2: Intelligence Features (Week 2)
+
 4. KEV/EPSS Intelligence (`kev-epss-intelligence.spec.ts`)
 5. Executive Dashboard (`executive-dashboard.spec.ts`)
 6. Health Dashboard (`health-dashboard.spec.ts`)
 
 ### Phase 3: UX Features (Week 3)
+
 7. Onboarding Tour (`onboarding-tour.spec.ts`)
 8. Export Dialog (`export-dialog.spec.ts`)
 9. Bulk Actions (`bulk-actions.spec.ts`)
 10. Patch Information (`patch-information.spec.ts`)
 
 ### Phase 4: Workflows (Week 4)
+
 11. Vulnerability Lifecycle (`workflows/vulnerability-lifecycle.spec.ts`)
 12. Project Management (`workflows/project-management.spec.ts`)
 13. Security Assessment (`workflows/security-assessment.spec.ts`)

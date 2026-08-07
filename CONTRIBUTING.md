@@ -104,10 +104,10 @@ New features should include corresponding tests. Aim to maintain or improve the 
 ## Project Architecture
 
 ```
-electron/          → Electron main process (Node.js)
-src/renderer/      → React UI application
+server/            → Express backend (REST API under /api/* + WebSocket)
+src/renderer/      → React UI application (Vite)
 src/shared/        → Shared types and constants
-orchestrator/      → Watchdog autonomous testing system
+cli/               → Command-line scanner (vulnshield)
 ```
 
 See the [README.md](README.md) Project Structure section for the full directory layout.
