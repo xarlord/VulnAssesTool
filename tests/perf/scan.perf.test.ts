@@ -94,4 +94,39 @@ describe('NFR-01 scan performance', () => {
     expect(result.get('component-0')?.length).toBeGreaterThan(0)
     expect(elapsed).toBeLessThan(10_000)
   })
+
+  // NFR-01.3 (PRD.md): a full scan backed by real (non-zero) lookup latency must still complete
+  // within the 60s API budget. The test above stubs the DB at zero latency to isolate client
+  // orchestration; this COMPANION injects a realistic per-lookup latency so the measured time
+  // reflects a scan actually paying I/O cost. matchVulnerabilitiesForComponents dispatches one
+  // awaited local-DB search per component in sequence (vulnMatcher.ts ~L449), so total time tracks
+  // N x latency; the assertions pin that (a) every component is processed, (b) the injected latency
+  // was genuinely exercised (not short-circuited to ~0), and (c) the whole scan stays under the 60s
+  // budget. It fails if a regression blows the budget (e.g. latency amplification or a per-component
+  // stall) or if the scan silently stops issuing the lookups.
+  it('completes a realistic-latency 1000-component scan within the 60s API budget', async () => {
+    const PER_LOOKUP_MS = 5
+    const search = getPlatform().database.search as unknown as Mock
+    search.mockImplementation(
+      (req: { query: string }) =>
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve({ success: true, results: cveResultsFor(req.query), totalResults: CVES_PER_COMPONENT }),
+            PER_LOOKUP_MS,
+          ),
+        ),
+    )
+
+    const components = makeComponents(COMPONENT_COUNT)
+
+    const start = performance.now()
+    const result = await matchVulnerabilitiesForComponents(components)
+    const elapsed = performance.now() - start
+
+    expect(result.size).toBe(COMPONENT_COUNT)
+    // The injected latency was actually paid (proves the lookups ran, so the timing is meaningful).
+    expect(elapsed).toBeGreaterThan(COMPONENT_COUNT * PER_LOOKUP_MS * 0.5)
+    // The real requirement: a realistic-latency 1000-component scan stays within the API budget.
+    expect(elapsed).toBeLessThan(60_000)
+  })
 })
