@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { useTranslation } from 'react-i18next'
 import { SidebarContent } from './Sidebar'
 import { TopBar } from './TopBar'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -26,6 +27,7 @@ export function AppShell({ onOpenCommandPalette }: AppShellProps) {
   const setSidebarOpen = useSetSidebarOpen()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const location = useLocation()
+  const { t } = useTranslation('shell')
 
   // Close the mobile drawer when the route changes (covers programmatic
   // navigation, e.g. from the command palette). Render-time state adjustment —
@@ -56,7 +58,7 @@ export function AppShell({ onOpenCommandPalette }: AppShellProps) {
       <div className="flex h-screen overflow-hidden">
         {/* Desktop sidebar rail (collapsible) */}
         <aside
-          aria-label="Primary navigation"
+          aria-label={t('sidebar.primaryNavigation')}
           className={cn(
             'hidden shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 lg:flex',
             sidebarOpen ? 'w-60' : 'w-16',
@@ -73,7 +75,7 @@ export function AppShell({ onOpenCommandPalette }: AppShellProps) {
               aria-describedby={undefined}
               className="fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-border bg-card data-[state=open]:animate-in data-[state=open]:slide-in-from-left lg:hidden"
             >
-              <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
+              <DialogPrimitive.Title className="sr-only">{t('sidebar.navigation')}</DialogPrimitive.Title>
               <SidebarContent collapsed={false} onNavigate={() => setMobileNavOpen(false)} />
             </DialogPrimitive.Content>
           </DialogPrimitive.Portal>

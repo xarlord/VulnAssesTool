@@ -1,5 +1,6 @@
 import { Link, matchPath, useLocation } from 'react-router-dom'
 import { Menu, Monitor, Moon, PanelLeft, Search, Sun } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
 import {
@@ -18,15 +19,17 @@ interface Crumb {
   to?: string
 }
 
-const PAGE_LABELS: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/search': 'Search',
-  '/executive': 'Reports',
-  '/settings': 'Settings',
+/** Route → i18n key (shell namespace) for the top-level breadcrumb label. */
+const PAGE_LABEL_KEYS: Record<string, string> = {
+  '/dashboard': 'nav.dashboard',
+  '/search': 'nav.search',
+  '/executive': 'nav.reports',
+  '/settings': 'nav.settings',
 }
 
 /** Derive breadcrumbs from the location; project routes get Dashboard / name / sub-page. */
 function useBreadcrumbs(): Crumb[] {
+  const { t } = useTranslation('shell')
   const location = useLocation()
   const projects = useProjects()
 
@@ -34,19 +37,19 @@ function useBreadcrumbs(): Crumb[] {
   if (projectMatch?.params.projectId) {
     const project = projects.find((p) => p.id === projectMatch.params.projectId)
     const crumbs: Crumb[] = [
-      { label: 'Dashboard', to: '/dashboard' },
-      { label: project?.name ?? 'Project', to: `/project/${projectMatch.params.projectId}` },
+      { label: t('nav.dashboard'), to: '/dashboard' },
+      { label: project?.name ?? t('nav.projectFallback'), to: `/project/${projectMatch.params.projectId}` },
     ]
     const sub = projectMatch.params['*']
-    if (sub === 'fpf') crumbs.push({ label: 'False Positives' })
-    else if (sub === 'graph') crumbs.push({ label: 'Dependency Graph' })
+    if (sub === 'fpf') crumbs.push({ label: t('nav.falsePositives') })
+    else if (sub === 'graph') crumbs.push({ label: t('nav.dependencyGraph') })
     else crumbs.pop() // Overview: the project crumb is the current page
-    if (crumbs.length === 1) crumbs.push({ label: project?.name ?? 'Project' })
+    if (crumbs.length === 1) crumbs.push({ label: project?.name ?? t('nav.projectFallback') })
     return crumbs
   }
 
-  const label = PAGE_LABELS[location.pathname]
-  return label ? [{ label }] : []
+  const labelKey = PAGE_LABEL_KEYS[location.pathname]
+  return labelKey ? [{ label: t(labelKey) }] : []
 }
 
 const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
@@ -64,6 +67,7 @@ interface TopBarProps {
  * previously reachable only by navigating to Settings.
  */
 export function TopBar({ onToggleSidebar, onOpenMobileNav, onOpenCommandPalette }: TopBarProps) {
+  const { t } = useTranslation('shell')
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
   const crumbs = useBreadcrumbs()
@@ -74,19 +78,19 @@ export function TopBar({ onToggleSidebar, onOpenMobileNav, onOpenCommandPalette 
       <button
         onClick={onOpenMobileNav}
         className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-        aria-label="Open navigation"
+        aria-label={t('topbar.openNavigation')}
       >
         <Menu className="h-4 w-4" />
       </button>
       <button
         onClick={onToggleSidebar}
         className="hidden rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground lg:inline-flex"
-        aria-label="Toggle sidebar"
+        aria-label={t('topbar.toggleSidebar')}
       >
         <PanelLeft className="h-4 w-4" />
       </button>
 
-      <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
+      <nav aria-label={t('topbar.breadcrumb')} className="min-w-0 flex-1">
         <ol className="flex items-center gap-1.5 text-sm">
           {crumbs.map((crumb, index) => (
             <li key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1.5">
@@ -108,10 +112,10 @@ export function TopBar({ onToggleSidebar, onOpenMobileNav, onOpenCommandPalette 
       <button
         onClick={onOpenCommandPalette}
         className="hidden items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted sm:flex"
-        aria-label="Open command palette"
+        aria-label={t('topbar.openCommandPalette')}
       >
         <Search className="h-3.5 w-3.5" />
-        <span>Commands...</span>
+        <span>{t('topbar.commands')}</span>
         <kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium">Ctrl+K</kbd>
       </button>
 
@@ -122,20 +126,20 @@ export function TopBar({ onToggleSidebar, onOpenMobileNav, onOpenCommandPalette 
         <DropdownMenuTrigger asChild>
           <button
             className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Change theme"
+            aria-label={t('topbar.changeTheme')}
           >
             <ThemeIcon className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('theme.label')}</DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={settings.theme}
             onValueChange={(value) => updateSettings({ theme: value as AppSettings['theme'] })}
           >
-            <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="light">{t('theme.light')}</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">{t('theme.dark')}</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="system">{t('theme.system')}</DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>

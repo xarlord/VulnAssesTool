@@ -1,0 +1,32 @@
+{
+  "nav": {
+    "primary": "Primary",
+    "dashboard": "Dashboard",
+    "search": "Search",
+    "reports": "Reports",
+    "auditLog": "Audit Log",
+    "settings": "Settings",
+    "overview": "Overview",
+    "falsePositives": "False Positives",
+    "dependencyGraph": "Dependency Graph",
+    "projectFallback": "Project"
+  },
+  "sidebar": {
+    "primaryNavigation": "Primary navigation",
+    "navigation": "Navigation"
+  },
+  "topbar": {
+    "breadcrumb": "Breadcrumb",
+    "openNavigation": "Open navigation",
+    "toggleSidebar": "Toggle sidebar",
+    "openCommandPalette": "Open command palette",
+    "commands": "Commands...",
+    "changeTheme": "Change theme"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  }
+}

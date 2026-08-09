@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { initPlatform } from '@/lib/platform'
+import '@/lib/i18n' // initialize the i18n singleton before any component renders
 import './styles/globals.css'
 import { App } from './App'
 
