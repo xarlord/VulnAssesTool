@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { NvdDatabase, getDatabase, resetDatabase } from './nvdDb.js'
 import type { CVE, CPEMatch, Reference } from './types.js'
+import { config } from '../config.js'
 
 // ---------------------------------------------------------------------------
 // Test-only interface to reach into private members without `any`
@@ -241,6 +242,13 @@ describe('NvdDatabase Instance Methods', () => {
     it('should use the provided dbPath', () => {
       const inst = new NvdDatabase('/custom/path.db')
       expect(inst.getDbPath()).toBe('/custom/path.db')
+    })
+
+    it('should fall back to config.DB_PATH when no dbPath is provided', () => {
+      // WHY: production code (getDatabase()) can construct NvdDatabase with zero args;
+      // it must resolve to the app's configured default location, not an empty path.
+      const inst = new NvdDatabase()
+      expect(inst.getDbPath()).toBe(config.DB_PATH)
     })
 
     it('should return null from getRawDb when db is not set', () => {
@@ -475,9 +483,42 @@ describe('NvdDatabase Instance Methods', () => {
       expect(result?.references?.[0]?.url).toBe('https://example.com/ref1')
     })
 
+    it('should include every reference when a CVE has more than one', async () => {
+      // WHY: getCVEsByIds only initializes the per-CVE references array the FIRST time it
+      // sees that cve_id; a regression back to re-creating it on every row would silently
+      // drop all but the last reference for any CVE with 2+ of them.
+      await instance.upsertCVE(makeCVE())
+      await instance.insertReferences('CVE-2024-0001', [
+        makeReference({ url: 'https://example.com/ref1' }),
+        makeReference({ url: 'https://example.com/ref2' }),
+      ])
+
+      const result = instance.getCVEById('CVE-2024-0001')
+      expect(result?.references?.map((r) => r.url)).toEqual(['https://example.com/ref1', 'https://example.com/ref2'])
+    })
+
     it('should throw when database is not initialized', () => {
       const inst = new NvdDatabase('/no/db.db')
       expect(() => inst.getCVEById('CVE-2024-0001')).toThrow('Database not initialized')
+    })
+
+    it('should surface missing optional fields as undefined, not null (score, severity, reference source/tags)', () => {
+      // WHY: getCVEsByIds hydrates raw SQL NULLs via `?? undefined`; a regression back to
+      // passing the raw `null` through would leak a SQLite NULL into the CVEWithDetails
+      // shape that every caller (UI, exporters) expects to be a clean optional field.
+      rawDb
+        .prepare('INSERT INTO cves (id, description, published_at, modified_at, source) VALUES (?,?,?,?,?)')
+        .run('CVE-2024-BLANKFIELDS', 'no optional fields yet', '2024-01-01', '2024-01-01', 'NVD')
+      rawDb
+        .prepare('INSERT INTO "references" (cve_id, url) VALUES (?,?)')
+        .run('CVE-2024-BLANKFIELDS', 'https://example.com/bare')
+
+      const result = instance.getCVEById('CVE-2024-BLANKFIELDS')
+
+      expect(result?.cvss_score).toBeUndefined()
+      expect(result?.severity).toBeUndefined()
+      expect(result?.references?.[0]?.source).toBeUndefined()
+      expect(result?.references?.[0]?.tags).toBeUndefined()
     })
   })
 
@@ -1002,6 +1043,30 @@ describe('NvdDatabase Instance Methods', () => {
       expect(result.vendor).toBeNull() // empty string || null => null
       expect(result.product).toBe('product')
     })
+
+    it('should leave every field null for a CPE 2.3 string with fewer than 4 parts', () => {
+      // 'cpe:2.3:a' splits into only 3 parts — too few to safely index vendor/product/version.
+      const result = NvdDatabase.parseCPE('cpe:2.3:a')
+      expect(result.part).toBeNull()
+      expect(result.vendor).toBeNull()
+      expect(result.product).toBeNull()
+      expect(result.version).toBeNull()
+    })
+
+    it('should handle CPE 2.3 with an empty part segment', () => {
+      const result = NvdDatabase.parseCPE('cpe:2.3::vendor:product:1.0:*:*:*:*:*:*:*')
+      expect(result.part).toBeNull() // empty string || null => null
+      expect(result.vendor).toBe('vendor')
+      expect(result.product).toBe('product')
+    })
+
+    it('should fall back to null for an empty segment at any position in CPE 2.2', () => {
+      // Mirrors the CPE 2.3 empty-segment fallbacks above, one position at a time.
+      expect(NvdDatabase.parseCPE('cpe:/').part).toBeNull()
+      expect(NvdDatabase.parseCPE('cpe:/a:').vendor).toBeNull()
+      expect(NvdDatabase.parseCPE('cpe:/a:vendor:').product).toBeNull()
+      expect(NvdDatabase.parseCPE('cpe:/a:vendor:product:').version).toBeNull()
+    })
   })
 })
 
@@ -1380,6 +1445,56 @@ describe('NvdDatabase runMigrations', () => {
     >[]
     const versions = result.map((v) => v.version)
     expect(versions).toHaveLength(versions.filter((v, i, a) => a.indexOf(v) === i).length)
+  })
+
+  it('indexes cpe23_uri instead of cpe_text when a pre-existing cpe_matches table already uses the new column', async () => {
+    // Simulates a partially-migrated table: cpe_matches already has cpe23_uri (not the
+    // original v1 cpe_text) even though schema_migrations is still at version 0, so the
+    // `CREATE TABLE IF NOT EXISTS` in migration 1 is a no-op. The index-picking logic must
+    // inspect the table's actual columns rather than assume the v1 (cpe_text) shape.
+    rawDb.exec(`CREATE TABLE cpe_matches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cve_id TEXT NOT NULL,
+      cpe23_uri TEXT NOT NULL,
+      vulnerable INTEGER NOT NULL DEFAULT 0
+    )`)
+
+    const access = asAccess(instance)
+    await access.runMigrations()
+
+    const indexes = rawDb
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_cpe_matches_%'")
+      .all() as Record<string, unknown>[]
+    const indexNames = indexes.map((v) => v.name as string)
+    expect(indexNames).toContain('idx_cpe_matches_cpe23_uri')
+    expect(indexNames).not.toContain('idx_cpe_matches_cpe_text')
+  })
+
+  it('does not duplicate the seed NVD sync_status row when one already exists at migration time', async () => {
+    // Puts the schema at "version 1 applied" (base tables exist) so migration 2 — which
+    // seeds the NVD sync_status row — is the one that runs, against a sync_status table
+    // that (as if from a prior partial run) already has that row.
+    rawDb.exec(`CREATE TABLE cves (id TEXT PRIMARY KEY, description TEXT NOT NULL, cvss_score REAL,
+      cvss_vector TEXT, severity TEXT, published_at TEXT NOT NULL, modified_at TEXT NOT NULL, source TEXT NOT NULL)`)
+    rawDb.exec(`CREATE TABLE cpe_matches (id INTEGER PRIMARY KEY AUTOINCREMENT, cve_id TEXT NOT NULL,
+      cpe_text TEXT NOT NULL, vulnerable INTEGER NOT NULL DEFAULT 0)`)
+    rawDb.exec(
+      `CREATE TABLE "references" (id INTEGER PRIMARY KEY AUTOINCREMENT, cve_id TEXT NOT NULL, url TEXT NOT NULL, source TEXT, tags TEXT)`,
+    )
+    rawDb.exec('CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    rawDb.exec('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
+    rawDb.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)').run(new Date().toISOString())
+
+    rawDb.exec(`CREATE TABLE sync_status (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL UNIQUE,
+      year INTEGER, last_sync_at TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'idle',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')))`)
+    rawDb.exec(`INSERT INTO sync_status (source, last_sync_at, status) VALUES ('NVD', '', 'idle')`)
+
+    const access = asAccess(instance)
+    await access.runMigrations()
+
+    const rows = rawDb.prepare("SELECT id FROM sync_status WHERE source = 'NVD'").all() as Record<string, unknown>[]
+    expect(rows).toHaveLength(1)
   })
 
   it('should throw when database is not initialized', async () => {
@@ -1775,5 +1890,540 @@ describe('NFR-02.5 — index usage at scale (searchCVEsByCPE / searchCVEsByProdu
 
     expect(details.some((d) => /USING INDEX idx_cpe_product_lookup/i.test(d))).toBe(true)
     expect(details.some((d) => /\bSCAN\b/i.test(d))).toBe(false)
+  })
+})
+
+// ===========================================================================
+// initialize — recovery when the initial open fails (nvdDb.ts lines ~94-117)
+//
+// NOTE on scope: better-sqlite3 opens lazily — empirically, `new
+// BetterSqlite3(path)` does NOT throw for a garbage-content file; only a
+// later `.pragma()`/`.prepare()` call does (outside this recovery try/catch).
+// So a genuinely-corrupted-content file can't reach this branch at all, and a
+// `.backup` file can't be exercised either: recoverFromBackup's own
+// `fs.copyFile(backupPath, this.dbPath)` requires `this.dbPath` to not be a
+// directory, which is the only reliable way to make the initial open itself
+// throw. What CAN be exercised, and is otherwise fully uncovered, is the
+// dbExists=true / recovered=false path: the initial open throwing (here,
+// because the path is unexpectedly a directory — any cause is equivalent to
+// the code) with no valid backup, which renames the bad path aside and starts
+// a fresh, usable database rather than crashing.
+// ===========================================================================
+describe('NvdDatabase initialize — recovery when the initial open fails', () => {
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('renames the unusable path aside and starts fresh when no valid backup exists', async () => {
+    const nodeFs = await import('node:fs/promises')
+    const nodeOs = await import('node:os')
+    const dir = nodeOs.tmpdir() + '\\vulnassess-nvddb-open-fails'
+    await nodeFs.rm(dir, { recursive: true, force: true })
+    await nodeFs.mkdir(dir, { recursive: true })
+    const dbPath = dir + '\\unopenable.db'
+    // A directory at dbPath makes `new BetterSqlite3(dbPath)` throw synchronously.
+    await nodeFs.mkdir(dbPath)
+
+    const inst = new NvdDatabase(dbPath)
+    await inst.initialize()
+
+    expect(inst.isInitialized()).toBe(true)
+    expect(inst.getTotalCVECount()).toBe(0) // fresh, usable schema
+
+    const entries = await nodeFs.readdir(dir)
+    expect(entries.some((f) => f.startsWith('unopenable.db.corrupted-'))).toBe(true)
+
+    await inst.close()
+  })
+})
+
+// ===========================================================================
+// cvssVersionColumns — CVSS vector version routing (private helper, via upsertCVE)
+//
+// The H11 bug-hunt test above proves this for a CVSS:3.1 vector; these cover the
+// v3.0, bare-v2 (no "CVSS:" prefix), "CVSS:2.0"-prefixed, and unrecognized-format
+// branches so a future edit can't silently mis-route (or drop) a CVE's score.
+// ===========================================================================
+describe('cvssVersionColumns — CVSS version routing via upsertCVE', () => {
+  let instance: NvdDatabase
+  let rawDb: InstanceType<typeof Database>
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    rawDb = asAccess(instance).db as InstanceType<typeof Database>
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('routes a CVSS:3.0 vector into the v3.0 columns, not v3.1', async () => {
+    await instance.upsertCVE(
+      makeCVE({
+        id: 'CVE-2024-V30ROUTE',
+        cvss_vector: 'CVSS:3.0/AV:N/AC:L/Au:N/C:P/I:P/A:P',
+        cvss_score: 8.1,
+        severity: 'HIGH',
+      }),
+    )
+
+    const row = rawDb
+      .prepare('SELECT cvss_v30_score, cvss_v30_severity, cvss_v31_score FROM cves WHERE id = ?')
+      .get('CVE-2024-V30ROUTE') as {
+      cvss_v30_score: number | null
+      cvss_v30_severity: string | null
+      cvss_v31_score: number | null
+    }
+    expect(row.cvss_v30_score).toBe(8.1)
+    expect(row.cvss_v30_severity).toBe('HIGH')
+    expect(row.cvss_v31_score).toBeNull()
+  })
+
+  it('routes a bare CVSS v2 vector (no "CVSS:" prefix) into the v2 columns', async () => {
+    await instance.upsertCVE(
+      makeCVE({
+        id: 'CVE-2024-V2BARE',
+        cvss_vector: 'AV:N/AC:L/Au:N/C:P/I:P/A:P',
+        cvss_score: 5.0,
+        severity: 'MEDIUM',
+      }),
+    )
+
+    const row = rawDb
+      .prepare('SELECT cvss_v2_score, cvss_v2_severity FROM cves WHERE id = ?')
+      .get('CVE-2024-V2BARE') as {
+      cvss_v2_score: number | null
+      cvss_v2_severity: string | null
+    }
+    expect(row.cvss_v2_score).toBe(5.0)
+    expect(row.cvss_v2_severity).toBe('MEDIUM')
+  })
+
+  it('routes a "CVSS:2.0"-prefixed vector into the v2 columns', async () => {
+    await instance.upsertCVE(
+      makeCVE({
+        id: 'CVE-2024-V2PREFIXED',
+        cvss_vector: 'CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P',
+        cvss_score: 5.0,
+        severity: 'MEDIUM',
+      }),
+    )
+
+    const row = rawDb.prepare('SELECT cvss_v2_score FROM cves WHERE id = ?').get('CVE-2024-V2PREFIXED') as {
+      cvss_v2_score: number | null
+    }
+    expect(row.cvss_v2_score).toBe(5.0)
+  })
+
+  it('leaves every version-specific CVSS column null for an unrecognized vector format', async () => {
+    // WHY: an unrecognized prefix must never be mislabeled as v3.1/v3.0/v2 — leaving all
+    // three null is safer than guessing wrong and showing a misleading score/severity.
+    await instance.upsertCVE(
+      makeCVE({
+        id: 'CVE-2024-UNKNOWNVEC',
+        cvss_vector: 'SOME-FUTURE-FORMAT/X:Y',
+        cvss_score: 4.0,
+        severity: 'MEDIUM',
+      }),
+    )
+
+    const row = rawDb
+      .prepare('SELECT cvss_v31_score, cvss_v30_score, cvss_v2_score FROM cves WHERE id = ?')
+      .get('CVE-2024-UNKNOWNVEC') as {
+      cvss_v31_score: number | null
+      cvss_v30_score: number | null
+      cvss_v2_score: number | null
+    }
+    expect(row.cvss_v31_score).toBeNull()
+    expect(row.cvss_v30_score).toBeNull()
+    expect(row.cvss_v2_score).toBeNull()
+  })
+
+  it('stores a null version-specific score/severity when the CVE has a vector but omits score and severity', async () => {
+    await instance.upsertCVE(
+      makeCVE({
+        id: 'CVE-2024-VECONLY',
+        cvss_vector: 'CVSS:3.1/AV:N/AC:L',
+        cvss_score: undefined,
+        severity: undefined,
+      }),
+    )
+
+    const row = rawDb
+      .prepare('SELECT cvss_v31_score, cvss_v31_severity, cvss_v31_vector FROM cves WHERE id = ?')
+      .get('CVE-2024-VECONLY') as {
+      cvss_v31_score: number | null
+      cvss_v31_severity: string | null
+      cvss_v31_vector: string | null
+    }
+    expect(row.cvss_v31_score).toBeNull()
+    expect(row.cvss_v31_severity).toBeNull()
+    expect(row.cvss_v31_vector).toBe('CVSS:3.1/AV:N/AC:L')
+  })
+})
+
+// ===========================================================================
+// getCVEsByIds — cpe_text fallback for legacy (pre-cpe23_uri) rows
+//
+// insertCPEMatches always writes cpe23_uri, but the migration only ADDS that
+// column (addColumnsIfMissing) — a row synced before the migration keeps its
+// original cpe_text and a NULL cpe23_uri. getCVEsByIds must still surface a
+// usable identifier for such a row instead of an empty/undefined value.
+// ===========================================================================
+describe('getCVEsByIds — legacy cpe_matches fallback', () => {
+  let instance: NvdDatabase
+  let rawDb: InstanceType<typeof Database>
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    rawDb = asAccess(instance).db as InstanceType<typeof Database>
+    // Give this schema back its pre-migration `cpe_text` column so a legacy row can be
+    // simulated (the shared test schema already made cpe23_uri NOT NULL/native).
+    rawDb.exec('ALTER TABLE cpe_matches ADD COLUMN cpe_text TEXT')
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('falls back to cpe_text when a legacy row has no cpe23_uri', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-LEGACY1' }))
+    rawDb
+      .prepare('INSERT INTO cpe_matches (cve_id, cpe23_uri, cpe_text, vulnerable) VALUES (?, ?, ?, ?)')
+      .run('CVE-2024-LEGACY1', '', 'cpe:2.3:a:legacy:product:1.0', 1)
+
+    const result = instance.getCVEById('CVE-2024-LEGACY1')
+    expect(result?.cpe_matches?.[0]?.cpe_text).toBe('cpe:2.3:a:legacy:product:1.0')
+  })
+
+  it('returns an empty string when a cpe_matches row has neither cpe23_uri nor cpe_text', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-LEGACY2' }))
+    rawDb
+      .prepare('INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable) VALUES (?, ?, ?)')
+      .run('CVE-2024-LEGACY2', '', 1)
+
+    const result = instance.getCVEById('CVE-2024-LEGACY2')
+    expect(result?.cpe_matches?.[0]?.cpe_text).toBe('')
+  })
+})
+
+// ===========================================================================
+// parseCpeForRange (private helper) — gating for the version-range path (FR-03.1)
+//
+// searchCVEsByCPE calls this on every query, but only a well-formed 6+-segment
+// CPE with a concrete (non-wildcard, non-"-") version should enable range
+// matching; every other shape must return null so only the literal tier runs.
+// ===========================================================================
+interface RangeParseAccess {
+  parseCpeForRange: (cpeText: string) => { part: string; vendor: string; product: string; version: string } | null
+}
+
+describe('parseCpeForRange', () => {
+  let instance: NvdDatabase
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  function parse(cpeText: string): { part: string; vendor: string; product: string; version: string } | null {
+    return (instance as unknown as RangeParseAccess).parseCpeForRange(cpeText)
+  }
+
+  it('parses a well-formed CPE 2.3 string with a concrete version', () => {
+    expect(parse('cpe:2.3:a:vendor:product:1.5:*:*:*:*:*:*:*')).toEqual({
+      part: 'a',
+      vendor: 'vendor',
+      product: 'product',
+      version: '1.5',
+    })
+  })
+
+  it('returns null for a wildcard version — nothing concrete to range-match', () => {
+    expect(parse('cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*')).toBeNull()
+  })
+
+  it('returns null for a "-" (not applicable) version', () => {
+    expect(parse('cpe:2.3:a:vendor:product:-:*:*:*:*:*:*:*')).toBeNull()
+  })
+
+  it('returns null for a bare token with no CPE structure', () => {
+    expect(parse('apache')).toBeNull()
+  })
+})
+
+// ===========================================================================
+// searchCVEsByCPE — version-range candidate matching (FR-03.1)
+//
+// nvdDb.perf.test.ts proves this path is fast at 50k rows; these prove it is
+// CORRECT: both NVD bound-pair shapes round-trip through searchVersionRangeCandidates,
+// an out-of-range version is excluded right at the boundary, a CVE the literal tier
+// already found isn't duplicated by the range tier, and results are ordered with a
+// null score sorting last (per searchCVEsByCPE's own "nulls last" comment).
+// ===========================================================================
+describe('searchCVEsByCPE version-range matching (FR-03.1)', () => {
+  let instance: NvdDatabase
+  let rawDb: InstanceType<typeof Database>
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    rawDb = asAccess(instance).db as InstanceType<typeof Database>
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  function seedRangeRow(
+    cveId: string,
+    bounds: { start?: string; startExcl?: string; end?: string; endExcl?: string },
+  ): void {
+    rawDb
+      .prepare(
+        `INSERT INTO cves (id, description, cvss_score, published_at, modified_at, source)
+         VALUES (?, 'range fixture', 5.0, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', 'NVD')`,
+      )
+      .run(cveId)
+    rawDb
+      .prepare(
+        `INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable, version_start_including,
+          version_start_excluding, version_end_including, version_end_excluding)
+         VALUES (?, 'cpe:2.3:a:vendor:rangeproduct:*:*:*:*:*:*:*:*', 1, ?, ?, ?, ?)`,
+      )
+      .run(cveId, bounds.start ?? null, bounds.startExcl ?? null, bounds.end ?? null, bounds.endExcl ?? null)
+  }
+
+  it('matches a concrete version against an inclusive-start/exclusive-end range', () => {
+    seedRangeRow('CVE-2024-RANGE1', { start: '1.0', endExcl: '2.0' })
+
+    const results = instance.searchCVEsByCPE('cpe:2.3:a:vendor:rangeproduct:1.5:*:*:*:*:*:*:*')
+    expect(results.map((r) => r.id)).toEqual(['CVE-2024-RANGE1'])
+  })
+
+  it('excludes a version outside the range', () => {
+    seedRangeRow('CVE-2024-RANGE2', { start: '1.0', endExcl: '2.0' })
+
+    const results = instance.searchCVEsByCPE('cpe:2.3:a:vendor:rangeproduct:2.0:*:*:*:*:*:*:*')
+    expect(results).toEqual([])
+  })
+
+  it('matches a concrete version against an exclusive-start/inclusive-end range', () => {
+    seedRangeRow('CVE-2024-RANGE3', { startExcl: '1.0', end: '2.0' })
+
+    const withinRange = instance.searchCVEsByCPE('cpe:2.3:a:vendor:rangeproduct:2.0:*:*:*:*:*:*:*')
+    const atExcludedStart = instance.searchCVEsByCPE('cpe:2.3:a:vendor:rangeproduct:1.0:*:*:*:*:*:*:*')
+    expect(withinRange.map((r) => r.id)).toEqual(['CVE-2024-RANGE3'])
+    expect(atExcludedStart).toEqual([]) // 1.0 itself is excluded by versionStartExcluding
+  })
+
+  it('does not duplicate a CVE that both the literal and range tiers would independently match', () => {
+    // This row's cpe23_uri contains the queried version literally AND carries version
+    // bounds that the range tier's cpe23_uri-prefix scan would also pick up. The merge
+    // is keyed by cve.id in a Map, so finding the same CVE via both tiers must still
+    // yield exactly one result.
+    rawDb
+      .prepare(
+        `INSERT INTO cves (id, description, cvss_score, published_at, modified_at, source)
+         VALUES ('CVE-2024-RANGEDUP', 'dup fixture', 5.0, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', 'NVD')`,
+      )
+      .run()
+    rawDb
+      .prepare(
+        `INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable, version_start_including, version_end_excluding)
+         VALUES ('CVE-2024-RANGEDUP', 'cpe:2.3:a:vendor:rangeproduct:1.5:*:*:*:*:*:*:*', 1, '1.0', '2.0')`,
+      )
+      .run()
+
+    const results = instance.searchCVEsByCPE('cpe:2.3:a:vendor:rangeproduct:1.5:*:*:*:*:*:*:*')
+    expect(results).toHaveLength(1)
+    expect(results.map((r) => r.id)).toEqual(['CVE-2024-RANGEDUP'])
+  })
+
+  it('orders combined range matches by CVSS score descending, with a null score sorting last', () => {
+    rawDb
+      .prepare(
+        `INSERT INTO cves (id, description, cvss_score, published_at, modified_at, source)
+         VALUES ('CVE-2024-RANGEHI', 'high score', 9.0, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', 'NVD')`,
+      )
+      .run()
+    rawDb
+      .prepare(
+        `INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable, version_start_including, version_end_excluding)
+         VALUES ('CVE-2024-RANGEHI', 'cpe:2.3:a:vendor:rangeproduct:*:*:*:*:*:*:*:*', 1, '1.0', '5.0')`,
+      )
+      .run()
+    rawDb
+      .prepare(
+        `INSERT INTO cves (id, description, published_at, modified_at, source)
+         VALUES ('CVE-2024-RANGENULL', 'no score', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', 'NVD')`,
+      )
+      .run()
+    rawDb
+      .prepare(
+        `INSERT INTO cpe_matches (cve_id, cpe23_uri, vulnerable, version_start_including, version_end_excluding)
+         VALUES ('CVE-2024-RANGENULL', 'cpe:2.3:a:vendor:rangeproduct:*:*:*:*:*:*:*:*', 1, '1.0', '5.0')`,
+      )
+      .run()
+
+    const results = instance.searchCVEsByCPE('cpe:2.3:a:vendor:rangeproduct:2.0:*:*:*:*:*:*:*')
+    expect(results.map((r) => r.id)).toEqual(['CVE-2024-RANGEHI', 'CVE-2024-RANGENULL'])
+  })
+})
+
+// ===========================================================================
+// searchCVEsByProduct
+//
+// Only exercised previously via the NFR-02.5 index-plan test (which adds a
+// cpe_product column and never inspects the actual results). These prove the
+// three-tier precision fallback (exact -> prefix -> cpe23_uri substring) is
+// functionally correct, including on the default/pre-migration schema that
+// lacks cpe_product entirely, and that the schema-detection is cached.
+// ===========================================================================
+describe('searchCVEsByProduct', () => {
+  let instance: NvdDatabase
+  let rawDb: InstanceType<typeof Database>
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    rawDb = asAccess(instance).db as InstanceType<typeof Database>
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('should throw when database is not initialized', () => {
+    const inst = new NvdDatabase('/no/db.db')
+    expect(() => inst.searchCVEsByProduct('anything')).toThrow('Database not initialized')
+  })
+
+  it('should return an empty array for a blank product query', () => {
+    expect(instance.searchCVEsByProduct('   ')).toEqual([])
+  })
+
+  it('falls back to a cpe23_uri substring match when the cpe_product column is absent (pre-migration schema)', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-PRODLEGACY' }))
+    await instance.insertCPEMatches('CVE-2024-PRODLEGACY', [
+      makeCPEMatch({ cve_id: 'CVE-2024-PRODLEGACY', cpe_text: 'cpe:2.3:a:vendor:widgetlegacy:1.0', vulnerable: true }),
+    ])
+
+    const results = instance.searchCVEsByProduct('widgetlegacy')
+    expect(results.map((r) => r.id)).toEqual(['CVE-2024-PRODLEGACY'])
+  })
+
+  it('falls back to a cpe_product prefix match when no row has an exact cpe_product match', () => {
+    rawDb.exec('ALTER TABLE cpe_matches ADD COLUMN cpe_product TEXT')
+    rawDb
+      .prepare(
+        `INSERT INTO cves (id, description, cvss_score, published_at, modified_at, source)
+         VALUES ('CVE-2024-PRODPREFIX', 'prefix fixture', 6.0, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', 'NVD')`,
+      )
+      .run()
+    rawDb
+      .prepare(
+        `INSERT INTO cpe_matches (cve_id, cpe23_uri, cpe_product, vulnerable)
+         VALUES ('CVE-2024-PRODPREFIX', 'cpe:2.3:a:vendor:widgetextended:1.0', 'widgetextended', 1)`,
+      )
+      .run()
+
+    // No row's cpe_product is exactly 'widget' — only the prefix match should find it.
+    const results = instance.searchCVEsByProduct('widget')
+    expect(results.map((r) => r.id)).toEqual(['CVE-2024-PRODPREFIX'])
+  })
+
+  it('caches the cpe_product column check so repeated calls only inspect the schema once', () => {
+    rawDb.exec('ALTER TABLE cpe_matches ADD COLUMN cpe_product TEXT')
+    const prepareSpy = vi.spyOn(rawDb, 'prepare')
+
+    instance.searchCVEsByProduct('first-call')
+    instance.searchCVEsByProduct('second-call')
+
+    const schemaChecks = prepareSpy.mock.calls.filter(([sql]) => sql === 'PRAGMA table_info(cpe_matches)')
+    expect(schemaChecks).toHaveLength(1)
+  })
+})
+
+// ===========================================================================
+// getCveListDetails
+//
+// Only exercised elsewhere via a mocked stub (server/routes/database.test.ts),
+// so the real implementation — pre-population, CWE collection, and reference
+// tag parsing/dedup — has no direct coverage at all.
+// ===========================================================================
+describe('getCveListDetails', () => {
+  let instance: NvdDatabase
+  let rawDb: InstanceType<typeof Database>
+
+  beforeEach(async () => {
+    await resetDatabase()
+    instance = await createTestInstance()
+    rawDb = asAccess(instance).db as InstanceType<typeof Database>
+  })
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('returns an empty map when no CVE ids are requested', () => {
+    expect(instance.getCveListDetails([]).size).toBe(0)
+  })
+
+  it('returns an empty map (does not throw) when the database is not initialized', () => {
+    // WHY: unlike most other query methods here, this one is a best-effort batch
+    // enrichment helper — a caller resolving a list of CVEs shouldn't crash entirely
+    // just because CWE/reference enrichment is unavailable.
+    const inst = new NvdDatabase('/no/db.db')
+    expect(inst.getCveListDetails(['CVE-2024-0001']).size).toBe(0)
+  })
+
+  it('pre-populates an empty-shaped entry for every requested id, even with no related rows', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-CLD1' }))
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-CLD2' }))
+
+    const result = instance.getCveListDetails(['CVE-2024-CLD1', 'CVE-2024-CLD2'])
+
+    expect(result.get('CVE-2024-CLD1')).toEqual({ cwes: [], references: [], referenceTags: [] })
+    expect(result.get('CVE-2024-CLD2')).toEqual({ cwes: [], references: [], referenceTags: [] })
+  })
+
+  it('collects CWE ids for a requested CVE and skips a blank cwe_id', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-CLD3' }))
+    rawDb.prepare('INSERT INTO cwe_references (cve_id, cwe_id) VALUES (?, ?)').run('CVE-2024-CLD3', 'CWE-79')
+    rawDb.prepare('INSERT INTO cwe_references (cve_id, cwe_id) VALUES (?, ?)').run('CVE-2024-CLD3', '')
+
+    const result = instance.getCveListDetails(['CVE-2024-CLD3'])
+
+    expect(result.get('CVE-2024-CLD3')?.cwes).toEqual(['CWE-79'])
+  })
+
+  it('parses reference tags, dedupes a tag repeated across references, and tolerates a reference with no tags', async () => {
+    await instance.upsertCVE(makeCVE({ id: 'CVE-2024-CLD4' }))
+    rawDb
+      .prepare('INSERT INTO "references" (cve_id, url, source, tags) VALUES (?,?,?,?)')
+      .run('CVE-2024-CLD4', 'https://example.com/a', 'NVD', 'Patch,Vendor Advisory')
+    rawDb
+      .prepare('INSERT INTO "references" (cve_id, url, tags) VALUES (?,?,?)')
+      .run('CVE-2024-CLD4', 'https://example.com/b', 'Patch')
+    rawDb.prepare('INSERT INTO "references" (cve_id, url) VALUES (?,?)').run('CVE-2024-CLD4', 'https://example.com/c')
+
+    const entry = instance.getCveListDetails(['CVE-2024-CLD4']).get('CVE-2024-CLD4')
+
+    expect(entry?.references).toHaveLength(3)
+    expect(entry?.references[0]).toEqual({
+      url: 'https://example.com/a',
+      source: 'NVD',
+      tags: ['Patch', 'Vendor Advisory'],
+    })
+    expect(entry?.references[2]).toEqual({ url: 'https://example.com/c', source: undefined, tags: undefined })
+    // 'Patch' appears on refs a and b — referenceTags must not contain it twice.
+    expect(entry?.referenceTags).toEqual(['patch', 'vendor advisory'])
   })
 })

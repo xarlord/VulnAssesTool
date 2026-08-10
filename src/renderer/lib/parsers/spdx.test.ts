@@ -172,6 +172,53 @@ describe('parseSpdx', () => {
 
       expect(result.metadata.formatVersion).toBe('2.3')
     })
+
+    it('falls back to version 2.3 when spdxVersion is present but not a recognizable "X.Y" string', async () => {
+      // extractSpdxVersion only returns early for a *missing* spdxVersion; a present-but-garbage
+      // value (e.g. a corrupt or non-standard header) must still degrade to the documented
+      // default rather than surfacing 'null' or throwing downstream.
+      const spdxGarbageVersion = {
+        ...validSpdxJson,
+        spdxVersion: 'not-a-version',
+      }
+
+      const result = await parseSpdx(JSON.stringify(spdxGarbageVersion), 'spdx.json')
+
+      expect(result.metadata.formatVersion).toBe('2.3')
+    })
+
+    it('defaults an empty package name to "unknown"', async () => {
+      const spdxEmptyName = {
+        ...validSpdxJson,
+        packages: [
+          {
+            SPDXID: 'SPDXRef-Package',
+            name: '',
+            versionInfo: '1.0.0',
+            filesAnalyzed: false,
+          },
+        ],
+      }
+
+      const result = await parseSpdx(JSON.stringify(spdxEmptyName), 'spdx.json')
+
+      expect(result.components[0].name).toBe('unknown')
+    })
+
+    it('still includes a package with no SPDXID as a component (it just cannot be a relationship endpoint)', async () => {
+      // pkg.SPDXID is only used to build the SPDXID -> component-id lookup; a package missing
+      // it must still surface as a real component in the inventory, not be silently dropped.
+      const spdxMissingId = {
+        spdxVersion: 'SPDX-2.3',
+        dataLicense: 'CC0-1.0',
+        packages: [{ SPDXID: '', name: 'no-id-package', versionInfo: '1.0.0', filesAnalyzed: false }],
+      }
+
+      const result = await parseSpdx(JSON.stringify(spdxMissingId), 'spdx.json')
+
+      expect(result.components).toHaveLength(1)
+      expect(result.components[0].name).toBe('no-id-package')
+    })
   })
 
   describe('package relationships (FR-02.2)', () => {
@@ -240,6 +287,107 @@ describe('parseSpdx', () => {
         ],
       }
       const result = await parseSpdx(JSON.stringify(noRelationships), 'spdx.json')
+      expect(result.components.every((c) => c.dependencies === undefined)).toBe(true)
+    })
+
+    it('does not create a self-referential dependency when a relationship targets its own element', async () => {
+      // A DEPENDS_ON relationship whose source and target are the same SPDX element is
+      // degenerate input; applied literally it would put a's own id in a.dependencies and the
+      // dependency graph (graph/utils.ts) would have to render/traverse a self-loop.
+      const selfLoop = {
+        spdxVersion: 'SPDX-2.3',
+        dataLicense: 'CC0-1.0',
+        packages: [{ SPDXID: 'SPDXRef-Package-a', name: 'a', versionInfo: '1.0.0', filesAnalyzed: false }],
+        relationships: [
+          {
+            spdxElementId: 'SPDXRef-Package-a',
+            relatedSpdxElement: 'SPDXRef-Package-a',
+            relationshipType: 'DEPENDS_ON',
+          },
+        ],
+      }
+
+      const result = await parseSpdx(JSON.stringify(selfLoop), 'spdx.json')
+
+      expect(result.components[0].dependencies ?? []).toEqual([])
+    })
+
+    it('does not duplicate a dependency edge declared by more than one relationship', async () => {
+      // Real SBOMs can express the same edge twice (e.g. a tool emits both DEPENDS_ON and its
+      // DEPENDENCY_OF mirror for the same pair). dependencies must stay a set of edges, not grow
+      // once per declaring relationship.
+      const duplicateEdge = {
+        spdxVersion: 'SPDX-2.3',
+        dataLicense: 'CC0-1.0',
+        packages: [
+          { SPDXID: 'SPDXRef-Package-app', name: 'app', versionInfo: '1.0.0', filesAnalyzed: false },
+          { SPDXID: 'SPDXRef-Package-lib', name: 'lib', versionInfo: '1.0.0', filesAnalyzed: false },
+        ],
+        relationships: [
+          {
+            spdxElementId: 'SPDXRef-Package-app',
+            relatedSpdxElement: 'SPDXRef-Package-lib',
+            relationshipType: 'DEPENDS_ON',
+          },
+          {
+            spdxElementId: 'SPDXRef-Package-lib',
+            relatedSpdxElement: 'SPDXRef-Package-app',
+            relationshipType: 'DEPENDENCY_OF',
+          },
+        ],
+      }
+
+      const result = await parseSpdx(JSON.stringify(duplicateEdge), 'spdx.json')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lib = result.components.find((c) => c.name === 'lib') as Component
+
+      expect(app.dependencies).toEqual([lib.id])
+    })
+
+    it('ignores a relationship missing spdxElementId or relatedSpdxElement', async () => {
+      // Both fields are optional on SpdxJson['relationships']; a partially-populated entry
+      // (as a buggy generator might emit) must be skipped, not throw on an undefined lookup key.
+      const incompleteRelationships = {
+        spdxVersion: 'SPDX-2.3',
+        dataLicense: 'CC0-1.0',
+        packages: [
+          { SPDXID: 'SPDXRef-Package-app', name: 'app', versionInfo: '1.0.0', filesAnalyzed: false },
+          { SPDXID: 'SPDXRef-Package-lib', name: 'lib', versionInfo: '1.0.0', filesAnalyzed: false },
+        ],
+        relationships: [
+          { relatedSpdxElement: 'SPDXRef-Package-lib', relationshipType: 'DEPENDS_ON' },
+          { spdxElementId: 'SPDXRef-Package-app', relationshipType: 'DEPENDS_ON' },
+        ],
+      }
+
+      const result = await parseSpdx(JSON.stringify(incompleteRelationships), 'spdx.json')
+
+      expect(result.components.every((c) => c.dependencies === undefined)).toBe(true)
+    })
+
+    it('does not create a dependency edge for a non-dependency relationship type between two real components', async () => {
+      // CONTAINS (and other non-dependency SPDX relationship types) must be filtered out even
+      // when both endpoints resolve to real packages -- unlike a DESCRIBES-from-the-document
+      // relationship, this proves the relationshipType check itself does the filtering, not just
+      // "the source wasn't a known package".
+      const containsRelationship = {
+        spdxVersion: 'SPDX-2.3',
+        dataLicense: 'CC0-1.0',
+        packages: [
+          { SPDXID: 'SPDXRef-Package-app', name: 'app', versionInfo: '1.0.0', filesAnalyzed: false },
+          { SPDXID: 'SPDXRef-Package-lib', name: 'lib', versionInfo: '1.0.0', filesAnalyzed: false },
+        ],
+        relationships: [
+          {
+            spdxElementId: 'SPDXRef-Package-app',
+            relatedSpdxElement: 'SPDXRef-Package-lib',
+            relationshipType: 'CONTAINS',
+          },
+        ],
+      }
+
+      const result = await parseSpdx(JSON.stringify(containsRelationship), 'spdx.json')
+
       expect(result.components.every((c) => c.dependencies === undefined)).toBe(true)
     })
   })
@@ -331,6 +479,159 @@ describe('parseSpdx', () => {
     it('is recognized by isSpdxFile and getSpdxVersion', () => {
       expect(isSpdxFile(tagValue, 'sbom.spdx')).toBe(true)
       expect(getSpdxVersion(tagValue, 'sbom.spdx')).toBe('2.3')
+    })
+
+    it('ignores lines that are not valid tag:value pairs (no colon, or an empty tag name)', async () => {
+      // Real-world .spdx files sometimes carry stray free-text or a malformed line; the
+      // tokenizer must skip anything that isn't a genuine "Tag: value" pair rather than
+      // crashing or misreading it as a tag.
+      const withGarbageLines = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'this line has no colon at all',
+        ': a line with an empty tag before the colon',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'PackageVersion: 1.0.0',
+      ].join('\n')
+
+      const result = await parseSpdx(withGarbageLines, 'sbom.spdx')
+
+      expect(result.components).toHaveLength(1)
+      expect(result.components[0].name).toBe('pkg')
+      expect(result.components[0].version).toBe('1.0.0')
+    })
+
+    it('extracts a <text> block that opens and closes on the same line', async () => {
+      const singleLineText = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'PackageDescription: <text>a one-line description</text>',
+      ].join('\n')
+
+      const result = await parseSpdx(singleLineText, 'sbom.spdx')
+
+      expect(result.components[0].description).toBe('a one-line description')
+    })
+
+    it('does not crash when a multi-line <text> block is never closed before end of file', async () => {
+      // A truncated/corrupt .spdx file can end mid <text> block; the tokenizer must fall off
+      // the end gracefully (best-effort value) instead of an infinite loop or an out-of-bounds
+      // read looking for the closing tag.
+      const unterminatedText = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'PackageDescription: <text>line one',
+        'line two',
+        'line three',
+      ].join('\n')
+
+      const result = await parseSpdx(unterminatedText, 'sbom.spdx')
+
+      expect(result.components[0].description).toBe('line one\nline two\nline three')
+    })
+
+    it('keeps parsing after a tag-value tag it does not model (forward-compatible with unhandled SPDX fields)', async () => {
+      // Real .spdx files carry many tags this parser has no field for (Creator, Created,
+      // PackageSupplier, ...). An unrecognized tag must not derail parsing of the package that
+      // follows it. (PackageSupplier specifically is not modeled anywhere in this parser --
+      // Component.supplier is never populated from SPDX input; this is a pre-existing gap, not
+      // something this test asserts as correct.)
+      const withUnknownTags = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'Creator: Tool: test-tool-1.0',
+        'Created: 2024-01-01T00:00:00Z',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'PackageVersion: 1.0.0',
+        'PackageSupplier: Organization: Example Corp',
+      ].join('\n')
+
+      const result = await parseSpdx(withUnknownTags, 'sbom.spdx')
+
+      expect(result.components).toHaveLength(1)
+      expect(result.components[0].name).toBe('pkg')
+      expect(result.components[0].version).toBe('1.0.0')
+    })
+
+    it('ignores package-field tags that appear before any PackageName (malformed ordering)', async () => {
+      // Tag-value packages are conventionally introduced by PackageName; a field tag seen
+      // before that has no "current" package to attach to. The parser must drop these silently
+      // (current stays null) rather than throwing on a null dereference, and must not let them
+      // leak onto the package that actually follows.
+      const orphanFieldsBeforePackageName = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'PackageVersion: 9.9.9',
+        'PackageDownloadLocation: https://example.com/orphan',
+        'PackageLicenseConcluded: GPL-3.0',
+        'PackageLicenseDeclared: GPL-3.0',
+        'PackageDescription: orphan description',
+        'ExternalRef: PACKAGE-MANAGER purl pkg:npm/orphan@9.9.9',
+        'PackageName: real-package',
+        'SPDXID: SPDXRef-Package-real',
+        'PackageVersion: 1.0.0',
+      ].join('\n')
+
+      const result = await parseSpdx(orphanFieldsBeforePackageName, 'sbom.spdx')
+
+      expect(result.components).toHaveLength(1)
+      const real = result.components[0]
+      expect(real.name).toBe('real-package')
+      expect(real.version).toBe('1.0.0')
+      expect(real.purl).toBeUndefined()
+      expect(real.licenses).toEqual(['unknown'])
+    })
+
+    it('ignores a PackageChecksum line that is not in the "<algorithm>: <value>" shape', async () => {
+      const malformedChecksum = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'PackageChecksum: not-a-valid-checksum-format',
+      ].join('\n')
+
+      const result = await parseSpdx(malformedChecksum, 'sbom.spdx')
+
+      expect(result.components[0].hash).toBeUndefined()
+    })
+
+    it('ignores an ExternalRef line with fewer than 3 space-separated fields', async () => {
+      const malformedExternalRef = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'PackageName: pkg',
+        'SPDXID: SPDXRef-Package-pkg',
+        'ExternalRef: PACKAGE-MANAGER purl',
+      ].join('\n')
+
+      const result = await parseSpdx(malformedExternalRef, 'sbom.spdx')
+
+      expect(result.components[0].purl).toBeUndefined()
+      expect(result.components[0].hasMissingCpe).toBe(true)
+    })
+
+    it('ignores a Relationship line that does not have exactly 3 fields', async () => {
+      const malformedRelationship = [
+        'SPDXVersion: SPDX-2.3',
+        'DataLicense: CC0-1.0',
+        'PackageName: app',
+        'SPDXID: SPDXRef-Package-app',
+        'PackageName: lib',
+        'SPDXID: SPDXRef-Package-lib',
+        'Relationship: SPDXRef-Package-app DEPENDS_ON',
+      ].join('\n')
+
+      const result = await parseSpdx(malformedRelationship, 'sbom.spdx')
+      const app = result.components.find((c) => c.name === 'app') as Component
+
+      expect(app.dependencies ?? []).toEqual([])
     })
   })
 
@@ -432,6 +733,342 @@ describe('parseSpdx', () => {
     it('rejects RDF/XML that is not an SPDX document', async () => {
       const notSpdx = '<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:RDF>'
       await expect(parseSpdx(notSpdx, 'sbom.rdf')).rejects.toThrow('Invalid SPDX format')
+    })
+
+    it('throws a clear error for syntactically invalid XML (unparseable, not just non-SPDX)', async () => {
+      // Distinct from the "valid XML that isn't SPDX" case above: this is genuinely malformed
+      // markup (an unterminated attribute value) that the underlying XML parser itself cannot
+      // parse, mirroring the JSON path's "Invalid JSON format" handling.
+      const malformedXml = '<rdf:RDF xmlns:rdf="unterminated></rdf:RDF>'
+      await expect(parseSpdx(malformedXml, 'sbom.rdf')).rejects.toThrow('Invalid XML format')
+    })
+
+    it('normalizes the #none ontology individual the same way as the NONE literal (FR-02.2 cross-format consistency)', async () => {
+      // Mirrors the existing #noassertion test: SPDX RDF's "no license info at all" individual
+      // must filter the same way the JSON/tag-value 'NONE' literal does, not leak as a raw URI.
+      const rdfWithNone = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:licenseConcluded rdf:resource="http://spdx.org/rdf/terms#none"/>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithNone, 'sbom.rdf')
+      const x = result.components.find((c) => c.name === 'x') as Component
+
+      expect(x.licenses).toEqual(['unknown'])
+      expect(x.licenses).not.toContain('http://spdx.org/rdf/terms#none')
+    })
+
+    it('passes through a custom LicenseRef literal that is not a spdx.org URI', async () => {
+      // Enterprise SPDX RDF often expresses a proprietary/custom license as a bare literal
+      // (SPDX LicenseRef-*) rather than an rdf:resource pointing at spdx.org/licenses/<id>.
+      const rdfWithLicenseRef = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:licenseDeclared>LicenseRef-MyCompany-Proprietary</spdx:licenseDeclared>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithLicenseRef, 'sbom.rdf')
+      const x = result.components.find((c) => c.name === 'x') as Component
+
+      expect(x.licenses).toEqual(['LicenseRef-MyCompany-Proprietary'])
+    })
+
+    it('extracts text from a typed literal (an element with an rdf:datatype attribute)', async () => {
+      // RDF serializers commonly annotate string literals with rdf:datatype (e.g. xsd:string);
+      // fast-xml-parser then nests the text under '#text' alongside the attribute instead of
+      // returning a bare string, and rdfText must still unwrap it.
+      const rdfWithTypedLiteral = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo rdf:datatype="http://www.w3.org/2001/XMLSchema#string">9.9.9</spdx:versionInfo>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithTypedLiteral, 'sbom.rdf')
+      const x = result.components.find((c) => c.name === 'x') as Component
+
+      expect(x.version).toBe('9.9.9')
+    })
+
+    it('resolves an ExternalRef with no extractable referenceType to an empty string rather than a bogus purl match', async () => {
+      // referenceType is itself an rdf:resource; if the element carries neither a resolvable
+      // resource nor text (malformed/attribute-only), rdfText must degrade to '' rather than
+      // throwing, and that empty type must not accidentally match 'purl' or a cpe substring.
+      const rdfWithEmptyRefType = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:externalRef>
+        <spdx:ExternalRef>
+          <spdx:referenceCategory rdf:resource="http://spdx.org/rdf/terms#referenceCategory_packageManager"/>
+          <spdx:referenceType rdf:parseType="Other"/>
+          <spdx:referenceLocator>pkg:npm/x@1.0.0</spdx:referenceLocator>
+        </spdx:ExternalRef>
+      </spdx:externalRef>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithEmptyRefType, 'sbom.rdf')
+      const x = result.components.find((c) => c.name === 'x') as Component
+
+      expect(x.purl).toBeUndefined()
+      expect(x.hasMissingCpe).toBe(true)
+    })
+
+    it('collects externalRefs when multiple <ExternalRef> nodes are direct array siblings (alternate RDF serialization)', async () => {
+      // Some SPDX RDF generators nest repeated ExternalRef nodes directly under one wrapper
+      // instead of repeating the wrapper per node; fast-xml-parser then hands back an array for
+      // that key rather than a single object, and the walker must still find every entry.
+      const rdfWithArrayExternalRefs = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:externalRef>
+        <spdx:ExternalRef>
+          <spdx:referenceCategory rdf:resource="http://spdx.org/rdf/terms#referenceCategory_packageManager"/>
+          <spdx:referenceType rdf:resource="http://spdx.org/rdf/references#purl"/>
+          <spdx:referenceLocator>pkg:npm/x@1.0.0</spdx:referenceLocator>
+        </spdx:ExternalRef>
+        <spdx:ExternalRef>
+          <spdx:referenceCategory rdf:resource="http://spdx.org/rdf/terms#referenceCategory_security"/>
+          <spdx:referenceType rdf:resource="http://spdx.org/rdf/references#cpe23Type"/>
+          <spdx:referenceLocator>cpe:2.3:a:x:x:1.0.0:*:*:*:*:*:*:*</spdx:referenceLocator>
+        </spdx:ExternalRef>
+      </spdx:externalRef>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithArrayExternalRefs, 'sbom.rdf')
+      const x = result.components.find((c) => c.name === 'x') as Component
+
+      expect(x.purl).toBe('pkg:npm/x@1.0.0')
+      expect(x.cpe).toBe('cpe:2.3:a:x:x:1.0.0:*:*:*:*:*:*:*')
+    })
+
+    it('skips an empty node whose tag matches the searched name (e.g. an empty Checksum)', async () => {
+      // A '<spdx:Checksum></spdx:Checksum>' with no attributes/text parses to a bare empty
+      // string rather than an object; the walker must skip non-object matches instead of
+      // treating '' as a checksum node.
+      const rdfWithEmptyChecksum = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:checksum>
+        <spdx:Checksum></spdx:Checksum>
+      </spdx:checksum>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithEmptyChecksum, 'sbom.rdf')
+      const x = result.components.find((c) => c.name === 'x') as Component
+
+      expect(x.hash).toBeUndefined()
+    })
+
+    it('resolves a bare (non-#-prefixed) rdf:about id', async () => {
+      // Some tools write rdf:about as a plain SPDX ref rather than a URI fragment
+      // ("SPDXRef-Package-x" instead of "#SPDXRef-Package-x" or a URI ending in one).
+      const rdfWithBareAbout = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="SPDXRef-Package-app">
+      <spdx:name>app</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:relationship>
+        <spdx:Relationship>
+          <spdx:relationshipType rdf:resource="http://spdx.org/rdf/terms#relationshipType_dependsOn"/>
+          <spdx:relatedSpdxElement rdf:resource="SPDXRef-Package-lib"/>
+        </spdx:Relationship>
+      </spdx:relationship>
+    </spdx:Package>
+    <spdx:Package rdf:about="SPDXRef-Package-lib">
+      <spdx:name>lib</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithBareAbout, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lib = result.components.find((c) => c.name === 'lib') as Component
+
+      expect(app.dependencies).toContain(lib.id)
+    })
+
+    it('resolves a package identified via rdf:ID instead of rdf:about', async () => {
+      const rdfWithIdAttr = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:ID="SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithIdAttr, 'sbom.rdf')
+
+      expect(result.components.map((c) => c.name)).toContain('x')
+    })
+
+    it('resolves a relatedSpdxElement given as plain text instead of an rdf:resource attribute', async () => {
+      const rdfWithTextTarget = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-app">
+      <spdx:name>app</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:relationship>
+        <spdx:Relationship>
+          <spdx:relationshipType rdf:resource="http://spdx.org/rdf/terms#relationshipType_dependsOn"/>
+          <spdx:relatedSpdxElement>SPDXRef-Package-lib</spdx:relatedSpdxElement>
+        </spdx:Relationship>
+      </spdx:relationship>
+    </spdx:Package>
+    <spdx:Package rdf:about="#SPDXRef-Package-lib">
+      <spdx:name>lib</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithTextTarget, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lib = result.components.find((c) => c.name === 'lib') as Component
+
+      expect(app.dependencies).toContain(lib.id)
+    })
+
+    it('drops a Relationship whose relatedSpdxElement is missing entirely', async () => {
+      const rdfWithMissingTarget = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-app">
+      <spdx:name>app</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:relationship>
+        <spdx:Relationship>
+          <spdx:relationshipType rdf:resource="http://spdx.org/rdf/terms#relationshipType_dependsOn"/>
+        </spdx:Relationship>
+      </spdx:relationship>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithMissingTarget, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+
+      expect(app.dependencies ?? []).toEqual([])
+    })
+
+    it('resolves a package and a relationship target both identified via rdf:nodeID (blank nodes)', async () => {
+      const rdfWithNodeId = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-app">
+      <spdx:name>app</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+      <spdx:relationship>
+        <spdx:Relationship>
+          <spdx:relationshipType rdf:resource="http://spdx.org/rdf/terms#relationshipType_dependsOn"/>
+          <spdx:relatedSpdxElement rdf:nodeID="genid1"/>
+        </spdx:Relationship>
+      </spdx:relationship>
+    </spdx:Package>
+    <spdx:Package rdf:nodeID="genid1">
+      <spdx:name>lib</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfWithNodeId, 'sbom.rdf')
+      const app = result.components.find((c) => c.name === 'app') as Component
+      const lib = result.components.find((c) => c.name === 'lib') as Component
+
+      expect(app.dependencies).toContain(lib.id)
+    })
+
+    it('defaults spdxVersion to 2.3 when the SpdxDocument omits specVersion', async () => {
+      const rdfMinimalDoc = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:name>x</spdx:name>
+      <spdx:versionInfo>1.0.0</spdx:versionInfo>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfMinimalDoc, 'sbom.rdf')
+
+      expect(result.metadata.formatVersion).toBe('2.3')
+    })
+
+    it('defaults an RDF package name to "unknown" and version to empty when both are omitted', async () => {
+      const rdfPackageMissingFields = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:spdx="http://spdx.org/rdf/terms#">
+  <spdx:SpdxDocument>
+    <spdx:specVersion>SPDX-2.3</spdx:specVersion>
+    <spdx:dataLicense rdf:resource="http://spdx.org/licenses/CC0-1.0"/>
+    <spdx:Package rdf:about="#SPDXRef-Package-x">
+      <spdx:downloadLocation>https://example.com/x</spdx:downloadLocation>
+    </spdx:Package>
+  </spdx:SpdxDocument>
+</rdf:RDF>`
+
+      const result = await parseSpdx(rdfPackageMissingFields, 'sbom.rdf')
+
+      expect(result.components).toHaveLength(1)
+      expect(result.components[0].name).toBe('unknown')
+      expect(result.components[0].version).toBe('')
+      expect(result.components[0].coverage).toBe('gap')
     })
   })
 
@@ -639,6 +1276,16 @@ describe('getSpdxVersion', () => {
   it('should return null for unsupported file format', () => {
     expect(getSpdxVersion('some content', 'spdx.yaml')).toBe(null)
   })
+
+  it('returns null for a tag-value file with no SPDXVersion line', () => {
+    const noVersionLine = 'DataLicense: CC0-1.0\nPackageName: pkg\n'
+    expect(getSpdxVersion(noVersionLine, 'sbom.spdx')).toBe(null)
+  })
+
+  it('returns null for an RDF/XML file with no specVersion element', () => {
+    const noSpecVersion = '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:RDF>'
+    expect(getSpdxVersion(noSpecVersion, 'sbom.rdf')).toBe(null)
+  })
 })
 
 describe('isSpdxFile', () => {
@@ -669,6 +1316,16 @@ describe('isSpdxFile', () => {
 
   it('should return false for non-JSON files', () => {
     expect(isSpdxFile('some content', 'spdx.yaml')).toBe(false)
+  })
+
+  it('recognizes a tag-value file by DataLicense alone when SPDXVersion is missing', () => {
+    const dataLicenseOnly = 'DataLicense: CC0-1.0\nPackageName: pkg\n'
+    expect(isSpdxFile(dataLicenseOnly, 'sbom.spdx')).toBe(true)
+  })
+
+  it('recognizes an RDF/XML file by the SpdxDocument tag alone, without the spdx.org/rdf/terms URI', () => {
+    const noRdfTermsUri = '<SpdxDocument><name>x</name></SpdxDocument>'
+    expect(isSpdxFile(noRdfTermsUri, 'sbom.xml')).toBe(true)
   })
 })
 
