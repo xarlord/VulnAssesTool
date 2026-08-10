@@ -83,17 +83,17 @@ export default defineConfig({
         'src/renderer/lib/cache/index.ts',
       ],
       // Anti-regression floors, set below measured full-suite coverage with margin. Ratcheted
-      // 2026-08-10 after the Tier-2 coverage batch (server/routes/database.ts + ContainerService.ts,
-      // +136 tests). True full-suite measurement (5385 tests, 0 fail): stmts 87.61 / branch 78.31 /
-      // funcs 88.14 / lines 88.6. functions is held at 87 (not 88) on purpose — its % swings ~0.25
-      // run-to-run because which server modules a test loads changes the counted-function denominator,
-      // so a floor hugging 88.14 would flake. PRD target is 95% (NFR-07.1/08.1); ratchet up as gaps
-      // close, never down.
+      // 2026-08-10 after the coverage climb (Tier-2 database/ContainerService + analytics/FPF/
+      // parser/nvdDb batches, ~+600 tests). True full-suite measurement (5557 tests, 0 fail):
+      // stmts 91.16 / branch 81.77 / funcs 90.31 / lines 92.08. Floors sit ~0.8-1.3 below with
+      // headroom (functions keeps the widest margin — its % swings run-to-run as tests load
+      // different server modules). PRD target is 95% (NFR-07.1/08.1); ratchet up as gaps close,
+      // never down.
       thresholds: {
-        statements: 87,
-        branches: 78,
-        functions: 87,
-        lines: 88,
+        statements: 90,
+        branches: 81,
+        functions: 89,
+        lines: 91,
       },
     },
 
