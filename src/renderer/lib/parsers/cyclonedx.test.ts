@@ -971,3 +971,345 @@ describe('NFR-01.2 performance', () => {
     expect(elapsedMs).toBeLessThan(5000)
   })
 })
+
+describe('parseCycloneDX formatVersion fallback when unspecified', () => {
+  it('defaults formatVersion to 1.5 when a JSON bom omits specVersion', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      components: [],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.metadata.formatVersion).toBe('1.5')
+  })
+
+  it('defaults formatVersion to 1.5 when an XML bom has no /bom/X.Y pattern in xmlns', async () => {
+    // No xmlns attribute at all on <bom> — extractXmlSpecVersion can't match a version, so it
+    // must fall back rather than propagate `undefined`/throw.
+    const xml = `<?xml version="1.0"?>
+<bom>
+<components>
+  <component type="library">
+    <name>lodash</name>
+    <version>4.17.21</version>
+  </component>
+</components>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.metadata.formatVersion).toBe('1.5')
+  })
+})
+
+describe('parseCycloneDX XML syntax errors', () => {
+  it('rejects XML with an unterminated attribute value as "Invalid XML format"', async () => {
+    // Unlike the generic "should throw error for invalid XML" case above (which fails the later
+    // missing-bom-element check), an unterminated attribute value makes fast-xml-parser itself
+    // throw, exercising the parser's own try/catch.
+    const xml = '<bom attr="unterminated></bom>'
+    await expect(parseCycloneDX(xml, 'bom.xml')).rejects.toThrow('Invalid XML format')
+  })
+})
+
+describe('parseCycloneDX XML malformed <components> container shapes', () => {
+  it('returns zero components when the XML bom has no <components> element at all', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <metadata><timestamp>2024-01-01T00:00:00Z</timestamp></metadata>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.components).toEqual([])
+    expect(result.metadata.componentCount).toBe(0)
+  })
+
+  it('returns zero components when <components> holds text instead of <component> children', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5"><components>oops</components></bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.components).toEqual([])
+  })
+
+  it('returns zero components when <components> holds an unrecognized child instead of <component>', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5"><components><bogus>x</bogus></components></bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.components).toEqual([])
+  })
+
+  it('rejects a bom with duplicate sibling <components> containers instead of importing corrupted entries', async () => {
+    // Two sibling <components> blocks are invalid per the CycloneDX schema (at most one is
+    // allowed). fast-xml-parser then promotes the container itself to an array, so each "component"
+    // the mapper sees is really the wrapper object — it must fail loudly rather than silently
+    // import components with no name/type.
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components><component type="library"><name>a</name></component></components>
+  <components><component type="library"><name>b</name></component></components>
+</bom>`
+    await expect(parseCycloneDX(xml, 'bom.xml')).rejects.toThrow()
+  })
+})
+
+describe('parseCycloneDX XML malformed <vulnerabilities> container shape', () => {
+  it('returns zero vulnerabilities when <vulnerabilities> holds no <vulnerability> children', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5"><vulnerabilities><note>nothing here</note></vulnerabilities></bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.vulnerabilities).toEqual([])
+  })
+})
+
+describe('parseCycloneDX component field fallbacks for missing name/version/purl', () => {
+  it('falls back to "unknown" name for a JSON component with no name field', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'library', version: '1.0.0' }],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.components[0].name).toBe('unknown')
+  })
+
+  it('falls back to "unknown" name for an XML component with no <name> element', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5"><components><component type="library"><version>1.0.0</version></component></components></bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.components[0].name).toBe('unknown')
+  })
+
+  it('derives empty version, gap coverage, and a stable id for an XML component with no <version>/<purl>', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5"><components><component type="library"><name>toybox</name></component></components></bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    // Mirrors the JSON-side "leaves version empty..." test above — the XML mapper must derive the
+    // same gap/unknown-id contract, not just the JSON one.
+    expect(result.components[0].version).toBe('')
+    expect(result.components[0].coverage).toBe('gap')
+    expect(result.components[0].id).toBe('toybox-unknown')
+  })
+})
+
+describe('mapComponentType fallback for unrecognized types', () => {
+  it('maps an unrecognized component type to "other"', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [{ type: 'widget', name: 'gizmo', version: '1.0.0' }],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.components[0].type).toBe('other')
+  })
+})
+
+describe('license extraction edge cases', () => {
+  it('falls back to license.name when license.id is absent, and to "unknown" when both are absent (JSON)', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'x',
+          version: '1.0.0',
+          licenses: [{ license: { name: 'Apache License 2.0' } }, { license: {} }],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.components[0].licenses).toEqual(['Apache License 2.0', 'unknown'])
+  })
+
+  it('skips a license entry that has neither an expression nor a license object (JSON)', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      components: [
+        {
+          type: 'library',
+          name: 'x',
+          version: '1.0.0',
+          licenses: [{ expression: 'MIT' }, {}],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.components[0].licenses).toEqual(['MIT'])
+  })
+
+  it('flattens duplicate sibling <licenses> containers on one XML component', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components><component type="library"><name>x</name>
+    <licenses><license><id>MIT</id></license></licenses>
+    <licenses><license><id>Apache-2.0</id></license></licenses>
+  </component></components>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.components[0].licenses).toEqual(['MIT', 'Apache-2.0'])
+  })
+
+  it.each(['oops', '<foo>1</foo>'])(
+    'yields no licenses when XML <licenses> contains %s instead of <license>/<expression>',
+    async (licensesInner) => {
+      const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5"><components><component type="library"><name>x</name><licenses>${licensesInner}</licenses></component></components></bom>`
+      const result = await parseCycloneDX(xml, 'bom.xml')
+      expect(result.components[0].licenses).toEqual([])
+    },
+  )
+})
+
+describe('XML hash and properties normalization edge cases', () => {
+  it('uses the first hash content when an XML component has multiple <hash> entries', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components><component type="library"><name>x</name>
+    <hashes><hash alg="SHA-256">aaa</hash><hash alg="SHA-1">bbb</hash></hashes>
+  </component></components>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.components[0].hash).toBe('aaa')
+  })
+
+  it('reads vat:coverage/vat:note from XML component properties, tolerating malformed property entries', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components>
+    <component type="library"><name>libcrypto</name>
+      <properties>
+        <property name="vat:coverage">gap</property>
+        <property name="vat:note"/>
+        <property/>
+      </properties>
+    </component>
+    <component type="library"><name>sqlite</name>
+      <properties><property name="vat:coverage">identified</property></properties>
+    </component>
+  </components>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    const byName = Object.fromEntries(result.components.map((c) => [c.name, c]))
+    // libcrypto: a nameless, valueless <property/> must be dropped rather than crashing the parse,
+    // and a named-but-empty <property name="vat:note"/> must normalize to '' (not undefined).
+    expect(byName['libcrypto'].coverage).toBe('gap')
+    expect(byName['libcrypto'].coverageNote).toBe('')
+    // sqlite: exactly one <property> (not auto-promoted to an array by the XML parser) must be
+    // handled the same way as the multi-property case above.
+    expect(byName['sqlite'].coverage).toBe('identified')
+  })
+})
+
+describe('vulnerability rating selection picks the highest score, not first or last', () => {
+  it('JSON: picks the highest-scoring rating among three, regardless of position', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-MULTI-RATING',
+          ratings: [{ severity: 'high' }, { severity: 'critical', score: 9.8 }, { severity: 'medium' }],
+          description: 'x',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].severity).toBe('critical')
+    expect(result.vulnerabilities[0].cvssScore).toBe(9.8)
+  })
+
+  it('XML: normalizes multiple <rating> siblings under one <ratings> and picks the higher-scoring one', async () => {
+    const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <vulnerabilities>
+    <vulnerability>
+      <id>CVE-2024-XML-MULTI-RATING</id>
+      <ratings>
+        <rating><severity>medium</severity><score>5.0</score></rating>
+        <rating><severity>critical</severity><score>9.8</score></rating>
+      </ratings>
+      <description>x</description>
+    </vulnerability>
+  </vulnerabilities>
+</bom>`
+    const result = await parseCycloneDX(xml, 'bom.xml')
+    expect(result.vulnerabilities[0].severity).toBe('critical')
+    expect(result.vulnerabilities[0].cvssScore).toBe(9.8)
+  })
+
+  it.each(['none', '<foo>1</foo>'])(
+    'XML: yields no ratings when <ratings> contains %s instead of <rating> elements',
+    async (ratingsInner) => {
+      const xml = `<?xml version="1.0"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <vulnerabilities>
+    <vulnerability>
+      <id>CVE-2024-XML-BAD-RATINGS</id>
+      <ratings>${ratingsInner}</ratings>
+      <description>x</description>
+    </vulnerability>
+  </vulnerabilities>
+</bom>`
+      const result = await parseCycloneDX(xml, 'bom.xml')
+      expect(result.vulnerabilities[0].severity).toBe('none')
+      expect(result.vulnerabilities[0].cvssScore).toBeUndefined()
+    },
+  )
+})
+
+describe('vulnerability reference edge cases', () => {
+  it('links a GHSA-prefixed vulnerability id to its GitHub advisory URL even though source defaults to nvd', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'GHSA-xxxx-yyyy-zzzz',
+          ratings: [{ severity: 'high' }],
+          description: 'x',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    const officialRef = result.vulnerabilities[0].references.find((r) => r.tags?.includes('official'))
+    expect(officialRef).toEqual({
+      url: 'https://github.com/advisories/GHSA-xxxx-yyyy-zzzz',
+      source: 'GitHub',
+      tags: ['official'],
+    })
+  })
+
+  it('drops an advisory missing a url and falls back to NVD as its source when vuln.source is absent', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-ADV-EDGE',
+          ratings: [{ severity: 'high' }],
+          description: 'Vuln with a sourceless, partially-broken advisory list',
+          advisories: [{ url: 'https://example.com/advisory' }, {}],
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    const advisoryRefs = result.vulnerabilities[0].references.filter((r) => r.tags?.includes('advisory'))
+    expect(advisoryRefs).toEqual([{ url: 'https://example.com/advisory', source: 'NVD', tags: ['advisory'] }])
+  })
+})
+
+describe('parseCycloneDX vulnerability severity (critical rating)', () => {
+  it('parses a JSON vulnerability with CRITICAL severity', async () => {
+    const bom = {
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      vulnerabilities: [
+        {
+          id: 'CVE-2024-CRIT',
+          source: { name: 'NVD' },
+          ratings: [{ severity: 'critical', score: 9.8 }],
+          description: 'Critical vuln',
+        },
+      ],
+    }
+    const result = await parseCycloneDX(JSON.stringify(bom), 'bom.json')
+    expect(result.vulnerabilities[0].severity).toBe('critical')
+  })
+})

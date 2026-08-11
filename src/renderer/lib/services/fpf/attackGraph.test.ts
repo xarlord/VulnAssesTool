@@ -93,6 +93,26 @@ const createMockComponent = (overrides: Partial<Component> = {}): Component => (
   ...overrides,
 })
 
+// A disabled-but-internal node with an edge added *before* buildFromConfig runs, so
+// addBlockingEdges() retroactively marks that edge 'blocking' without removing it from the
+// adjacency list — the only way a "blocked" path (as opposed to a merely absent one) occurs.
+const createBlockingTemplate = (blockerName: string): GraphTemplate => ({
+  name: 'Blocking Template',
+  description: 'A disabled internal node with a pre-existing outgoing edge',
+  version: '1.0.0',
+  nodes: [
+    { id: 'entry:sensor', type: 'entry_point', name: 'Sensor Entry', enabled: true, exposure: 'external' },
+    { id: 'interface:sensor', type: 'interface', name: 'Sensor', enabled: true, exposure: 'external' },
+    { id: 'service:relay', type: 'service', name: blockerName, enabled: false, exposure: 'internal' },
+    { id: 'component:sink', type: 'component', name: 'Sink', enabled: true, exposure: 'internal' },
+  ],
+  edges: [
+    { from: 'entry:sensor', to: 'interface:sensor', type: 'data_flow' },
+    { from: 'interface:sensor', to: 'service:relay', type: 'data_flow' },
+    { from: 'service:relay', to: 'component:sink', type: 'data_flow' },
+  ],
+})
+
 describe('AttackGraph', () => {
   describe('constructor and graph building', () => {
     it('should create a graph with nodes', () => {
@@ -138,6 +158,52 @@ describe('AttackGraph', () => {
       const graph = new AttackGraph(config)
       const entryPoints = graph.findEntryPoints()
       expect(entryPoints.find((n) => n.id.includes('usb'))).toBeUndefined()
+    })
+
+    it('should default interface exposure to external when enabled with no explicit exposure', () => {
+      const config = createMockConfig({
+        interfaces: { legacy_bus: { enabled: true, confidence: 70 } },
+      })
+      const graph = new AttackGraph(config)
+      expect(graph.getNode('interface:legacy_bus')?.exposure).toBe('external')
+    })
+
+    it('should default interface exposure to isolated when disabled with no explicit exposure', () => {
+      const config = createMockConfig({
+        interfaces: { legacy_bus: { enabled: false, confidence: 70 } },
+      })
+      const graph = new AttackGraph(config)
+      expect(graph.getNode('interface:legacy_bus')?.exposure).toBe('isolated')
+    })
+
+    it('should default feature enabled to true and exposure to internal for an allow-list-style feature', () => {
+      // FeatureConfig.enabled can be a string[] (an allow-list of sub-features) instead of a
+      // boolean; presence of the feature in config implies the parent feature itself is active.
+      const config = createMockConfig({
+        features: { diagnostics: { enabled: ['basic_mode'], confidence: 60 } },
+      })
+      const graph = new AttackGraph(config)
+      const node = graph.getNode('feature:diagnostics')
+      expect(node?.enabled).toBe(true)
+      expect(node?.exposure).toBe('internal')
+    })
+
+    it('should create an entry point with an "Unknown" protocol and no service edges for an unmapped interface', () => {
+      const config = createMockConfig({
+        interfaces: { satellite: { enabled: true, exposure: 'external', confidence: 80 } },
+      })
+      const graph = new AttackGraph(config)
+      const entryEdge = graph.getEdges().find((e) => e.to === 'interface:satellite')
+      expect(entryEdge?.protocol).toBe('Unknown')
+      expect(graph.getEdges().some((e) => e.from === 'interface:satellite')).toBe(false)
+    })
+
+    it('should add no component edges for a service not in the known service-component map', () => {
+      const config = createMockConfig({
+        services: { custom_daemon: { enabled: true, externalAccess: false, confidence: 80 } },
+      })
+      const graph = new AttackGraph(config)
+      expect(graph.getEdges().some((e) => e.from === 'service:custom_daemon')).toBe(false)
     })
   })
 
@@ -314,6 +380,26 @@ describe('AttackGraph', () => {
       expect(path!.length).toBe(3)
     })
 
+    it('should skip a node already visited via a shorter route when two branches converge before the target', () => {
+      // Regression guard for the BFS "already visited" skip: without it, a node reachable via
+      // two branches would be enqueued twice, corrupting the shortest-path result.
+      const config = createMockConfig()
+      const graph = new AttackGraph(config)
+      graph.addNode({ id: 'a', type: 'entry_point', name: 'A', enabled: true, exposure: 'external' })
+      graph.addNode({ id: 'b', type: 'interface', name: 'B', enabled: true, exposure: 'internal' })
+      graph.addNode({ id: 'c', type: 'interface', name: 'C', enabled: true, exposure: 'internal' })
+      graph.addNode({ id: 'merge', type: 'service', name: 'Merge', enabled: true, exposure: 'internal' })
+      graph.addNode({ id: 'target', type: 'component', name: 'Target', enabled: true, exposure: 'internal' })
+
+      graph.addEdge({ from: 'a', to: 'b', type: 'data_flow' })
+      graph.addEdge({ from: 'a', to: 'c', type: 'data_flow' })
+      graph.addEdge({ from: 'b', to: 'merge', type: 'data_flow' })
+      graph.addEdge({ from: 'c', to: 'merge', type: 'data_flow' })
+      graph.addEdge({ from: 'merge', to: 'target', type: 'data_flow' })
+
+      expect(graph.findPath('a', 'target')).toEqual(['a', 'b', 'merge', 'target'])
+    })
+
     it('should return null when no path exists between connected components', () => {
       const config = createMockConfig()
       const graph = new AttackGraph(config)
@@ -343,6 +429,22 @@ describe('AttackGraph', () => {
       const config = createMockConfig()
       const graph = new AttackGraph(config)
       expect(graph.findAllPaths('nonexistent', 'alsononexistent')).toEqual([])
+    })
+
+    it('should terminate and still find the valid path when the graph contains a cycle', () => {
+      // Regression guard for the DFS "already on this path" skip: without it, a back-edge to an
+      // ancestor (b -> a) would recurse forever instead of being pruned.
+      const config = createMockConfig()
+      const graph = new AttackGraph(config)
+      graph.addNode({ id: 'a', type: 'entry_point', name: 'A', enabled: true, exposure: 'external' })
+      graph.addNode({ id: 'b', type: 'interface', name: 'B', enabled: true, exposure: 'internal' })
+      graph.addNode({ id: 'target', type: 'component', name: 'Target', enabled: true, exposure: 'internal' })
+
+      graph.addEdge({ from: 'a', to: 'b', type: 'data_flow' })
+      graph.addEdge({ from: 'b', to: 'a', type: 'data_flow' }) // cycle back to an ancestor
+      graph.addEdge({ from: 'b', to: 'target', type: 'data_flow' })
+
+      expect(graph.findAllPaths('a', 'target')).toEqual([['a', 'b', 'target']])
     })
   })
 
@@ -399,6 +501,85 @@ describe('AttackGraph', () => {
       const result = graph.isReachableFromExternal('openssl')
       expect(result.confidence).toBeGreaterThanOrEqual(0)
       expect(result.confidence).toBeLessThanOrEqual(100)
+    })
+
+    it('should mark a pre-existing edge from a disabled internal node as blocking and surface both block reasons', () => {
+      const config = createMockConfig({ interfaces: {}, services: {}, features: {} })
+      const template = createBlockingTemplate('Relay Service')
+      const graph = new AttackGraph(config, template)
+
+      const result = graph.isReachableFromExternal('Sink')
+
+      expect(result.reachable).toBe(false)
+      expect(result.shortestPath).toBeNull()
+      expect(result.confidence).toBe(90)
+      expect(result.blockedBy).toEqual(
+        expect.arrayContaining(['Relay Service blocks access', 'Relay Service is disabled']),
+      )
+    })
+
+    it('should fall back to the node id in the block message when the blocking node has no display name', () => {
+      const config = createMockConfig({ interfaces: {}, services: {}, features: {} })
+      const template = createBlockingTemplate('')
+      const graph = new AttackGraph(config, template)
+
+      const result = graph.isReachableFromExternal('Sink')
+
+      expect(result.blockedBy).toContain('service:relay blocks access')
+    })
+
+    it('should report medium confidence and no blockers when the target has no path from any entry point', () => {
+      const config = createMockConfig({ interfaces: {}, services: {}, features: {} })
+      const template: GraphTemplate = {
+        name: 'Disconnected',
+        description: 'Target has no connecting edges from any entry point',
+        version: '1.0.0',
+        nodes: [
+          { id: 'entry:x', type: 'entry_point', name: 'Entry', enabled: true, exposure: 'external' },
+          { id: 'component:isolated', type: 'component', name: 'Isolated', enabled: true, exposure: 'internal' },
+        ],
+        edges: [],
+      }
+      const graph = new AttackGraph(config, template)
+
+      const result = graph.isReachableFromExternal('Isolated')
+
+      expect(result.reachable).toBe(false)
+      expect(result.shortestPath).toBeNull()
+      expect(result.blockedBy).toEqual([])
+      expect(result.confidence).toBe(75)
+    })
+
+    it('should pick the shortest path across multiple routes regardless of discovery order', () => {
+      // The shortest-path reduce must compare every candidate, not just adopt the first one
+      // found — confidence scoring later penalizes longer shortest paths, so this drives the
+      // final confidence number reported to the reviewer.
+      const config = createMockConfig({ interfaces: {}, services: {}, features: {} })
+      const template: GraphTemplate = {
+        name: 'Multi-path',
+        description: 'Multiple routes of different lengths to the same target',
+        version: '1.0.0',
+        nodes: [
+          { id: 'entry:x', type: 'entry_point', name: 'Entry', enabled: true, exposure: 'external' },
+          { id: 'mid1', type: 'interface', name: 'Mid1', enabled: true, exposure: 'internal' },
+          { id: 'mid2', type: 'interface', name: 'Mid2', enabled: true, exposure: 'internal' },
+          { id: 'mid3', type: 'interface', name: 'Mid3', enabled: true, exposure: 'internal' },
+          { id: 'target', type: 'component', name: 'Target', enabled: true, exposure: 'internal' },
+        ],
+        edges: [
+          { from: 'entry:x', to: 'mid1', type: 'data_flow' },
+          { from: 'mid1', to: 'target', type: 'data_flow' },
+          { from: 'entry:x', to: 'target', type: 'data_flow' },
+          { from: 'entry:x', to: 'mid2', type: 'data_flow' },
+          { from: 'mid2', to: 'mid3', type: 'data_flow' },
+          { from: 'mid3', to: 'target', type: 'data_flow' },
+        ],
+      }
+      const graph = new AttackGraph(config, template)
+
+      const result = graph.isReachableFromExternal('Target')
+
+      expect(result.shortestPath).toEqual(['entry:x', 'target'])
     })
   })
 
