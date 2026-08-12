@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { AppLogo } from '@/components/AppLogo'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -18,7 +19,8 @@ import { cn } from '@/lib/utils'
 
 interface NavItem {
   to: string
-  label: string
+  /** i18n key (shell namespace) for the visible label. */
+  labelKey: string
   icon: LucideIcon
   /** NavLink end-matching (exact) — needed for the project Overview item. */
   end?: boolean
@@ -26,10 +28,10 @@ interface NavItem {
 }
 
 const MAIN_NAV: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/search', label: 'Search', icon: Search },
-  { to: '/executive', label: 'Reports', icon: BarChart3 },
-  { to: '/audit', label: 'Audit Log', icon: History },
+  { to: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { to: '/search', labelKey: 'nav.search', icon: Search },
+  { to: '/executive', labelKey: 'nav.reports', icon: BarChart3 },
+  { to: '/audit', labelKey: 'nav.auditLog', icon: History },
 ]
 
 interface SidebarContentProps {
@@ -39,7 +41,9 @@ interface SidebarContentProps {
 }
 
 function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boolean; onNavigate?: () => void }) {
+  const { t } = useTranslation('shell')
   const Icon = item.icon
+  const label = t(item.labelKey)
   const link = (
     <NavLink
       to={item.to}
@@ -58,8 +62,8 @@ function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed
       }
     >
       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {!collapsed && <span className="truncate">{item.label}</span>}
-      {collapsed && <span className="sr-only">{item.label}</span>}
+      {!collapsed && <span className="truncate">{label}</span>}
+      {collapsed && <span className="sr-only">{label}</span>}
     </NavLink>
   )
 
@@ -67,7 +71,7 @@ function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed
   return (
     <Tooltip>
       <TooltipTrigger asChild>{link}</TooltipTrigger>
-      <TooltipContent side="right">{item.label}</TooltipContent>
+      <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
   )
 }
@@ -79,6 +83,7 @@ function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed
  * inconsistent per-page back-buttons the app previously relied on.
  */
 export function SidebarContent({ collapsed, onNavigate }: SidebarContentProps) {
+  const { t } = useTranslation('shell')
   const location = useLocation()
   const projects = useProjects()
 
@@ -88,9 +93,9 @@ export function SidebarContent({ collapsed, onNavigate }: SidebarContentProps) {
 
   const projectNav: NavItem[] = projectId
     ? [
-        { to: `/project/${projectId}`, label: 'Overview', icon: FolderOpen, end: true },
-        { to: `/project/${projectId}/fpf`, label: 'False Positives', icon: ShieldCheck },
-        { to: `/project/${projectId}/graph`, label: 'Dependency Graph', icon: Network },
+        { to: `/project/${projectId}`, labelKey: 'nav.overview', icon: FolderOpen, end: true },
+        { to: `/project/${projectId}/fpf`, labelKey: 'nav.falsePositives', icon: ShieldCheck },
+        { to: `/project/${projectId}/graph`, labelKey: 'nav.dependencyGraph', icon: Network },
       ]
     : []
 
@@ -100,7 +105,7 @@ export function SidebarContent({ collapsed, onNavigate }: SidebarContentProps) {
         <AppLogo size="sm" showText={!collapsed} />
       </div>
 
-      <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
+      <nav aria-label={t('nav.primary')} className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
         {MAIN_NAV.map((item) => (
           <SidebarLink key={item.to} item={item} collapsed={collapsed} onNavigate={onNavigate} />
         ))}
@@ -110,7 +115,7 @@ export function SidebarContent({ collapsed, onNavigate }: SidebarContentProps) {
             <Separator className="my-2" />
             {!collapsed && (
               <p className="truncate px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {project?.name ?? 'Project'}
+                {project?.name ?? t('nav.projectFallback')}
               </p>
             )}
             {projectNav.map((item) => (
@@ -123,7 +128,7 @@ export function SidebarContent({ collapsed, onNavigate }: SidebarContentProps) {
       <div className="px-2 pb-4">
         <Separator className="mb-2" />
         <SidebarLink
-          item={{ to: '/settings', label: 'Settings', icon: Settings, dataTour: 'settings-link' }}
+          item={{ to: '/settings', labelKey: 'nav.settings', icon: Settings, dataTour: 'settings-link' }}
           collapsed={collapsed}
           onNavigate={onNavigate}
         />

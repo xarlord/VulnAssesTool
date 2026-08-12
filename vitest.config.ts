@@ -82,17 +82,18 @@ export default defineConfig({
         'src/renderer/lib/audit/types.ts',
         'src/renderer/lib/cache/index.ts',
       ],
-      // Interim anti-regression floor set just below measured coverage on
-      // 2026-08-05 (stmts 84.95 / branch 75.24 / funcs 87.32 / lines 85.84). The
-      // prior 90/80/90/90 values were aspirational and never enforced (CI's
-      // main/develop trigger never fired), so real coverage sits below them. These
-      // floors stop backsliding; the PRD target is 95% (NFR-07.1/08.1) — ratchet
-      // each value up as real gaps are closed, never down.
+      // Anti-regression floors, set below measured full-suite coverage with margin. Ratcheted
+      // 2026-08-10 after the coverage climb (Tier-2 database/ContainerService + analytics/FPF/
+      // parser/nvdDb batches, ~+600 tests). True full-suite measurement (5557 tests, 0 fail):
+      // stmts 91.16 / branch 81.77 / funcs 90.31 / lines 92.08. Floors sit ~0.8-1.3 below with
+      // headroom (functions keeps the widest margin — its % swings run-to-run as tests load
+      // different server modules). PRD target is 95% (NFR-07.1/08.1); ratchet up as gaps close,
+      // never down.
       thresholds: {
-        statements: 84,
-        branches: 75,
-        functions: 87,
-        lines: 85,
+        statements: 90,
+        branches: 81,
+        functions: 89,
+        lines: 91,
       },
     },
 

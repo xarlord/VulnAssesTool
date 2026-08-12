@@ -84,7 +84,7 @@ test.describe('First-Run Experience E2E Tests', () => {
     test('should allow navigation while first-run background sync runs', async ({ page }) => {
       await page.getByRole('link', { name: 'Search' }).click()
       await expect(page).toHaveURL(/\/search$/)
-      await expect(page.locator('#main-content').getByRole('heading', { name: 'Search' })).toBeVisible()
+      await expect(page.locator('#main-content').getByRole('heading', { name: 'Search', exact: true })).toBeVisible()
 
       await page.getByRole('link', { name: 'Dashboard' }).click()
       await expect(page).toHaveURL(/\/dashboard$/)

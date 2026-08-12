@@ -7,33 +7,16 @@
  * and creates a checksums.txt file for distribution.
  */
 
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { sha256Hex, formatChecksumsFile } from './lib/checksums.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const releaseDir = path.join(__dirname, '..', 'release');
 const checksumsFile = path.join(releaseDir, 'checksums.txt');
-
-/**
- * Calculate SHA256 hash of a file
- *
- * @param {string} filePath - Path to the file
- * @returns {Promise<string>} SHA256 hash
- */
-function calculateSHA256(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256');
-    const stream = fs.createReadStream(filePath);
-
-    stream.on('data', (data) => hash.update(data));
-    stream.on('end', () => resolve(hash.digest('hex')));
-    stream.on('error', reject);
-  });
-}
 
 /**
  * Generate checksums for all files in the release directory
@@ -69,7 +52,7 @@ async function generateChecksums() {
     console.log(`  Size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
 
     try {
-      const sha256 = await calculateSHA256(filePath);
+      const sha256 = sha256Hex(fs.readFileSync(filePath));
       checksums.push({ file, sha256 });
       console.log(`  SHA256: ${sha256}\n`);
     } catch (error) {
@@ -79,11 +62,9 @@ async function generateChecksums() {
 
   // Write checksums to file
   if (checksums.length > 0) {
-    const content = checksums
-      .map(({ file, sha256 }) => `${sha256}  ${file}`)
-      .join('\n');
+    const content = formatChecksumsFile(checksums);
 
-    fs.writeFileSync(checksumsFile, content + '\n');
+    fs.writeFileSync(checksumsFile, content);
 
     console.log(`Checksums written to: ${checksumsFile}`);
     console.log(`Total files: ${checksums.length}`);

@@ -1,6 +1,7 @@
 import { expect, beforeEach, afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom'
+import '@/lib/i18n' // initialize the i18n singleton so components resolve real English strings
 import { createMockPlatform } from './mocks/platform'
 
 // Cleanup after each test

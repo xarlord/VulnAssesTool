@@ -892,15 +892,15 @@ NFR-05) — there is nothing to install on the client.
 
 ### Phase 3: Polish & Optimization (Current Focus)
 
-**Status:** 🚧 In Progress
+**Status:** 🚧 In Progress — 6 of 7 delivered (verified against code 2026-08-09); **i18n is the only remaining item**.
 
-- [ ] Performance optimization for large datasets
-- [ ] Enhanced CVSS breakdown visualization
-- [ ] Dependency graph visualization
-- [ ] Offline mode improvements
-- [ ] Internationalization (i18n)
-- [ ] Accessibility audit and improvements
-- [ ] Code refactoring for maintainability
+- [x] Performance optimization for large datasets — `VirtualList` (react-virtuoso) windowing; FTS5 + `EXPLAIN QUERY PLAN`; 50k / 1M-row / 1,000-project perf tests
+- [x] Enhanced CVSS breakdown visualization — `components/cvss/` (`CvssScoreGauge` radar, `CvssMetricsGrid`, `CvssVectorString`), incl. temporal metrics
+- [x] Dependency graph visualization — `DependencyGraphPage` + `components/graph/DependencyGraph` (Cytoscape.js force-directed, severity colours, path highlight)
+- [x] Offline mode improvements — `OfflineQueue` (navigator.onLine + persisted retry queue), `OfflineIndicator`, sync-on-reconnect
+- [ ] Internationalization (i18n) — **not started**; all UI strings are hardcoded English (sole remaining Phase 3 item)
+- [x] Accessibility audit and improvements — axe-core WCAG 2.1 AA gate (`e2e/a11y/accessibility.spec.ts`), audit report under `docs/ui-reviews/`
+- [x] Code refactoring for maintainability — eslint `no-explicit-any` / `no-non-null-assertion` / default-export ban at `error`; shared `components/ui/` primitives; PR3–PR5 remediation
 
 ### Phase 4: Advanced Features (Planned)
 
