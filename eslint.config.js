@@ -124,6 +124,32 @@ export default defineConfig([
       'no-restricted-syntax': 'off',
     },
   },
+  // i18n guardrail (Phase 3 → Internationalization). Files migrated to i18next must stay
+  // literal-free: every visible element text goes through t(), so a hardcoded string is a
+  // regression. eslint-plugin-i18next isn't installed (no clean ESLint-9 flat-config support at
+  // this pin), so this is the design's documented zero-dependency fallback — a JSXText selector
+  // that flags element text containing letters (whitespace/punctuation like the "/" breadcrumb
+  // separator are allowed). It deliberately does NOT cover string attributes (aria-label/title),
+  // which are already t()'d in the shell; that's an accepted gap for the fallback. Re-declares the
+  // default-export ban because flat config replaces (not merges) a rule's options. Each future i18n
+  // slice appends its path here. See docs/plans/2026-08-09-i18n-baseline-design.md.
+  {
+    files: ['src/renderer/components/shell/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ExportDefaultDeclaration',
+          message: 'Default exports are banned by Google TS Style. Use named exports.',
+        },
+        {
+          selector: 'JSXText[value=/[A-Za-z]/]',
+          message:
+            "Hardcoded UI text in an i18n-migrated file. Use t('shell:...') and add the string to lib/i18n/locales/en/shell.json.",
+        },
+      ],
+    },
+  },
   // Less strict rules for test files
   {
     files: [

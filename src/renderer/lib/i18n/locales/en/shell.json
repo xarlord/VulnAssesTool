@@ -21,6 +21,7 @@
     "toggleSidebar": "Toggle sidebar",
     "openCommandPalette": "Open command palette",
     "commands": "Commands...",
+    "commandPaletteShortcut": "Ctrl+K",
     "changeTheme": "Change theme"
   },
   "theme": {

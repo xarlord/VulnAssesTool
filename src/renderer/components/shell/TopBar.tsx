@@ -116,7 +116,9 @@ export function TopBar({ onToggleSidebar, onOpenMobileNav, onOpenCommandPalette 
       >
         <Search className="h-3.5 w-3.5" />
         <span>{t('topbar.commands')}</span>
-        <kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium">Ctrl+K</kbd>
+        <kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium">
+          {t('topbar.commandPaletteShortcut')}
+        </kbd>
       </button>
 
       <OfflineIndicator compact />
