@@ -1,7 +1,12 @@
 # i18n Baseline — Design & Scope
 
 **Date:** 2026-08-09
-**Status:** Proposed (awaiting sign-off before implementation)
+**Status:** Implemented — infra + app-shell slice (`bbdbde2`); scoped lint guardrail via the
+documented zero-dependency fallback (`7789dce`), since `eslint-plugin-i18next` lacks clean ESLint-9
+flat-config support at this pin. The Settings.tsx conversion (part of the original "first slice") is
+**deferred**: it is a ~100-string, drift-risky diff against a 2,700-line assertion-heavy test file
+and is better done as its own careful pass. Rest of the app migrates incrementally per the rollout
+section, each slice appending its path to the guardrail glob.
 **PRD item:** Phase 3 → Internationalization (i18n) — the sole remaining Phase 3 item
 **Decisions locked (brainstorm):** infra + English baseline only · convert one first slice + add a guardrail · rest migrates incrementally.
 
