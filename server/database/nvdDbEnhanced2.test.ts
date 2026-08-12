@@ -16,6 +16,8 @@ import Database from 'better-sqlite3'
 import { NvdDatabase, getDatabase, resetDatabase } from './nvdDb.js'
 import type { CVE, CPEMatch, Reference } from './types.js'
 import { config } from '../config.js'
+import * as nodeOs from 'node:os'
+import * as nodePath from 'node:path'
 
 // ---------------------------------------------------------------------------
 // Test-only interface to reach into private members without `any`
@@ -1555,7 +1557,7 @@ describe('NvdDatabase addColumnsIfMissing', () => {
 // initialize — cover lines 112-207
 // ===========================================================================
 describe('NvdDatabase initialize', () => {
-  const initDir = 'C:\\Users\\SEFA~1.OCA\\AppData\\Local\\Temp\\opencode\\nvd-init'
+  const initDir = nodePath.join(nodeOs.tmpdir(), 'vulnassess-nvddb-init')
 
   beforeEach(async () => {
     await resetDatabase()
@@ -1569,7 +1571,7 @@ describe('NvdDatabase initialize', () => {
   })
 
   it('should initialize a new database when no file exists', async () => {
-    const dbPath = initDir + '\\fresh-init.db'
+    const dbPath = nodePath.join(initDir, 'fresh-init.db')
     const nodeFs = await import('node:fs/promises')
     await nodeFs.rm(dbPath).catch(() => {})
 
@@ -1583,7 +1585,7 @@ describe('NvdDatabase initialize', () => {
   })
 
   it('should load an existing database file', async () => {
-    const dbPath = initDir + '\\existing-init.db'
+    const dbPath = nodePath.join(initDir, 'existing-init.db')
     const nodeFs = await import('node:fs/promises')
     await nodeFs.rm(dbPath).catch(() => {})
 
@@ -1603,7 +1605,7 @@ describe('NvdDatabase initialize', () => {
 // fileExists — cover lines 212-219
 // ===========================================================================
 describe('NvdDatabase fileExists', () => {
-  const existsDir = 'C:\\Users\\SEFA~1.OCA\\AppData\\Local\\Temp\\opencode\\nvd-exists'
+  const existsDir = nodePath.join(nodeOs.tmpdir(), 'vulnassess-nvddb-exists')
 
   afterEach(async () => {
     await resetDatabase()
@@ -1612,7 +1614,7 @@ describe('NvdDatabase fileExists', () => {
   it('should return true for existing file', async () => {
     const nodeFs = await import('node:fs/promises')
     await nodeFs.mkdir(existsDir, { recursive: true })
-    const filePath = existsDir + '\\exists.txt'
+    const filePath = nodePath.join(existsDir, 'exists.txt')
     await nodeFs.writeFile(filePath, 'test')
 
     const inst = await createTestInstance()
@@ -1916,11 +1918,10 @@ describe('NvdDatabase initialize — recovery when the initial open fails', () =
 
   it('renames the unusable path aside and starts fresh when no valid backup exists', async () => {
     const nodeFs = await import('node:fs/promises')
-    const nodeOs = await import('node:os')
-    const dir = nodeOs.tmpdir() + '\\vulnassess-nvddb-open-fails'
+    const dir = nodePath.join(nodeOs.tmpdir(), 'vulnassess-nvddb-open-fails')
     await nodeFs.rm(dir, { recursive: true, force: true })
     await nodeFs.mkdir(dir, { recursive: true })
-    const dbPath = dir + '\\unopenable.db'
+    const dbPath = nodePath.join(dir, 'unopenable.db')
     // A directory at dbPath makes `new BetterSqlite3(dbPath)` throw synchronously.
     await nodeFs.mkdir(dbPath)
 
