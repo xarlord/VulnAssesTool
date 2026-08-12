@@ -41,7 +41,21 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # Retry npm ci: better-sqlite3's prebuild-install can hit a transient "socket hang up"
+        # and fall back to a node-gyp source build, which fails on windows-latest (its VS 18 is
+        # not recognized by the bundled node-gyp). Retrying lets the prebuilt binary download
+        # succeed, so no source build is needed.
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "npm ci (attempt $attempt)"
+            npm ci && exit 0
+            echo "npm ci failed; cleaning node_modules, retrying in 15s..."
+            rm -rf node_modules
+            sleep 15
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
 
       - name: Run linter
         run: npm run lint
@@ -83,7 +97,20 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # Retry npm ci (see the test job): better-sqlite3's prebuild-install can transiently
+        # fail and fall back to a source build that breaks on windows/macos runners. This job's
+        # matrix includes macos-latest, so the same retry guard applies.
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "npm ci (attempt $attempt)"
+            npm ci && exit 0
+            echo "npm ci failed; cleaning node_modules, retrying in 15s..."
+            rm -rf node_modules
+            sleep 15
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
 
       - name: Build application
         run: npm run build:all
