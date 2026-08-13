@@ -1,0 +1,16 @@
+{
+  "actions": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "close": "Close",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "remove": "Remove",
+    "export": "Export",
+    "import": "Import",
+    "retry": "Retry",
+    "refresh": "Refresh"
+  }
+}

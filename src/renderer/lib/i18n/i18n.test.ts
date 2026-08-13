@@ -30,4 +30,13 @@ describe('i18n baseline', () => {
     expect(typeof missing).toBe('string')
     expect(missing).toContain('__does_not_exist__')
   })
+
+  it('auto-loads every locales/en/*.json file as a namespace', () => {
+    // Enabler for incremental migration: a new slice just drops locales/en/<ns>.json and it is
+    // registered as namespace <ns> without editing index.ts. Proven by the shared `common`
+    // namespace resolving alongside the original `shell` one.
+    expect(i18n.hasResourceBundle('en', 'shell')).toBe(true)
+    expect(i18n.hasResourceBundle('en', 'common')).toBe(true)
+    expect(i18n.t('common:actions.cancel')).toBe('Cancel')
+  })
 })
