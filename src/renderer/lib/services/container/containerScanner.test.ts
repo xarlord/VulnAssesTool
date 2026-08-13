@@ -14,9 +14,28 @@ import {
   checkContainerRuntime,
   parseImageReference,
   type ContainerScanOptions,
+  type ContainerLayer,
+  type ContainerRuntime,
   type ImageReference,
+  type LayerPackage,
   type RegistryAuth,
 } from './containerScanner'
+
+// Narrow view of ContainerScanner's private members exercised directly below, for branches
+// (runtime-socket switch, pull auth flags, layer package extraction, package dedup) that are
+// unreachable through the public API alone because the IPC-availability check short-circuits
+// them. Avoids `any` per project rules.
+interface ScannerPrivateAccess {
+  executeCommand(command: string): Promise<Record<string, unknown>>
+  getRuntimeSocket(runtime: ContainerRuntime): string
+  pullImageIfNeeded(image: ImageReference): Promise<void>
+  extractPackagesFromLayer(image: ImageReference, layerDigest: string): Promise<LayerPackage[]>
+  consolidatePackages(layers: ContainerLayer[]): LayerPackage[]
+}
+
+function asPrivate(scanner: ContainerScanner): ScannerPrivateAccess {
+  return scanner as unknown as ScannerPrivateAccess
+}
 
 // Override the global platform mock so container is null,
 // forcing ContainerScanner to use the local executeCommand fallback path.
@@ -669,5 +688,367 @@ describe('Convenience Functions - extended', () => {
     const info = await checkContainerRuntime('podman')
 
     expect(info.type).toBe('podman')
+  })
+})
+
+describe('ContainerScanner - scanImage error branches (local fallback)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPlatformObj.container = null
+    mockExecuteCommand.mockReset()
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('should abort the scan instead of pulling/inspecting an image when the runtime is unavailable', async () => {
+    // If this check is skipped, scanImage would proceed to pull/inspect with a runtime that
+    // isn't there, producing a confusing downstream failure instead of a clear, early error.
+    mockExecuteCommand.mockRejectedValueOnce(new Error('command not found'))
+
+    const scanner = new ContainerScanner({ runtime: 'docker' })
+
+    await expect(scanner.scanImage('nginx')).rejects.toThrow('docker runtime is not available')
+  })
+})
+
+describe('ContainerScanner - IPC scanImage failure without an error message', () => {
+  const mockContainer = {
+    checkRuntime: vi.fn(),
+    scanImage: vi.fn(),
+    extractPackages: vi.fn(),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPlatformObj.container = mockContainer
+  })
+
+  afterEach(() => {
+    mockPlatformObj.container = null
+  })
+
+  it('should fall back to a generic error message when the IPC failure carries none', async () => {
+    // Users still need an actionable message even when the IPC layer forgot to attach one.
+    mockContainer.scanImage.mockResolvedValue({ success: false })
+
+    const scanner = new ContainerScanner()
+
+    await expect(scanner.scanImage('nginx')).rejects.toThrow('Container scan failed')
+  })
+})
+
+describe('ContainerScanner - parseImageReference: name without registry-like prefix', () => {
+  it('should keep a slash-separated name as the repository, not the registry, when no segment looks like a host', () => {
+    // Mistaking "org" for a registry host would misdirect auth lookups and pull commands to the
+    // wrong server instead of docker.io.
+    const ref = parseImageReference('org/image:latest')
+
+    expect(ref.registry).toBe('docker.io')
+    expect(ref.repository).toBe('org/image')
+    expect(ref.tag).toBe('latest')
+  })
+})
+
+describe('ContainerScanner - getRuntimeSocket branches (direct)', () => {
+  const originalPlatform = process.platform
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform })
+  })
+
+  it('should return the Windows named pipe for docker when running on win32', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    const scanner = new ContainerScanner()
+
+    expect(asPrivate(scanner).getRuntimeSocket('docker')).toBe('//./pipe/docker_engine')
+  })
+
+  it('should return the Unix socket path for docker on non-Windows platforms', () => {
+    // Docker Desktop/Engine on Linux and macOS CI runners exposes a unix socket, not a named pipe;
+    // reporting the wrong path would make runtime probing fail silently in CI.
+    Object.defineProperty(process, 'platform', { value: 'linux' })
+    const scanner = new ContainerScanner()
+
+    expect(asPrivate(scanner).getRuntimeSocket('docker')).toBe('/var/run/docker.sock')
+  })
+
+  it('should return the Windows named pipe for podman when running on win32', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    const scanner = new ContainerScanner()
+
+    expect(asPrivate(scanner).getRuntimeSocket('podman')).toBe('//./pipe/podman-machine-default')
+  })
+
+  it('should return the Unix socket path for podman on non-Windows platforms', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' })
+    const scanner = new ContainerScanner()
+
+    expect(asPrivate(scanner).getRuntimeSocket('podman')).toBe('/run/user/1000/podman/podman.sock')
+  })
+
+  it('should return an empty socket for a runtime type the switch does not recognize', () => {
+    // Guards against a future/unknown runtime crashing socket resolution; it should degrade to ''
+    // rather than throw.
+    const scanner = new ContainerScanner()
+
+    expect(asPrivate(scanner).getRuntimeSocket('containerd' as ContainerRuntime)).toBe('')
+  })
+})
+
+describe('ContainerScanner - executeCommand real implementation (unmocked)', () => {
+  beforeEach(() => {
+    // Earlier describes in this file spy on ContainerScanner.prototype.executeCommand without
+    // always restoring it; force the real implementation for this test regardless of run order.
+    vi.restoreAllMocks()
+  })
+
+  it('should throw because the browser build cannot execute container CLI commands', async () => {
+    // This is the guard that stops the scanner from fabricating a fake runtime probe result
+    // (a real bug this suite protects against — see the method's own comment). Losing it would
+    // let checkRuntime silently lie about a runtime being available.
+    const scanner = new ContainerScanner()
+
+    await expect(asPrivate(scanner).executeCommand('docker version --format json')).rejects.toThrow(
+      'Container command execution is not available in this build',
+    )
+  })
+})
+
+describe('ContainerScanner - pullImageIfNeeded auth branches (direct)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockExecuteCommand.mockReset()
+    mockExecuteCommand.mockResolvedValue({})
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('should forward registry credentials as pull flags when a matching auth entry exists', async () => {
+    // Omitting the credentials would make every private-registry pull fail with a misleading
+    // "not found" error instead of an authentication error.
+    const auth: RegistryAuth[] = [{ server: 'docker.io', username: 'alice', password: 'secret' }]
+    const scanner = new ContainerScanner({ auth })
+    const image = parseImageReference('nginx:latest')
+
+    await asPrivate(scanner).pullImageIfNeeded(image)
+
+    expect(mockExecuteCommand).toHaveBeenCalledWith(expect.stringContaining('--username alice --password-stdin'))
+  })
+
+  it('should look up auth under docker.io when the image reference has no registry set', async () => {
+    const auth: RegistryAuth[] = [{ server: 'docker.io', username: 'bob', password: 'pw' }]
+    const scanner = new ContainerScanner({ auth })
+    const image: ImageReference = { name: 'nginx:latest', repository: 'nginx', tag: 'latest', original: 'nginx' }
+
+    await asPrivate(scanner).pullImageIfNeeded(image)
+
+    expect(mockExecuteCommand).toHaveBeenCalledWith(expect.stringContaining('--username bob --password-stdin'))
+  })
+
+  it('should omit auth flags entirely when no matching registry credentials are configured', async () => {
+    const scanner = new ContainerScanner()
+    const image = parseImageReference('nginx:latest')
+
+    await asPrivate(scanner).pullImageIfNeeded(image)
+
+    const call = mockExecuteCommand.mock.calls[0][0] as string
+    expect(call).not.toContain('--username')
+  })
+})
+
+describe('ContainerScanner - analyzeLayers maxLayers=0 falls back to default cap', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPlatformObj.container = null
+    mockExecuteCommand.mockReset()
+    vi.spyOn(ContainerScanner.prototype as any, 'executeCommand').mockImplementation(mockExecuteCommand)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('should process every layer (not zero) when maxLayers is explicitly 0, since 0 is falsy', async () => {
+    // Documents current behavior: `this.options.maxLayers || 100` treats an explicit 0 the same
+    // as "unset", so a caller trying to disable layer analysis via maxLayers:0 actually gets the
+    // full 100-layer default instead. Not fixed here (production code is out of scope) but the
+    // behavior must stay pinned so a future refactor doesn't change it unnoticed.
+    const layers = Array.from({ length: 3 }, (_, i) => ({
+      digest: `sha256:layer${i}`,
+      size: 10,
+      mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip',
+    }))
+
+    mockExecuteCommand
+      .mockResolvedValueOnce({ version: '24.0.0' })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ digest: 'sha256:manifest', config: { digest: 'sha256:config' }, layers })
+      .mockResolvedValueOnce({ os: 'linux', architecture: 'amd64' })
+
+    const scanner = new ContainerScanner({ maxLayers: 0 })
+    const result = await scanner.scanImage('zero-max-layers:latest')
+
+    expect(result.layers).toHaveLength(3)
+  })
+})
+
+describe('ContainerScanner - extractPackagesFromLayer branches (direct)', () => {
+  afterEach(() => {
+    mockPlatformObj.container = null
+  })
+
+  it('should return the packages the IPC bridge extracted for a layer when it reports success', async () => {
+    const extractPackages = vi.fn().mockResolvedValue({
+      success: true,
+      packages: [{ name: 'openssl', version: '3.0.0', manager: 'apk', layerDigest: 'sha256:layer1' }],
+    })
+    mockPlatformObj.container = { extractPackages }
+
+    const scanner = new ContainerScanner()
+    const image = parseImageReference('nginx')
+
+    const packages = await asPrivate(scanner).extractPackagesFromLayer(image, 'sha256:layer1')
+
+    expect(packages).toHaveLength(1)
+    expect(packages[0].name).toBe('openssl')
+  })
+
+  it('should return an empty array (not throw) when the IPC bridge reports extraction failure', async () => {
+    // A single failed layer extraction should degrade to "no packages found" for that layer
+    // rather than aborting the whole scan.
+    const extractPackages = vi.fn().mockResolvedValue({ success: false })
+    mockPlatformObj.container = { extractPackages }
+
+    const scanner = new ContainerScanner()
+    const image = parseImageReference('nginx')
+
+    const packages = await asPrivate(scanner).extractPackagesFromLayer(image, 'sha256:layer1')
+
+    expect(packages).toEqual([])
+  })
+})
+
+describe('ContainerScanner - consolidatePackages branches (direct)', () => {
+  it('should let a later layer override an earlier layer for the same package key', () => {
+    // Later layers can upgrade/replace packages installed by earlier layers (e.g. a Dockerfile
+    // RUN apk upgrade step); the consolidated SBOM must reflect the final installed version.
+    const scanner = new ContainerScanner()
+    const layers: ContainerLayer[] = [
+      {
+        digest: 'sha256:l1',
+        size: 10,
+        mediaType: 'x',
+        packages: [{ name: 'musl', version: '1.2.0', manager: 'apk', layerDigest: 'sha256:l1' }],
+      },
+      {
+        digest: 'sha256:l2',
+        size: 10,
+        mediaType: 'x',
+        packages: [{ name: 'musl', version: '1.2.3', manager: 'apk', layerDigest: 'sha256:l2' }],
+      },
+    ]
+
+    const packages = asPrivate(scanner).consolidatePackages(layers)
+
+    expect(packages).toHaveLength(1)
+    expect(packages[0].version).toBe('1.2.3')
+  })
+
+  it('should keep packages with the same name/manager but different architectures as separate entries', () => {
+    // Multi-arch layers legitimately carry both an amd64 and arm64 build of the same library;
+    // collapsing them into one entry would silently drop a real installed package from the SBOM.
+    const scanner = new ContainerScanner()
+    const layers: ContainerLayer[] = [
+      {
+        digest: 'sha256:l1',
+        size: 10,
+        mediaType: 'x',
+        packages: [
+          { name: 'libc', version: '2.31', manager: 'apk', architecture: 'amd64', layerDigest: 'sha256:l1' },
+          { name: 'libc', version: '2.31', manager: 'apk', architecture: 'arm64', layerDigest: 'sha256:l1' },
+        ],
+      },
+    ]
+
+    const packages = asPrivate(scanner).consolidatePackages(layers)
+
+    expect(packages).toHaveLength(2)
+  })
+
+  it('should treat a package with no architecture as "noarch" for dedup purposes', () => {
+    const scanner = new ContainerScanner()
+    const layers: ContainerLayer[] = [
+      {
+        digest: 'sha256:l1',
+        size: 10,
+        mediaType: 'x',
+        packages: [{ name: 'busybox', version: '1.35', manager: 'apk', layerDigest: 'sha256:l1' }],
+      },
+      {
+        digest: 'sha256:l2',
+        size: 10,
+        mediaType: 'x',
+        packages: [{ name: 'busybox', version: '1.36', manager: 'apk', layerDigest: 'sha256:l2' }],
+      },
+    ]
+
+    const packages = asPrivate(scanner).consolidatePackages(layers)
+
+    expect(packages).toHaveLength(1)
+    expect(packages[0].version).toBe('1.36')
+  })
+})
+
+describe('ContainerScanner - generateSbom defaults for missing image fields', () => {
+  const mockContainer = {
+    checkRuntime: vi.fn(),
+    scanImage: vi.fn(),
+    extractPackages: vi.fn(),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPlatformObj.container = mockContainer
+  })
+
+  afterEach(() => {
+    mockPlatformObj.container = null
+  })
+
+  it('should default the SBOM registry and tag properties when the scanned image lacks them', async () => {
+    // A digest-pinned image has no tag, and some IPC results may omit registry; the SBOM must
+    // still be well-formed (docker.io / latest) rather than emitting "undefined".
+    mockContainer.scanImage.mockResolvedValue({
+      success: true,
+      result: {
+        image: {
+          name: 'nginx@sha256:abc123',
+          repository: 'nginx',
+          original: 'nginx@sha256:abc123',
+          digest: 'sha256:abc123',
+        },
+        imageDigest: 'sha256:abc123',
+        manifestDigest: 'sha256:def456',
+        platform: { os: 'linux', architecture: 'amd64' },
+        layers: [],
+        packages: [],
+        stats: { totalLayers: 0, processedLayers: 0, totalPackages: 0, uniquePackages: 0, scanTimeMs: 5 },
+        warnings: [],
+        errors: [],
+      },
+    })
+
+    const scanner = new ContainerScanner({ sbomOnly: true })
+    const result = await scanner.scanImage('nginx@sha256:abc123')
+
+    const props = (result.sbom?.metadata.properties ?? []) as Array<{ name: string; value: string }>
+    expect(props.find((p) => p.name === 'image:registry')?.value).toBe('docker.io')
+    expect(props.find((p) => p.name === 'image:tag')?.value).toBe('latest')
   })
 })

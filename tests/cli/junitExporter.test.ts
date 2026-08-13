@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { exportToJunit, junitToXml, type JunitReport } from '../../cli/exporters/junit.js'
+import { exportToJunit, junitToXml, type JunitReport, type JunitExportOptions } from '../../cli/exporters/junit.js'
 import type { Vulnerability } from '../../src/shared/types.js'
 
 describe('JUnit XML Exporter', () => {
@@ -269,6 +269,137 @@ describe('JUnit XML Exporter', () => {
       // With medium threshold, medium severity should also be a failure
       expect(mediumTest?.failure).toBeDefined()
     })
+
+    it('filters out a vulnerability with an unrecognized severity rather than assuming it is safe', () => {
+      // Defends against corrupted/legacy data (e.g. a DB row with a severity string
+      // that predates the current enum) being silently treated as passing a minSeverity
+      // gate it should not pass: unknown severity must fall back to priority 0.
+      const corruptVuln: Vulnerability = {
+        id: 'CVE-2024-CORRUPT',
+        source: 'nvd',
+        severity: 'unrecognized' as unknown as Vulnerability['severity'],
+        description: 'Severity value outside the known enum',
+        references: [],
+        affectedComponents: ['weird@1.0.0'],
+      }
+
+      const result = exportToJunit([corruptVuln], {
+        projectName: 'test-project',
+        minSeverity: 'low',
+      })
+
+      expect(result.testsuites.testsuite[0].testcase).toHaveLength(0)
+    })
+
+    it('does not mark a vulnerability with an unrecognized severity as a failure', () => {
+      // Same defensive fallback (priority 0) must also apply to failure-threshold
+      // comparison, so corrupted severity data cannot silently fail a CI build for
+      // the wrong reason, nor slip through by accident.
+      const corruptVuln: Vulnerability = {
+        id: 'CVE-2024-CORRUPT2',
+        source: 'nvd',
+        severity: 'unrecognized' as unknown as Vulnerability['severity'],
+        description: 'Severity value outside the known enum',
+        references: [],
+        affectedComponents: ['weird@1.0.0'],
+      }
+
+      const result = exportToJunit([corruptVuln], { projectName: 'test-project' })
+      const testcase = result.testsuites.testsuite[0].testcase[0]
+
+      expect(testcase.failure).toBeUndefined()
+    })
+
+    it('treats an unrecognized minSeverity option as priority 0, letting everything through', () => {
+      // minSeverity is only ever produced by our own CLI arg parsing in practice, but the
+      // exported function must still degrade gracefully (not throw, not exclude everything)
+      // if it ever receives a value outside the known enum.
+      const result = exportToJunit(mockVulnerabilities, {
+        projectName: 'test-project',
+        minSeverity: 'unrecognized' as unknown as JunitExportOptions['minSeverity'],
+      })
+
+      expect(result.testsuites.testsuite[0].testcase).toHaveLength(mockVulnerabilities.length)
+    })
+
+    it('treats an unrecognized failureThreshold as equivalent to "high" (priority 3)', () => {
+      // The threshold lookup falls back to 3 (== 'high') when the value is unrecognized,
+      // so critical/high still fail the build and medium/low still do not.
+      const result = exportToJunit(mockVulnerabilities, {
+        projectName: 'test-project',
+        failureThreshold: 'unrecognized' as unknown as JunitExportOptions['failureThreshold'],
+      })
+
+      const testcases = result.testsuites.testsuite[0].testcase
+      const criticalTest = testcases.find((tc) => tc.name === 'CVE-2024-12345')
+      const mediumTest = testcases.find((tc) => tc.name === 'CVE-2024-11111')
+
+      expect(criticalTest?.failure).toBeDefined()
+      expect(mediumTest?.failure).toBeUndefined()
+    })
+
+    it('treats a missing EPSS score as 0 when filtering by minEpss, excluding rather than assuming it passes', () => {
+      // A vulnerability that has not yet been scored by EPSS must not be assumed to have a
+      // high (or any) exploit-prediction score; otherwise minEpss filtering would leak
+      // unscored vulnerabilities into a report meant to be filtered by risk.
+      const vulnWithoutEpss: Vulnerability = {
+        id: 'CVE-2024-NOEPSS',
+        source: 'nvd',
+        severity: 'high',
+        description: 'No EPSS score available yet',
+        references: [],
+        affectedComponents: ['pkg@1.0.0'],
+      }
+
+      const result = exportToJunit([vulnWithoutEpss], {
+        projectName: 'test-project',
+        minEpss: 0.1,
+      })
+
+      expect(result.testsuites.testsuite[0].testcase).toHaveLength(0)
+    })
+
+    it('labels a vulnerability with no affected components as "unknown component" instead of crashing', () => {
+      // SBOM data can be incomplete; the exporter must still produce a usable JUnit
+      // testcase (valid classname/component property) rather than emitting undefined
+      // or throwing when component info is missing.
+      const vulnWithoutComponents: Vulnerability = {
+        id: 'CVE-2024-NOCOMP',
+        source: 'nvd',
+        severity: 'medium',
+        description: 'No component data',
+        references: [],
+        affectedComponents: [],
+      }
+
+      const result = exportToJunit([vulnWithoutComponents], { projectName: 'test-project' })
+      const testcase = result.testsuites.testsuite[0].testcase[0]
+
+      expect(testcase.classname).toBe('unknown component')
+      const componentProperty = testcase.properties?.property.find((p) => p.name === 'component')
+      expect(componentProperty?.value).toBe('unknown component')
+    })
+
+    it('omits the cvssScore property and shows "N/A" in the failure text when CVSS score is missing', () => {
+      // A vulnerability can be a known failure (critical/high) before NVD has published a
+      // CVSS score; the report must say "N/A" rather than "undefined" and must not emit a
+      // cvssScore property that would misleadingly imply a score of 0.
+      const vulnWithoutCvss: Vulnerability = {
+        id: 'CVE-2024-NOCVSS',
+        source: 'nvd',
+        severity: 'critical',
+        description: 'No CVSS score assigned yet',
+        references: [],
+        affectedComponents: ['pkg@2.0.0'],
+      }
+
+      const result = exportToJunit([vulnWithoutCvss], { projectName: 'test-project' })
+      const testcase = result.testsuites.testsuite[0].testcase[0]
+
+      const cvssProperty = testcase.properties?.property.find((p) => p.name === 'cvssScore')
+      expect(cvssProperty).toBeUndefined()
+      expect(testcase.failure?.[0]?.text).toContain('CVSS Score: N/A')
+    })
   })
 
   describe('junitToXml', () => {
@@ -403,6 +534,79 @@ describe('JUnit XML Exporter', () => {
       expect(xml).toContain('</testcase>')
       expect(xml).toContain('</testsuite>')
       expect(xml).toContain('</testsuites>')
+    })
+
+    it('omits time, properties, and testcase-time attributes when a hand-built report does not set them', () => {
+      // JunitReport's time/properties fields are optional in the type because not every
+      // producer of a JunitReport (e.g. a future importer, or a partial report) will fill
+      // them in. The serializer must skip the attribute/element entirely rather than
+      // emitting time="undefined" or an empty <properties> block.
+      const minimalReport: JunitReport = {
+        testsuites: {
+          name: 'minimal-project',
+          tests: '1',
+          failures: '0',
+          errors: '0',
+          testsuite: [
+            {
+              name: 'minimal-project - Security Vulnerabilities',
+              tests: 1,
+              failures: 0,
+              errors: 0,
+              timestamp: new Date().toISOString(),
+              testcase: [
+                {
+                  name: 'CVE-2024-MINIMAL',
+                  classname: 'pkg',
+                },
+              ],
+            },
+          ],
+        },
+      }
+
+      const xml = junitToXml(minimalReport)
+
+      expect(xml).not.toContain('time=')
+      expect(xml).not.toContain('<properties>')
+    })
+
+    it('serializes a failure lacking message/type and a system-out block when present', () => {
+      // failure.message/type are optional per the JunitTestCase type, and system-out is an
+      // independent optional element. The serializer must render a bare <failure> tag
+      // without stray attributes, and must render <system-out> when it is supplied.
+      const reportWithBareFailure: JunitReport = {
+        testsuites: {
+          name: 'bare-project',
+          tests: '1',
+          failures: '1',
+          errors: '0',
+          testsuite: [
+            {
+              name: 'bare-project - Security Vulnerabilities',
+              tests: 1,
+              failures: 1,
+              errors: 0,
+              timestamp: new Date().toISOString(),
+              testcase: [
+                {
+                  name: 'CVE-2024-BARE',
+                  classname: 'pkg',
+                  failure: [{ text: 'raw failure text with no message or type' }],
+                  systemOut: 'log output captured during the scan',
+                },
+              ],
+            },
+          ],
+        },
+      }
+
+      const xml = junitToXml(reportWithBareFailure)
+
+      expect(xml).toContain('<failure>raw failure text with no message or type</failure>')
+      expect(xml).not.toContain('message=')
+      expect(xml).not.toContain('type=')
+      expect(xml).toContain('<system-out>log output captured during the scan</system-out>')
     })
   })
 })

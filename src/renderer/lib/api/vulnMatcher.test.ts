@@ -1643,3 +1643,132 @@ describe('Hybrid scanning: NVD key forwarding + source merge (FR-03.4)', () => {
     expect(merged?.aliases).toEqual(expect.arrayContaining(['GHSA-jfh8-c2jp-5v3q']))
   })
 })
+
+describe('Local NVD result mapping — optional field branches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('maps cwes, references (with and without an explicit ref source), and pub/mod dates for a CPE match', async () => {
+    // WHY: createMockCveResult (the helper used by every other test in this file) never
+    // populates cwes/references/dates, so the "value present" side of every ?? fallback
+    // in the CPE-search mapping was never exercised — only the "missing" defaults were.
+    const component: Component = {
+      id: 'comp-fields-cpe',
+      name: 'lodash',
+      version: '4.17.21',
+      type: 'library',
+      cpe: 'cpe:2.3:a:lodash:lodash:4.17.21:*:*:*:*:*:*:*',
+      licenses: ['MIT'],
+      vulnerabilities: [],
+    }
+
+    const cveResult: CveResult = {
+      cveId: 'CVE-2024-FIELDS',
+      source: 'NVD',
+      severity: 'HIGH',
+      cvssScore: 7.5,
+      cvssVector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+      cwes: ['CWE-79'],
+      publishedAt: '2024-01-01T00:00:00.000Z',
+      modifiedAt: '2024-02-01T00:00:00.000Z',
+      description: 'Has optional fields populated',
+      references: [
+        { url: 'https://example.com/a', source: 'NVD', tags: ['Patch'] },
+        { url: 'https://example.com/b', tags: ['Third Party Advisory'] },
+      ],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [cveResult], totalResults: 1 })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    const [vuln] = result
+    expect(vuln.cvssVector).toBe(cveResult.cvssVector)
+    expect(vuln.cwes).toEqual(['CWE-79'])
+    expect(vuln.publishedAt).toEqual(new Date('2024-01-01T00:00:00.000Z'))
+    expect(vuln.modifiedAt).toEqual(new Date('2024-02-01T00:00:00.000Z'))
+    expect(vuln.references).toHaveLength(2)
+    expect(vuln.references[0].source).toBe('NVD')
+    // Second reference has no explicit source — must fall back to the CVE's own source.
+    expect(vuln.references[1].source).toBe('NVD')
+  })
+
+  it('maps the same optional fields for a name-based fallback match', async () => {
+    // Same fields, but through searchLocalNvdByName's separate mapping code path
+    // (component has no CPE, so only the name-search branch runs).
+    const component: Component = {
+      id: 'comp-fields-name',
+      name: 'somelib',
+      version: '1.0.0',
+      type: 'library',
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    const cveResult: CveResult = {
+      cveId: 'CVE-2024-FIELDSNAME',
+      source: 'OSV',
+      severity: 'MEDIUM',
+      cvssScore: 5.5,
+      cvssVector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N',
+      cwes: ['CWE-200'],
+      publishedAt: '2023-05-05T00:00:00.000Z',
+      modifiedAt: '2023-06-06T00:00:00.000Z',
+      description: 'Name-search mapping with optional fields',
+      references: [{ url: 'https://example.com/z', tags: ['Exploit'] }],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({ success: true, results: [cveResult], totalResults: 1 })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    const result = await matchVulnerabilitiesForComponent(component)
+
+    expect(result).toHaveLength(1)
+    const [vuln] = result
+    expect(vuln.cvssVector).toBe(cveResult.cvssVector)
+    expect(vuln.cwes).toEqual(['CWE-200'])
+    expect(vuln.publishedAt).toEqual(new Date('2023-05-05T00:00:00.000Z'))
+    expect(vuln.modifiedAt).toEqual(new Date('2023-06-06T00:00:00.000Z'))
+    // Reference had no explicit source — falls back to the CVE's own source field.
+    expect(vuln.references[0].source).toBe('OSV')
+  })
+})
+
+describe('CPE percent-decoding fallback (decodeCpeValue)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('falls back to the raw value when a CPE product segment has malformed percent-encoding', async () => {
+    // WHY: decodeURIComponent throws on a lone trailing "%" — decodeCpeValue must catch
+    // that and use the raw string so a malformed CPE degrades to a (slightly imprecise)
+    // name search instead of throwing and losing the match entirely.
+    const component: Component = {
+      id: 'comp-baddecode',
+      name: 'irrelevant',
+      version: '1.0.0',
+      type: 'library',
+      cpe: 'cpe:2.3:a:vendor:Product%:1.0:*:*:*:*:*:*:*',
+      licenses: [],
+      vulnerabilities: [],
+    }
+
+    vi.mocked(mockDatabaseSearch())
+      .mockResolvedValueOnce({ success: true, results: [], totalResults: 0 }) // CPE search: no hits
+      .mockResolvedValueOnce({ success: true, results: [], totalResults: 0 }) // name-search fallback
+    vi.mocked(queryByPurls).mockResolvedValue(new Map())
+
+    await matchVulnerabilitiesForComponent(component)
+
+    // The second call is the name-search fallback; its query must be the un-decoded,
+    // lower-cased product segment ("product%"), proving the catch branch ran instead
+    // of throwing or silently dropping the CPE-derived search term.
+    expect(mockDatabaseSearch()).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ type: 'text', query: 'product%' }),
+    )
+  })
+})

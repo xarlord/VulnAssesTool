@@ -39,6 +39,10 @@ const mockNodeCollection = {
 }
 
 const mockElements = {
+  // Defaults to 0 so `cy.elements(selector).length > 0` (the animate-to-path
+  // guard) is false unless a test opts in — matches the real "nothing found"
+  // case from cytoscape's collection API.
+  length: 0,
   remove: vi.fn(),
   removeClass: vi.fn(),
   addClass: vi.fn(),
@@ -353,6 +357,28 @@ describe('DependencyGraph', () => {
         expect(onNodeClick).not.toHaveBeenCalled()
       }
     })
+
+    it('does not throw when a node tap fires and no onNodeClick handler was provided', () => {
+      // The handler's first line is `if (!onNodeClick) return` — without this
+      // guard a tap on a canvas node with no consumer callback would throw.
+      const components = [createMockComponent()]
+
+      render(<DependencyGraph components={components} vulnerabilities={[]} />)
+
+      const tapHandler = mockCy.on.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call) && call[0] === 'tap' && call[1] === 'node',
+      )
+
+      expect(tapHandler).toBeDefined()
+      if (tapHandler) {
+        const handler = tapHandler[2] as (event: { target: { data: () => Record<string, unknown> } }) => void
+        expect(() =>
+          handler({
+            target: { data: () => ({ id: 'comp-1', component: createMockComponent() }) },
+          } as unknown as Parameters<typeof handler>[0]),
+        ).not.toThrow()
+      }
+    })
   })
 
   describe('Keyboard navigation', () => {
@@ -407,6 +433,111 @@ describe('DependencyGraph', () => {
 
       expect(onNodeClick).toHaveBeenCalledWith(components[0])
     })
+
+    it('moves the active node with ArrowRight / ArrowLeft (mouse-free alternative to Down/Up)', () => {
+      render(<DependencyGraph components={twoComponents()} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'ArrowRight' })
+      let options = screen.getAllByRole('option')
+      expect(options[1]).toHaveAttribute('aria-selected', 'true')
+
+      fireEvent.keyDown(listbox, { key: 'ArrowLeft' })
+      options = screen.getAllByRole('option')
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('jumps to the first node on Home and the last node on End', () => {
+      const components = [
+        createMockComponent({ id: 'c1', name: 'alpha' }),
+        createMockComponent({ id: 'c2', name: 'beta' }),
+        createMockComponent({ id: 'c3', name: 'gamma' }),
+      ]
+      render(<DependencyGraph components={components} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'End' })
+      let options = screen.getAllByRole('option')
+      expect(options[2]).toHaveAttribute('aria-selected', 'true')
+
+      fireEvent.keyDown(listbox, { key: 'Home' })
+      options = screen.getAllByRole('option')
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('opens the active node details when Space is pressed (same as Enter)', () => {
+      const onNodeClick = vi.fn()
+      const components = twoComponents()
+      render(<DependencyGraph components={components} vulnerabilities={[]} onNodeClick={onNodeClick} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: ' ' })
+
+      expect(onNodeClick).toHaveBeenCalledWith(components[0])
+    })
+
+    it('ignores keys with no assigned navigation behavior, leaving the active option unchanged', () => {
+      render(<DependencyGraph components={twoComponents()} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'a' })
+
+      const options = screen.getAllByRole('option')
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+      expect(options[1]).toHaveAttribute('aria-selected', 'false')
+    })
+
+    it('does not throw when Enter is pressed and no onNodeClick handler was provided', () => {
+      // activateNode guards with `if (target && onNodeClick)` — without it, a
+      // keyboard user opening a node with no consumer callback would crash.
+      render(<DependencyGraph components={twoComponents()} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      expect(() => fireEvent.keyDown(listbox, { key: 'Enter' })).not.toThrow()
+    })
+
+    it('clamps the active option when the component list shrinks below the previous active index', () => {
+      // Regression guard for the documented "component set shrank below the
+      // active index" case: activeIndex must stay a valid array index.
+      const components = [
+        createMockComponent({ id: 'c1', name: 'alpha' }),
+        createMockComponent({ id: 'c2', name: 'beta' }),
+        createMockComponent({ id: 'c3', name: 'gamma' }),
+      ]
+      const { rerender } = render(<DependencyGraph components={components} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      fireEvent.keyDown(listbox, { key: 'End' }) // active index -> 2 (gamma)
+
+      rerender(<DependencyGraph components={components.slice(0, 1)} vulnerabilities={[]} />)
+
+      const options = screen.getAllByRole('option')
+      expect(options).toHaveLength(1)
+      expect(options[0]).toHaveAttribute('aria-selected', 'true')
+      expect(listbox).toHaveAttribute('aria-activedescendant', options[0].id)
+    })
+
+    it('does not pan or throw when moving to a node cytoscape has not rendered yet', () => {
+      // centerNode guards with `if (node.length > 0)` before calling cy.center —
+      // a component can exist in props before cytoscape has added its node.
+      const components = twoComponents()
+      render(<DependencyGraph components={components} vulnerabilities={[]} />)
+      const listbox = screen.getByRole('listbox')
+
+      const originalImpl = mockCy.getElementById.getMockImplementation()
+      mockCy.getElementById.mockImplementation(
+        () =>
+          ({ length: 0, addClass: vi.fn(), removeClass: vi.fn() }) as unknown as ReturnType<
+            typeof mockCy.getElementById
+          >,
+      )
+      try {
+        expect(() => fireEvent.keyDown(listbox, { key: 'ArrowDown' })).not.toThrow()
+        expect(mockCy.center).not.toHaveBeenCalled()
+      } finally {
+        if (originalImpl) mockCy.getElementById.mockImplementation(originalImpl)
+      }
+    })
   })
 
   describe('Path Highlighting', () => {
@@ -460,6 +591,91 @@ describe('DependencyGraph', () => {
       rerender(<DependencyGraph components={components} vulnerabilities={[]} />)
 
       expect(mockElements.removeClass).toHaveBeenCalledWith('path-highlight path-source path-target')
+    })
+
+    it('clears highlights but adds no path classes when highlightPath has fewer than two nodes', () => {
+      // The `highlightPath.length >= 2` guard means a single-node "path" is
+      // treated as no path at all — nothing to draw a line between.
+      const components = [createMockComponent({ id: 'comp-1' })]
+
+      render(<DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1']} />)
+
+      expect(mockElements.removeClass).toHaveBeenCalledWith('path-highlight path-source path-target')
+      expect(mockNodeCollection.addClass).not.toHaveBeenCalled()
+    })
+
+    it('marks interior nodes of a 3+ node path as highlighted without source/target styling', () => {
+      // With 3+ nodes, the middle node is neither `index === 0` nor
+      // `index === highlightPath.length - 1`, so it should get only the plain
+      // highlight class, while exactly one node gets path-source and one gets
+      // path-target.
+      const components = [
+        createMockComponent({ id: 'comp-1', dependencies: ['comp-2'] }),
+        createMockComponent({ id: 'comp-2', dependencies: ['comp-3'] }),
+        createMockComponent({ id: 'comp-3' }),
+      ]
+
+      render(
+        <DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1', 'comp-2', 'comp-3']} />,
+      )
+
+      const sourceCalls = mockNodeCollection.addClass.mock.calls.filter((call) => call[0] === 'path-source')
+      const targetCalls = mockNodeCollection.addClass.mock.calls.filter((call) => call[0] === 'path-target')
+      const highlightCalls = mockNodeCollection.addClass.mock.calls.filter((call) => call[0] === 'path-highlight')
+
+      expect(sourceCalls).toHaveLength(1)
+      expect(targetCalls).toHaveLength(1)
+      // All three nodes (source, interior, target) get the base highlight class.
+      expect(highlightCalls.length).toBeGreaterThanOrEqual(3)
+    })
+
+    it('skips edge highlighting when neither direction of an edge exists in the rendered graph', () => {
+      // Guards `if (edge.length > 0)` / `if (reverseEdge.length > 0)`: a path
+      // can reference node IDs whose connecting edge cytoscape has not added.
+      const components = [
+        createMockComponent({ id: 'comp-1', dependencies: ['comp-2'] }),
+        createMockComponent({ id: 'comp-2' }),
+      ]
+      const emptyEdgeCollection = { length: 0, addClass: vi.fn(), removeClass: vi.fn() }
+      const originalImpl = mockCy.getElementById.getMockImplementation()
+      mockCy.getElementById.mockImplementation((id: unknown) =>
+        typeof id === 'string' && id.startsWith('edge-')
+          ? (emptyEdgeCollection as unknown as ReturnType<typeof mockCy.getElementById>)
+          : mockNodeCollection,
+      )
+
+      try {
+        render(<DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1', 'comp-2']} />)
+
+        expect(emptyEdgeCollection.addClass).not.toHaveBeenCalled()
+        // Node highlighting is unaffected — only the edge lookup was empty.
+        expect(mockNodeCollection.addClass).toHaveBeenCalledWith('path-highlight')
+      } finally {
+        if (originalImpl) mockCy.getElementById.mockImplementation(originalImpl)
+      }
+    })
+
+    it('fits and animates the view to the highlighted path when highlighted elements exist', () => {
+      // `cy.elements('.path-highlight, ...').length > 0` gates the fit/animate
+      // call — it should not fire against an empty collection.
+      const components = [
+        createMockComponent({ id: 'comp-1', dependencies: ['comp-2'] }),
+        createMockComponent({ id: 'comp-2' }),
+      ]
+
+      mockElements.length = 2
+      try {
+        render(<DependencyGraph components={components} vulnerabilities={[]} highlightPath={['comp-1', 'comp-2']} />)
+
+        expect(mockCy.animate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            fit: expect.objectContaining({ padding: 50 }),
+            duration: 500,
+          }),
+        )
+      } finally {
+        mockElements.length = 0
+      }
     })
   })
 

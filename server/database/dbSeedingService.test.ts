@@ -16,6 +16,7 @@ import {
 import { runMigrations } from './migrations/v2SchemaMigration.js'
 import * as fs from 'node:fs'
 import { EventEmitter } from 'node:events'
+import { createNvdApiV2Client } from './nvd/nvdApiV2Client.js'
 
 let db: InstanceType<typeof Database>
 const testDbPath = '/tmp/test-nvd-seed.db'
@@ -1192,5 +1193,503 @@ describe('startSeeding - download paths', () => {
 
     expect(result.wasDownloaded).toBe(true)
     expect(mockFsCopyFileSync).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('.backup'))
+  })
+})
+
+// ============================================================================
+// Additional tests: branch coverage for previously-uncovered decision paths
+// ============================================================================
+
+describe('getBackgroundSyncState - corrupted state', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+  })
+
+  it('should treat corrupted background-sync JSON as no saved state instead of throwing', () => {
+    // A partially-written or corrupted metadata row must not crash startup checks — it
+    // should be treated the same as "no sync has ever run" so the app can safely retry.
+    db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run('background_sync_state', '{not valid json')
+
+    const state = seedingService.getBackgroundSyncState()
+
+    expect(state).toBeNull()
+  })
+})
+
+describe('startSeeding - already-seeded database needs no further sync', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    vi.clearAllMocks()
+  })
+
+  it('should skip background sync entirely when the database already has full historical data', async () => {
+    // Business intent: a fully-synced install should be a no-op on every subsequent
+    // startup — it must not re-download, re-import, or spin up a background sync.
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('db_version', '2.0.0-20250224')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_version', '2.0.0-20250224')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_cve_count', '250000')`)
+    db.exec(`INSERT INTO metadata (key, value) VALUES ('seed_date', '2025-02-24')`)
+    db.exec(`
+      INSERT INTO cves (id, description, published_at, modified_at, source)
+      WITH RECURSIVE seq(n) AS (
+        SELECT 0
+        UNION ALL
+        SELECT n + 1 FROM seq WHERE n < 199999
+      )
+      SELECT printf('CVE-2020-%07d', n), 'Test', '2020-01-01', '2020-01-01', 'NVD'
+      FROM seq
+    `)
+
+    const newService = createDbSeedingService(db, testDbPath)
+    const result = await newService.startSeeding()
+
+    expect(result.success).toBe(true)
+    expect(result.wasDownloaded).toBe(false)
+    expect(result.wasImport).toBe(false)
+    expect(result.backgroundSyncStarted).toBe(false)
+    expect(result.totalCves).toBe(250000)
+  })
+
+  it('should skip triggering background sync when a first-run import already meets the historical threshold', async () => {
+    // If a bulk local import already brought the CVE count up to the full-history
+    // threshold, kicking off a redundant background sync would waste API quota for
+    // nothing — the post-import check must recognize that and skip it.
+    db.exec(`
+      INSERT INTO cves (id, description, published_at, modified_at, source)
+      WITH RECURSIVE seq(n) AS (
+        SELECT 0
+        UNION ALL
+        SELECT n + 1 FROM seq WHERE n < 199999
+      )
+      SELECT printf('CVE-2019-%07d', n), 'Test', '2019-01-01', '2019-01-01', 'NVD'
+      FROM seq
+    `)
+
+    const result = await seedingService.startSeeding()
+
+    expect(result.success).toBe(true)
+    expect(result.wasImport).toBe(true)
+    expect(result.backgroundSyncStarted).toBe(false)
+  })
+})
+
+describe('startBackgroundSync - resume semantics', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    // Nudge any dangling fire-and-forget sync loop toward an early exit so it doesn't
+    // keep consuming the real event loop for the ~25-year sweep after the test ends.
+    try {
+      db.prepare(
+        `INSERT INTO metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      ).run('background_sync_state', JSON.stringify({ status: 'paused', yearsCompleted: [], yearsRemaining: [] }))
+    } catch {
+      // db may already be in a bad state; nothing more to do
+    }
+    if (db) db.close()
+    vi.clearAllMocks()
+  })
+
+  it('should resume from years already completed when a prior sync was interrupted mid-run', () => {
+    // A restart after a crash/interruption must not re-download years already synced —
+    // otherwise every restart burns API quota re-fetching the same historical data.
+    db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(
+      'background_sync_state',
+      JSON.stringify({ status: 'syncing', yearsCompleted: [2020, 2021], yearsRemaining: [1999] }),
+    )
+
+    seedingService.startBackgroundSync()
+
+    const state = seedingService.getBackgroundSyncState()
+    expect(state?.yearsCompleted).toEqual([2020, 2021])
+  })
+
+  it('should start fresh (not resume) when the prior sync had already finished', () => {
+    // A completed (or errored/idle) prior run is not "interrupted" — restarting the sync
+    // must not inherit stale progress from that finished run.
+    db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(
+      'background_sync_state',
+      JSON.stringify({ status: 'complete', yearsCompleted: [2020], yearsRemaining: [] }),
+    )
+
+    seedingService.startBackgroundSync()
+
+    const state = seedingService.getBackgroundSyncState()
+    expect(state?.yearsCompleted).toEqual([])
+  })
+})
+
+describe('startBackgroundSync - bulk importer construction failure', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    vi.clearAllMocks()
+  })
+
+  it('should record a sync error (not crash) when the bulk importer cannot be constructed', async () => {
+    // If the NVD API client fails to initialize, the background sync must degrade to a
+    // recorded error state rather than an unhandled rejection that silently loses the failure.
+    vi.mocked(createNvdApiV2Client).mockImplementationOnce(() => {
+      throw new Error('client init failed')
+    })
+
+    seedingService.startBackgroundSync()
+
+    // Let the rejected promise's .catch() handler run.
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    const state = seedingService.getBackgroundSyncState()
+    expect(state?.status).toBe('error')
+    expect(state?.lastError).toContain('client init failed')
+  })
+})
+
+describe('runBackgroundSync - external pause mid-sync', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    vi.clearAllMocks()
+  })
+
+  it('stops importing further years once a pause is observed, but currently records the run as complete rather than paused', async () => {
+    // KNOWN BEHAVIOR (see foundBug; not fixed here per task scope): the loop correctly
+    // breaks out on pause, but the unconditional "mark as complete" write immediately
+    // after the loop overwrites the paused status and discards yearsRemaining, so a
+    // resumed sync starts over instead of continuing where it left off. This test pins
+    // the CURRENT behavior rather than the intended one.
+    seedingService.startBackgroundSync()
+
+    // Let the first (mocked, near-instant) year import finish and the loop enter its
+    // real 1s inter-year delay.
+    await new Promise((resolve) => setTimeout(resolve, 150))
+
+    const midState = seedingService.getBackgroundSyncState()
+    if (!midState) {
+      throw new Error('expected background sync state to exist after startBackgroundSync')
+    }
+    db.prepare(`UPDATE metadata SET value = ? WHERE key = 'background_sync_state'`).run(
+      JSON.stringify({ ...midState, status: 'paused' }),
+    )
+
+    // Wait past the loop's inter-year delay so the next iteration observes the pause.
+    await new Promise((resolve) => setTimeout(resolve, 1300))
+
+    const finalState = seedingService.getBackgroundSyncState()
+    expect(finalState?.status).toBe('complete')
+  }, 8000)
+})
+
+describe('downloadPrebuiltDatabase - genuine extraction failure', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    vi.clearAllMocks()
+    mockFsExistsSync.mockReturnValue(false)
+    mockFsStatSync.mockReturnValue({ size: 0 })
+    mockFsUnlinkSync.mockImplementation(() => {})
+  })
+
+  it('should clean up both temp files when gzip extraction actually throws', async () => {
+    // Regression guard: dbSeedingService.ts imports `pipeline` as a named export, but under
+    // this project's ESM mock interop that binding resolves through the module's `default`
+    // object at runtime — mocking only the named export (as node:stream/promises is mocked
+    // above) never actually intercepts the real call. Reaching into `default.pipeline` is
+    // what forces extraction to genuinely fail here.
+    const streamPromisesModule = (await import('node:stream/promises')) as unknown as {
+      default: { pipeline: (...args: unknown[]) => Promise<void> }
+    }
+    vi.mocked(streamPromisesModule.default.pipeline).mockRejectedValueOnce(new Error('Extraction failed'))
+
+    const finishCallbacks: Array<() => void> = []
+    const mockWriteStream = {
+      close: vi.fn(),
+      on: vi.fn((event: string, callback: () => void) => {
+        if (event === 'finish') finishCallbacks.push(callback)
+      }),
+      write: vi.fn().mockReturnValue(true),
+      end: vi.fn(() => {
+        setTimeout(() => finishCallbacks.forEach((cb) => cb()), 0)
+      }),
+    }
+    mockFsCreateWriteStream.mockReturnValue(mockWriteStream)
+
+    const emitter = new EventEmitter()
+    const mockResponse = Object.assign(emitter, {
+      statusCode: 200,
+      statusMessage: 'OK',
+      headers: { 'content-length': '100' },
+      pipe: (dest: typeof mockWriteStream) => {
+        emitter.emit('data', Buffer.from('x'.repeat(100)))
+        dest.write(Buffer.from('x'.repeat(100)))
+        dest.end()
+        return dest
+      },
+    })
+    const mockRequest = new EventEmitter()
+
+    mockHttpsGet.mockImplementationOnce((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (res: typeof mockResponse) => void
+      callback(mockResponse)
+      return mockRequest
+    })
+
+    mockFsStatSync.mockReturnValue({ size: 5000 } as fs.Stats)
+    mockFsExistsSync.mockReturnValue(true)
+    mockFsUnlinkSync.mockReturnValue(undefined)
+
+    const result = await seedingService.startSeeding({ skipBackgroundSync: true })
+
+    // Extraction failed, so the code must fall back to a local import rather than swap in
+    // a half-extracted database, and it must have attempted to remove BOTH temp artifacts.
+    expect(result.wasDownloaded).toBe(false)
+    expect(result.wasImport).toBe(true)
+    expect(mockFsUnlinkSync).toHaveBeenCalledWith(expect.stringContaining('.download'))
+    expect(mockFsUnlinkSync).toHaveBeenCalledWith(expect.stringContaining('.gz'))
+  })
+})
+
+describe('downloadFile - cancellation while a download is in flight', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    vi.clearAllMocks()
+    mockFsExistsSync.mockReturnValue(false)
+    mockFsUnlinkSync.mockImplementation(() => {})
+  })
+
+  it('should abandon the download without falling back to import once the caller has cancelled', async () => {
+    const controller = new AbortController()
+    const mockWriteStream = { close: vi.fn(), on: vi.fn(), write: vi.fn().mockReturnValue(true), end: vi.fn() }
+    mockFsCreateWriteStream.mockReturnValue(mockWriteStream)
+
+    const emitter = new EventEmitter()
+    const mockResponse = Object.assign(emitter, {
+      statusCode: 200,
+      statusMessage: 'OK',
+      headers: { 'content-length': '100' },
+      pipe: vi.fn(),
+    })
+    const mockRequest = Object.assign(new EventEmitter(), { destroy: vi.fn() })
+
+    mockHttpsGet.mockImplementationOnce((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (res: typeof mockResponse) => void
+      callback(mockResponse)
+      // Abort on the next tick, after downloadFile has finished registering its own
+      // abort listener — aborting synchronously here would fire before that listener
+      // exists and be silently missed.
+      setTimeout(() => controller.abort(), 0)
+      return mockRequest
+    })
+    mockFsUnlinkSync.mockReturnValue(undefined)
+
+    const result = await seedingService.startSeeding({
+      signal: controller.signal,
+      skipBackgroundSync: true,
+    })
+
+    // The abort is observed by downloadFile's own listener, which destroys the in-flight
+    // request and rejects. Cancellation must stop the WHOLE seeding attempt there — it must
+    // not silently fall back to a local import the caller never asked to continue.
+    expect(mockRequest.destroy).toHaveBeenCalled()
+    expect(result.wasDownloaded).toBe(false)
+    expect(result.wasImport).toBe(false)
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('downloadFile - malformed redirect and missing content-length', () => {
+  let seedingService: DbSeedingService
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    seedingService = createDbSeedingService(db, testDbPath)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    vi.clearAllMocks()
+    mockFsExistsSync.mockReturnValue(false)
+    mockFsStatSync.mockReturnValue({ size: 0 })
+  })
+
+  it('should treat a redirect response without a Location header as an HTTP error instead of hanging forever', async () => {
+    const emitter = new EventEmitter()
+    const mockResponse = Object.assign(emitter, { statusCode: 301, statusMessage: 'Moved Permanently', headers: {} })
+    const mockRequest = new EventEmitter()
+
+    mockHttpsGet.mockImplementationOnce((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (res: typeof mockResponse) => void
+      callback(mockResponse)
+      return mockRequest
+    })
+
+    const result = await seedingService.startSeeding({ skipBackgroundSync: true })
+
+    expect(result.wasDownloaded).toBe(false)
+    expect(result.wasImport).toBe(true)
+  })
+
+  it('should default progress to zero (not NaN or a stale value) when the server omits content-length', async () => {
+    const finishCallbacks: Array<() => void> = []
+    const mockWriteStream = {
+      close: vi.fn(),
+      on: vi.fn((event: string, callback: () => void) => {
+        if (event === 'finish') finishCallbacks.push(callback)
+      }),
+      write: vi.fn().mockReturnValue(true),
+      end: vi.fn(() => {
+        setTimeout(() => finishCallbacks.forEach((cb) => cb()), 0)
+      }),
+    }
+    mockFsCreateWriteStream.mockReturnValue(mockWriteStream)
+
+    const emitter = new EventEmitter()
+    const mockResponse = Object.assign(emitter, {
+      statusCode: 200,
+      statusMessage: 'OK',
+      headers: {}, // no content-length
+      pipe: (dest: typeof mockWriteStream) => {
+        emitter.emit('data', Buffer.from('x'.repeat(50)))
+        dest.write(Buffer.from('x'.repeat(50)))
+        dest.end()
+        return dest
+      },
+    })
+    const mockRequest = new EventEmitter()
+
+    mockHttpsGet.mockImplementationOnce((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (res: typeof mockResponse) => void
+      callback(mockResponse)
+      return mockRequest
+    })
+
+    mockFsStatSync.mockReturnValue({ size: 5000 } as fs.Stats)
+
+    const progressUpdates: SeedingProgress[] = []
+    await seedingService.startSeeding({
+      skipBackgroundSync: true,
+      onProgress: (p) => progressUpdates.push({ ...p }),
+    })
+
+    const duringDownload = progressUpdates.filter((p) => p.phase === 'downloading')
+    expect(duringDownload.length).toBeGreaterThan(0)
+    expect(duringDownload.every((p) => p.totalBytes === 0 && p.percentComplete === 0)).toBe(true)
+  })
+})
+
+describe('importRecentYears - reuses a constructor-supplied bulk importer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should not construct a second NVD API client when one was already created with the constructor API key', async () => {
+    const testDb = createTestDatabase()
+    const service = createDbSeedingService(testDb, testDbPath, 'ctor-api-key')
+
+    const result = await service.startSeeding({ skipBackgroundSync: true })
+
+    expect(result.success).toBe(true)
+    expect(result.wasImport).toBe(true)
+    // Constructed once (in the DbSeedingService constructor) — importRecentYears must not
+    // build a duplicate importer/client when one already exists.
+    expect(vi.mocked(createNvdApiV2Client)).toHaveBeenCalledTimes(1)
+
+    testDb.close()
+  })
+})
+
+describe('startSeeding - cancellation surfaces as Cancelled, not a hard failure', () => {
+  it('should mark progress as Cancelled (not a failure) when an internal write throws right after the caller cancels', async () => {
+    // checkFirstRun()/getSeedInfo() are defensive (they swallow DB errors and fall back to
+    // defaults), so a closed DB alone never makes startSeeding throw. What DOES throw is the
+    // direct metadata write in versionManager.recordSeed(), called right after import — and
+    // that call sits right after the code's abort check, not inside it. Aborting from within
+    // the "importing" progress callback lands the abort exactly in that gap: the import
+    // itself finishes normally (it checks the signal internally and just stops early), but
+    // the unguarded recordSeed write that follows then throws with the signal already aborted.
+    const localDb = createTestDatabase()
+    const controller = new AbortController()
+    let triggered = false
+
+    // The default network-error mock's request object lacks `.destroy` (unlike a real
+    // http.ClientRequest). downloadFile's abort listener stays registered on it even after
+    // the download settles, and our later controller.abort() call (below) would otherwise
+    // re-fire that stale listener and crash on the missing method. Give this attempt's
+    // request object a real `.destroy` so that harmless-in-production stale-listener replay
+    // doesn't blow up the test.
+    mockHttpsGet.mockImplementationOnce(() => {
+      const req = Object.assign(new EventEmitter(), { destroy: vi.fn() })
+      setTimeout(() => req.emit('error', new Error('Network error')), 0)
+      return req
+    })
+
+    const service = createDbSeedingService(localDb, testDbPath)
+    const result = await service.startSeeding({
+      signal: controller.signal,
+      skipBackgroundSync: true,
+      onProgress: (p) => {
+        if (!triggered && p.phase === 'importing') {
+          triggered = true
+          controller.abort()
+          localDb.close()
+        }
+      },
+    })
+
+    // Cancellation is not the same thing as failure: the caller asked to stop, so the
+    // result must not be reported as a failed run even though an exception was thrown.
+    expect(result.success).toBe(true)
+    expect(result.error).toBeUndefined()
+
+    const progress = service.getProgress()
+    expect(progress.status).toBe('error')
+    expect(progress.error).toBe('Cancelled')
   })
 })

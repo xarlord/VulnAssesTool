@@ -64,6 +64,71 @@ describe('parseCvssVector (FR-04.3 / CR-03.3)', () => {
   it('returns null for a non-CVSS string', () => {
     expect(parseCvssVector('not a vector')).toBeNull()
   })
+
+  it('falls back to version 3.1 when the minor-version digit is not 0 or 1', () => {
+    // WHY: the version regex only captures '0' or '1'. A vector claiming an unrecognized
+    // 3.x minor version (e.g. "3.2") must still parse (startsWith('CVSS:3.') passed) and
+    // default to '3.1' rather than leaving `version` undefined or throwing.
+    const result = parseCvssVector('CVSS:3.2/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H')
+    expect(result).not.toBeNull()
+    expect(result?.version).toBe('3.1')
+  })
+
+  it('returns null when a 9-segment vector substitutes an unknown prefix for a required metric', () => {
+    // WHY: the length check (parts.length < 9) only guards segment COUNT, not which
+    // metrics are present. A 9-segment vector missing e.g. the Availability metric
+    // (replaced by a bogus "XX:H" segment) must still fail loudly via the per-metric
+    // "Missing metric" throw, not silently produce a breakdown with a bad field.
+    expect(parseCvssVector('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/XX:H')).toBeNull()
+  })
+
+  it('scores an all-None impact vector as 0 (impact sub-score <= 0 short-circuits exploitability)', () => {
+    // WHY: when C/I/A are all None, the impact sub-score is 0, and the spec defines the
+    // base score as 0 regardless of exploitability -- this guards that short-circuit
+    // branch, distinct from the normal "impact + exploitability" formula paths below.
+    const result = parseCvssVector('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N')
+    expect(result?.scores.baseScore).toBe(0)
+    expect(result?.severity).toBe('none')
+  })
+
+  it('computes the reference score for AV:Physical/AC:High/PR:High/Low-impact metrics (Unchanged scope)', () => {
+    // WHY: exercises the branches otherwise untouched by the two "real-world" vectors above --
+    // Physical attack vector, High attack complexity, High privileges required under an
+    // Unchanged scope, and Low confidentiality/integrity/availability impact.
+    const result = parseCvssVector('CVSS:3.1/AV:P/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L')
+    expect(result?.metrics).toEqual({
+      attackVector: 'Physical',
+      attackComplexity: 'High',
+      privilegesRequired: 'High',
+      userInteraction: 'Required',
+      scope: 'Unchanged',
+      confidentialityImpact: 'Low',
+      integrityImpact: 'Low',
+      availabilityImpact: 'Low',
+    })
+    expect(result?.scores.baseScore).toBe(3.5)
+    expect(result?.severity).toBe('low')
+  })
+
+  it('computes the reference score for AV:Adjacent/PR:Low (Unchanged scope) with mixed None/High impact', () => {
+    // WHY: covers the Adjacent attack-vector branch and the Low-privileges-required-under-
+    // Unchanged-scope branch, neither exercised by the other fixtures in this file.
+    const result = parseCvssVector('CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H')
+    expect(result?.metrics.attackVector).toBe('Adjacent')
+    expect(result?.metrics.privilegesRequired).toBe('Low')
+    expect(result?.scores.baseScore).toBe(5.7)
+    expect(result?.severity).toBe('medium')
+  })
+
+  it('computes the reference score for AV:Local/PR:High under Changed scope', () => {
+    // WHY: PR:High is valued differently depending on scope (0.5 when Changed vs. 0.27 when
+    // Unchanged) -- this covers that Changed-scope branch, plus the Local attack-vector branch.
+    const result = parseCvssVector('CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:C/C:H/I:N/A:L')
+    expect(result?.metrics.attackVector).toBe('Local')
+    expect(result?.metrics.scope).toBe('Changed')
+    expect(result?.scores.baseScore).toBe(5.8)
+    expect(result?.severity).toBe('medium')
+  })
 })
 
 describe('getSeverityFromScore configurable thresholds (FR-10.5)', () => {

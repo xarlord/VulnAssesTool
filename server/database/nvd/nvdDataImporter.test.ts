@@ -2,7 +2,7 @@
  * Unit tests for NVD Data Importer
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { NvdDataImporter, createNvdDataImporter, type ImportProgress, type ImportResult } from './nvdDataImporter.js'
 import { runMigrations, getSchemaVersion } from '../migrations/v2SchemaMigration.js'
@@ -803,6 +803,259 @@ describe('NvdDataImporter', () => {
         .all(cveNoExploitScores.id)
       expect(metricsRows[0].exploitability_score).toBeNull()
       expect(metricsRows[0].impact_score).toBeNull()
+    })
+
+    it('should reuse an already-open transaction instead of aborting when one is active', async () => {
+      // WHY: importCves can be called while the caller already holds a transaction (e.g. a
+      // nested import flow). BEGIN TRANSACTION then throws "cannot start a transaction
+      // within a transaction"; the catch must detect db.inTransaction and reuse it instead
+      // of treating that as a fatal error and aborting the whole import.
+      db.exec('BEGIN TRANSACTION')
+
+      const cve = { ...sampleCve, id: 'CVE-2024-REUSETXN' }
+      const result = await importer.importCves([cve])
+
+      expect(result.success).toBe(true)
+      expect(result.importedCves).toBe(1)
+      // The importer's own COMMIT closed out the reused transaction.
+      expect(db.inTransaction).toBe(false)
+
+      const row = db.prepare('SELECT id FROM cves WHERE id = ?').get(cve.id)
+      expect(row).toBeDefined()
+    })
+
+    it('should record a malformed CVE as failed without discarding the rest of the batch', async () => {
+      // WHY: a single bad record (missing descriptions) must not roll back CVEs that
+      // parsed fine in the same transaction — only that one record should count as failed,
+      // and the batch must keep going.
+      const malformedCve = {
+        ...sampleCve,
+        id: 'CVE-2024-MALFORMED',
+        descriptions: undefined,
+      } as unknown as NvdCveV2
+      const goodCve = { ...sampleCve, id: 'CVE-2024-GOODONE' }
+
+      const result = await importer.importCves([malformedCve, goodCve])
+
+      expect(result.success).toBe(true)
+      expect(result.failedCves).toBe(1)
+      expect(result.importedCves).toBe(1)
+      expect(result.errors[0]).toContain('Failed to import CVE-2024-MALFORMED')
+
+      const malformedRow = db.prepare('SELECT id FROM cves WHERE id = ?').get(malformedCve.id)
+      expect(malformedRow).toBeUndefined()
+      const goodRow = db.prepare('SELECT id FROM cves WHERE id = ?').get(goodCve.id)
+      expect(goodRow).toBeDefined()
+    })
+
+    it('should report zero throughput in progress updates when every CVE in a batch fails', async () => {
+      // WHY: progress.cvesPerSecond divides processedCves by elapsed time; when nothing in
+      // the batch actually got processed (every CVE threw before the processedCves++),
+      // that division must fall back to 0 instead of surfacing NaN to the progress UI.
+      const malformed1 = { ...sampleCve, id: 'CVE-2024-BAD1', descriptions: undefined } as unknown as NvdCveV2
+      const malformed2 = { ...sampleCve, id: 'CVE-2024-BAD2', descriptions: undefined } as unknown as NvdCveV2
+
+      const progressUpdates: ImportProgress[] = []
+      const result = await importer.importCves([malformed1, malformed2], {
+        onProgress: (p) => progressUpdates.push({ ...p }),
+      })
+
+      expect(result.failedCves).toBe(2)
+      expect(result.importedCves).toBe(0)
+      expect(progressUpdates.length).toBeGreaterThan(0)
+      expect(progressUpdates.every((p) => p.cvesPerSecond === 0)).toBe(true)
+    })
+
+    it('should return zero cvesPerSecond instead of NaN/Infinity for an empty CVE list', async () => {
+      // WHY: result.cvesPerSecond divides totalCves by durationMs; with totalCves === 0 the
+      // division is falsy (0 or NaN) and must fall back to 0, not leak a NaN/Infinity metric.
+      const result = await importer.importCves([])
+
+      expect(result.success).toBe(true)
+      expect(result.totalCves).toBe(0)
+      expect(result.cvesPerSecond).toBe(0)
+    })
+
+    it('should skip CWE reference rows entirely for a CVE with no weaknesses field', async () => {
+      const cveNoWeaknesses = { ...sampleCve, id: 'CVE-2024-NOWEAK', weaknesses: undefined }
+
+      const result = await importer.importCves([cveNoWeaknesses])
+
+      expect(result.success).toBe(true)
+      expect(result.importedCves).toBe(1)
+
+      const cweRows = db.prepare('SELECT cwe_id FROM cwe_references WHERE cve_id = ?').all(cveNoWeaknesses.id)
+      expect(cweRows.length).toBe(0)
+    })
+
+    it('should create and populate the FTS index at import time when the table does not exist yet', async () => {
+      // WHY: migration 7 normally creates cves_fts ahead of time, so a fresh DB never
+      // exercises the importer's own "build it if missing" fallback. Simulate a DB that
+      // predates/lacks that table (mirroring the migration's own down-step) to prove the
+      // fallback actually builds and populates it.
+      db.exec('DROP TABLE IF EXISTS cves_fts')
+      db.exec('DROP TRIGGER IF EXISTS cves_fts_insert')
+      db.exec('DROP TRIGGER IF EXISTS cves_fts_delete')
+      db.exec('DROP TRIGGER IF EXISTS cves_fts_update')
+
+      const cve = { ...sampleCve, id: 'CVE-2024-NOFTSYET' }
+      const result = await importer.importCves([cve])
+
+      expect(result.success).toBe(true)
+      const ftsRows = db.prepare('SELECT id FROM cves_fts WHERE id = ?').all(cve.id)
+      expect(ftsRows.length).toBe(1)
+    })
+
+    it('should warn but not fail the import when the FTS rebuild throws', async () => {
+      // WHY: rebuildFtsIndex has its own try/catch specifically so a broken FTS rebuild
+      // (search index) never fails the whole CVE import — it should log and move on.
+      db.exec('DROP TABLE IF EXISTS cves_fts')
+      db.exec('DROP TRIGGER IF EXISTS cves_fts_insert')
+      db.exec('DROP TRIGGER IF EXISTS cves_fts_delete')
+      db.exec('DROP TRIGGER IF EXISTS cves_fts_update')
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const realExec = db.exec.bind(db)
+      vi.spyOn(db, 'exec').mockImplementation((sql: string) => {
+        if (sql.includes('INSERT INTO cves_fts')) {
+          throw new Error('simulated FTS failure')
+        }
+        return realExec(sql)
+      })
+
+      const cve = { ...sampleCve, id: 'CVE-2024-FTSFAIL' }
+      const result = await importer.importCves([cve])
+
+      expect(result.success).toBe(true)
+      expect(result.importedCves).toBe(1)
+      expect(warnSpy).toHaveBeenCalledWith('FTS index rebuild failed:', expect.any(Error))
+
+      warnSpy.mockRestore()
+      vi.mocked(db.exec).mockRestore()
+    })
+
+    it('should fall back to default source/type labels and null scores when NVD omits them', async () => {
+      // WHY: source/type/exploitability/impact are optional per NVD's schema; the importer
+      // must default them (Unknown/Secondary/null) rather than storing undefined-derived
+      // garbage in cvss_metrics.
+      const cveDefaultsMetrics = {
+        ...sampleCve,
+        id: 'CVE-2024-METRICDEFAULTS',
+        metrics: {
+          cvssMetricV31: [
+            {
+              cvssData: {
+                version: '3.1',
+                vectorString: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+                attackVector: 'NETWORK',
+                attackComplexity: 'LOW',
+                privilegesRequired: 'NONE',
+                userInteraction: 'NONE',
+                scope: 'UNCHANGED',
+                confidentialityImpact: 'HIGH',
+                integrityImpact: 'HIGH',
+                availabilityImpact: 'HIGH',
+                baseScore: 9.1,
+                baseSeverity: 'CRITICAL',
+              },
+            },
+          ],
+          cvssMetricV30: [
+            {
+              cvssData: {
+                version: '3.0',
+                vectorString: 'CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+                attackVector: 'NETWORK',
+                attackComplexity: 'LOW',
+                privilegesRequired: 'NONE',
+                userInteraction: 'NONE',
+                scope: 'UNCHANGED',
+                confidentialityImpact: 'HIGH',
+                integrityImpact: 'HIGH',
+                availabilityImpact: 'HIGH',
+                baseScore: 8.1,
+                baseSeverity: 'HIGH',
+              },
+            },
+          ],
+          cvssMetricV2: [
+            {
+              cvssData: {
+                version: '2.0',
+                vectorString: 'AV:N/AC:L/Au:N/C:P/I:P/A:P',
+                accessVector: 'NETWORK',
+                accessComplexity: 'LOW',
+                authentication: 'NONE',
+                confidentialityImpact: 'PARTIAL',
+                integrityImpact: 'PARTIAL',
+                availabilityImpact: 'PARTIAL',
+                baseScore: 5.0,
+              },
+              // baseSeverity intentionally omitted
+            },
+          ],
+        },
+      } as unknown as NvdCveV2
+
+      const result = await importer.importCves([cveDefaultsMetrics])
+      expect(result.success).toBe(true)
+
+      const metricsRows = db
+        .prepare(
+          'SELECT version, source, type, exploitability_score, impact_score, severity FROM cvss_metrics WHERE cve_id = ?',
+        )
+        .all(cveDefaultsMetrics.id)
+
+      expect(metricsRows.length).toBe(3)
+      for (const row of metricsRows) {
+        expect(row.source).toBe('Unknown')
+        expect(row.type).toBe('Secondary')
+      }
+
+      const v30Row = metricsRows.find((r) => r.version === '3.0')
+      expect(v30Row?.exploitability_score).toBeNull()
+      expect(v30Row?.impact_score).toBeNull()
+
+      const v2Row = metricsRows.find((r) => r.version === '2.0')
+      expect(v2Row?.severity).toBe('UNKNOWN')
+
+      // cves.cvss_v2_severity mirrors the same "no baseSeverity" default at the
+      // transformCve level (independent from the extractCvssMetrics default above).
+      const cveRow = db.prepare('SELECT cvss_v2_severity FROM cves WHERE id = ?').all(cveDefaultsMetrics.id)
+      expect(cveRow[0].cvss_v2_severity).toBeNull()
+    })
+
+    it('should use a null primary severity when the only available metric (v2) omits baseSeverity', async () => {
+      const cveV2OnlyNoSeverity: NvdCveV2 = {
+        ...sampleCve,
+        id: 'CVE-2024-V2NOSEV',
+        metrics: {
+          cvssMetricV2: [
+            {
+              source: 'nvd@nist.gov',
+              type: 'Primary',
+              cvssData: {
+                version: '2.0',
+                vectorString: 'AV:N/AC:L/Au:N/C:P/I:P/A:P',
+                accessVector: 'NETWORK',
+                accessComplexity: 'LOW',
+                authentication: 'NONE',
+                confidentialityImpact: 'PARTIAL',
+                integrityImpact: 'PARTIAL',
+                availabilityImpact: 'PARTIAL',
+                baseScore: 5.0,
+              },
+              // baseSeverity intentionally omitted
+            },
+          ],
+        },
+      }
+
+      const result = await importer.importCves([cveV2OnlyNoSeverity])
+      expect(result.success).toBe(true)
+
+      const cveRow = db.prepare('SELECT cvss_score, severity FROM cves WHERE id = ?').all(cveV2OnlyNoSeverity.id)
+      expect(cveRow[0].cvss_score).toBe(5.0)
+      expect(cveRow[0].severity).toBeNull()
     })
   })
 

@@ -2428,3 +2428,128 @@ describe('getCveListDetails', () => {
     expect(entry?.referenceTags).toEqual(['patch', 'vendor advisory'])
   })
 })
+
+// ===========================================================================
+// recoverFromBackup (private) — success + candidate-fallthrough branches
+//
+// The "initialize — recovery when the initial open fails" suite above can only
+// exercise the recovered=false path: its dbPath must be a directory to make the
+// initial open throw synchronously, but that same directory-at-dbPath then makes
+// recoverFromBackup's own `fs.copyFile(backupPath, this.dbPath)` fail for every
+// candidate (can't copy a file onto a directory), so `recovered` is always false
+// through that route — its own comment block says as much. These call the
+// private method directly (same pattern as the runMigrations/fileExists suites
+// above) to cover the return-true branch (a valid backup found, copied in, and
+// reopened as the primary db) and the loop's continue-to-next-candidate branch
+// when an earlier backup path doesn't exist.
+// ===========================================================================
+interface RecoverFromBackupAccess {
+  recoverFromBackup: () => Promise<boolean>
+  db: InstanceType<typeof Database> | null
+}
+
+describe('NvdDatabase recoverFromBackup', () => {
+  const recoverDir = nodePath.join(nodeOs.tmpdir(), 'vulnassess-nvddb-recover')
+
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('recovers from a valid .backup file: copies it in, reopens it as the primary db, and returns true', async () => {
+    const nodeFs = await import('node:fs/promises')
+    const dir = nodePath.join(recoverDir, 'valid-backup')
+    await nodeFs.rm(dir, { recursive: true, force: true })
+    await nodeFs.mkdir(dir, { recursive: true })
+    const dbPath = nodePath.join(dir, 'primary.db')
+    const backupPath = `${dbPath}.backup`
+
+    const seedDb = new Database(backupPath)
+    seedDb.exec('CREATE TABLE marker (id INTEGER PRIMARY KEY)')
+    seedDb.prepare('INSERT INTO marker (id) VALUES (42)').run()
+    seedDb.close()
+
+    const inst = new NvdDatabase(dbPath)
+    const access = inst as unknown as RecoverFromBackupAccess
+    const recovered = await access.recoverFromBackup()
+
+    expect(recovered).toBe(true)
+    const row = access.db?.prepare('SELECT id FROM marker').get() as { id: number } | undefined
+    expect(row?.id).toBe(42)
+
+    await inst.close()
+  })
+
+  it('skips a missing .backup and falls through to the next candidate (.backup-1)', async () => {
+    // WHY: the loop over backupPaths must keep trying subsequent candidates after an
+    // earlier one is absent/invalid, not stop at the first failure.
+    const nodeFs = await import('node:fs/promises')
+    const dir = nodePath.join(recoverDir, 'fallthrough')
+    await nodeFs.rm(dir, { recursive: true, force: true })
+    await nodeFs.mkdir(dir, { recursive: true })
+    const dbPath = nodePath.join(dir, 'primary.db')
+    // Deliberately no `${dbPath}.backup` file — only the second candidate exists.
+    const backupPath1 = `${dbPath}.backup-1`
+
+    const seedDb = new Database(backupPath1)
+    seedDb.exec('CREATE TABLE marker (id INTEGER PRIMARY KEY)')
+    seedDb.prepare('INSERT INTO marker (id) VALUES (7)').run()
+    seedDb.close()
+
+    const inst = new NvdDatabase(dbPath)
+    const access = inst as unknown as RecoverFromBackupAccess
+    const recovered = await access.recoverFromBackup()
+
+    expect(recovered).toBe(true)
+    const row = access.db?.prepare('SELECT id FROM marker').get() as { id: number } | undefined
+    expect(row?.id).toBe(7)
+
+    await inst.close()
+  })
+
+  it('returns false when none of the backup candidates exist', async () => {
+    const nodeFs = await import('node:fs/promises')
+    const dir = nodePath.join(recoverDir, 'no-backups')
+    await nodeFs.rm(dir, { recursive: true, force: true })
+    await nodeFs.mkdir(dir, { recursive: true })
+    const dbPath = nodePath.join(dir, 'primary.db')
+
+    const inst = new NvdDatabase(dbPath)
+    const access = inst as unknown as RecoverFromBackupAccess
+    const recovered = await access.recoverFromBackup()
+
+    expect(recovered).toBe(false)
+    expect(access.db).toBeNull()
+
+    await inst.close()
+  })
+})
+
+// ===========================================================================
+// getDbSize — real file (try-branch), not just the catch/non-existent-path case
+//
+// The "getDbSize" suite above only proves the catch branch (statSync throws for
+// a path that was never written to disk, returning 0). This proves the other
+// side of that try/catch: a real database file on disk reports a real,
+// non-zero byte size.
+// ===========================================================================
+describe('NvdDatabase getDbSize (existing file on disk)', () => {
+  afterEach(async () => {
+    await resetDatabase()
+  })
+
+  it('returns a positive byte size for a database file that actually exists on disk', async () => {
+    const dir = nodePath.join(nodeOs.tmpdir(), 'vulnassess-nvddb-size')
+    const nodeFs = await import('node:fs/promises')
+    await nodeFs.rm(dir, { recursive: true, force: true })
+    await nodeFs.mkdir(dir, { recursive: true })
+    const dbPath = nodePath.join(dir, 'sized.db')
+
+    const inst = new NvdDatabase(dbPath)
+    await inst.initialize()
+    await inst.updateMetadata('k', 'v')
+
+    expect(inst.getDbSize()).toBeGreaterThan(0)
+
+    await inst.close()
+  })
+})
