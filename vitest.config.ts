@@ -83,17 +83,18 @@ export default defineConfig({
         'src/renderer/lib/cache/index.ts',
       ],
       // Anti-regression floors, set below measured full-suite coverage with margin. Ratcheted
-      // 2026-08-13 after coverage batches 1-2 (~21 files, +657 intent tests on the highest
+      // 2026-08-13 after coverage batches 1-3 (~33 files, ~795 intent tests on the highest
       // uncovered-branch files). Clean full-suite measurement (208 files, 0 fail):
-      // stmts 94.58 / branch 88.45 / funcs 93.82 / lines 95.44. Floors sit ~1.5 below with
-      // headroom (functions keeps the widest margin — its % swings run-to-run as tests load
-      // different server modules). PRD target is 95% (NFR-07.1/08.1); ratchet up as gaps close,
-      // never down.
+      // stmts 95.18 / branch 89.74 / funcs 94.14 / lines 96.02 — statements and lines now clear
+      // the PRD's 95% target (NFR-07.1/08.1). Branch sits at ~90%: the remaining uncovered
+      // branches are largely unreachable defensive guards (SSR/null checks, closed-union default
+      // arms), so forcing them higher would mean contrived, intent-free tests. Floors ~1-1.7
+      // below measured; ratchet up as real gaps close, never down.
       thresholds: {
-        statements: 93,
-        branches: 87,
-        functions: 92,
-        lines: 94,
+        statements: 94,
+        branches: 88,
+        functions: 93,
+        lines: 95,
       },
     },
 
