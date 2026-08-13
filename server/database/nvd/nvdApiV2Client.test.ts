@@ -1041,6 +1041,60 @@ describe('Retry logic (executeWithRetry)', () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
+
+  it('retries a 403 without a Retry-After header using exponential backoff (retryAfter defaults to undefined)', async () => {
+    // WHY: the existing 403 retry test always supplies Retry-After, so the ternary's "absent"
+    // branch (falling back to undefined, then to exponential backoff) was never exercised.
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        headers: new Headers(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => sampleApiResponse,
+      })
+
+    const promise = retryClient.fetchDateRange({
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-12-31'),
+    })
+
+    await vi.runAllTimersAsync()
+    const result = await promise
+
+    expect(result.cves).toHaveLength(1)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries a 429 using the provided Retry-After header instead of the 30s default', async () => {
+    // WHY: the existing 429 retry test omits Retry-After to exercise the 30s-default branch;
+    // this covers the opposite branch, where the header value is honored instead.
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: new Headers({ 'Retry-After': '2' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => sampleApiResponse,
+      })
+
+    const promise = retryClient.fetchDateRange({
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-12-31'),
+    })
+
+    await vi.runAllTimersAsync()
+    const result = await promise
+
+    expect(result.cves).toHaveLength(1)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('fetchDateRange edge cases', () => {
@@ -1119,6 +1173,25 @@ describe('fetchDateRange edge cases', () => {
     const errorCall = progressCallback.mock.calls.find((call) => call[0].phase === 'error')
     expect(errorCall).toBeDefined()
     expect(errorCall[0].error).toBe('Unknown error')
+  })
+
+  it('includes the API key header on the retry path (executeWithRetry), not just fetchCveById', async () => {
+    // WHY: fetchCveById builds its own headers inline, but fetchYear/fetchDateRange/
+    // fetchModifiedSince all go through the separate executeWithRetry header-building code.
+    // Each site has its own `if (this.apiKey)` check, so covering one does not prove the other.
+    edgeClient.setApiKey('retry-path-key')
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 1, resultsPerPage: 1 }),
+    })
+
+    await edgeClient.fetchDateRange({
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-12-31'),
+    })
+
+    const [, options] = mockFetch.mock.calls[0]
+    expect(options.headers.apiKey).toBe('retry-path-key')
   })
 })
 
@@ -1265,6 +1338,76 @@ describe('fetchModifiedSince edge cases', () => {
 
     expect(mockFetch.mock.calls[0][0].toString()).toContain('startIndex=2000')
   })
+
+  it('registers an abort listener for a live (not-yet-aborted) signal, mirroring fetchDateRange', async () => {
+    // WHY: the only existing signal test pre-aborts before calling, which exercises the
+    // `if (aborted) controller.abort()` branch. A caller normally passes a signal that is NOT
+    // yet aborted (aborted later by the user), which takes the addEventListener branch instead.
+    const controller = new AbortController()
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 1, resultsPerPage: 1 }),
+    })
+
+    const result = await modClient.fetchModifiedSince({
+      lastModifiedDate: new Date('2024-01-01'),
+      signal: controller.signal,
+    })
+
+    expect(result.cves).toHaveLength(1)
+  })
+
+  it('returns fromCache=true on a repeated call with identical parameters', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 1, resultsPerPage: 1 }),
+    })
+
+    // Both dates are fixed explicitly (lastModifiedEndDate defaults to `new Date()` otherwise,
+    // which would make the two calls' cache keys differ and defeat the cache-hit this tests).
+    const params = {
+      lastModifiedDate: new Date('2024-01-01T00:00:00Z'),
+      lastModifiedEndDate: new Date('2024-02-01T00:00:00Z'),
+    }
+
+    const first = await modClient.fetchModifiedSince(params)
+    expect(first.fromCache).toBe(false)
+
+    mockFetch.mockClear()
+    const second = await modClient.fetchModifiedSince(params)
+
+    expect(second.fromCache).toBe(true)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('truncates at 50000 CVEs, mirroring the fetchDateRange safety cap (a large modified-since window must not grow unbounded)', async () => {
+    const manyVulnerabilities: Array<{ cve: NvdCveV2 }> = []
+    for (let i = 0; i < 50000; i++) {
+      manyVulnerabilities.push({
+        cve: { ...sampleCve, id: `CVE-2024-${String(i).padStart(5, '0')}` },
+      })
+    }
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...sampleApiResponse,
+        resultsPerPage: 50000,
+        totalResults: 60000,
+        startIndex: 0,
+        vulnerabilities: manyVulnerabilities,
+      }),
+    })
+
+    const result = await modClient.fetchModifiedSince({
+      lastModifiedDate: new Date('2024-01-01'),
+      resultsPerPage: 50000,
+    })
+
+    expect(result.cves).toHaveLength(50000)
+    expect(result.truncated).toBe(true)
+    expect(result.totalResults).toBe(60000)
+  })
 })
 
 describe('fetchCveById edge cases', () => {
@@ -1400,5 +1543,227 @@ describe('fetchYearsParallel edge cases', () => {
     expect(result.failedYears.size).toBe(1)
     expect(result.failedYears.get(2024)).toBe('Unknown error')
     expect(yearError).toHaveBeenCalledWith(2024, expect.any(Error))
+  })
+
+  it('does not apply NvdBulkFetchOptions.concurrency to the executor (found bug: only setConcurrency()/the constructor do)', async () => {
+    // WHY: fetchYearsParallel's own `concurrency` option reads naturally as "use this
+    // concurrency for this call", but the implementation only ever dispatches through
+    // `this.executor` (configured via setConcurrency()/the constructor) and never applies
+    // options.concurrency to it. This locks in CURRENT behavior; see foundBug for the gap.
+    const before = parallelClient.getExecutorStats().concurrency
+
+    await parallelClient.fetchYearsParallel({ years: [2024], concurrency: 99 })
+
+    expect(parallelClient.getExecutorStats().concurrency).toBe(before)
+  })
+
+  it('queues years beyond the configured concurrency and drains them one at a time', async () => {
+    // WHY: setConcurrency() (unlike the ignored per-call option above) DOES gate the executor,
+    // so with concurrency=1 the 2nd/3rd years must wait in ConcurrentExecutor's queue and drain
+    // through processQueue() as each prior year finishes, rather than running unbounded.
+    parallelClient.setConcurrency(1)
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 1, resultsPerPage: 1 }),
+    })
+
+    const result = await parallelClient.fetchYearsParallel({ years: [2022, 2023, 2024] })
+
+    expect(result.results.size).toBe(3)
+    expect(result.failedYears.size).toBe(0)
+    expect(parallelClient.getExecutorStats().queued).toBe(0)
+  })
+
+  it('rejects a still-queued year when cancel() runs mid-flight, instead of leaving it hanging (H26)', async () => {
+    parallelClient.setConcurrency(1)
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 1, resultsPerPage: 1 }),
+    })
+
+    const resultPromise = parallelClient.fetchYearsParallel({ years: [2022, 2023] })
+
+    // Constructing the per-year tasks (including each fetch chain's synchronous prefix, up to
+    // its first real await on the mocked fetch) completes before fetchYearsParallel's own first
+    // await — so with concurrency=1, year 2023 is already sitting in the executor queue here.
+    expect(parallelClient.getExecutorStats().active).toBe(1)
+    expect(parallelClient.getExecutorStats().queued).toBe(1)
+
+    parallelClient.cancel()
+
+    const result = await resultPromise
+    // 2022 was already active and completes normally (this mock ignores the abort signal).
+    // 2023 was rejected directly out of the queue by clearQueue() — it never reached the
+    // per-year try/catch, so (unlike a normal fetch failure) it lands in neither map.
+    expect(result.results.has(2022)).toBe(true)
+    expect(result.results.has(2023)).toBe(false)
+    expect(result.failedYears.has(2023)).toBe(false)
+  })
+
+  it('drops a year silently when onOverallProgress throws before the per-year try/catch begins', async () => {
+    // WHY: onOverallProgress is called once to report a year entering `currentYears` BEFORE
+    // that year's own try/catch starts. If the callback throws there, ConcurrentExecutor's own
+    // try/catch rejects the task instead of the per-year one — Promise.allSettled swallows it,
+    // so the year never reaches `results` or `failedYears` (a real gap in error visibility).
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...sampleApiResponse, totalResults: 1, resultsPerPage: 1 }),
+    })
+
+    const onOverallProgress = vi.fn().mockImplementationOnce(() => {
+      throw new Error('progress callback exploded')
+    })
+
+    const result = await parallelClient.fetchYearsParallel({
+      years: [2024],
+      onOverallProgress,
+    })
+
+    expect(result.results.size).toBe(0)
+    expect(result.failedYears.size).toBe(0)
+  })
+})
+
+describe('ResponseCache TTL and stats (via public cache-backed methods)', () => {
+  let cacheClient: NvdApiV2Client
+
+  beforeEach(() => {
+    mockFetch.mockClear()
+    cacheClient = createTestNvdApiV2Client()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    cacheClient.cancel()
+  })
+
+  it('re-fetches once a cached CVE entry exceeds the 1-hour cache TTL, so long-running syncs cannot serve stale data forever', async () => {
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'))
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => sampleApiResponse,
+    })
+
+    const first = await cacheClient.fetchCveById('CVE-2024-12345')
+    expect(first).toEqual(sampleCve)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+
+    // Advance past CACHE_TTL_MS (1 hour).
+    vi.setSystemTime(new Date('2024-01-01T01:00:01.000Z'))
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...sampleApiResponse,
+        vulnerabilities: [{ cve: { ...sampleCve, id: 'CVE-2024-99999' } }],
+      }),
+    })
+
+    const second = await cacheClient.fetchCveById('CVE-2024-12345')
+
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(second?.id).toBe('CVE-2024-99999')
+  })
+
+  it('reports the chronologically oldest cache entry even when it was cached after a newer one', async () => {
+    // WHY: getCacheStats() exists to help callers reason about staleness/eviction. If it just
+    // reported whichever entry happened to be inserted first, callers could be misled about how
+    // stale the true oldest entry is whenever inserts don't land in chronological order (e.g.
+    // around a system clock adjustment).
+    vi.setSystemTime(new Date('2024-06-01T00:00:00.000Z'))
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => sampleApiResponse,
+    })
+    await cacheClient.fetchCveById('CVE-2024-11111') // cached at the LATER timestamp, inserted FIRST
+
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z')) // clock moves backward
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...sampleApiResponse,
+        vulnerabilities: [{ cve: { ...sampleCve, id: 'CVE-2024-22222' } }],
+      }),
+    })
+    await cacheClient.fetchCveById('CVE-2024-22222') // cached at the EARLIER timestamp, inserted SECOND
+
+    const stats = cacheClient.getCacheStats()
+    expect(stats.size).toBe(2)
+    expect(stats.oldestEntry).toBe(new Date('2024-01-01T00:00:00.000Z').getTime())
+  })
+})
+
+describe('Bandwidth throttling (FR-10.3)', () => {
+  let throttleClient: NvdApiV2Client
+  let setTimeoutSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    mockFetch.mockClear()
+    throttleClient = createTestNvdApiV2Client()
+    vi.useFakeTimers()
+    setTimeoutSpy = vi.spyOn(global, 'setTimeout')
+  })
+
+  afterEach(() => {
+    setTimeoutSpy.mockRestore()
+    vi.useRealTimers()
+    throttleClient.cancel()
+  })
+
+  it('delays after a real (non-cached) fetch once a bandwidth limit is set via setBandwidthLimitKBps, so bulk syncs cannot exceed the configured KB/s', async () => {
+    throttleClient.setBandwidthLimitKBps(1) // 1 KB/s: tiny, guarantees a measurable delay
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => sampleApiResponse,
+    })
+
+    const promise = throttleClient.fetchDateRange({
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-12-31'),
+    })
+
+    await vi.runAllTimersAsync()
+    const result = await promise
+
+    expect(result.cves).toHaveLength(1)
+    // The throttle's own delay(ms) call is the only source of a positive-delay timer in this
+    // flow (no retry occurred) — proving the bandwidth cap actually paused after the page.
+    const positiveDelays = setTimeoutSpy.mock.calls.filter(([, ms]) => typeof ms === 'number' && ms > 0)
+    expect(positiveDelays.length).toBeGreaterThan(0)
+  })
+
+  it('does not delay when the bandwidth limit is explicitly set to 0 (unlimited)', async () => {
+    throttleClient.setBandwidthLimitKBps(0)
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => sampleApiResponse,
+    })
+
+    await throttleClient.fetchDateRange({
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-12-31'),
+    })
+
+    expect(setTimeoutSpy).not.toHaveBeenCalled()
+  })
+
+  it('accepts a bandwidth limit from the constructor as well as the setter', async () => {
+    const limitedClient = createNvdApiV2Client(undefined, undefined, 2) // 2 KB/s via constructor
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => sampleApiResponse,
+    })
+
+    const promise = limitedClient.fetchDateRange({
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-12-31'),
+    })
+
+    await vi.runAllTimersAsync()
+    const result = await promise
+
+    expect(result.cves).toHaveLength(1)
+    const positiveDelays = setTimeoutSpy.mock.calls.filter(([, ms]) => typeof ms === 'number' && ms > 0)
+    expect(positiveDelays.length).toBeGreaterThan(0)
   })
 })

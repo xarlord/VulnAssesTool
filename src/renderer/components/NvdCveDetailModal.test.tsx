@@ -744,4 +744,282 @@ describe('NvdCveDetailModal', () => {
       expect(screen.getByText('Access Complexity')).toBeInTheDocument()
     })
   })
+
+  describe('CVSS Vector Parsing Edge Cases', () => {
+    it('should recognize legacy CVSS v2 vectors that omit the "CVSS:2.0" prefix (older NVD records)', async () => {
+      const data = {
+        ...mockCveData,
+        cvssV31Score: undefined,
+        cvssV31Vector: undefined,
+        cvssV31Severity: undefined,
+        cvssV2Score: 6.8,
+        cvssV2Vector: 'AV:N/AC:L/Au:N/C:C/I:C/A:C',
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // "Authentication" only exists in the CVSS v2 metric map. If a bare (unprefixed)
+      // v2 vector were misdetected as v3, 'Au' would match nothing and this label
+      // — along with the whole Authentication row — would silently disappear.
+      expect(screen.getByText('Authentication')).toBeInTheDocument()
+    })
+
+    it('should drop unrecognized metric codes and fall back to the raw code for unrecognized values', async () => {
+      const data = {
+        ...mockCveData,
+        cvssV31Vector: 'CVSS:3.1/AV:Z/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/E:H',
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // 'E' (Exploit Code Maturity, a temporal-metric code this parser doesn't model)
+      // must be skipped rather than rendered as a garbled row.
+      expect(screen.queryByText('E')).not.toBeInTheDocument()
+      // 'Z' isn't a valid Attack Vector value — the parser must show the raw code
+      // rather than crashing or silently hiding the row.
+      const avRow = screen.getByText('AV').closest('tr')
+      expect(avRow).toHaveTextContent('Z')
+    })
+  })
+
+  describe('Fetch Error Fallback Messages', () => {
+    it('should show a generic message when the API reports failure without an error string', async () => {
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({
+        success: false,
+        cve: null,
+      })
+
+      renderModal(true)
+
+      // A backend that reports failure without a message must not leave users staring
+      // at a blank error area. (Text appears in both the header and content area, as
+      // in the existing "API call fails" test above.)
+      const messages = await screen.findAllByText('Failed to fetch CVE details')
+      expect(messages.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should show a generic message when a non-Error value is thrown', async () => {
+      vi.mocked(getPlatform().database.getCveFull).mockRejectedValue('boom')
+
+      renderModal(true)
+
+      // Rejections aren't guaranteed to be Error instances (e.g. a thrown string) —
+      // reading `.message` off a non-Error would be unsafe, so this must fall back
+      // to a safe generic message instead.
+      const messages = await screen.findAllByText('An error occurred')
+      expect(messages.length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('Severity Fallback Handling', () => {
+    it('should fall back to LOW styling for an unrecognized severity value instead of breaking', async () => {
+      const data = { ...mockCveData, severity: 'UNKNOWN' }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+
+      // A severity value outside the known set must degrade gracefully to the
+      // least-alarming color rather than rendering an undefined CSS class.
+      const badge = await screen.findByText('UNKNOWN')
+      expect(badge.className).toContain('text-green-600')
+      expect(badge.className).toContain('bg-green-100')
+    })
+
+    it('should fall back to the overall CVE severity when a per-version severity is missing', async () => {
+      const data = {
+        ...mockCveData,
+        cvssV31Score: 9.8,
+        cvssV31Vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+        cvssV31Severity: undefined,
+        cvssV30Score: 9.0,
+        cvssV30Vector: 'CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+        cvssV30Severity: undefined,
+        cvssV2Score: 7.5,
+        cvssV2Vector: 'CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P',
+        cvssV2Severity: undefined,
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // Older/partial NVD records can carry a per-version score without a matching
+      // per-version severity label. Each of the three CVSS blocks must still show a
+      // sensible severity by falling back to the CVE's overall severity.
+      expect(screen.getByText('CVSS v3.1')).toBeInTheDocument()
+      expect(screen.getByText('CVSS v3.0')).toBeInTheDocument()
+      expect(screen.getByText('CVSS v2.0')).toBeInTheDocument()
+      expect(screen.getAllByText('critical')).toHaveLength(3)
+    })
+  })
+
+  describe('CVSS Section Visible via Supplementary Metrics Only', () => {
+    it('should show the CVSS Scores section when only cvssMetrics is present (no primary score)', async () => {
+      const data = {
+        ...mockCveData,
+        cvssV31Score: undefined,
+        cvssV31Vector: undefined,
+        cvssV31Severity: undefined,
+        cvssMetrics: [
+          {
+            source: 'nvd@nist.gov',
+            type: 'Primary',
+            version: '3.1' as const,
+            score: 9.8,
+            severity: 'CRITICAL',
+            vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+          },
+          {
+            source: 'cna@vendor.com',
+            type: 'Secondary',
+            version: '3.1' as const,
+            score: 8.1,
+            severity: 'HIGH',
+            vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H',
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // With no cvssV31/V30/V2 score, the section's visibility depends entirely on
+      // cvssMetrics — a vendor-supplied score must not be hidden just because NVD's
+      // own primary score is absent.
+      expect(screen.getByText('CVSS Scores')).toBeInTheDocument()
+      expect(screen.getByText('All CVSS Scores (Multiple Sources)')).toBeInTheDocument()
+      expect(screen.getByText('cna@vendor.com')).toBeInTheDocument()
+      expect(screen.queryByText('CVSS v3.1')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('CPE Match Data Edge Cases', () => {
+    it('should describe an unbounded-below range using versionEndExcluding alone', async () => {
+      const data = {
+        ...mockCveData,
+        cpeMatches: [
+          {
+            id: 1,
+            cveId: 'CVE-2024-1234',
+            cpe23Uri: 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*',
+            vulnerable: true,
+            versionEndExcluding: '4.0',
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // A match can specify only an upper bound with no lower bound at all — this must
+      // still be recognized as a version range, not treated as "all versions".
+      expect(screen.getByText(/up to 4\.0 \(exclusive\)/)).toBeInTheDocument()
+      expect(screen.getByText(/Up to \(<\):/)).toBeInTheDocument()
+    })
+
+    it('should show "Unknown Product" for a malformed CPE URI instead of crashing', async () => {
+      const data = {
+        ...mockCveData,
+        cpeMatches: [{ id: 1, cveId: 'CVE-2024-1234', cpe23Uri: 'cpe:2.3:a', vulnerable: true }],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // Real feeds occasionally carry truncated/malformed CPE strings — the modal must
+      // degrade to a labeled placeholder rather than rendering blank or throwing.
+      expect(screen.getByText('Unknown Product')).toBeInTheDocument()
+    })
+
+    it('should display "*" as the version when a well-formed CPE URI has an empty version field', async () => {
+      const data = {
+        ...mockCveData,
+        cpeMatches: [
+          {
+            id: 1,
+            cveId: 'CVE-2024-1234',
+            cpe23Uri: 'cpe:2.3:a:vendor:product::*:*:*:*:*:*:*',
+            vulnerable: true,
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // No version range bounds and an empty version segment: the match still needs a
+      // non-blank display value, so it must fall back to the CPE wildcard "*".
+      expect(screen.getByText('Version *')).toBeInTheDocument()
+    })
+  })
+
+  describe('CWE Reference Edge Cases', () => {
+    it('should link non-numeric CWE ids (e.g. NVD-CWE-noinfo) without extracting a bogus number', async () => {
+      const data = {
+        ...mockCveData,
+        cweReferences: [{ id: 1, cveId: 'CVE-2024-1234', cweId: 'NVD-CWE-noinfo' }],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // NVD uses non-numeric sentinel CWE ids when no mapping is available. The regex
+      // that extracts a MITRE definition number finds nothing, so the '' fallback
+      // must be used instead of throwing on a null match.
+      const cweLink = screen.getByText('NVD-CWE-noinfo').closest('a')
+      expect(cweLink).toHaveAttribute('href', 'https://cwe.mitre.org/data/definitions/.html')
+    })
+  })
+
+  describe('Reference Tag Collection Edge Cases', () => {
+    it('should render a reference with neither referenceType nor tags without a tag row', async () => {
+      const data = {
+        ...mockCveData,
+        references: [{ id: 1, cveId: 'CVE-2024-1234', url: 'https://example.com/no-tags' }],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+
+      // Some references carry only a bare URL. Tag collection must handle a missing
+      // referenceType and a missing/empty tags array without pushing anything, so no
+      // tag pill row should render for this reference.
+      const bareLink = (await screen.findByText('https://example.com/no-tags')).closest('a')
+      expect(bareLink?.querySelector('span')).toBeNull()
+    })
+
+    it('should style an unrecognized reference tag with the neutral default instead of a known-type color', async () => {
+      const data = {
+        ...mockCveData,
+        references: [
+          {
+            id: 1,
+            cveId: 'CVE-2024-1234',
+            url: 'https://example.com/release-notes',
+            referenceType: 'Release Notes',
+          },
+        ],
+      }
+      vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
+
+      renderModal(true)
+      await screen.findByTestId('cve-detail-modal')
+
+      // "Release Notes" (a real NVD reference tag) doesn't contain 'patch', 'vendor',
+      // 'advisory', or 'exploit' — it must fall back to the neutral default style
+      // rather than being miscolored or crashing on an undefined style lookup.
+      const tagPill = screen.getByText('Release Notes')
+      expect(tagPill.className).toContain('bg-muted')
+      expect(tagPill.className).toContain('text-muted-foreground')
+    })
+  })
 })

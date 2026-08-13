@@ -34,7 +34,7 @@ vi.mock('@/lib/settings', () => ({
 }))
 
 import { refreshVulnerabilityData as refreshData } from '@/lib/refresh'
-import { deleteProjectFromServer } from '@/lib/api/projectPersistence'
+import { deleteProjectFromServer, loadProjectFromServer, saveProjectToServer } from '@/lib/api/projectPersistence'
 import {
   createProfile,
   updateProfile,
@@ -887,6 +887,23 @@ describe('useStore', () => {
       expect(deleteProjectFromServer).toHaveBeenCalledWith('cascade-delete-id')
     })
 
+    it('logs but swallows the error when the server-side delete cascade fails, so a transient network error cannot crash the UI', async () => {
+      vi.mocked(deleteProjectFromServer).mockRejectedValueOnce(new Error('server down'))
+      const { result } = renderHook(() => useStore())
+      const project = createMockProject()
+
+      act(() => {
+        result.current.addProject(project)
+      })
+      act(() => {
+        result.current.deleteProject(project.id)
+      })
+
+      await vi.waitFor(() => {
+        expect(console.error).toHaveBeenCalledWith('[Store] Failed to delete project from server:', expect.any(Error))
+      })
+    })
+
     it('should delete correct project when multiple exist', () => {
       const { result } = renderHook(() => useStore())
       const project1 = createMockProject({ id: 'project-1', name: 'Project 1' })
@@ -1419,6 +1436,322 @@ describe('useStore', () => {
       // currentProject (project-1) should NOT be updated
       expect(result.current.currentProject?.id).toBe('project-1')
       expect(result.current.currentProject?.vulnerabilities).toHaveLength(0)
+    })
+
+    it('keeps a previously known vulnerability that a fresh refresh no longer returns, instead of dropping it', async () => {
+      // WHY: a provider gap or a refresh scoped to fewer components can omit a
+      // vulnerability from one fetch's results without it having been fixed. The merge
+      // must fall back to the vuln we already know about rather than silently losing it
+      // (dropping it would understate risk on the very next refresh).
+      const mockComponent = createMockComponent('component-1', 'pkg:npm/test@1.0.0')
+      const staleVuln = createMockVulnerability('CVE-2024-stale', 'high')
+      const refreshedVuln = createMockVulnerability('CVE-2024-1', 'critical')
+
+      const mockProject = createMockProject({
+        components: [mockComponent],
+        vulnerabilities: [staleVuln, refreshedVuln],
+      })
+
+      vi.mocked(mockRefreshData).mockResolvedValue({
+        success: true,
+        // Fresh fetch only returns CVE-2024-1 (with an updated severity) this time —
+        // CVE-2024-stale is absent from the results, not fixed.
+        vulnerabilities: [{ ...refreshedVuln, severity: 'high' }],
+        vulnerabilitiesFound: 1,
+        componentsScanned: 1,
+        cached: 0,
+        fetched: 1,
+        duration: 100,
+      })
+
+      const { result } = renderHook(() => useStore())
+
+      act(() => {
+        result.current.addProject(mockProject)
+      })
+
+      await act(async () => {
+        await result.current.refreshVulnerabilityData(mockProject.id)
+      })
+
+      const updatedVulns = result.current.projects[0].vulnerabilities
+      expect(updatedVulns).toHaveLength(2)
+      // Absent from the fresh results -> kept as-is, not dropped.
+      expect(updatedVulns).toContainEqual(staleVuln)
+      // Present in the fresh results -> replaced by the newer version, not the stale one.
+      expect(updatedVulns.find((v) => v.id === refreshedVuln.id)?.severity).toBe('high')
+    })
+
+    // ================ hydrateProjectFromServer ================
+    // WHY: pulls the server-persisted scan results (vulnerabilities/components/
+    // dependencyGraph/statistics/allowedLicenses) into a project that was hydrated
+    // client-side with stale data. This action had zero test coverage.
+    describe('hydrateProjectFromServer', () => {
+      type ServerProjectData = NonNullable<Awaited<ReturnType<typeof loadProjectFromServer>>>
+
+      afterEach(() => {
+        // Guard against leaking a resolved/rejected override into later tests.
+        vi.mocked(loadProjectFromServer).mockResolvedValue(null)
+      })
+
+      it('returns null and leaves the local project untouched when the server has no persisted copy', async () => {
+        vi.mocked(loadProjectFromServer).mockResolvedValue(null)
+        const mockProject = createMockProject()
+        const { result } = renderHook(() => useStore())
+
+        act(() => {
+          result.current.addProject(mockProject)
+        })
+
+        // Capture the resolved value directly from act()'s return (rather than a
+        // captured `let` reassigned inside the callback) — TS's control-flow analysis
+        // mis-narrows a closed-over nullable `let` written only inside an async
+        // callback, which this sidesteps.
+        const hydrated = await act(async () => {
+          return await result.current.hydrateProjectFromServer(mockProject.id)
+        })
+
+        expect(hydrated).toBeNull()
+        expect(result.current.projects[0]).toEqual(mockProject)
+      })
+
+      it('returns null without mutating state when the hydrated project is not tracked locally', async () => {
+        vi.mocked(loadProjectFromServer).mockResolvedValue({
+          id: 'server-only-project',
+          name: 'Server Only',
+          vulnerabilities: [],
+          components: [],
+        })
+
+        const { result } = renderHook(() => useStore())
+
+        const hydrated = await act(async () => {
+          return await result.current.hydrateProjectFromServer('server-only-project')
+        })
+
+        expect(hydrated).toBeNull()
+        expect(result.current.projects).toEqual([])
+      })
+
+      it('merges freshly loaded scan data into the matching project and mirrors it onto the active currentProject', async () => {
+        const freshVuln = createMockVulnerability('CVE-2024-fresh', 'high')
+        const freshComponent = createMockComponent('component-fresh')
+        const freshLastScanAtIso = '2024-06-01T00:00:00.000Z'
+        const freshUpdatedAtIso = '2024-06-02T00:00:00.000Z'
+        const freshDependencyGraph = { nodes: [], edges: [], metadata: { totalNodes: 1, totalEdges: 0, maxDepth: 0 } }
+        const freshStatistics = {
+          totalVulnerabilities: 1,
+          criticalCount: 0,
+          highCount: 1,
+          mediumCount: 0,
+          lowCount: 0,
+          totalComponents: 1,
+          vulnerableComponents: 1,
+        }
+
+        vi.mocked(loadProjectFromServer).mockResolvedValue({
+          id: 'project-1',
+          name: 'Test Project',
+          vulnerabilities: [freshVuln],
+          components: [freshComponent],
+          dependencyGraph: freshDependencyGraph,
+          lastScanAt: freshLastScanAtIso,
+          updatedAt: freshUpdatedAtIso,
+          statistics: freshStatistics,
+          allowedLicenses: ['MIT'],
+        })
+
+        const staleProject = createMockProject({
+          vulnerabilities: [createMockVulnerability('CVE-2023-stale', 'low')],
+          components: [createMockComponent('component-stale')],
+        })
+
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(staleProject)
+          result.current.setCurrentProject(staleProject)
+        })
+
+        const hydrated = await act(async () => {
+          return await result.current.hydrateProjectFromServer(staleProject.id)
+        })
+
+        expect(hydrated?.vulnerabilities).toEqual([freshVuln])
+        expect(hydrated?.components).toEqual([freshComponent])
+        expect(hydrated?.dependencyGraph).toEqual(freshDependencyGraph)
+        expect(hydrated?.lastScanAt).toEqual(new Date(freshLastScanAtIso))
+        expect(hydrated?.updatedAt).toEqual(new Date(freshUpdatedAtIso))
+        expect(hydrated?.allowedLicenses).toEqual(['MIT'])
+
+        // A background hydrate must update BOTH the projects list and the
+        // currently-viewed project, or the open project screen keeps showing stale data.
+        expect(result.current.projects[0].vulnerabilities).toEqual([freshVuln])
+        expect(result.current.currentProject?.vulnerabilities).toEqual([freshVuln])
+      })
+
+      it("keeps the local project's existing fields when the server response omits them, and leaves an unrelated currentProject untouched", async () => {
+        const existingDependencyGraph: Project['dependencyGraph'] = {
+          nodes: [],
+          edges: [],
+          metadata: { totalNodes: 0, totalEdges: 0, maxDepth: 0, generatedAt: new Date('2024-01-01') },
+        }
+        const existingVuln = createMockVulnerability('CVE-2023-keep', 'medium')
+        const existingComponent = createMockComponent('component-keep')
+        const existingProject = createMockProject({
+          id: 'project-keep',
+          vulnerabilities: [existingVuln],
+          components: [existingComponent],
+          dependencyGraph: existingDependencyGraph,
+          lastScanAt: new Date('2024-01-01'),
+          allowedLicenses: ['Apache-2.0'],
+        })
+        const otherProject = createMockProject({ id: 'other-project', name: 'Other' })
+
+        // Cast through unknown: simulates a degraded/partial API response missing the
+        // scan fields the store defensively falls back for — a shape the (unexported)
+        // ProjectPersistData interface disallows but a real server bug could still send.
+        vi.mocked(loadProjectFromServer).mockResolvedValue({
+          id: existingProject.id,
+          name: existingProject.name,
+        } as unknown as ServerProjectData)
+
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(existingProject)
+          result.current.addProject(otherProject)
+          result.current.setCurrentProject(otherProject)
+        })
+
+        const hydrated = await act(async () => {
+          return await result.current.hydrateProjectFromServer(existingProject.id)
+        })
+
+        expect(hydrated?.vulnerabilities).toEqual([existingVuln])
+        expect(hydrated?.components).toEqual([existingComponent])
+        expect(hydrated?.dependencyGraph).toEqual(existingDependencyGraph)
+        expect(hydrated?.lastScanAt).toEqual(existingProject.lastScanAt)
+        expect(hydrated?.updatedAt).toEqual(existingProject.updatedAt)
+        expect(hydrated?.statistics).toEqual(existingProject.statistics)
+        expect(hydrated?.allowedLicenses).toEqual(['Apache-2.0'])
+
+        // currentProject was a different project — hydrating project-keep must not touch it.
+        expect(result.current.currentProject).toEqual(otherProject)
+      })
+
+      it('recovers and returns null when the server request throws, without corrupting the already-known project', async () => {
+        const mockProject = createMockProject()
+        vi.mocked(loadProjectFromServer).mockRejectedValue(new Error('network unreachable'))
+
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(mockProject)
+        })
+
+        const hydrated = await act(async () => {
+          return await result.current.hydrateProjectFromServer(mockProject.id)
+        })
+
+        expect(hydrated).toBeNull()
+        expect(console.error).toHaveBeenCalledWith('[Store] Failed to hydrate project from server:', expect.any(Error))
+        expect(result.current.projects[0]).toEqual(mockProject)
+      })
+    })
+
+    // ================ updateProject persistence to the server ================
+    // WHY: updateProject pushes to the server only when scan-relevant fields
+    // (vulnerabilities/components/allowedLicenses) change, so a scan or SBOM re-import
+    // survives a reload — but a plain rename shouldn't trigger a needless network write.
+    // This branch had zero coverage: no test ever asserted saveProjectToServer was called.
+    describe('updateProject persistence to the server', () => {
+      it("pushes the project to the server when a scan's vulnerabilities change, serializing scan timestamps to strings", () => {
+        const mockProject = createMockProject({ lastScanAt: new Date('2024-03-01T00:00:00.000Z') })
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(mockProject)
+        })
+
+        const newVuln = createMockVulnerability('CVE-2024-77', 'critical')
+        act(() => {
+          result.current.updateProject(mockProject.id, { vulnerabilities: [newVuln] })
+        })
+
+        expect(saveProjectToServer).toHaveBeenCalledWith({
+          id: mockProject.id,
+          name: mockProject.name,
+          description: mockProject.description,
+          vulnerabilities: [newVuln],
+          components: mockProject.components,
+          dependencyGraph: undefined,
+          lastScanAt: mockProject.lastScanAt?.toString(),
+          updatedAt: mockProject.updatedAt.toString(),
+          statistics: mockProject.statistics,
+          allowedLicenses: undefined,
+        })
+      })
+
+      it('pushes the project to the server when its component list changes (e.g. a fresh SBOM import)', () => {
+        const mockProject = createMockProject()
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(mockProject)
+        })
+
+        const newComponent = createMockComponent('component-imported')
+        act(() => {
+          result.current.updateProject(mockProject.id, { components: [newComponent] })
+        })
+
+        expect(saveProjectToServer).toHaveBeenCalledWith(
+          expect.objectContaining({ id: mockProject.id, components: [newComponent] }),
+        )
+      })
+
+      it('pushes the project to the server when allowed licenses are approved, even with no scan changes', () => {
+        const mockProject = createMockProject()
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(mockProject)
+        })
+
+        act(() => {
+          result.current.updateProject(mockProject.id, { allowedLicenses: ['MIT'] })
+        })
+
+        expect(saveProjectToServer).toHaveBeenCalledWith(
+          expect.objectContaining({ id: mockProject.id, allowedLicenses: ['MIT'] }),
+        )
+      })
+
+      it('does not push to the server for unrelated field updates, avoiding unnecessary network writes', () => {
+        const mockProject = createMockProject()
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(mockProject)
+        })
+
+        act(() => {
+          result.current.updateProject(mockProject.id, { name: 'Renamed' })
+        })
+
+        expect(saveProjectToServer).not.toHaveBeenCalled()
+      })
+
+      it('logs but swallows the error when the server push fails, so a transient network error cannot crash the UI', async () => {
+        vi.mocked(saveProjectToServer).mockRejectedValueOnce(new Error('server down'))
+        const mockProject = createMockProject()
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(mockProject)
+        })
+
+        act(() => {
+          result.current.updateProject(mockProject.id, { vulnerabilities: [createMockVulnerability('CVE-2024-88')] })
+        })
+
+        await vi.waitFor(() => {
+          expect(console.error).toHaveBeenCalledWith('[Store] Failed to persist project to server:', expect.any(Error))
+        })
+      })
     })
   })
 
@@ -2195,6 +2528,66 @@ describe('useStore', () => {
         | undefined
       expect(partialized?.dashboardLayoutProfiles).toHaveLength(2)
       expect(partialized?.activeDashboardLayoutProfileId).toBe('default')
+    })
+
+    it('refuses to delete the last remaining profile so the dashboard always has a layout to render', () => {
+      const before = useStore.getState().dashboardLayoutProfiles
+      expect(before).toHaveLength(1)
+
+      act(() => {
+        useStore.getState().deleteDashboardLayoutProfile(before[0].id)
+      })
+
+      // The guard must reject the delete outright — losing the last profile would
+      // leave the dashboard with nothing to render.
+      expect(useStore.getState().dashboardLayoutProfiles).toEqual(before)
+    })
+
+    it('deletes a non-active profile without changing which profile is active', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      const [first, second] = useStore.getState().dashboardLayoutProfiles
+      const activeBefore = useStore.getState().activeDashboardLayoutProfileId
+      expect(activeBefore).toBe(first.id)
+
+      act(() => {
+        useStore.getState().deleteDashboardLayoutProfile(second.id)
+      })
+
+      expect(useStore.getState().dashboardLayoutProfiles.map((p) => p.id)).toEqual([first.id])
+      expect(useStore.getState().activeDashboardLayoutProfileId).toBe(activeBefore)
+    })
+
+    it('falls back to the first remaining profile when the active profile itself is deleted', () => {
+      act(() => {
+        useStore.getState().addDashboardLayoutProfile('Second')
+      })
+      const [first, second] = useStore.getState().dashboardLayoutProfiles
+      act(() => {
+        useStore.getState().setActiveDashboardLayoutProfileId(second.id)
+      })
+
+      act(() => {
+        useStore.getState().deleteDashboardLayoutProfile(second.id)
+      })
+
+      // The deleted profile was active -> must not be left pointing at a dangling id.
+      expect(useStore.getState().dashboardLayoutProfiles.map((p) => p.id)).toEqual([first.id])
+      expect(useStore.getState().activeDashboardLayoutProfileId).toBe(first.id)
+    })
+
+    it('seeds a fresh default layout when the active profile id no longer matches any profile (e.g. stale persisted state)', () => {
+      // Simulates a corrupted/stale activeDashboardLayoutProfileId (a schema change, or a
+      // profile removed by means other than deleteDashboardLayoutProfile) — cloning "the
+      // active profile" must not crash on a lookup miss; it should recover with a default.
+      act(() => {
+        useStore.setState({ activeDashboardLayoutProfileId: 'no-such-profile' })
+        useStore.getState().addDashboardLayoutProfile('Recovered')
+      })
+
+      const recovered = useStore.getState().dashboardLayoutProfiles.find((p) => p.name === 'Recovered')
+      expect(recovered?.widgets.map((w) => w.id)).toEqual(DEFAULT_DASHBOARD_LAYOUT.map((w) => w.id))
     })
   })
 })
