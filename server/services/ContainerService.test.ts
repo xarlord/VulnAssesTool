@@ -144,6 +144,18 @@ describe('ContainerService.scanLayerForPackages rpm fallback (C1)', () => {
     expect(result.warnings).toHaveLength(1)
     expect(result.warnings[0]).toMatch(/yielded no packages/)
   })
+
+  it('formats an rpm parsing failure message even when the thrown value is not an Error instance', async () => {
+    const svc = new ContainerService() as unknown as PrivateService
+    const layerDir = makeLayerWithRpmDb()
+    vi.spyOn(svc, 'queryRpmDatabase').mockRejectedValueOnce('rpm binary crashed')
+
+    const result = await svc.scanLayerForPackages(layerDir, 'sha256:layer')
+
+    expect(result.packages).toEqual([])
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toMatch(/rpm binary crashed/)
+  })
 })
 
 describe('ContainerService.queryRpmDatabase', () => {
@@ -173,6 +185,17 @@ describe('ContainerService.queryRpmDatabase', () => {
 
     await expect(svc.queryRpmDatabase('/some/rpm/dir')).rejects.toThrow(/corrupt header/)
   })
+
+  it('wraps a non-Error rejection (e.g. a raw string) in an Error instead of throwing it as-is', async () => {
+    // WHY: execFile can reject with a non-Error value; callers rely on rejections always being
+    // Error instances (e.g. `.message` access), so this must be normalized, not passed through.
+    execState.handlers.set('rpm', () => {
+      throw 'segmentation fault'
+    })
+    const svc = new ContainerService() as unknown as PrivateService
+
+    await expect(svc.queryRpmDatabase('/some/rpm/dir')).rejects.toThrow('segmentation fault')
+  })
 })
 
 describe('ContainerService.getRuntimeSocket', () => {
@@ -189,6 +212,12 @@ describe('ContainerService.getRuntimeSocket', () => {
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
+  })
+
+  it('returns an empty socket path for a runtime outside the known set (defensive default branch)', () => {
+    const svc = new ContainerService() as unknown as PrivateService
+
+    expect(svc.getRuntimeSocket('containerd' as unknown as ContainerRuntime)).toBe('')
   })
 })
 
@@ -404,6 +433,50 @@ describe('ContainerService.pullImage', () => {
 
     await expect(svc.pullImage('private/image:latest', 'docker')).rejects.toThrow(/unauthorized/)
   })
+
+  it('proceeds to pull when the local-existence inspect resolves without an Id (not just when it throws)', async () => {
+    // WHY: the "already local" short-circuit only fires on a truthy Id; a runtime that resolves
+    // successfully but returns a record with no Id must still fall through to a real pull instead
+    // of being mistaken for "found locally".
+    let inspectCalls = 0
+    execState.handlers.set('docker', (args) => {
+      if (args[0] === 'image' && args[1] === 'inspect') {
+        inspectCalls++
+        if (inspectCalls === 1) return { stdout: JSON.stringify([{}]), stderr: '' }
+        return { stdout: JSON.stringify([{ Id: 'sha256:afterpull' }]), stderr: '' }
+      }
+      if (args[0] === 'pull') return { stdout: 'Pulled', stderr: '' }
+      throw new Error(`unexpected docker invocation: ${args.join(' ')}`)
+    })
+    const svc = new ContainerService()
+    const onProgress = vi.fn()
+
+    const result = await svc.pullImage('img:latest', 'docker', onProgress)
+
+    expect(onProgress).toHaveBeenCalledWith('Pulling img:latest...')
+    expect(result).toEqual({ digest: 'sha256:afterpull' })
+  })
+
+  it('returns an empty digest when the post-pull inspect resolves without an Id (no exception)', async () => {
+    // WHY: distinct from the "inspect throws after pull" case above — here the runtime call
+    // succeeds but the record has no Id, exercising the plain fall-through path rather than the
+    // catch-block fallback, and both must land on the same safe empty-digest result.
+    let inspectCalls = 0
+    execState.handlers.set('docker', (args) => {
+      if (args[0] === 'image' && args[1] === 'inspect') {
+        inspectCalls++
+        if (inspectCalls === 1) throw new Error('no such image')
+        return { stdout: JSON.stringify([{}]), stderr: '' }
+      }
+      if (args[0] === 'pull') return { stdout: 'Pulled', stderr: '' }
+      throw new Error(`unexpected docker invocation: ${args.join(' ')}`)
+    })
+    const svc = new ContainerService()
+
+    const result = await svc.pullImage('ghost2:latest', 'docker')
+
+    expect(result).toEqual({ digest: '' })
+  })
 })
 
 describe('ContainerService.getManifest', () => {
@@ -489,6 +562,47 @@ describe('ContainerService.getManifest', () => {
         { digest: 'sha256:layerB', size: 0, mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip' },
       ],
     })
+  })
+
+  it('defaults a manifest layer entry missing digest/size to empty/zero instead of crashing', async () => {
+    execState.handlers.set('docker', (args) => {
+      if (args[0] === 'manifest' && args[1] === 'inspect') {
+        return {
+          stdout: JSON.stringify({
+            digest: 'sha256:d',
+            config: { digest: 'sha256:c' },
+            layers: [{ mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip' }],
+          }),
+          stderr: '',
+        }
+      }
+      throw new Error(`unexpected docker invocation: ${args.join(' ')}`)
+    })
+    const svc = new ContainerService()
+
+    const manifest = await svc.getManifest('degenerate-layer:tag', 'docker')
+
+    expect(manifest.layers).toEqual([
+      { digest: '', size: 0, mediaType: 'application/vnd.docker.image.rootfs.diff.tar.gzip' },
+    ])
+  })
+
+  it('handles a non-array, Id-less, RootFS-less `image inspect` fallback response without crashing', async () => {
+    // WHY: getManifestFromInspect/getImageInspect must tolerate every combination of the
+    // Docker/Podman inspect shape (array vs. bare object) and missing Id/RootFS, since a
+    // truncated response must still produce safe defaults rather than throwing mid-scan.
+    execState.handlers.set('docker', (args) => {
+      if (args[0] === 'manifest') throw new Error('manifest inspect not supported for local images')
+      if (args[0] === 'image' && args[1] === 'inspect') {
+        return { stdout: JSON.stringify({}), stderr: '' }
+      }
+      throw new Error(`unexpected docker invocation: ${args.join(' ')}`)
+    })
+    const svc = new ContainerService()
+
+    const manifest = await svc.getManifest('bare-local:latest', 'docker')
+
+    expect(manifest).toEqual({ digest: '', config: { digest: '' }, layers: [] })
   })
 })
 
@@ -598,6 +712,33 @@ describe('ContainerService.extractTar (tolerateErrors)', () => {
 
     await expect(svc.extractTar(tarPath, destDir)).rejects.toThrow(/Failed to extract tar/)
   })
+
+  it('falls back to the tar basename when the tar path already equals the destination directory', async () => {
+    // WHY: `path.relative(destDir, tarPath)` is '' when the two are equal; the fallback must
+    // still hand tar *some* archive name rather than an empty string argument.
+    let capturedArg = ''
+    execState.handlers.set('tar', (args) => {
+      capturedArg = args[1]
+      return { stdout: '', stderr: '' }
+    })
+    const svc = new ContainerService() as unknown as PrivateService
+    const dir = path.join(os.tmpdir(), 'cs-extracttar-same-dir')
+
+    await expect(svc.extractTar(dir, dir)).resolves.toBeUndefined()
+
+    expect(capturedArg).toBe(path.basename(dir))
+  })
+
+  it('formats a tar failure message even when the thrown value is not an Error instance', async () => {
+    execState.handlers.set('tar', () => {
+      throw 'raw tar crash'
+    })
+    const svc = new ContainerService() as unknown as PrivateService
+    const destDir = path.join(os.tmpdir(), 'cs-extracttar-dest3')
+    const tarPath = path.join(os.tmpdir(), 'cs-extracttar-src3', 'image.tar')
+
+    await expect(svc.extractTar(tarPath, destDir)).rejects.toThrow('Failed to extract tar: raw tar crash')
+  })
 })
 
 describe('ContainerService.getLayerDigestFromPath', () => {
@@ -621,6 +762,12 @@ describe('ContainerService.getLayerDigestFromPath', () => {
     const svc = new ContainerService() as unknown as PrivateService
 
     expect(svc.getLayerDigestFromPath('1a2b3c4d/layer.tar')).toBe('layer.tar')
+  })
+
+  it('falls back to the original path when it ends in a trailing slash (no non-empty last segment)', () => {
+    const svc = new ContainerService() as unknown as PrivateService
+
+    expect(svc.getLayerDigestFromPath('some/layer/dir/')).toBe('some/layer/dir/')
   })
 })
 
@@ -732,6 +879,23 @@ describe('ContainerService.parseDpkgStatus', () => {
     const packages = svc.parseDpkgStatus(statusPath, 'sha256:layer') as Array<Record<string, unknown>>
 
     expect(packages[0].architecture).toBe('amd64')
+  })
+
+  it('ignores a continuation-style line before any field has been set, without crashing', () => {
+    // WHY: a malformed/truncated stanza could start mid-continuation; the folding logic must not
+    // assume a field is already active when it sees a leading-space line.
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ctr-dpkg-'))
+    const statusPath = path.join(tmp, 'status')
+    fs.writeFileSync(
+      statusPath,
+      [' orphaned continuation before any field', 'Package: foo', 'Version: 1.0', ''].join('\n'),
+    )
+    const svc = new ContainerService() as unknown as PrivateService
+
+    const packages = svc.parseDpkgStatus(statusPath, 'sha256:layer') as Array<Record<string, unknown>>
+
+    expect(packages).toHaveLength(1)
+    expect(packages[0]).toMatchObject({ name: 'foo', version: '1.0' })
   })
 })
 
@@ -962,6 +1126,141 @@ describe('ContainerService.extractPackages', () => {
     expect(result.packages.map((p) => p.name)).toEqual(['bash'])
     expect(result.warnings).toHaveLength(1)
     expect(result.warnings[0]).toMatch(/Failed to process layer 0/)
+  })
+
+  it('formats a per-layer failure message even when the thrown value is not an Error instance', async () => {
+    const digest = '4'.repeat(64)
+    mockExportedImage({ layers: [`blobs/sha256/${digest}`] })
+    const svc = new ContainerService()
+    vi.spyOn(svc as unknown as PrivateService, 'scanLayerForPackages').mockRejectedValueOnce('layer scan segfaulted')
+
+    const result = await svc.extractPackages('nonstandard-throw:latest', 'docker', [])
+
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]).toMatch(/layer scan segfaulted/)
+  })
+
+  it('accepts manifest.json as a bare object (not wrapped in an array)', async () => {
+    const digest = 'f'.repeat(64)
+    execState.handlers.set('docker', () => ({ stdout: '', stderr: '' }))
+    execState.handlers.set('tar', (args, options) => {
+      const cwd = options.cwd as string
+      if (args[1] === 'image.tar') {
+        fs.writeFileSync(path.join(cwd, 'manifest.json'), JSON.stringify({ Layers: [`blobs/sha256/${digest}`] }))
+        const full = path.join(cwd, 'blobs', 'sha256', digest)
+        fs.mkdirSync(path.dirname(full), { recursive: true })
+        fs.writeFileSync(full, 'bytes')
+      } else {
+        writeDpkgLayer(cwd, 'bash')
+      }
+      return { stdout: '', stderr: '' }
+    })
+    const svc = new ContainerService()
+
+    const result = await svc.extractPackages('bare-manifest:latest', 'docker', [])
+
+    expect(result.packages.map((p) => p.name)).toEqual(['bash'])
+  })
+
+  it('treats a manifest entry with no Layers field as zero layers instead of crashing', async () => {
+    execState.handlers.set('docker', () => ({ stdout: '', stderr: '' }))
+    execState.handlers.set('tar', (args, options) => {
+      const cwd = options.cwd as string
+      if (args[1] === 'image.tar') {
+        fs.writeFileSync(path.join(cwd, 'manifest.json'), JSON.stringify([{}]))
+      }
+      return { stdout: '', stderr: '' }
+    })
+    const svc = new ContainerService()
+
+    const result = await svc.extractPackages('no-layers:latest', 'docker', [])
+
+    expect(result).toEqual({ packages: [], layers: [], warnings: [] })
+  })
+
+  it("reads a present Config file's layer history without failing extraction (skips emptyLayer entries)", async () => {
+    // WHY: history-walking must tolerate real config.json shapes — including leading
+    // emptyLayer entries (e.g. Dockerfile ENV/LABEL instructions) that must be skipped rather
+    // than mis-attributed or crashing the scan.
+    const digest = '1'.repeat(64)
+    execState.handlers.set('docker', () => ({ stdout: '', stderr: '' }))
+    execState.handlers.set('tar', (args, options) => {
+      const cwd = options.cwd as string
+      if (args[1] === 'image.tar') {
+        fs.writeFileSync(
+          path.join(cwd, 'manifest.json'),
+          JSON.stringify([{ Layers: [`blobs/sha256/${digest}`], Config: 'config.json' }]),
+        )
+        fs.writeFileSync(
+          path.join(cwd, 'config.json'),
+          JSON.stringify({ history: [{ emptyLayer: true }, { createdBy: 'RUN echo hi' }] }),
+        )
+        const full = path.join(cwd, 'blobs', 'sha256', digest)
+        fs.mkdirSync(path.dirname(full), { recursive: true })
+        fs.writeFileSync(full, 'bytes')
+      } else {
+        writeDpkgLayer(cwd, 'bash')
+      }
+      return { stdout: '', stderr: '' }
+    })
+    const svc = new ContainerService()
+
+    const result = await svc.extractPackages('with-history:latest', 'docker', [])
+
+    expect(result.packages.map((p) => p.name)).toEqual(['bash'])
+    expect(result.warnings).toEqual([])
+  })
+
+  it('does not fail extraction when manifest.json references a Config file that was not exported', async () => {
+    const digest = '2'.repeat(64)
+    execState.handlers.set('docker', () => ({ stdout: '', stderr: '' }))
+    execState.handlers.set('tar', (args, options) => {
+      const cwd = options.cwd as string
+      if (args[1] === 'image.tar') {
+        fs.writeFileSync(
+          path.join(cwd, 'manifest.json'),
+          JSON.stringify([{ Layers: [`blobs/sha256/${digest}`], Config: 'missing-config.json' }]),
+        )
+        const full = path.join(cwd, 'blobs', 'sha256', digest)
+        fs.mkdirSync(path.dirname(full), { recursive: true })
+        fs.writeFileSync(full, 'bytes')
+        // missing-config.json is deliberately never written.
+      } else {
+        writeDpkgLayer(cwd, 'bash')
+      }
+      return { stdout: '', stderr: '' }
+    })
+    const svc = new ContainerService()
+
+    const result = await svc.extractPackages('missing-config:latest', 'docker', [])
+
+    expect(result.packages.map((p) => p.name)).toEqual(['bash'])
+  })
+
+  it('defaults to no layer history when a present Config file has no history field', async () => {
+    const digest = '3'.repeat(64)
+    execState.handlers.set('docker', () => ({ stdout: '', stderr: '' }))
+    execState.handlers.set('tar', (args, options) => {
+      const cwd = options.cwd as string
+      if (args[1] === 'image.tar') {
+        fs.writeFileSync(
+          path.join(cwd, 'manifest.json'),
+          JSON.stringify([{ Layers: [`blobs/sha256/${digest}`], Config: 'config.json' }]),
+        )
+        fs.writeFileSync(path.join(cwd, 'config.json'), JSON.stringify({}))
+        const full = path.join(cwd, 'blobs', 'sha256', digest)
+        fs.mkdirSync(path.dirname(full), { recursive: true })
+        fs.writeFileSync(full, 'bytes')
+      } else {
+        writeDpkgLayer(cwd, 'bash')
+      }
+      return { stdout: '', stderr: '' }
+    })
+    const svc = new ContainerService()
+
+    const result = await svc.extractPackages('empty-config:latest', 'docker', [])
+
+    expect(result.packages.map((p) => p.name)).toEqual(['bash'])
   })
 })
 

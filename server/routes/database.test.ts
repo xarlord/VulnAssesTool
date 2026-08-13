@@ -414,6 +414,47 @@ describe('POST /api/database/search', () => {
       error: 'An unexpected error occurred.',
     })
   })
+
+  // The "not ready" degrade path has two independent triggers: getDb() returning nothing (covered
+  // above) and getDb() returning a real object whose isInitialized() reports false (e.g. mid-boot,
+  // before the schema migration finishes). Both must produce the identical graceful response.
+  it('returns a graceful not-ready response when the database object exists but reports not initialized', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.isInitialized.mockReturnValue(false)
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).post('/api/database/search').send({ type: 'text', query: 'lodash' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      success: false,
+      results: [],
+      total: 0,
+      limit: 100,
+      offset: 0,
+      error: 'Database not initialized',
+    })
+  })
+
+  it('leaves cwes/references/referenceTags unset when details exist but every array is empty', async () => {
+    // WHY: each enrichment field is attached independently and only when non-empty — an empty
+    // array from getCveListDetails must not add empty-array noise the UI would render as bogus
+    // "0 CWEs" chips. This is distinct from the "details is entirely absent" case covered above.
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.searchCVEsByText.mockReturnValue([fakeCve({ id: 'CVE-2024-42001' })])
+    fakeDb.getCveListDetails.mockReturnValue(
+      new Map([['CVE-2024-42001', { cwes: [], references: [], referenceTags: [] }]]),
+    )
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).post('/api/database/search').send({ type: 'text', query: 'empty-details-probe' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.results).toHaveLength(1)
+    expect(res.body.results[0]).not.toHaveProperty('cwes')
+    expect(res.body.results[0]).not.toHaveProperty('references')
+    expect(res.body.results[0]).not.toHaveProperty('referenceTags')
+  })
 })
 
 describe('POST /api/database/cve', () => {
@@ -476,6 +517,31 @@ describe('POST /api/database/cve', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, cve: null, error: 'An unexpected error occurred.' })
   })
+
+  it('returns a graceful not-ready response when the database object exists but reports not initialized', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.isInitialized.mockReturnValue(false)
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).post('/api/database/cve').send({ cveId: 'CVE-2024-12345' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, cve: null, error: 'Database not initialized' })
+  })
+
+  it('normalizes an undefined severity to LOW, the same as an explicit NONE severity', async () => {
+    // WHY: normalizeDisplaySeverity's `!severity` fallback is a distinct branch from its explicit
+    // 'NONE' check (covered above) — a CVE record missing severity entirely must still get a badge.
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.getCVEById.mockReturnValue(fakeCve({ id: 'CVE-2024-50004', severity: undefined }))
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).post('/api/database/cve').send({ cveId: 'CVE-2024-50004' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.cve.severity).toBe('LOW')
+  })
 })
 
 describe('POST /api/database/cve/full', () => {
@@ -513,6 +579,17 @@ describe('POST /api/database/cve/full', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: true, cve: null })
+  })
+
+  it('returns a graceful not-ready response when the database object exists but reports not initialized', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.isInitialized.mockReturnValue(false)
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).post('/api/database/cve/full').send({ cveId: 'CVE-2024-12345' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, cve: null, error: 'Database not initialized' })
   })
 })
 
@@ -571,6 +648,23 @@ describe('GET /api/database/stats', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, stats: null, error: 'metadata table missing' })
+  })
+
+  it('reports not-initialized (with dbPath) when the database object exists but reports not initialized', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.isInitialized.mockReturnValue(false)
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).get('/api/database/stats')
+
+    expect(res.status).toBe(200)
+    const { config } = await import('../config.js')
+    expect(res.body).toEqual({
+      success: false,
+      stats: null,
+      error: 'Database not initialized',
+      dbPath: config.DB_PATH,
+    })
   })
 })
 
@@ -664,6 +758,17 @@ describe('GET /api/database/stats/detailed', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, stats: null, error: 'boom' })
   })
+
+  it('reports not-initialized when the database object exists but reports not initialized', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.isInitialized.mockReturnValue(false)
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).get('/api/database/stats/detailed')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, stats: null, error: 'Database not initialized' })
+  })
 })
 
 describe('GET /api/database/sync/status', () => {
@@ -707,6 +812,17 @@ describe('GET /api/database/sync/status', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, status: null, error: 'status read failed' })
+  })
+
+  it('reports not-initialized when the database object exists but reports not initialized', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.isInitialized.mockReturnValue(false)
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).get('/api/database/sync/status')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, status: null, error: 'Database not initialized' })
   })
 })
 
@@ -1164,6 +1280,18 @@ describe('POST /api/database/sync/auto', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false })
   })
+
+  it('accepts a valid config and no-ops when the database wrapper has no raw connection', async () => {
+    // WHY: getDb() can be a real object whose getRawDb() is still null (raw connection not wired
+    // up yet) — distinct from getDb() itself being absent (covered above). Must silently no-op,
+    // not throw, since there is nothing to persist to.
+    initializeMocks.getDb.mockReturnValue(createFakeDatabase(null))
+
+    const res = await request(app).post('/api/database/sync/auto').send({ enabled: true, intervalHours: 12 })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+  })
 })
 
 describe('POST /api/database/cpe/search', () => {
@@ -1219,6 +1347,21 @@ describe('POST /api/database/cpe/search', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: true, results: [] })
     expect(fakeCpe.searchByProductName).toHaveBeenCalledWith('openssl', 100)
+  })
+
+  it('falls back to a productName search when tokens is present but empty', async () => {
+    // WHY: `request.tokens && request.tokens.length > 0` is a two-part condition — an empty array
+    // is truthy but must still defer to productName, distinct from tokens being absent entirely.
+    const fakeCpe = createFakeCpeSearch()
+    fakeCpe.searchByProductName.mockResolvedValue([])
+    initializeMocks.getCpeSearch.mockReturnValue(fakeCpe)
+
+    const res = await request(app).post('/api/database/cpe/search').send({ tokens: [], productName: 'openssl' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true, results: [] })
+    expect(fakeCpe.searchByProductName).toHaveBeenCalledWith('openssl', 100)
+    expect(fakeCpe.searchByTokens).not.toHaveBeenCalled()
   })
 
   it('rejects a request with neither tokens nor productName', async () => {
@@ -1532,6 +1675,51 @@ describe('PUT /api/database/config/perf', () => {
       cacheSizeMB: 10,
       cacheTTLMinutes: 5,
     })
+  })
+})
+
+describe('POST /api/database/search — server-side result cap set by PUT /config/perf', () => {
+  // WHY: a saved searchResultLimit is meaningless unless /search actually enforces it. This block
+  // deliberately runs AFTER the PUT /config/perf tests above, whose last test already set the
+  // runtime cap to 50 (see that test's own comment) — exactly the state these tests rely on.
+  it('clamps an unbounded search request down to the configured server-side cap', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.searchCVEsByText.mockReturnValue([])
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app).post('/api/database/search').send({ type: 'text', query: 'cap-test-unbounded' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.limit).toBe(50)
+    expect(fakeDb.searchCVEsByText).toHaveBeenCalledWith('cap-test-unbounded', 50, 0)
+  })
+
+  it('clamps a request whose explicit limit exceeds the configured cap', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.searchCVEsByText.mockReturnValue([])
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app)
+      .post('/api/database/search')
+      .send({ type: 'text', query: 'cap-test-over', limit: 200 })
+
+    expect(res.status).toBe(200)
+    expect(res.body.limit).toBe(50)
+    expect(fakeDb.searchCVEsByText).toHaveBeenCalledWith('cap-test-over', 50, 0)
+  })
+
+  it('leaves a request already under the configured cap unclamped', async () => {
+    const fakeDb = createFakeDatabase(rawDb)
+    fakeDb.searchCVEsByText.mockReturnValue([])
+    initializeMocks.getDb.mockReturnValue(fakeDb)
+
+    const res = await request(app)
+      .post('/api/database/search')
+      .send({ type: 'text', query: 'cap-test-under', limit: 10 })
+
+    expect(res.status).toBe(200)
+    expect(res.body.limit).toBe(10)
+    expect(fakeDb.searchCVEsByText).toHaveBeenCalledWith('cap-test-under', 10, 0)
   })
 })
 
