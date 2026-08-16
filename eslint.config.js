@@ -178,6 +178,13 @@ export default defineConfig([
       'src/renderer/components/ProjectCard.tsx',
       'src/renderer/components/RemediationQueue.tsx',
       'src/renderer/components/SbomGeneratorDialog.tsx',
+      'src/renderer/components/SbomUploadDialog.tsx',
+      'src/renderer/components/reports/ReportPreview.tsx',
+      'src/renderer/components/SavedSearches.tsx',
+      'src/renderer/components/SettingsProfileCard.tsx',
+      'src/renderer/components/SeverityBadge.tsx',
+      'src/renderer/components/StalenessIndicator.tsx',
+      'src/renderer/components/VulnerabilityDetailModal.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

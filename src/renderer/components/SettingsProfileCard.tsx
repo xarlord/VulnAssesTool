@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Clock, Trash2, CheckCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { SettingsProfile } from '@@/types'
 
@@ -12,6 +13,7 @@ interface SettingsProfileCardProps {
 }
 
 export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onSetDefault }: SettingsProfileCardProps) {
+  const { t } = useTranslation('settingsProfileCard')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const handleConfirmDelete = () => {
@@ -27,10 +29,10 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+    if (diffMins < 1) return t('relativeTime.justNow')
+    if (diffMins < 60) return t('relativeTime.minutesAgo', { count: diffMins })
+    if (diffHours < 24) return t('relativeTime.hoursAgo', { count: diffHours })
+    if (diffDays < 7) return t('relativeTime.daysAgo', { count: diffDays })
 
     return d.toLocaleDateString()
   }
@@ -56,7 +58,7 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
           {/* Tint marks the badge; text uses foreground (not text-primary) — text-primary on
               bg-primary/10 is only 3.01:1 in dark mode, below WCAG AA 4.5:1 (NFR-04.5). */}
           <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-foreground">
-            Default
+            {t('badge.default')}
           </span>
         </div>
       )}
@@ -70,23 +72,25 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
       {/* Settings Summary */}
       <div className="mb-3 space-y-1 text-xs text-muted-foreground">
         <div className="flex items-center justify-between">
-          <span>Theme:</span>
+          <span>{t('summary.theme')}</span>
           <span className="font-medium capitalize">{profile.settings.theme}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Font Size:</span>
+          <span>{t('summary.fontSize')}</span>
           <span className="font-medium capitalize">{profile.settings.fontSize}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Auto-refresh:</span>
-          <span className="font-medium">{profile.settings.autoRefresh ? 'Enabled' : 'Disabled'}</span>
+          <span>{t('summary.autoRefresh')}</span>
+          <span className="font-medium">
+            {profile.settings.autoRefresh ? t('summary.enabled') : t('summary.disabled')}
+          </span>
         </div>
       </div>
 
       {/* Last Used */}
       <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
         <Clock className="h-3 w-3" />
-        <span>Last used: {formatDate(profile.lastUsed)}</span>
+        <span>{t('lastUsed', { date: formatDate(profile.lastUsed) })}</span>
       </div>
 
       {/* Actions */}
@@ -96,11 +100,11 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
             onClick={() => onSwitch(profile.id)}
             className="flex-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
-            Switch to Profile
+            {t('actions.switchToProfile')}
           </button>
         ) : (
           <div className="flex-1 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-foreground text-center">
-            Active Profile
+            {t('actions.activeProfile')}
           </div>
         )}
         <button
@@ -111,9 +115,9 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
               ? 'cursor-not-allowed bg-muted text-muted-foreground opacity-50'
               : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
           }`}
-          title={profile.isDefault ? 'Already the default profile' : 'Set as default profile'}
+          title={profile.isDefault ? t('actions.alreadyDefaultTitle') : t('actions.setDefaultTitle')}
         >
-          Set Default
+          {t('actions.setDefault')}
         </button>
         <button
           onClick={() => setShowDeleteConfirm(true)}
@@ -123,7 +127,7 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
               ? 'cursor-not-allowed bg-muted text-muted-foreground opacity-50'
               : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
           }`}
-          title={isActive ? 'Cannot delete active profile' : 'Delete profile'}
+          title={isActive ? t('actions.cannotDeleteTitle') : t('actions.deleteTitle')}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -131,10 +135,10 @@ export function SettingsProfileCard({ profile, isActive, onSwitch, onDelete, onS
 
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete profile"
-        message={`Are you sure you want to delete the profile "${profile.name}"?`}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title={t('deleteConfirm.title')}
+        message={t('deleteConfirm.message', { name: profile.name })}
+        confirmLabel={t('common:actions.delete')}
+        cancelLabel={t('common:actions.cancel')}
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setShowDeleteConfirm(false)}

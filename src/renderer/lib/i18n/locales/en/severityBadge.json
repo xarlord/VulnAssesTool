@@ -1,0 +1,6 @@
+{
+  "count": {
+    "ariaLabel": "{{count}} findings",
+    "suffix": "· {{count}}"
+  }
+}

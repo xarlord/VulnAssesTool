@@ -1,0 +1,13 @@
+{
+  "header": {
+    "title": "Saved searches",
+    "saveCurrent": "Save current"
+  },
+  "saveForm": {
+    "nameLabel": "Saved search name",
+    "namePlaceholder": "Name this search..."
+  },
+  "list": {
+    "deleteAriaLabel": "Delete saved search {{name}}"
+  }
+}

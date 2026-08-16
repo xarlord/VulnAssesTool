@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { getSeverityClass, getSeverityLabel, type Severity } from '@/lib/severity'
 
@@ -13,6 +14,7 @@ interface SeverityBadgeProps {
  * every surface renders severity identically and stays WCAG-AA in both themes.
  */
 export function SeverityBadge({ severity, count, className }: SeverityBadgeProps) {
+  const { t } = useTranslation('severityBadge')
   return (
     <span
       className={cn(
@@ -22,7 +24,7 @@ export function SeverityBadge({ severity, count, className }: SeverityBadgeProps
       )}
     >
       {getSeverityLabel(severity)}
-      {count !== undefined && <span aria-label={`${count} findings`}>· {count}</span>}
+      {count !== undefined && <span aria-label={t('count.ariaLabel', { count })}>{t('count.suffix', { count })}</span>}
     </span>
   )
 }

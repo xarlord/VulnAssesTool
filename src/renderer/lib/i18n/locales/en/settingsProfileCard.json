@@ -1,0 +1,35 @@
+{
+  "badge": {
+    "default": "Default"
+  },
+  "summary": {
+    "theme": "Theme:",
+    "fontSize": "Font Size:",
+    "autoRefresh": "Auto-refresh:",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "lastUsed": "Last used: {{date}}",
+  "relativeTime": {
+    "justNow": "Just now",
+    "minutesAgo_one": "{{count}} minute ago",
+    "minutesAgo_other": "{{count}} minutes ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago"
+  },
+  "actions": {
+    "switchToProfile": "Switch to Profile",
+    "activeProfile": "Active Profile",
+    "setDefault": "Set Default",
+    "setDefaultTitle": "Set as default profile",
+    "alreadyDefaultTitle": "Already the default profile",
+    "deleteTitle": "Delete profile",
+    "cannotDeleteTitle": "Cannot delete active profile"
+  },
+  "deleteConfirm": {
+    "title": "Delete profile",
+    "message": "Are you sure you want to delete the profile \"{{name}}\"?"
+  }
+}

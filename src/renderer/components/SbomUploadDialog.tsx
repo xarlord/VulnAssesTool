@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
 import { useCurrentProject, useStore } from '@/store/useStore'
 import { parseCycloneDX } from '@/lib/parsers/cyclonedx'
@@ -51,6 +52,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogProps) {
+  const { t } = useTranslation('sbomUploadDialog')
   const currentProject = useCurrentProject()
   const updateProject = useStore((s) => s.updateProject)
   const [step, setStep] = useState<UploadStep>('idle')
@@ -350,9 +352,11 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
         <DialogContent className="max-w-lg">
           {/* Header */}
           <DialogHeader>
-            <DialogTitle>Upload SBOM</DialogTitle>
+            <DialogTitle>{t('title')}</DialogTitle>
             <DialogDescription>
-              {targetProject ? `Upload to project: ${targetProject.name}` : 'Upload a Software Bill of Materials file'}
+              {targetProject
+                ? t('description.withProject', { projectName: targetProject.name })
+                : t('description.noProject')}
             </DialogDescription>
           </DialogHeader>
 
@@ -360,15 +364,13 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
           {step === 'idle' && (
             <div className="space-y-4">
               {!targetProject && (
-                <div className="rounded-md bg-yellow-500/15 p-3 text-sm text-yellow-600">
-                  Please select a project first before uploading an SBOM.
-                </div>
+                <div className="rounded-md bg-yellow-500/15 p-3 text-sm text-yellow-600">{t('warnings.noProject')}</div>
               )}
 
               <div
                 role="button"
                 tabIndex={targetProject ? 0 : -1}
-                aria-label="Upload SBOM file"
+                aria-label={t('upload.ariaLabel')}
                 className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/50 p-8 transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring ${
                   !targetProject ? 'opacity-50' : ''
                 }`}
@@ -389,17 +391,15 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                   disabled={!targetProject}
                 />
                 <Upload className="mb-3 h-12 w-12 text-muted-foreground" />
-                <p className="text-sm font-medium">Click to upload or drag and drop</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  CycloneDX or SPDX files (.json, .xml, .spdx, .rdf) • Max size: 50MB
-                </p>
+                <p className="text-sm font-medium">{t('upload.cta')}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t('upload.hint')}</p>
               </div>
 
               <div className="rounded-md bg-muted p-3 text-sm">
-                <p className="font-medium">Supported formats:</p>
+                <p className="font-medium">{t('formats.title')}</p>
                 <ul className="mt-1 list-inside list-disc space-y-1 text-muted-foreground">
-                  <li>CycloneDX (JSON, XML)</li>
-                  <li>SPDX (JSON, tag-value, RDF/XML)</li>
+                  <li>{t('formats.cyclonedx')}</li>
+                  <li>{t('formats.spdx')}</li>
                 </ul>
               </div>
             </div>
@@ -410,15 +410,13 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
               <p className="mt-4 text-sm font-medium">
                 {step === 'validating'
-                  ? 'Validating file...'
+                  ? t('loading.validating')
                   : step === 'parsing'
-                    ? 'Parsing SBOM...'
-                    : 'Estimating CPEs for components...'}
+                    ? t('loading.parsing')
+                    : t('loading.estimatingCpe')}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {step === 'estimating-cpe'
-                  ? 'Matching components to known CPE patterns'
-                  : 'This may take a moment for large files'}
+                {step === 'estimating-cpe' ? t('loading.matchingCpe') : t('loading.mayTakeAMoment')}
               </p>
             </div>
           )}
@@ -428,7 +426,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
               <div className="flex items-start gap-3 rounded-md bg-destructive/15 p-4">
                 <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
                 <div className="flex-1">
-                  <p className="font-medium text-destructive">Upload Failed</p>
+                  <p className="font-medium text-destructive">{t('error.title')}</p>
                   <p className="text-sm text-destructive mt-1">{error}</p>
                 </div>
               </div>
@@ -438,13 +436,13 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                   onClick={handleRetry}
                   className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
                 >
-                  Try Again
+                  {t('actions.tryAgain')}
                 </button>
                 <button
                   onClick={handleClose}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  Close
+                  {t('common:actions.close')}
                 </button>
               </div>
             </div>
@@ -455,8 +453,10 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
               <div className="flex items-start gap-3 rounded-md bg-green-500/15 p-4">
                 <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
                 <div className="flex-1">
-                  <p className="font-medium text-green-600">Upload Successful</p>
-                  <p className="text-sm text-green-600 mt-1">Found {parsedData.components.length} components</p>
+                  <p className="font-medium text-green-600">{t('success.title')}</p>
+                  <p className="text-sm text-green-600 mt-1">
+                    {t('success.foundComponents', { count: parsedData.components.length })}
+                  </p>
                 </div>
               </div>
 
@@ -466,24 +466,24 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                   cpeEstimationStats.needsConfirmation > 0 ||
                   cpeEstimationStats.noMatchFound > 0) && (
                   <div className="rounded-md border border-border bg-muted p-4">
-                    <p className="text-sm font-medium mb-2">CPE Estimation Results</p>
+                    <p className="text-sm font-medium mb-2">{t('cpeStats.title')}</p>
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       {cpeEstimationStats.autoSelected > 0 && (
                         <div className="flex flex-col">
                           <span className="font-semibold text-green-600">{cpeEstimationStats.autoSelected}</span>
-                          <span className="text-muted-foreground">Auto-selected</span>
+                          <span className="text-muted-foreground">{t('cpeStats.autoSelected')}</span>
                         </div>
                       )}
                       {cpeEstimationStats.needsConfirmation > 0 && (
                         <div className="flex flex-col">
                           <span className="font-semibold text-yellow-600">{cpeEstimationStats.needsConfirmation}</span>
-                          <span className="text-muted-foreground">Need confirmation</span>
+                          <span className="text-muted-foreground">{t('cpeStats.needsConfirmation')}</span>
                         </div>
                       )}
                       {cpeEstimationStats.noMatchFound > 0 && (
                         <div className="flex flex-col">
                           <span className="font-semibold text-red-600">{cpeEstimationStats.noMatchFound}</span>
-                          <span className="text-muted-foreground">No match found</span>
+                          <span className="text-muted-foreground">{t('cpeStats.noMatchFound')}</span>
                         </div>
                       )}
                     </div>
@@ -492,7 +492,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                         onClick={() => setShowCpeMatchDialog(true)}
                         className="mt-2 text-xs text-primary hover:underline"
                       >
-                        Review / edit CPE matches for {reviewableComponents.length} component(s)
+                        {t('cpeStats.reviewLink', { count: reviewableComponents.length })}
                       </button>
                     )}
                   </div>
@@ -505,7 +505,10 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                   <div className="flex-1">
                     <p className="text-sm font-medium">{fileInputRef.current?.files?.[0]?.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {parsedData.format.toUpperCase()} • {parsedData.components.length} components
+                      {t('fileInfo.summary', {
+                        format: parsedData.format.toUpperCase(),
+                        count: parsedData.components.length,
+                      })}
                     </p>
                   </div>
                 </div>
@@ -514,7 +517,7 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
               {/* Component preview */}
               {parsedData.components.length > 0 && (
                 <div className="rounded-md border border-border bg-muted p-4">
-                  <p className="text-sm font-medium mb-2">Sample Components</p>
+                  <p className="text-sm font-medium mb-2">{t('preview.title')}</p>
                   <div className="space-y-1">
                     {parsedData.components.slice(0, 5).map((component) => (
                       <div key={component.id} className="flex items-center gap-2 text-sm">
@@ -524,7 +527,9 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                       </div>
                     ))}
                     {parsedData.components.length > 5 && (
-                      <p className="text-xs text-muted-foreground">... and {parsedData.components.length - 5} more</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('preview.more', { count: parsedData.components.length - 5 })}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -535,21 +540,21 @@ export function SbomUploadDialog({ open, onClose, projectId }: SbomUploadDialogP
                   onClick={handleRetry}
                   className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
                 >
-                  Upload Different File
+                  {t('actions.uploadDifferentFile')}
                 </button>
                 {reviewableComponents.length > 0 && (
                   <button
                     onClick={() => setShowCpeMatchDialog(true)}
                     className="rounded-md border border-primary bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
                   >
-                    Review CPE matches
+                    {t('actions.reviewCpeMatches')}
                   </button>
                 )}
                 <button
                   onClick={handleConfirm}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  Add to Project
+                  {t('actions.addToProject')}
                 </button>
               </div>
             </div>

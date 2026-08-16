@@ -1,0 +1,54 @@
+{
+  "title": "Upload SBOM",
+  "description": {
+    "withProject": "Upload to project: {{projectName}}",
+    "noProject": "Upload a Software Bill of Materials file"
+  },
+  "warnings": {
+    "noProject": "Please select a project first before uploading an SBOM."
+  },
+  "upload": {
+    "ariaLabel": "Upload SBOM file",
+    "cta": "Click to upload or drag and drop",
+    "hint": "CycloneDX or SPDX files (.json, .xml, .spdx, .rdf) • Max size: 50MB"
+  },
+  "formats": {
+    "title": "Supported formats:",
+    "cyclonedx": "CycloneDX (JSON, XML)",
+    "spdx": "SPDX (JSON, tag-value, RDF/XML)"
+  },
+  "loading": {
+    "validating": "Validating file...",
+    "parsing": "Parsing SBOM...",
+    "estimatingCpe": "Estimating CPEs for components...",
+    "matchingCpe": "Matching components to known CPE patterns",
+    "mayTakeAMoment": "This may take a moment for large files"
+  },
+  "error": {
+    "title": "Upload Failed"
+  },
+  "actions": {
+    "tryAgain": "Try Again",
+    "uploadDifferentFile": "Upload Different File",
+    "reviewCpeMatches": "Review CPE matches",
+    "addToProject": "Add to Project"
+  },
+  "success": {
+    "title": "Upload Successful",
+    "foundComponents": "Found {{count}} components"
+  },
+  "cpeStats": {
+    "title": "CPE Estimation Results",
+    "autoSelected": "Auto-selected",
+    "needsConfirmation": "Need confirmation",
+    "noMatchFound": "No match found",
+    "reviewLink": "Review / edit CPE matches for {{count}} component(s)"
+  },
+  "fileInfo": {
+    "summary": "{{format}} • {{count}} components"
+  },
+  "preview": {
+    "title": "Sample Components",
+    "more": "... and {{count}} more"
+  }
+}

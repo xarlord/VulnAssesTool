@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Bookmark, Save, X } from 'lucide-react'
 import { isValidSearchQuery, parseSearchQuery } from '@/lib/search'
 import type { SavedSearch } from '@/lib/search/savedSearches'
@@ -25,6 +26,7 @@ export function SavedSearches({
   onDelete,
   className = '',
 }: SavedSearchesProps) {
+  const { t } = useTranslation('savedSearches')
   const [showSaveForm, setShowSaveForm] = useState(false)
   const [name, setName] = useState('')
 
@@ -50,7 +52,7 @@ export function SavedSearches({
     <div className={`space-y-2 ${className}`}>
       <div className="flex items-center gap-2">
         <Bookmark className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Saved searches</span>
+        <span className="text-sm font-medium">{t('header.title')}</span>
         <button
           type="button"
           onClick={() => setShowSaveForm((open) => !open)}
@@ -58,7 +60,7 @@ export function SavedSearches({
           className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Save className="h-3.5 w-3.5" />
-          Save current
+          {t('header.saveCurrent')}
         </button>
       </div>
 
@@ -66,8 +68,8 @@ export function SavedSearches({
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input
             type="text"
-            aria-label="Saved search name"
-            placeholder="Name this search..."
+            aria-label={t('saveForm.nameLabel')}
+            placeholder={t('saveForm.namePlaceholder')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -78,7 +80,7 @@ export function SavedSearches({
             disabled={!name.trim()}
             className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save
+            {t('common:actions.save')}
           </button>
           <button
             type="button"
@@ -88,7 +90,7 @@ export function SavedSearches({
             }}
             className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium hover:bg-secondary/80"
           >
-            Cancel
+            {t('common:actions.cancel')}
           </button>
         </form>
       )}
@@ -106,7 +108,7 @@ export function SavedSearches({
               <button
                 type="button"
                 onClick={() => onDelete(search.id)}
-                aria-label={`Delete saved search ${search.name}`}
+                aria-label={t('list.deleteAriaLabel', { name: search.name })}
                 className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
               >
                 <X className="h-3.5 w-3.5" />
