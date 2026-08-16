@@ -185,6 +185,12 @@ export default defineConfig([
       'src/renderer/components/SeverityBadge.tsx',
       'src/renderer/components/StalenessIndicator.tsx',
       'src/renderer/components/VulnerabilityDetailModal.tsx',
+      'src/renderer/pages/Dashboard.tsx',
+      'src/renderer/components/Toaster.tsx',
+      'src/renderer/components/ui/confirm-dialog.tsx',
+      'src/renderer/components/vulnerabilities/KevBadge.tsx',
+      'src/renderer/components/vulnerabilities/RiskScoreCell.tsx',
+      'src/renderer/pages/AuditLog.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

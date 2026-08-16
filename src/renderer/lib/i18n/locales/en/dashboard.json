@@ -1,0 +1,76 @@
+{
+  "header": {
+    "title": "Dashboard",
+    "description": "Vulnerability assessment across all your projects"
+  },
+  "actions": {
+    "newProject": "New Project",
+    "importSbom": "Import SBOM",
+    "generateSbomFromExcel": "Generate SBOM from Excel",
+    "exportAll": "Export All"
+  },
+  "stats": {
+    "projects": "Projects",
+    "critical": "Critical",
+    "high": "High",
+    "totalVulnerabilities": "Total Vulnerabilities"
+  },
+  "severityChart": {
+    "title": "Severity distribution",
+    "description": "Across all projects"
+  },
+  "projects": {
+    "heading": "Recent Projects",
+    "selectProjects": "Select Projects",
+    "exitSelection": "Exit Selection",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All"
+  },
+  "bulkBar": {
+    "selectedCount_one": "{{count}} project selected",
+    "selectedCount_other": "{{count}} projects selected",
+    "clearSelection": "Clear selection"
+  },
+  "emptyState": {
+    "title": "No projects yet",
+    "description": "Create a new project to get started with vulnerability assessment",
+    "createFirstProject": "Create Your First Project"
+  },
+  "gettingStarted": {
+    "createProject": {
+      "title": "Create a project",
+      "description": "Organize assessments per software product or component."
+    },
+    "importSbom": {
+      "title": "Import an SBOM",
+      "description": "Scan CycloneDX or SPDX components against NVD, KEV, and EPSS."
+    },
+    "searchVulnerabilities": {
+      "title": "Search vulnerabilities",
+      "description": "Query the NVD database by CVE ID, keyword, or CPE."
+    },
+    "viewReports": {
+      "title": "View reports",
+      "description": "Generate VEX documents, attack graphs, and executive reports."
+    }
+  },
+  "tips": {
+    "cpeMatching": {
+      "title": "CPE matching",
+      "description": "D-Fence estimates CPEs for components without them — review and approve suggested matches for accurate scanning."
+    },
+    "sbomFormats": {
+      "title": "SBOM formats",
+      "description": "CycloneDX (JSON/XML) and SPDX (JSON) are supported; Excel-based SBOMs can be generated and imported."
+    },
+    "falsePositiveFilters": {
+      "title": "False positive filters",
+      "description": "Use the FPF system to suppress known non-issues and keep reports actionable."
+    }
+  },
+  "confirmBulkDelete": {
+    "title": "Delete selected projects",
+    "message_one": "Delete {{count}} selected project? This cannot be undone.",
+    "message_other": "Delete {{count}} selected projects? This cannot be undone."
+  }
+}

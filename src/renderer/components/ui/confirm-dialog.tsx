@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -39,13 +40,16 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   variant = 'default',
   onConfirm,
   onCancel,
   isLoading = false,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation('confirm-dialog')
+  const displayConfirmLabel = confirmLabel || t('common:actions.confirm')
+  const displayCancelLabel = cancelLabel || t('common:actions.cancel')
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
       <DialogContent className="max-w-md">
@@ -59,7 +63,7 @@ export function ConfirmDialog({
             disabled={isLoading}
             className="rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
           >
-            {cancelLabel}
+            {displayCancelLabel}
           </button>
           <button
             onClick={onConfirm}
@@ -70,7 +74,7 @@ export function ConfirmDialog({
             )}
           >
             {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-            {confirmLabel}
+            {displayConfirmLabel}
           </button>
         </DialogFooter>
       </DialogContent>
