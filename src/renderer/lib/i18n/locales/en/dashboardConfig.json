@@ -1,0 +1,23 @@
+{
+  "trigger": "Dashboard Settings",
+  "title": "Dashboard Configuration",
+  "description": "Customize your executive dashboard view and export options",
+  "dateRange": {
+    "label": "Date Range",
+    "options": {
+      "7": "Last 7 days",
+      "30": "Last 30 days",
+      "90": "Last 90 days",
+      "365": "Last 12 months"
+    }
+  },
+  "projectScope": {
+    "label": "Project Scope",
+    "all": "All Projects",
+    "selected": "Selected Projects",
+    "noProjects": "No projects available",
+    "summaryAll": "Showing data from all {{count}} project(s)",
+    "summarySelected": "Showing data from {{count}} selected project(s)"
+  },
+  "exportReport": "Export Report"
+}

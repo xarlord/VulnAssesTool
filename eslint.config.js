@@ -154,6 +154,11 @@ export default defineConfig([
       'src/renderer/components/cvss/CvssScoreGauge.tsx',
       'src/renderer/components/cvss/CvssVectorString.tsx',
       'src/renderer/components/executive/widgets/ActionItems.tsx',
+      'src/renderer/components/CommandPalette.tsx',
+      'src/renderer/components/executive/ExecutiveDashboard.tsx',
+      'src/renderer/components/executive/widgets/DashboardLayoutEditor.tsx',
+      'src/renderer/components/executive/widgets/RiskGauge.tsx',
+      'src/renderer/components/executive/widgets/TopCriticalVulnerabilities.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

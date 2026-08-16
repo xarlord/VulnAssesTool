@@ -1,0 +1,24 @@
+{
+  "trigger": {
+    "label": "Customize Layout"
+  },
+  "dialog": {
+    "title": "Customize Dashboard Layout",
+    "description": "Show/hide, reorder and resize widgets, or save a new layout profile."
+  },
+  "profile": {
+    "label": "Profile",
+    "ariaLabel": "Active layout profile"
+  },
+  "widget": {
+    "showAriaLabel": "Show {{label}}",
+    "moveUpAriaLabel": "Move {{label}} up",
+    "moveDownAriaLabel": "Move {{label}} down",
+    "sizeAriaLabel": "Size for {{label}}"
+  },
+  "newProfile": {
+    "ariaLabel": "New profile name",
+    "placeholder": "New profile name",
+    "save": "Save as new profile"
+  }
+}

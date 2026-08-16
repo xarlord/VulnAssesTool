@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Settings, Filter, Calendar, Download, RefreshCw, Check } from 'lucide-react'
 import type { Project } from '@@/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -42,16 +43,17 @@ export function DashboardConfig({
   onRefresh,
   isRefreshing = false,
 }: Props) {
+  const { t } = useTranslation('dashboardConfig')
   const [localOpen, setLocalOpen] = useState(false)
 
   const isOpen = open !== undefined ? open : localOpen
   const setIsOpen = onClose ? () => onClose() : () => setLocalOpen(false)
 
   const dateRangeOptions = [
-    { label: 'Last 7 days', days: 7 },
-    { label: 'Last 30 days', days: 30 },
-    { label: 'Last 90 days', days: 90 },
-    { label: 'Last 12 months', days: 365 },
+    { label: t('dateRange.options.7'), days: 7 },
+    { label: t('dateRange.options.30'), days: 30 },
+    { label: t('dateRange.options.90'), days: 90 },
+    { label: t('dateRange.options.365'), days: 365 },
   ]
 
   const handleDateRangeSelect = (days: number) => {
@@ -81,7 +83,7 @@ export function DashboardConfig({
       className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-secondary/80 flex items-center gap-2"
     >
       <Settings className="w-4 h-4" />
-      Dashboard Settings
+      {t('trigger')}
     </button>
   )
 
@@ -97,8 +99,8 @@ export function DashboardConfig({
       <Dialog open={isOpen} onOpenChange={(next) => !next && setIsOpen()}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Dashboard Configuration</DialogTitle>
-            <DialogDescription>Customize your executive dashboard view and export options</DialogDescription>
+            <DialogTitle>{t('title')}</DialogTitle>
+            <DialogDescription>{t('description')}</DialogDescription>
           </DialogHeader>
 
           {/* Content */}
@@ -107,7 +109,7 @@ export function DashboardConfig({
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-muted-foreground" />
-                <label className="text-sm font-semibold">Date Range</label>
+                <label className="text-sm font-semibold">{t('dateRange.label')}</label>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {dateRangeOptions.map((option) => {
@@ -136,7 +138,7 @@ export function DashboardConfig({
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4 text-muted-foreground" />
-                <label className="text-sm font-semibold">Project Scope</label>
+                <label className="text-sm font-semibold">{t('projectScope.label')}</label>
               </div>
               <div className="space-y-3">
                 <button
@@ -145,7 +147,7 @@ export function DashboardConfig({
                     projectScope === 'all' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'
                   }`}
                 >
-                  <span>All Projects</span>
+                  <span>{t('projectScope.all')}</span>
                   {projectScope === 'all' && <Check className="w-4 h-4 text-primary" />}
                 </button>
                 <button
@@ -154,14 +156,16 @@ export function DashboardConfig({
                     projectScope === 'selected' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'
                   }`}
                 >
-                  <span>Selected Projects</span>
+                  <span>{t('projectScope.selected')}</span>
                   {projectScope === 'selected' && <Check className="w-4 h-4 text-primary" />}
                 </button>
 
                 {projectScope === 'selected' && (
                   <div className="border border-border rounded-lg p-3 max-h-40 overflow-y-auto">
                     {projects.length === 0 ? (
-                      <div className="text-xs text-muted-foreground text-center py-2">No projects available</div>
+                      <div className="text-xs text-muted-foreground text-center py-2">
+                        {t('projectScope.noProjects')}
+                      </div>
                     ) : (
                       <div className="space-y-1">
                         {projects.map((project) => (
@@ -185,8 +189,8 @@ export function DashboardConfig({
               </div>
               <p className="text-xs text-muted-foreground">
                 {projectScope === 'all'
-                  ? `Showing data from all ${projects.length} project(s)`
-                  : `Showing data from ${selectedProjectIds.length} selected project(s)`}
+                  ? t('projectScope.summaryAll', { count: projects.length })
+                  : t('projectScope.summarySelected', { count: selectedProjectIds.length })}
               </p>
             </div>
           </div>
@@ -199,14 +203,14 @@ export function DashboardConfig({
               className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Refresh
+              {t('common:actions.refresh')}
             </button>
             <button
               onClick={handleExport}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 flex items-center gap-2"
             >
               <Download className="w-4 h-4" />
-              Export Report
+              {t('exportReport')}
             </button>
           </div>
         </DialogContent>

@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo, useCallback, lazy, Suspense } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useProjects, useStore } from '@/store/useStore'
 import {
@@ -39,6 +40,7 @@ import { WIDGET_SIZE_CLASSES, type DashboardWidgetId } from '@/lib/dashboard/das
 const COMPLIANCE_REVIEW_INTERVAL_DAYS = 90
 
 export function ExecutiveDashboard() {
+  const { t } = useTranslation('executiveDashboard')
   const navigate = useNavigate()
   const projects = useProjects()
 
@@ -158,8 +160,8 @@ export function ExecutiveDashboard() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 pt-6">
         <PageHeader
-          title="Reports"
-          description="High-level security overview and compliance metrics"
+          title={t('header.title')}
+          description={t('header.description')}
           actions={
             <>
               <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin" />}>
@@ -185,7 +187,7 @@ export function ExecutiveDashboard() {
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                Export Report
+                {t('header.exportReport')}
               </button>
             </>
           }
@@ -196,7 +198,7 @@ export function ExecutiveDashboard() {
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-foreground">Executive Summary</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t('summary.title')}</h2>
             <div
               className={`px-3 py-1 rounded-full text-sm font-semibold ${
                 summary.overallStatus === 'critical'
@@ -208,14 +210,14 @@ export function ExecutiveDashboard() {
                       : 'bg-blue-100 text-blue-700'
               }`}
             >
-              Status: {summary.overallStatus.toUpperCase()}
+              {t('summary.statusLabel', { status: summary.overallStatus.toUpperCase() })}
             </div>
           </div>
           <p className="text-sm text-muted-foreground">{summary.headline}</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
             {summary.keyPoints.slice(0, 4).map((point, index) => (
               <div key={index} className="text-xs text-muted-foreground">
-                • {point}
+                {t('summary.keyPoint', { point })}
               </div>
             ))}
           </div>
@@ -229,18 +231,16 @@ export function ExecutiveDashboard() {
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
               <Download className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">No Data Available</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">{t('empty.title')}</h3>
             <p className="text-sm text-muted-foreground mb-4 max-w-md">
-              {projects.length === 0
-                ? 'Create projects and upload SBOMs to see executive dashboard data.'
-                : 'No projects match the selected date range. Adjust the filters or add new projects.'}
+              {projects.length === 0 ? t('empty.noProjects') : t('empty.noMatch')}
             </p>
             {projects.length === 0 && (
               <button
                 onClick={() => navigate('/dashboard')}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                Go to Dashboard
+                {t('empty.goToDashboard')}
               </button>
             )}
           </div>

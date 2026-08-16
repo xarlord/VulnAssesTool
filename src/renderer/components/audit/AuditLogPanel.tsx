@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
   FileText,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface AuditLogPanelProps {
   className?: string
@@ -27,6 +28,7 @@ interface AuditLogPanelProps {
 }
 
 export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanelProps) {
+  const { t } = useTranslation('auditLogPanel')
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
@@ -47,10 +49,10 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
   const actionTypes = ['CREATE', 'UPDATE', 'DELETE', 'SCAN', 'EXPORT', 'SETTINGS_CHANGE', 'BULK_OPERATION']
   const entityTypes = ['project', 'sbom', 'vulnerability', 'component', 'settings', 'profile', 'notification']
   const dateRanges = [
-    { value: 'all' as const, label: 'All time' },
-    { value: '7days' as const, label: 'Last 7 days' },
-    { value: '30days' as const, label: 'Last 30 days' },
-    { value: '90days' as const, label: 'Last 90 days' },
+    { value: 'all' as const, label: t('filters.dateRange.all') },
+    { value: '7days' as const, label: t('filters.dateRange.last7Days') },
+    { value: '30days' as const, label: t('filters.dateRange.last30Days') },
+    { value: '90days' as const, label: t('filters.dateRange.last90Days') },
   ]
 
   // Resolve the selected preset into a concrete {start, end} window (undefined = all time),
@@ -140,8 +142,8 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Activity className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold">Audit Log</h2>
-          <span className="text-sm text-gray-500">({totalCount} events)</span>
+          <h2 className="text-lg font-semibold">{t('header.title')}</h2>
+          <span className="text-sm text-gray-500">{t('header.eventCount', { count: totalCount })}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -150,7 +152,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
             className="flex items-center gap-1 px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50 dark:hover:bg-gray-800"
           >
             <Filter className="w-4 h-4" />
-            Filters
+            {t('header.filtersButton')}
             {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
 
@@ -160,7 +162,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
               className="flex items-center gap-1 px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               <Download className="w-4 h-4" />
-              Export
+              {t('common:actions.export')}
             </button>
 
             {showExportMenu && (
@@ -173,7 +175,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                  Export as CSV
+                  {t('export.csv')}
                 </button>
                 <button
                   onClick={() => {
@@ -183,7 +185,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <FileJson className="w-4 h-4 text-blue-600" />
-                  Export as JSON
+                  {t('export.json')}
                 </button>
                 <button
                   onClick={() => {
@@ -193,7 +195,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <FileText className="w-4 h-4 text-red-600" />
-                  Export as PDF
+                  {t('export.pdf')}
                 </button>
               </div>
             )}
@@ -206,7 +208,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
         <div className="p-4 mb-4 border rounded-md bg-gray-50 dark:bg-gray-900">
           {/* Search */}
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">Search</label>
+            <label className="block text-sm font-medium mb-1">{t('filters.search.label')}</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -216,7 +218,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                   setSearchQuery(e.target.value)
                   setCurrentPage(1)
                 }}
-                placeholder="Search in descriptions and entity IDs..."
+                placeholder={t('filters.search.placeholder')}
                 className="w-full pl-10 pr-3 py-2 border rounded-md"
               />
             </div>
@@ -224,7 +226,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
 
           {/* Date Range Filter */}
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">Date Range</label>
+            <label className="block text-sm font-medium mb-1">{t('filters.dateRange.label')}</label>
             <div className="flex flex-wrap gap-2">
               {dateRanges.map((range) => (
                 <button
@@ -247,7 +249,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
 
           {/* Action Type Filter */}
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">Action Type</label>
+            <label className="block text-sm font-medium mb-1">{t('filters.actionType.label')}</label>
             <div className="flex flex-wrap gap-2">
               {actionTypes.map((type) => (
                 <button
@@ -267,7 +269,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
 
           {/* Entity Type Filter */}
           <div>
-            <label className="block text-sm font-medium mb-1">Entity Type</label>
+            <label className="block text-sm font-medium mb-1">{t('filters.entityType.label')}</label>
             <div className="flex flex-wrap gap-2">
               {entityTypes.map((type) => (
                 <button
@@ -296,7 +298,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                 onClick={() => handleSort('timestamp')}
                 className="px-4 py-2 text-left text-sm font-medium cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
               >
-                Timestamp
+                {t('table.columns.timestamp')}
                 {sort.field === 'timestamp' &&
                   (sort.direction === 'asc' ? (
                     <ChevronUp className="inline w-4 h-4" />
@@ -308,7 +310,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                 onClick={() => handleSort('actionType')}
                 className="px-4 py-2 text-left text-sm font-medium cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
               >
-                Action
+                {t('table.columns.action')}
                 {sort.field === 'actionType' &&
                   (sort.direction === 'asc' ? (
                     <ChevronUp className="inline w-4 h-4" />
@@ -316,16 +318,16 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                     <ChevronDown className="inline w-4 h-4" />
                   ))}
               </th>
-              <th className="px-4 py-2 text-left text-sm font-medium">Entity</th>
-              <th className="px-4 py-2 text-left text-sm font-medium">Description</th>
-              <th className="px-4 py-2 text-left text-sm font-medium">Session</th>
+              <th className="px-4 py-2 text-left text-sm font-medium">{t('table.columns.entity')}</th>
+              <th className="px-4 py-2 text-left text-sm font-medium">{t('table.columns.description')}</th>
+              <th className="px-4 py-2 text-left text-sm font-medium">{t('table.columns.session')}</th>
             </tr>
           </thead>
           <tbody>
             {events.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                  No audit events found
+                  {t('table.noEvents')}
                 </td>
               </tr>
             ) : (
@@ -361,7 +363,11 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-sm text-gray-500">
-            Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+            {t('pagination.showing', {
+              start: (currentPage - 1) * pageSize + 1,
+              end: Math.min(currentPage * pageSize, totalCount),
+              total: totalCount,
+            })}
           </div>
 
           <div className="flex gap-2">
@@ -370,31 +376,31 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
               disabled={currentPage === 1}
               className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              First
+              {t('pagination.first')}
             </button>
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
               className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Previous
+              {t('pagination.previous')}
             </button>
             <span className="px-3 py-1 text-sm">
-              Page {currentPage} of {totalPages}
+              {t('pagination.page', { current: currentPage, total: totalPages })}
             </span>
             <button
               onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
               className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Next
+              {t('pagination.next')}
             </button>
             <button
               onClick={() => setCurrentPage(totalPages)}
               disabled={currentPage === totalPages}
               className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Last
+              {t('pagination.last')}
             </button>
           </div>
         </div>

@@ -1,0 +1,49 @@
+{
+  "header": {
+    "title": "Audit Log",
+    "eventCount": "({{count}} events)",
+    "filtersButton": "Filters"
+  },
+  "export": {
+    "csv": "Export as CSV",
+    "json": "Export as JSON",
+    "pdf": "Export as PDF"
+  },
+  "filters": {
+    "search": {
+      "label": "Search",
+      "placeholder": "Search in descriptions and entity IDs..."
+    },
+    "dateRange": {
+      "label": "Date Range",
+      "all": "All time",
+      "last7Days": "Last 7 days",
+      "last30Days": "Last 30 days",
+      "last90Days": "Last 90 days"
+    },
+    "actionType": {
+      "label": "Action Type"
+    },
+    "entityType": {
+      "label": "Entity Type"
+    }
+  },
+  "table": {
+    "columns": {
+      "timestamp": "Timestamp",
+      "action": "Action",
+      "entity": "Entity",
+      "description": "Description",
+      "session": "Session"
+    },
+    "noEvents": "No audit events found"
+  },
+  "pagination": {
+    "showing": "Showing {{start}}-{{end}} of {{total}}",
+    "page": "Page {{current}} of {{total}}",
+    "first": "First",
+    "previous": "Previous",
+    "next": "Next",
+    "last": "Last"
+  }
+}

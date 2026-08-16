@@ -1,0 +1,13 @@
+{
+  "title": "Project Health Comparison",
+  "topProjectsCount": "Top {{count}} projects",
+  "noData": "No project data available",
+  "tooltip": {
+    "healthScoreLabel": "Health Score: ",
+    "healthScoreSuffix": "/100"
+  },
+  "chart": {
+    "ariaLabel": "Bar chart comparing health scores of {{count}} projects. {{list}}.",
+    "ariaLabelItem": "{{name}}: {{score}} out of 100"
+  }
+}

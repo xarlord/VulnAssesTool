@@ -4,6 +4,7 @@
  */
 
 import { Shield, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { OverallMetrics } from '@/lib/analytics'
 import { getSeverityTextClass } from '@/lib/severity'
 
@@ -12,6 +13,7 @@ interface RiskGaugeProps {
 }
 
 export function RiskGauge({ metrics }: RiskGaugeProps) {
+  const { t } = useTranslation('riskGauge')
   const getRiskConfig = (riskLevel: string) => {
     switch (riskLevel) {
       case 'critical':
@@ -71,7 +73,7 @@ export function RiskGauge({ metrics }: RiskGaugeProps) {
   return (
     <div className="bg-card rounded-lg border p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm text-foreground">Overall Risk Level</h3>
+        <h3 className="font-semibold text-sm text-foreground">{t('title')}</h3>
         <div className={`p-2 rounded-lg ${config.bgColor}`}>
           <Icon className={`w-5 h-5 ${config.color}`} />
         </div>
@@ -98,9 +100,9 @@ export function RiskGauge({ metrics }: RiskGaugeProps) {
         <div className="mt-4 text-center">
           <div className="text-2xl font-bold text-foreground">
             {metrics.averageHealthScore}
-            <span className="text-sm font-normal text-muted-foreground">/100</span>
+            <span className="text-sm font-normal text-muted-foreground">{t('healthScore.suffix')}</span>
           </div>
-          <div className="text-xs text-muted-foreground">Health Score</div>
+          <div className="text-xs text-muted-foreground">{t('healthScore.label')}</div>
         </div>
       </div>
 
@@ -108,15 +110,15 @@ export function RiskGauge({ metrics }: RiskGaugeProps) {
       <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
         <div className="text-center p-2 bg-muted rounded">
           <div className={`font-semibold ${getSeverityTextClass('critical')}`}>{metrics.criticalCount}</div>
-          <div className="text-muted-foreground">Critical</div>
+          <div className="text-muted-foreground">{t('stats.critical')}</div>
         </div>
         <div className="text-center p-2 bg-muted rounded">
           <div className={`font-semibold ${getSeverityTextClass('high')}`}>{metrics.highCount}</div>
-          <div className="text-muted-foreground">High</div>
+          <div className="text-muted-foreground">{t('stats.high')}</div>
         </div>
         <div className="text-center p-2 bg-muted rounded">
           <div className={`font-semibold ${getSeverityTextClass('critical')}`}>{metrics.exploitedCount}</div>
-          <div className="text-muted-foreground">Exploited</div>
+          <div className="text-muted-foreground">{t('stats.exploited')}</div>
         </div>
       </div>
     </div>
