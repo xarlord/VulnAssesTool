@@ -1,0 +1,22 @@
+{
+  "bell": {
+    "ariaLabel": "Notifications",
+    "unreadSuffix": "({{count}} unread)",
+    "unreadCap": "99+"
+  },
+  "header": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "markAllReadTitle": "Mark all as read",
+    "clearAllTitle": "Clear all notifications"
+  },
+  "empty": "No notifications",
+  "footer": {
+    "viewAll": "View all notifications"
+  },
+  "clearDialog": {
+    "title": "Clear notifications",
+    "message": "Clear all notifications?",
+    "confirmLabel": "Clear all"
+  }
+}

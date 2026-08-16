@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EventObject } from 'cytoscape'
 import fcose from 'cytoscape-fcose'
@@ -39,6 +40,7 @@ export function DependencyGraph({
   className,
   highlightPath,
 }: DependencyGraphProps): React.ReactElement {
+  const { t } = useTranslation('dependencyGraph')
   const containerRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
 
@@ -291,17 +293,15 @@ export function DependencyGraph({
               d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
             />
           </svg>
-          <p className="mt-2 text-sm font-medium">No components to display</p>
-          <p className="text-xs text-gray-400">Upload an SBOM to view the dependency graph</p>
+          <p className="mt-2 text-sm font-medium">{t('emptyState.title')}</p>
+          <p className="text-xs text-gray-400">{t('emptyState.subtitle')}</p>
         </div>
       </div>
     )
   }
 
   const vulnerableCount = components.filter((component) => component.vulnerabilities.length > 0).length
-  const graphSummary = `Dependency graph of ${components.length} component${
-    components.length === 1 ? '' : 's'
-  }; ${vulnerableCount} with known vulnerabilities.`
+  const graphSummary = t('graphSummary', { count: components.length, vulnerableCount })
 
   // Clamp for rendering in case the component set shrank below the active index.
   const activeIndex = Math.min(activeNodeIndex, components.length - 1)
@@ -320,7 +320,7 @@ export function DependencyGraph({
           users can see which component is active. */}
       <ul
         role="listbox"
-        aria-label={`${graphSummary} Use the arrow keys to move between components and Enter to open a component's details.`}
+        aria-label={`${graphSummary} ${t('listboxHint')}`}
         tabIndex={0}
         aria-activedescendant={components[activeIndex] ? `graph-node-${components[activeIndex].id}` : undefined}
         onKeyDown={handleListKeyDown}
@@ -338,8 +338,11 @@ export function DependencyGraph({
               index === activeIndex && 'bg-blue-100 text-blue-900',
             )}
           >
-            {component.name} {component.version} — {component.vulnerabilities.length} known{' '}
-            {component.vulnerabilities.length === 1 ? 'vulnerability' : 'vulnerabilities'}
+            {t('componentListItem', {
+              name: component.name,
+              version: component.version,
+              count: component.vulnerabilities.length,
+            })}
           </li>
         ))}
       </ul>
@@ -351,7 +354,7 @@ export function DependencyGraph({
             type="button"
             onClick={handleZoomIn}
             className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            title="Zoom In"
+            title={t('controls.zoomIn')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
@@ -361,7 +364,7 @@ export function DependencyGraph({
             type="button"
             onClick={handleZoomOut}
             className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            title="Zoom Out"
+            title={t('controls.zoomOut')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
@@ -371,7 +374,7 @@ export function DependencyGraph({
             type="button"
             onClick={handleFit}
             className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            title="Fit to View"
+            title={t('controls.fitToView')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -386,7 +389,7 @@ export function DependencyGraph({
             type="button"
             onClick={handleReset}
             className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            title="Reset View"
+            title={t('controls.resetView')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -401,8 +404,8 @@ export function DependencyGraph({
             type="button"
             onClick={handleExportImage}
             className="rounded p-1.5 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            title="Export as Image"
-            aria-label="Export as Image"
+            title={t('controls.exportImage')}
+            aria-label={t('controls.exportImage')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -419,14 +422,14 @@ export function DependencyGraph({
       {/* Legend */}
       {showLegend && (
         <div className="absolute bottom-3 left-3 rounded-md bg-white/90 p-2 shadow-md">
-          <div className="mb-1 text-xs font-semibold text-gray-700">Severity</div>
+          <div className="mb-1 text-xs font-semibold text-gray-700">{t('legend.title')}</div>
           <div className="flex flex-wrap gap-2">
             {[
-              { label: 'Critical', color: SEVERITY_NODE_COLORS.critical },
-              { label: 'High', color: SEVERITY_NODE_COLORS.high },
-              { label: 'Medium', color: SEVERITY_NODE_COLORS.medium },
-              { label: 'Low', color: SEVERITY_NODE_COLORS.low },
-              { label: 'None', color: SEVERITY_NODE_COLORS.none },
+              { label: t('severity.critical'), color: SEVERITY_NODE_COLORS.critical },
+              { label: t('severity.high'), color: SEVERITY_NODE_COLORS.high },
+              { label: t('severity.medium'), color: SEVERITY_NODE_COLORS.medium },
+              { label: t('severity.low'), color: SEVERITY_NODE_COLORS.low },
+              { label: t('severity.none'), color: SEVERITY_NODE_COLORS.none },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-1">
                 <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -434,13 +437,13 @@ export function DependencyGraph({
               </div>
             ))}
           </div>
-          <div className="mt-2 text-xs text-gray-500">Green border = Patch available</div>
+          <div className="mt-2 text-xs text-gray-500">{t('legend.patchHint')}</div>
         </div>
       )}
 
       {/* Component count */}
       <div className="absolute bottom-3 right-3 rounded-md bg-white/90 px-2 py-1 text-xs text-gray-500 shadow-md">
-        {components.length} components
+        {t('componentCount', { count: components.length })}
       </div>
     </div>
   )

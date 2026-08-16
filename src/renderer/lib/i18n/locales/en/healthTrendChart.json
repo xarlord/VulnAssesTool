@@ -1,0 +1,4 @@
+{
+  "emptyState": "Not enough history yet — a health score is recorded once per day. The trend line appears once at least two days of scores exist.",
+  "ariaLabel": "Health score trend line. {{points}}."
+}

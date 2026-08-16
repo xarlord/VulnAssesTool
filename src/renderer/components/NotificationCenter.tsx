@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Bell, CheckCheck, Trash2, AlertCircle, AlertTriangle, Info, CheckCircle2, X } from 'lucide-react'
 import {
   useNotifications,
@@ -14,6 +15,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function NotificationCenter() {
+  const { t } = useTranslation('notificationCenter')
   const notifications = useNotifications()
   const unreadCount = useUnreadCount()
   const preferences = useNotificationPreferences()
@@ -96,13 +98,13 @@ export function NotificationCenter() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative rounded-md p-2 hover:bg-muted transition-colors"
-        aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
+        aria-label={`${t('bell.ariaLabel')} ${unreadCount > 0 ? t('bell.unreadSuffix', { count: unreadCount }) : ''}`}
         data-testid="notification-bell"
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
           <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
-            {unreadCount > 99 ? '99+' : unreadCount}
+            {unreadCount > 99 ? t('bell.unreadCap') : unreadCount}
           </span>
         )}
       </button>
@@ -114,23 +116,23 @@ export function NotificationCenter() {
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border p-4">
-            <h3 className="font-semibold">Notifications</h3>
+            <h3 className="font-semibold">{t('header.title')}</h3>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllAsRead}
                   className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
-                  title="Mark all as read"
+                  title={t('header.markAllReadTitle')}
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
-                  Mark all read
+                  {t('header.markAllRead')}
                 </button>
               )}
               {notifications.length > 0 && (
                 <button
                   onClick={handleClearAll}
                   className="rounded-md p-1 text-muted-foreground hover:text-destructive"
-                  title="Clear all notifications"
+                  title={t('header.clearAllTitle')}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -143,7 +145,7 @@ export function NotificationCenter() {
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Bell className="mb-3 h-12 w-12 text-muted-foreground opacity-50" />
-                <p className="text-sm text-muted-foreground">No notifications</p>
+                <p className="text-sm text-muted-foreground">{t('empty')}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -198,7 +200,7 @@ export function NotificationCenter() {
                 }}
                 className="w-full rounded-md px-3 py-2 text-center text-sm font-medium text-primary hover:bg-primary/10"
               >
-                View all notifications
+                {t('footer.viewAll')}
               </button>
             </div>
           )}
@@ -207,10 +209,10 @@ export function NotificationCenter() {
 
       <ConfirmDialog
         open={showClearConfirm}
-        title="Clear notifications"
-        message="Clear all notifications?"
-        confirmLabel="Clear all"
-        cancelLabel="Cancel"
+        title={t('clearDialog.title')}
+        message={t('clearDialog.message')}
+        confirmLabel={t('clearDialog.confirmLabel')}
+        cancelLabel={t('common:actions.cancel')}
         variant="danger"
         onConfirm={handleConfirmClearAll}
         onCancel={() => setShowClearConfirm(false)}

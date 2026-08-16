@@ -165,6 +165,13 @@ export default defineConfig([
       'src/renderer/components/FPF/ConfigWizard.tsx',
       'src/renderer/components/FPF/FilterDashboard.tsx',
       'src/renderer/components/FPF/FilteredItemsReview.tsx',
+      'src/renderer/components/graph/DependencyGraph.tsx',
+      'src/renderer/components/HealthDashboard.tsx',
+      'src/renderer/components/HealthDistributionChart.tsx',
+      'src/renderer/components/HealthTrendChart.tsx',
+      'src/renderer/components/LicenseComplianceCard.tsx',
+      'src/renderer/components/NotificationCenter.tsx',
+      'src/renderer/components/NvdCveDetailModal.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

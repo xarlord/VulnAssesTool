@@ -1,0 +1,30 @@
+{
+  "emptyState": {
+    "title": "No components to display",
+    "subtitle": "Upload an SBOM to view the dependency graph"
+  },
+  "graphSummary_one": "Dependency graph of {{count}} component; {{vulnerableCount}} with known vulnerabilities.",
+  "graphSummary_other": "Dependency graph of {{count}} components; {{vulnerableCount}} with known vulnerabilities.",
+  "listboxHint": "Use the arrow keys to move between components and Enter to open a component's details.",
+  "componentListItem_one": "{{name}} {{version}} — {{count}} known vulnerability",
+  "componentListItem_other": "{{name}} {{version}} — {{count}} known vulnerabilities",
+  "controls": {
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "fitToView": "Fit to View",
+    "resetView": "Reset View",
+    "exportImage": "Export as Image"
+  },
+  "legend": {
+    "title": "Severity",
+    "patchHint": "Green border = Patch available"
+  },
+  "severity": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "none": "None"
+  },
+  "componentCount": "{{count}} components"
+}
