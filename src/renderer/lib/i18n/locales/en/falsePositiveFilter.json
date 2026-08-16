@@ -1,0 +1,22 @@
+{
+  "tabs": {
+    "dashboard": "Dashboard",
+    "review": "Review Filtered",
+    "config": "Configuration",
+    "missFilter": "Miss-Filter Detection"
+  },
+  "header": {
+    "title": "False Positive Filter",
+    "description": "Project: {{name}}"
+  },
+  "noProject": {
+    "heading": "No Project Selected",
+    "description": "Select a project from the dashboard to use the False Positive Filter.",
+    "goToDashboard": "Go to Dashboard"
+  },
+  "noResults": {
+    "heading": "No Filter Results",
+    "description": "Run the filter to see results here.",
+    "goToDashboard": "Go to Dashboard"
+  }
+}

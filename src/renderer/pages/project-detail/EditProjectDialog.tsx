@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Project } from '@@/types'
 
 interface EditProjectDialogProps {
@@ -14,6 +15,7 @@ interface EditProjectDialogProps {
  * ui/dialog is deferred to the consolidation sweep.
  */
 export function EditProjectDialog({ project, onClose, onSave }: EditProjectDialogProps) {
+  const { t } = useTranslation('editProjectDialog')
   const [name, setName] = React.useState(project.name)
   const [description, setDescription] = React.useState(project.description || '')
 
@@ -27,11 +29,11 @@ export function EditProjectDialog({ project, onClose, onSave }: EditProjectDialo
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
       <div className="relative z-50 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
-        <h2 className="mb-4 text-lg font-semibold">Edit Project</h2>
+        <h2 className="mb-4 text-lg font-semibold">{t('title')}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="edit-name" className="text-sm font-medium">
-              Project Name
+              {t('form.nameLabel')}
             </label>
             <input
               id="edit-name"
@@ -44,7 +46,7 @@ export function EditProjectDialog({ project, onClose, onSave }: EditProjectDialo
           </div>
           <div className="space-y-2">
             <label htmlFor="edit-description" className="text-sm font-medium">
-              Description
+              {t('form.descriptionLabel')}
             </label>
             <textarea
               id="edit-description"
@@ -60,13 +62,13 @@ export function EditProjectDialog({ project, onClose, onSave }: EditProjectDialo
               onClick={onClose}
               className="rounded-md border border-border bg-secondary px-4 py-2 text-sm hover:bg-secondary/80"
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Save Changes
+              {t('submit')}
             </button>
           </div>
         </form>

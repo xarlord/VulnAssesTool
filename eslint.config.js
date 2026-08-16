@@ -191,6 +191,14 @@ export default defineConfig([
       'src/renderer/components/vulnerabilities/KevBadge.tsx',
       'src/renderer/components/vulnerabilities/RiskScoreCell.tsx',
       'src/renderer/pages/AuditLog.tsx',
+      'src/renderer/components/ui/dialog.tsx',
+      'src/renderer/pages/DependencyGraphPage.tsx',
+      'src/renderer/pages/FalsePositiveFilter.tsx',
+      'src/renderer/pages/ProjectDetail.tsx',
+      'src/renderer/pages/project-detail/ComponentsTab.tsx',
+      'src/renderer/pages/project-detail/EditProjectDialog.tsx',
+      'src/renderer/pages/project-detail/HealthTab.tsx',
+      'src/renderer/pages/project-detail/OverviewTab.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

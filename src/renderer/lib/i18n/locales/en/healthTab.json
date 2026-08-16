@@ -1,0 +1,10 @@
+{
+  "title": "Component Health Dashboard",
+  "trend": {
+    "title": "Health Score Trend",
+    "loadingChart": "Loading chart..."
+  },
+  "remediation": {
+    "title": "Remediation Queue"
+  }
+}

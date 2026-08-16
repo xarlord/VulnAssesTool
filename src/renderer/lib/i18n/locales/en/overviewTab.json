@@ -1,0 +1,27 @@
+{
+  "title": "Overview",
+  "stats": {
+    "components": "Components",
+    "critical": "Critical",
+    "high": "High",
+    "totalVulns": "Total Vulns"
+  },
+  "sbom": {
+    "title": "SBOM Files",
+    "scanContainer": "Scan Container",
+    "generateFromBinary": "Generate from Binary",
+    "uploadSbom": "Upload SBOM",
+    "empty": {
+      "title": "No SBOM files uploaded yet",
+      "hint": "Upload a CycloneDX or SPDX file to get started"
+    },
+    "fileMeta": "{{format}} • {{count}} components"
+  },
+  "metadata": {
+    "title": "Project Information",
+    "created": "Created",
+    "lastUpdated": "Last Updated",
+    "lastScan": "Last Scan",
+    "vulnerableComponents": "Vulnerable Components"
+  }
+}

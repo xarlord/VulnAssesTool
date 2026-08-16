@@ -1,0 +1,37 @@
+{
+  "notFound": {
+    "title": "Project not found",
+    "description": "The project you're looking for doesn't exist.",
+    "action": "Go to Dashboard"
+  },
+  "title": "Dependency Graph",
+  "filters": {
+    "severityAriaLabel": "Filter by severity",
+    "allSeverities": "All Severities",
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "vulnerableOnly": "Vulnerable Only"
+  },
+  "path": {
+    "fromAriaLabel": "Path from",
+    "fromPlaceholder": "From…",
+    "toAriaLabel": "Path to",
+    "toPlaceholder": "To…",
+    "highlight": "Highlight Path",
+    "clear": "Clear Path"
+  },
+  "toast": {
+    "noPathFound": "No path found between these components"
+  },
+  "truncationBanner": "Showing first {{max}} of {{total}} components — narrow the filter to see the rest.",
+  "footer": {
+    "componentCount": "Showing {{shown}} of {{total}} components",
+    "vulnerabilityCount": "{{count}} vulnerabilities",
+    "critical": "Critical: {{count}}",
+    "high": "High: {{count}}",
+    "medium": "Medium: {{count}}",
+    "low": "Low: {{count}}"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "title": "Edit Project",
+  "form": {
+    "nameLabel": "Project Name",
+    "descriptionLabel": "Description"
+  },
+  "submit": "Save Changes"
+}

@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Shield, ShieldCheck, Search, Loader2, Download, FileText, RefreshCcw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store/useStore'
 import { logSbomRemove } from '@/lib/audit'
 import { toast } from '@/components/Toaster'
@@ -26,14 +27,14 @@ import type { Vulnerability, Component } from '@@/types'
 
 type TabValue = 'overview' | 'components' | 'vulnerabilities' | 'health'
 
-const TABS: { value: TabValue; label: string }[] = [
-  { value: 'overview', label: 'Overview' },
-  { value: 'components', label: 'Components' },
-  { value: 'vulnerabilities', label: 'Vulnerabilities' },
-  { value: 'health', label: 'Health' },
-]
-
 export function ProjectDetail() {
+  const { t } = useTranslation('projectDetail')
+  const TABS: { value: TabValue; label: string }[] = [
+    { value: 'overview', label: t('tabs.overview') },
+    { value: 'components', label: t('tabs.components') },
+    { value: 'vulnerabilities', label: t('tabs.vulnerabilities') },
+    { value: 'health', label: t('tabs.health') },
+  ]
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
   const {
@@ -112,16 +113,16 @@ export function ProjectDetail() {
     return (
       <div className="p-6">
         <div className="mx-auto max-w-7xl">
-          <PageHeader title="Project Not Found" />
+          <PageHeader title={t('notFound.pageTitle')} />
           <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-12">
             <Shield className="mb-4 h-16 w-16 text-muted-foreground" />
-            <h3 className="text-lg font-medium">Project not found</h3>
-            <p className="text-muted-foreground">The project you're looking for doesn't exist</p>
+            <h3 className="text-lg font-medium">{t('notFound.heading')}</h3>
+            <p className="text-muted-foreground">{t('notFound.description')}</p>
             <button
               onClick={() => navigate('/dashboard')}
               className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Back to Dashboard
+              {t('notFound.backToDashboard')}
             </button>
           </div>
         </div>
@@ -200,8 +201,8 @@ export function ProjectDetail() {
     logSbomRemove(currentProjectRef.id, currentProjectRef.name, sbomFile.filename)
 
     toast.success(
-      'SBOM Removed',
-      `Removed ${sbomFile.filename} and ${componentsToRemove.length} associated component(s) from project`,
+      t('sbomRemoved.title'),
+      t('sbomRemoved.message', { filename: sbomFile.filename, count: componentsToRemove.length }),
     )
   }
 
@@ -224,8 +225,8 @@ export function ProjectDetail() {
                 onClick={() => scan.handleRefreshVulnData(true)}
                 disabled={isRefreshing}
                 className="rounded-md border border-border bg-secondary p-2 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="Force refresh vulnerability data (bypass cache)"
-                title="Force refresh — bypass cache and query fresh data"
+                aria-label={t('forceRefresh.ariaLabel')}
+                title={t('forceRefresh.title')}
               >
                 <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
@@ -236,7 +237,7 @@ export function ProjectDetail() {
                     className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground opacity-75"
                   >
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Scanning {scan.scanProgress}%
+                    {t('scanning', { progress: scan.scanProgress })}
                   </button>
                   {scan.scanPhase && (
                     <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
@@ -260,7 +261,7 @@ export function ProjectDetail() {
                   className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Search className="h-4 w-4" />
-                  Scan for Vulnerabilities
+                  {t('scan')}
                 </button>
               )}
               <button
@@ -268,34 +269,34 @@ export function ProjectDetail() {
                 className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
                 <Download className="h-4 w-4" />
-                Export
+                {t('common:actions.export')}
               </button>
               <button
                 onClick={() => setShowReportPreview(true)}
                 className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
                 <FileText className="h-4 w-4" />
-                Generate Report
+                {t('generateReport')}
               </button>
               <button
                 onClick={() => setShowComplianceDialog(true)}
                 className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
                 <ShieldCheck className="h-4 w-4" />
-                Compliance
+                {t('compliance')}
               </button>
               <button
                 onClick={() => navigate(`/project/${projectId}/fpf`)}
                 className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
                 <Shield className="h-4 w-4" />
-                False Positive Filter
+                {t('falsePositiveFilter')}
               </button>
               <button
                 onClick={() => setShowEditDialog(true)}
                 className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
-                Edit
+                {t('common:actions.edit')}
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
@@ -305,7 +306,7 @@ export function ProjectDetail() {
                 // text-destructive-foreground on bg-destructive is designed for AA contrast.
                 className="rounded-md border border-transparent bg-destructive px-3 py-2 text-sm text-destructive-foreground hover:bg-destructive/90"
               >
-                Delete
+                {t('common:actions.delete')}
               </button>
             </>
           }
@@ -420,10 +421,10 @@ export function ProjectDetail() {
       {/* Delete Project Confirmation */}
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete project"
-        message={`Are you sure you want to delete "${project.name}"? This cannot be undone.`}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title={t('deleteConfirm.title')}
+        message={t('deleteConfirm.message', { name: project.name })}
+        confirmLabel={t('common:actions.delete')}
+        cancelLabel={t('common:actions.cancel')}
         variant="danger"
         onConfirm={handleConfirmDelete}
         onCancel={() => setShowDeleteConfirm(false)}
