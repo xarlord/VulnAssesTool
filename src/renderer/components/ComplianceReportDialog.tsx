@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ const FRAMEWORKS = Object.entries(COMPLIANCE_FRAMEWORK_META) as Array<
  * jsPDF module is loaded on demand so it stays out of the ProjectDetail page bundle.
  */
 export function ComplianceReportDialog({ open, onClose, project }: ComplianceReportDialogProps) {
+  const { t } = useTranslation('complianceReportDialog')
   const [framework, setFramework] = useState<ComplianceFramework>('soc2')
   const [isGenerating, setIsGenerating] = useState(false)
 
@@ -70,14 +72,12 @@ export function ComplianceReportDialog({ open, onClose, project }: ComplianceRep
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Compliance Report</DialogTitle>
-          <DialogDescription>
-            Generate a framework-specific compliance report for &ldquo;{project.name}&rdquo;.
-          </DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description', { name: project.name })}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <label className="text-sm font-medium">Framework</label>
+          <label className="text-sm font-medium">{t('frameworkLabel')}</label>
           <div className="space-y-2">
             {FRAMEWORKS.map(([value, info]) => (
               <button
@@ -93,10 +93,7 @@ export function ComplianceReportDialog({ open, onClose, project }: ComplianceRep
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">
-            The report documents assessment activities and unremediated critical findings. It does not assert that any
-            individual control is satisfied.
-          </p>
+          <p className="text-xs text-muted-foreground">{t('disclaimer')}</p>
         </div>
 
         <DialogFooter>
@@ -105,14 +102,14 @@ export function ComplianceReportDialog({ open, onClose, project }: ComplianceRep
             disabled={isGenerating}
             className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none"
           >
-            Cancel
+            {t('common:actions.cancel')}
           </button>
           <button
             onClick={handleGenerate}
             disabled={isGenerating}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none"
           >
-            {isGenerating ? 'Generating...' : 'Generate PDF'}
+            {isGenerating ? t('generating') : t('generate')}
           </button>
         </DialogFooter>
       </DialogContent>

@@ -1,0 +1,8 @@
+{
+  "title": "Compliance Report",
+  "description": "Generate a framework-specific compliance report for “{{name}}”.",
+  "frameworkLabel": "Framework",
+  "disclaimer": "The report documents assessment activities and unremediated critical findings. It does not assert that any individual control is satisfied.",
+  "generate": "Generate PDF",
+  "generating": "Generating..."
+}

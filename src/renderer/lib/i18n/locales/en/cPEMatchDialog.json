@@ -1,0 +1,37 @@
+{
+  "title": "CPE Estimation Required",
+  "description": "The following components need CPE confirmation before export. Please review and select the appropriate CPE for each component.",
+  "loading": "Processing CPE selections...",
+  "emptyState": {
+    "title": "No components require CPE estimation",
+    "description": "All components already have CPE values assigned."
+  },
+  "table": {
+    "select": "Select",
+    "componentName": "Component Name",
+    "version": "Version",
+    "suggestedCpe": "Suggested CPE",
+    "confidence": "Confidence"
+  },
+  "footer": {
+    "componentCount_one": "{{count}} component requires CPE estimation",
+    "componentCount_other": "{{count}} components require CPE estimation",
+    "highConfidenceNote": "({{count}} with high confidence >80%)"
+  },
+  "actions": {
+    "acceptAllHighConfidence": "Accept All High Confidence (>80%)",
+    "skip": "Skip CPEs",
+    "confirming": "Confirming..."
+  },
+  "componentRow": {
+    "noSuggestions": "- No CPE suggestions available",
+    "alternative": "alternative",
+    "selectCpeAriaLabel": "Select CPE {{cpe}} for {{name}}"
+  },
+  "matchType": {
+    "exact": "Exact Match",
+    "token": "Token Match",
+    "fuzzy": "Fuzzy Match",
+    "unknown": "Unknown"
+  }
+}

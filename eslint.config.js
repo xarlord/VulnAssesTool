@@ -134,7 +134,18 @@ export default defineConfig([
   // default-export ban because flat config replaces (not merges) a rule's options. Each future i18n
   // slice appends its path here. See docs/plans/2026-08-09-i18n-baseline-design.md.
   {
-    files: ['src/renderer/components/shell/**/*.{ts,tsx}'],
+    files: [
+      'src/renderer/components/shell/**/*.{ts,tsx}',
+      // i18n full-app rollout — migrated slices (each batch appends its files here).
+      'src/renderer/App.tsx',
+      'src/renderer/components/AppLogo.tsx',
+      'src/renderer/components/BinarySbomDialog.tsx',
+      'src/renderer/components/CPEMatchDialog.tsx',
+      'src/renderer/components/ComplianceReportDialog.tsx',
+      'src/renderer/components/ComponentVulnerabilitiesPopup.tsx',
+      'src/renderer/components/audit/AuditExportDialog.tsx',
+      'src/renderer/components/audit/EventDiffViewer.tsx',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -145,7 +156,7 @@ export default defineConfig([
         {
           selector: 'JSXText[value=/[A-Za-z]/]',
           message:
-            "Hardcoded UI text in an i18n-migrated file. Use t('shell:...') and add the string to lib/i18n/locales/en/shell.json.",
+            "Hardcoded UI text in an i18n-migrated file. Use t(...) and add the string to its lib/i18n/locales/en/<ns>.json.",
         },
       ],
     },

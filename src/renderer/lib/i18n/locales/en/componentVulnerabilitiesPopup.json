@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "found_one": "{{count}} Vulnerability Found",
+    "found_other": "{{count}} Vulnerabilities Found",
+    "critical": "{{count}} Critical",
+    "high": "{{count}} High",
+    "medium": "{{count}} Medium",
+    "low": "{{count}} Low"
+  },
+  "severity": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "none": "None"
+  },
+  "empty": {
+    "title": "No vulnerabilities found",
+    "subtitle": "This component appears to be secure"
+  },
+  "item": {
+    "akaPrefix": "(aka: ",
+    "akaSuffix": ")",
+    "cvss": "CVSS: {{score}}",
+    "source": "Source:",
+    "patch": "Patch:",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyAriaLabel": "Copy {{id}} to clipboard",
+    "viewDetails": "View Details"
+  },
+  "patchStatus": {
+    "available": "Available",
+    "partial": "Partial",
+    "upstream": "Upstream",
+    "investigating": "Investigating",
+    "none": "None"
+  },
+  "toast": {
+    "copied": "Copied {{id}} to clipboard",
+    "copyFailed": "Failed to copy to clipboard"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "title": "Export Audit Log",
+  "description": "Export audit events for compliance and analysis. Total events: {{count}}",
+  "format": {
+    "label": "Export Format",
+    "json": {
+      "label": "JSON",
+      "description": "Machine-readable format with full event data"
+    },
+    "csv": {
+      "label": "CSV",
+      "description": "Spreadsheet-compatible format for analysis"
+    },
+    "pdf": {
+      "label": "PDF",
+      "description": "Human-readable report format"
+    }
+  },
+  "dateRange": {
+    "label": "Date Range",
+    "all": "All time",
+    "last7Days": "Last 7 days",
+    "last30Days": "Last 30 days",
+    "last90Days": "Last 90 days"
+  },
+  "options": {
+    "label": "Options",
+    "includeFullState": {
+      "label": "Include full state data",
+      "description": "Include complete before/after states (increases file size)"
+    },
+    "anonymize": {
+      "label": "Anonymize sensitive data",
+      "description": "Remove user IDs, IP addresses, and full session IDs"
+    }
+  },
+  "warning": "⚠️ Warning: Including full state data for {{count}} events may result in a large file. Consider filtering by date range.",
+  "exporting": "Exporting...",
+  "exportButton": "Export {{format}}"
+}

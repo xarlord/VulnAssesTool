@@ -1,0 +1,22 @@
+{
+  "noStateChangeData": "No state change data available for this event",
+  "before": "Before",
+  "after": "After",
+  "creationNA": "N/A (Creation)",
+  "deletionNA": "N/A (Deletion)",
+  "noPreviousState": "No previous state",
+  "noNewState": "No new state",
+  "stateChanges": "State Changes",
+  "showDetails": "Show Details",
+  "hideDetails": "Hide Details",
+  "stateChangesAvailable": "State changes available. Click \"Show Details\" to view.",
+  "noStateChangesRecorded": "No state changes recorded for this event.",
+  "additionalMetadata": "Additional Metadata",
+  "description": "Description",
+  "bulkOperation": "Bulk Operation",
+  "yes": "Yes",
+  "no": "No",
+  "itemsAffected": "Items Affected",
+  "relatedEntities": "Related Entities",
+  "itemsCount": "{{count}} item(s)"
+}

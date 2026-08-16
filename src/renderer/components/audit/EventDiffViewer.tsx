@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import type { AuditEvent } from '@/lib/audit'
 import { Eye, EyeOff } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface EventDiffViewerProps {
   event: AuditEvent
@@ -13,6 +14,7 @@ interface EventDiffViewerProps {
 }
 
 export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
+  const { t } = useTranslation('eventDiffViewer')
   const [showFullState, setShowFullState] = useState(false)
 
   const hasStateChanges = event.previousState || event.newState
@@ -23,7 +25,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
 
   function renderDiff(): React.ReactNode {
     if (!hasStateChanges) {
-      return <div className="text-sm text-gray-500 italic">No state change data available for this event</div>
+      return <div className="text-sm text-gray-500 italic">{t('noStateChangeData')}</div>
     }
 
     return (
@@ -31,7 +33,11 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
         {/* Previous State */}
         <div>
           <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            {event.actionType === 'CREATE' ? <span className="text-gray-500">N/A (Creation)</span> : <>Before</>}
+            {event.actionType === 'CREATE' ? (
+              <span className="text-gray-500">{t('creationNA')}</span>
+            ) : (
+              <>{t('before')}</>
+            )}
           </h4>
           {event.previousState && event.actionType !== 'CREATE' ? (
             <pre className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded p-3 text-xs overflow-x-auto">
@@ -39,7 +45,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
             </pre>
           ) : (
             <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded p-3 text-xs text-gray-500">
-              No previous state
+              {t('noPreviousState')}
             </div>
           )}
         </div>
@@ -47,7 +53,11 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
         {/* New State */}
         <div>
           <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            {event.actionType === 'DELETE' ? <span className="text-gray-500">N/A (Deletion)</span> : <>After</>}
+            {event.actionType === 'DELETE' ? (
+              <span className="text-gray-500">{t('deletionNA')}</span>
+            ) : (
+              <>{t('after')}</>
+            )}
           </h4>
           {event.newState && event.actionType !== 'DELETE' ? (
             <pre className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded p-3 text-xs overflow-x-auto">
@@ -55,7 +65,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
             </pre>
           ) : (
             <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded p-3 text-xs text-gray-500">
-              No new state
+              {t('noNewState')}
             </div>
           )}
         </div>
@@ -67,13 +77,13 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
     <div className={`event-diff-viewer ${className || ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold">State Changes</h3>
+        <h3 className="text-sm font-semibold">{t('stateChanges')}</h3>
         <button
           onClick={() => setShowFullState(!showFullState)}
           className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
         >
           {showFullState ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-          {showFullState ? 'Hide' : 'Show'} Details
+          {showFullState ? t('hideDetails') : t('showDetails')}
         </button>
       </div>
 
@@ -83,9 +93,9 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
       ) : (
         <div className="text-sm text-gray-500">
           {hasStateChanges ? (
-            <span className="italic">State changes available. Click "Show Details" to view.</span>
+            <span className="italic">{t('stateChangesAvailable')}</span>
           ) : (
-            <span className="italic">No state changes recorded for this event.</span>
+            <span className="italic">{t('noStateChangesRecorded')}</span>
           )}
         </div>
       )}
@@ -93,30 +103,34 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
       {/* Metadata */}
       {event.metadata && Object.keys(event.metadata).length > 0 && (
         <div className="mt-4 pt-4 border-t">
-          <h4 className="text-sm font-semibold mb-2">Additional Metadata</h4>
+          <h4 className="text-sm font-semibold mb-2">{t('additionalMetadata')}</h4>
           <dl className="grid grid-cols-2 gap-2 text-sm">
             {event.metadata.description && (
               <>
-                <dt className="text-gray-600 dark:text-gray-400">Description</dt>
+                <dt className="text-gray-600 dark:text-gray-400">{t('description')}</dt>
                 <dd className="text-gray-900 dark:text-gray-100">{event.metadata.description}</dd>
               </>
             )}
             {event.metadata.isBulkOperation !== undefined && (
               <>
-                <dt className="text-gray-600 dark:text-gray-400">Bulk Operation</dt>
-                <dd className="text-gray-900 dark:text-gray-100">{event.metadata.isBulkOperation ? 'Yes' : 'No'}</dd>
+                <dt className="text-gray-600 dark:text-gray-400">{t('bulkOperation')}</dt>
+                <dd className="text-gray-900 dark:text-gray-100">
+                  {event.metadata.isBulkOperation ? t('yes') : t('no')}
+                </dd>
               </>
             )}
             {event.metadata.bulkItemCount !== undefined && (
               <>
-                <dt className="text-gray-600 dark:text-gray-400">Items Affected</dt>
+                <dt className="text-gray-600 dark:text-gray-400">{t('itemsAffected')}</dt>
                 <dd className="text-gray-900 dark:text-gray-100">{event.metadata.bulkItemCount}</dd>
               </>
             )}
             {event.metadata.relatedEntityIds && event.metadata.relatedEntityIds.length > 0 && (
               <>
-                <dt className="text-gray-600 dark:text-gray-400">Related Entities</dt>
-                <dd className="text-gray-900 dark:text-gray-100">{event.metadata.relatedEntityIds.length} item(s)</dd>
+                <dt className="text-gray-600 dark:text-gray-400">{t('relatedEntities')}</dt>
+                <dd className="text-gray-900 dark:text-gray-100">
+                  {t('itemsCount', { count: event.metadata.relatedEntityIds.length })}
+                </dd>
               </>
             )}
           </dl>

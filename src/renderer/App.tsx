@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useStore, useSettings, useSetSidebarOpen, useSidebarOpen } from './store/useStore'
 import { startAutoRefreshScheduler } from './lib/refresh/autoRefreshScheduler'
 import { Toaster } from './components/Toaster'
@@ -30,14 +31,16 @@ const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m
 
 // Loading fallback component
 function PageLoader() {
+  const { t } = useTranslation('app')
   return (
     <div className="flex items-center justify-center min-h-[50vh]">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <div className="animate-pulse text-muted-foreground">{t('loading')}</div>
     </div>
   )
 }
 
 export function App() {
+  const { t } = useTranslation('app')
   const settings = useSettings()
   const setSidebarOpen = useSetSidebarOpen()
   const sidebarOpen = useSidebarOpen()
@@ -146,7 +149,7 @@ export function App() {
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground focus:ring-2 focus:ring-ring"
         >
-          Skip to main content
+          {t('skipToMainContent')}
         </a>
         <MenuActionListener />
         <CommandPaletteTrigger onTrigger={togglePalette} />

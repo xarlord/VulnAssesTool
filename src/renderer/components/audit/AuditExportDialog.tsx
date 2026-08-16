@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuditStore } from '@/lib/audit'
 import { exportAuditLogs, type AuditExportFormat, type AuditExportOptions } from '@/lib/audit'
 import {
@@ -25,6 +26,7 @@ interface AuditExportDialogProps {
 }
 
 export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps) {
+  const { t } = useTranslation('auditExportDialog')
   const [format, setFormat] = useState<AuditExportFormat>('json')
   const [includeFullState, setIncludeFullState] = useState(false)
   const [anonymize, setAnonymize] = useState(false)
@@ -71,45 +73,43 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
   }> = [
     {
       value: 'json',
-      label: 'JSON',
+      label: t('format.json.label'),
       icon: <FileJson className="w-5 h-5" />,
-      description: 'Machine-readable format with full event data',
+      description: t('format.json.description'),
     },
     {
       value: 'csv',
-      label: 'CSV',
+      label: t('format.csv.label'),
       icon: <FileSpreadsheet className="w-5 h-5" />,
-      description: 'Spreadsheet-compatible format for analysis',
+      description: t('format.csv.description'),
     },
     {
       value: 'pdf',
       icon: <FileText className="w-5 h-5" />,
-      label: 'PDF',
-      description: 'Human-readable report format',
+      label: t('format.pdf.label'),
+      description: t('format.pdf.description'),
     },
   ]
 
   const dateRangeOptions = [
-    { value: 'all' as const, label: 'All time', days: null },
-    { value: '7days' as const, label: 'Last 7 days', days: 7 },
-    { value: '30days' as const, label: 'Last 30 days', days: 30 },
-    { value: '90days' as const, label: 'Last 90 days', days: 90 },
+    { value: 'all' as const, label: t('dateRange.all'), days: null },
+    { value: '7days' as const, label: t('dateRange.last7Days'), days: 7 },
+    { value: '30days' as const, label: t('dateRange.last30Days'), days: 30 },
+    { value: '90days' as const, label: t('dateRange.last90Days'), days: 90 },
   ]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Export Audit Log</DialogTitle>
-          <DialogDescription>
-            Export audit events for compliance and analysis. Total events: {totalEvents}
-          </DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description', { count: totalEvents })}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* Format Selection */}
           <div>
-            <Label className="text-base font-semibold mb-3">Export Format</Label>
+            <Label className="text-base font-semibold mb-3">{t('format.label')}</Label>
             <div className="grid grid-cols-3 gap-3">
               {formatOptions.map((option) => (
                 <button
@@ -133,7 +133,7 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
           <div>
             <Label className="text-base font-semibold mb-3 flex items-center gap-2">
               <Calendar className="w-4 h-4" />
-              Date Range
+              {t('dateRange.label')}
             </Label>
             <div className="grid grid-cols-2 gap-2">
               {dateRangeOptions.map((option) => (
@@ -154,7 +154,7 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
 
           {/* Options */}
           <div className="space-y-3">
-            <Label className="text-base font-semibold">Options</Label>
+            <Label className="text-base font-semibold">{t('options.label')}</Label>
 
             <div className="flex items-start gap-3">
               <Checkbox
@@ -164,9 +164,9 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
               />
               <div className="grid gap-1.5 leading-none">
                 <Label htmlFor="include-full-state" className="text-sm font-medium cursor-pointer">
-                  Include full state data
+                  {t('options.includeFullState.label')}
                 </Label>
-                <p className="text-xs text-gray-500">Include complete before/after states (increases file size)</p>
+                <p className="text-xs text-gray-500">{t('options.includeFullState.description')}</p>
               </div>
             </div>
 
@@ -178,9 +178,9 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
               />
               <div className="grid gap-1.5 leading-none">
                 <Label htmlFor="anonymize" className="text-sm font-medium cursor-pointer">
-                  Anonymize sensitive data
+                  {t('options.anonymize.label')}
                 </Label>
-                <p className="text-xs text-gray-500">Remove user IDs, IP addresses, and full session IDs</p>
+                <p className="text-xs text-gray-500">{t('options.anonymize.description')}</p>
               </div>
             </div>
           </div>
@@ -189,8 +189,7 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
           {includeFullState && totalEvents > 1000 && (
             <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-md">
               <span className="text-yellow-600 dark:text-yellow-400 text-sm">
-                ⚠️ Warning: Including full state data for {totalEvents} events may result in a large file. Consider
-                filtering by date range.
+                {t('warning', { count: totalEvents })}
               </span>
             </div>
           )}
@@ -198,15 +197,15 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isExporting}>
-            Cancel
+            {t('common:actions.cancel')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting}>
             {isExporting ? (
-              <>Exporting...</>
+              <>{t('exporting')}</>
             ) : (
               <>
                 <Download className="w-4 h-4 mr-2" />
-                Export {format.toUpperCase()}
+                {t('exportButton', { format: format.toUpperCase() })}
               </>
             )}
           </Button>

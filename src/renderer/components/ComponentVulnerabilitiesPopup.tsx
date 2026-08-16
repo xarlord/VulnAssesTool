@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Shield, ExternalLink, Copy, Check } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import type { Component, Vulnerability } from '@@/types'
@@ -17,31 +18,31 @@ interface ComponentVulnerabilitiesPopupProps {
 
 const severityConfig = {
   critical: {
-    label: 'Critical',
+    labelKey: 'severity.critical',
     color: 'text-red-600',
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
   },
   high: {
-    label: 'High',
+    labelKey: 'severity.high',
     color: 'text-orange-700 dark:text-orange-400',
     bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
   },
   medium: {
-    label: 'Medium',
+    labelKey: 'severity.medium',
     color: 'text-amber-700 dark:text-amber-400',
     bgColor: 'bg-yellow-50',
     borderColor: 'border-yellow-200',
   },
   low: {
-    label: 'Low',
+    labelKey: 'severity.low',
     color: 'text-blue-700 dark:text-blue-400',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
   },
   none: {
-    label: 'None',
+    labelKey: 'severity.none',
     color: 'text-gray-600',
     bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
@@ -55,6 +56,7 @@ export function ComponentVulnerabilitiesPopup({
   onClose,
   onViewVulnerability,
 }: ComponentVulnerabilitiesPopupProps) {
+  const { t } = useTranslation('componentVulnerabilitiesPopup')
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
   const copiedIdTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -80,12 +82,12 @@ export function ComponentVulnerabilitiesPopup({
     try {
       await navigator.clipboard.writeText(vulnId)
       setCopiedId(vulnId)
-      toast.success(`Copied ${vulnId} to clipboard`)
+      toast.success(t('toast.copied', { id: vulnId }))
       if (copiedIdTimerRef.current) clearTimeout(copiedIdTimerRef.current)
       copiedIdTimerRef.current = setTimeout(() => setCopiedId(null), 2000)
     } catch (error) {
       console.error('Failed to copy:', error)
-      toast.error('Failed to copy to clipboard')
+      toast.error(t('toast.copyFailed'))
     }
   }
 
@@ -131,7 +133,7 @@ export function ComponentVulnerabilitiesPopup({
         <div className="border-b border-border px-5 py-3 bg-muted/30">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-foreground">
-              {vulnerabilities.length} {vulnerabilities.length === 1 ? 'Vulnerability' : 'Vulnerabilities'} Found
+              {t('summary.found', { count: vulnerabilities.length })}
             </span>
             <div className="flex items-center gap-2">
               {severityCounts.critical > 0 && (
@@ -139,28 +141,28 @@ export function ComponentVulnerabilitiesPopup({
                   className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('critical')}`}
                 >
                   <AlertTriangle className="h-3 w-3" />
-                  {severityCounts.critical} Critical
+                  {t('summary.critical', { count: severityCounts.critical })}
                 </span>
               )}
               {severityCounts.high > 0 && (
                 <span
                   className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('high')}`}
                 >
-                  {severityCounts.high} High
+                  {t('summary.high', { count: severityCounts.high })}
                 </span>
               )}
               {severityCounts.medium > 0 && (
                 <span
                   className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('medium')}`}
                 >
-                  {severityCounts.medium} Medium
+                  {t('summary.medium', { count: severityCounts.medium })}
                 </span>
               )}
               {severityCounts.low > 0 && (
                 <span
                   className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${getSeverityClass('low')}`}
                 >
-                  {severityCounts.low} Low
+                  {t('summary.low', { count: severityCounts.low })}
                 </span>
               )}
             </div>
@@ -172,8 +174,8 @@ export function ComponentVulnerabilitiesPopup({
           {vulnerabilities.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Shield className="mb-3 h-12 w-12 text-green-500" />
-              <p className="text-muted-foreground font-medium">No vulnerabilities found</p>
-              <p className="text-sm text-muted-foreground mt-1">This component appears to be secure</p>
+              <p className="text-muted-foreground font-medium">{t('empty.title')}</p>
+              <p className="text-sm text-muted-foreground mt-1">{t('empty.subtitle')}</p>
             </div>
           ) : (
             <VirtualList
@@ -190,23 +192,27 @@ export function ComponentVulnerabilitiesPopup({
                           <span className="font-mono font-semibold text-foreground">{primaryId}</span>
                           {aliases.length > 0 && (
                             <span className="text-xs text-muted-foreground">
-                              (aka: {aliases.slice(0, 2).join(', ')}
-                              {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
+                              {t('item.akaPrefix')}
+                              {aliases.slice(0, 2).join(', ')}
+                              {aliases.length > 2 ? ` +${aliases.length - 2}` : ''}
+                              {t('item.akaSuffix')}
                             </span>
                           )}
                           <span
                             className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass(vuln.severity)}`}
                           >
-                            {config.label}
+                            {t(config.labelKey)}
                           </span>
                           {vuln.cvssScore !== undefined && (
-                            <span className="text-xs text-muted-foreground">CVSS: {vuln.cvssScore.toFixed(1)}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {t('item.cvss', { score: vuln.cvssScore.toFixed(1) })}
+                            </span>
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{vuln.description}</p>
                         <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                           <span>
-                            Source:{' '}
+                            {t('item.source')}{' '}
                             {vuln.sources
                               ? vuln.sources.map((s) => s.toUpperCase()).join(' + ')
                               : vuln.source.toUpperCase()}
@@ -223,17 +229,17 @@ export function ComponentVulnerabilitiesPopup({
                                       : 'text-gray-600'
                               }`}
                             >
-                              Patch:{' '}
+                              {t('item.patch')}{' '}
                               {vuln.patchInfo.patchAvailability === 'available'
-                                ? 'Available'
+                                ? t('patchStatus.available')
                                 : vuln.patchInfo.patchAvailability === 'partial'
-                                  ? 'Partial'
+                                  ? t('patchStatus.partial')
                                   : vuln.patchInfo.patchAvailability === 'upstream'
-                                    ? 'Upstream'
+                                    ? t('patchStatus.upstream')
                                     : vuln.patchInfo.patchAvailability === 'investigating'
-                                      ? 'Investigating'
+                                      ? t('patchStatus.investigating')
                                       : vuln.patchInfo.patchAvailability === 'none'
-                                        ? 'None'
+                                        ? t('patchStatus.none')
                                         : vuln.patchInfo.patchAvailability}
                             </span>
                           )}
@@ -243,17 +249,17 @@ export function ComponentVulnerabilitiesPopup({
                         <button
                           onClick={() => handleCopyId(primaryId)}
                           className="flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-                          aria-label={`Copy ${primaryId} to clipboard`}
+                          aria-label={t('item.copyAriaLabel', { id: primaryId })}
                         >
                           {copiedId === primaryId ? (
                             <>
                               <Check className="h-3 w-3 text-green-600" />
-                              <span className="text-green-600">Copied</span>
+                              <span className="text-green-600">{t('item.copied')}</span>
                             </>
                           ) : (
                             <>
                               <Copy className="h-3 w-3" />
-                              <span>Copy</span>
+                              <span>{t('item.copy')}</span>
                             </>
                           )}
                         </button>
@@ -262,7 +268,7 @@ export function ComponentVulnerabilitiesPopup({
                           className="flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                         >
                           <ExternalLink className="h-3 w-3" />
-                          View Details
+                          {t('item.viewDetails')}
                         </button>
                       </div>
                     </div>
@@ -282,7 +288,7 @@ export function ComponentVulnerabilitiesPopup({
             onClick={onClose}
             className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
           >
-            Close
+            {t('common:actions.close')}
           </button>
         </div>
       </DialogContent>
