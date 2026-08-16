@@ -1,0 +1,14 @@
+{
+  "ariaLabel_one": "Donut chart of vulnerability severity distribution across {{count}} vulnerability. {{list}}.",
+  "ariaLabel_other": "Donut chart of vulnerability severity distribution across {{count}} vulnerabilities. {{list}}.",
+  "empty": "No vulnerabilities found",
+  "tooltip": {
+    "count": "{{count}} vulnerabilities ({{percentage}}%)"
+  },
+  "label": {
+    "percentage": "{{percent}}%"
+  },
+  "legend": {
+    "itemFormat": "{{name}}: {{count}}"
+  }
+}

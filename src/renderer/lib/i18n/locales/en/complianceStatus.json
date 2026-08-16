@@ -1,0 +1,15 @@
+{
+  "title": "Compliance Status",
+  "overallLabel": "Overall SLA Compliance",
+  "overallTarget": "Target: 80%",
+  "metrics": {
+    "overallSla": "Overall SLA",
+    "criticalSla": "Critical SLA",
+    "highSla": "High SLA",
+    "scanCoverage": "Scan Coverage",
+    "dataFreshness": "Data Freshness",
+    "remediationRate": "Remediation Rate"
+  },
+  "nextReview": "Next compliance review",
+  "notScheduled": "Not scheduled"
+}

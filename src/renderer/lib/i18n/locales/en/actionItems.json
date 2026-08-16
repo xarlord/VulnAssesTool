@@ -1,0 +1,8 @@
+{
+  "title": "Action Items",
+  "recommendationCount_one": "{{count}} recommendation",
+  "recommendationCount_other": "{{count}} recommendations",
+  "effort": "Effort: {{effort}}",
+  "moreRecommendations_one": "+{{count}} more recommendation",
+  "moreRecommendations_other": "+{{count}} more recommendations"
+}

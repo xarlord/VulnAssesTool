@@ -153,6 +153,7 @@ export default defineConfig([
       'src/renderer/components/cvss/CvssMetricsGrid.tsx',
       'src/renderer/components/cvss/CvssScoreGauge.tsx',
       'src/renderer/components/cvss/CvssVectorString.tsx',
+      'src/renderer/components/executive/widgets/ActionItems.tsx',
     ],
     rules: {
       'no-restricted-syntax': [
