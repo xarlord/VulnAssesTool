@@ -1,10 +1,15 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Home, Bug, Trash2, RotateCcw } from 'lucide-react'
+import { i18n } from '@/lib/i18n'
 
 // Configuration constants
 const MAX_RETRIES = 3
 const ERROR_HISTORY_SIZE = 5
+
+// Class components can't use the useTranslation hook, so fix the namespace directly on the
+// shared i18next singleton (already initialized synchronously - see lib/i18n/index.ts).
+const t = i18n.getFixedT(null, 'errorBoundary')
 
 export interface ErrorEvent {
   id: string
@@ -254,10 +259,10 @@ ${errorHistory.map((e) => `- ${e.id}: ${e.error.message}`).join('\n')}
               </div>
               <div>
                 <h1 className="text-lg font-semibold text-foreground">
-                  {retryExhausted ? 'Multiple errors detected' : 'Something went wrong'}
+                  {retryExhausted ? t('header.title.exhausted') : t('header.title.default')}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {retryExhausted ? 'The application encountered repeated errors' : 'An unexpected error occurred'}
+                  {retryExhausted ? t('header.subtitle.exhausted') : t('header.subtitle.default')}
                 </p>
               </div>
             </div>
@@ -271,16 +276,20 @@ ${errorHistory.map((e) => `- ${e.id}: ${e.error.message}`).join('\n')}
               >
                 <RotateCcw className="w-4 h-4" />
                 <span className="text-sm">
-                  Retry attempt {retryCount} of {maxRetries}
-                  {retryExhausted && ' - Limit reached'}
+                  {t('retryCounter.attempt', { retryCount, maxRetries })}
+                  {retryExhausted && t('retryCounter.limitReachedSuffix')}
                 </span>
               </div>
             )}
 
             {/* Error message */}
             <div className="bg-muted/50 rounded-lg p-3 mb-4">
-              <p className="text-sm text-foreground font-mono break-words">{error?.message || 'Unknown error'}</p>
-              {errorId && <p className="text-xs text-muted-foreground mt-2">Error ID: {errorId}</p>}
+              <p className="text-sm text-foreground font-mono break-words">
+                {error?.message || t('errorMessage.unknown')}
+              </p>
+              {errorId && (
+                <p className="text-xs text-muted-foreground mt-2">{t('errorMessage.errorId', { errorId })}</p>
+              )}
             </div>
 
             {/* Action buttons */}
@@ -292,7 +301,7 @@ ${errorHistory.map((e) => `- ${e.id}: ${e.error.message}`).join('\n')}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <RefreshCw className={`w-4 h-4 ${isRetrying ? 'animate-spin' : ''}`} />
-                  {isRetrying ? 'Retrying...' : 'Try Again'}
+                  {isRetrying ? t('actions.retrying') : t('actions.tryAgain')}
                 </button>
               ) : (
                 <button
@@ -300,7 +309,7 @@ ${errorHistory.map((e) => `- ${e.id}: ${e.error.message}`).join('\n')}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  Reload App
+                  {t('actions.reloadApp')}
                 </button>
               )}
               <button
@@ -308,24 +317,22 @@ ${errorHistory.map((e) => `- ${e.id}: ${e.error.message}`).join('\n')}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
               >
                 <Home className="w-4 h-4" />
-                Go Home
+                {t('actions.goHome')}
               </button>
             </div>
 
             {/* Extended recovery options (when retries exhausted) */}
             {retryExhausted && (
               <div className="border-t border-border pt-4 mb-4">
-                <p className="text-sm text-muted-foreground mb-3">Recovery options:</p>
+                <p className="text-sm text-muted-foreground mb-3">{t('recovery.optionsLabel')}</p>
                 <button
                   onClick={this.handleClearDataAndReload}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
-                  Clear Cache & Reload
+                  {t('recovery.clearCacheAndReload')}
                 </button>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  This will clear cached data but preserve your preferences
-                </p>
+                <p className="text-xs text-muted-foreground mt-2 text-center">{t('recovery.clearCacheHint')}</p>
               </div>
             )}
 
@@ -335,19 +342,19 @@ ${errorHistory.map((e) => `- ${e.id}: ${e.error.message}`).join('\n')}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
             >
               <Bug className="w-4 h-4" />
-              Copy Error Details
-              {errorHistory.length > 0 && ` (${errorHistory.length} errors)`}
+              {t('copyError.button')}
+              {errorHistory.length > 0 && t('copyError.countSuffix', { count: errorHistory.length })}
             </button>
 
             {/* Collapsible error details (development only) */}
             {process.env.NODE_ENV === 'development' && errorInfo && (
               <details className="mt-4">
                 <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground">
-                  Technical Details
+                  {t('technicalDetails.summary')}
                 </summary>
                 <pre className="mt-2 p-3 bg-muted rounded-lg text-xs overflow-auto max-h-48 font-mono">
                   {error?.stack}
-                  {'\n\nComponent Stack:\n'}
+                  {t('technicalDetails.componentStackLabel')}
                   {errorInfo.componentStack}
                 </pre>
               </details>

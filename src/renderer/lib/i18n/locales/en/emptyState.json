@@ -1,0 +1,28 @@
+{
+  "presets": {
+    "projects": {
+      "title": "No projects yet",
+      "description": "Create a new project to get started with vulnerability assessment"
+    },
+    "components": {
+      "title": "No components found",
+      "description": "Upload an SBOM file to view and analyze components"
+    },
+    "vulnerabilities": {
+      "title": "No vulnerabilities found",
+      "description": "Run a vulnerability scan to check for security issues"
+    },
+    "sbom": {
+      "title": "No SBOM files uploaded",
+      "description": "Upload a CycloneDX or SPDX file to get started"
+    },
+    "search": {
+      "title": "No results found",
+      "description": "Try adjusting your filters or search terms"
+    }
+  },
+  "default": {
+    "title": "No results",
+    "description": "Try adjusting your search"
+  }
+}

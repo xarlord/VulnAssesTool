@@ -1,0 +1,21 @@
+{
+  "scoreCard": {
+    "title": "CVSS Score",
+    "severityLabel": "{{severity}} Severity"
+  },
+  "subScores": {
+    "impactTitle": "Impact Score",
+    "impactDescription": "Confidentiality, Integrity, Availability",
+    "exploitabilityTitle": "Exploitability Score",
+    "exploitabilityDescription": "Attack Vector, Complexity, Privileges, UI"
+  },
+  "vector": {
+    "title": "CVSS Vector",
+    "versionBadge": "CVSS:{{version}}",
+    "partTooltip": "{{label}}: {{fullLabel}}"
+  },
+  "legend": {
+    "title": "Vector Details",
+    "labelPrefix": "{{label}}:"
+  }
+}

@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer } from 'recharts'
 import type { CvssBreakdown } from '@@/types'
 import { getSeverityColorHex, getRadarChartData } from '@/lib/cvss'
@@ -20,10 +21,11 @@ export const CvssScoreGauge = React.memo(function CvssScoreGauge({
   showLabel = true,
   showSubScores = true,
 }: CvssScoreGaugeProps) {
+  const { t } = useTranslation('cvssScoreGauge')
   const radarData = getRadarChartData(breakdown)
   const scoreColor = getSeverityColorHex(breakdown.severity)
 
-  const ariaLabel = `Radar chart of CVSS metrics. Base score ${breakdown.scores.baseScore} out of 10, ${breakdown.severity} severity.`
+  const ariaLabel = t('ariaLabel', { baseScore: breakdown.scores.baseScore, severity: breakdown.severity })
 
   return (
     <div className="flex flex-col items-center">
@@ -54,7 +56,7 @@ export const CvssScoreGauge = React.memo(function CvssScoreGauge({
             >
               {breakdown.scores.baseScore}
             </div>
-            <div className="text-xs text-gray-500 font-medium mt-0.5">out of 10.0</div>
+            <div className="text-xs text-gray-500 font-medium mt-0.5">{t('outOfTen')}</div>
           </div>
           {/* Severity Badge - More prominent */}
           <div
@@ -73,11 +75,13 @@ export const CvssScoreGauge = React.memo(function CvssScoreGauge({
       {showSubScores && (
         <div className="mt-4 w-full grid grid-cols-2 gap-3">
           <div className="text-center p-2 rounded-lg bg-gray-50 border border-gray-200">
-            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Impact</div>
+            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">{t('subScore.impact')}</div>
             <div className="text-lg font-bold text-gray-800">{breakdown.scores.impactSubScore}</div>
           </div>
           <div className="text-center p-2 rounded-lg bg-gray-50 border border-gray-200">
-            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Exploitability</div>
+            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+              {t('subScore.exploitability')}
+            </div>
             <div className="text-lg font-bold text-gray-800">{breakdown.scores.exploitabilitySubScore}</div>
           </div>
         </div>

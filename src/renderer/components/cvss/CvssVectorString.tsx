@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { CvssBreakdown } from '@@/types'
 import { formatCvssVector, getSeverityColorHex } from '@/lib/cvss'
 
@@ -12,6 +13,7 @@ interface CvssVectorStringProps {
  * Shows the CVSS vector string with color-coded metrics and full labels
  */
 export function CvssVectorString({ breakdown, showLegend = true, showSubScores = true }: CvssVectorStringProps) {
+  const { t } = useTranslation('cvssVectorString')
   const formattedVector = formatCvssVector(breakdown.vectorString)
   const scoreColor = getSeverityColorHex(breakdown.severity)
 
@@ -50,7 +52,7 @@ export function CvssVectorString({ breakdown, showLegend = true, showSubScores =
           <div className="text-4xl font-extrabold tracking-tight" style={{ color: scoreColor }}>
             {breakdown.scores.baseScore}
           </div>
-          <div className="text-xs text-gray-500 font-medium">CVSS Score</div>
+          <div className="text-xs text-gray-500 font-medium">{t('scoreCard.title')}</div>
         </div>
         <div className="flex-1">
           <div
@@ -61,7 +63,7 @@ export function CvssVectorString({ breakdown, showLegend = true, showSubScores =
               border: `2px solid ${scoreColor}40`,
             }}
           >
-            {breakdown.severity} Severity
+            {t('scoreCard.severityLabel', { severity: breakdown.severity })}
           </div>
         </div>
       </div>
@@ -70,30 +72,34 @@ export function CvssVectorString({ breakdown, showLegend = true, showSubScores =
       {showSubScores && (
         <div className="grid grid-cols-2 gap-3">
           <div className="text-center p-3 rounded-lg bg-blue-50 border border-blue-200">
-            <div className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Impact Score</div>
+            <div className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">
+              {t('subScores.impactTitle')}
+            </div>
             <div className="text-2xl font-bold text-blue-800">{breakdown.scores.impactSubScore}</div>
-            <div className="text-xs text-blue-500 mt-1">Confidentiality, Integrity, Availability</div>
+            <div className="text-xs text-blue-500 mt-1">{t('subScores.impactDescription')}</div>
           </div>
           <div className="text-center p-3 rounded-lg bg-purple-50 border border-purple-200">
-            <div className="text-xs text-purple-600 font-medium uppercase tracking-wide mb-1">Exploitability Score</div>
+            <div className="text-xs text-purple-600 font-medium uppercase tracking-wide mb-1">
+              {t('subScores.exploitabilityTitle')}
+            </div>
             <div className="text-2xl font-bold text-purple-800">{breakdown.scores.exploitabilitySubScore}</div>
-            <div className="text-xs text-purple-500 mt-1">Attack Vector, Complexity, Privileges, UI</div>
+            <div className="text-xs text-purple-500 mt-1">{t('subScores.exploitabilityDescription')}</div>
           </div>
         </div>
       )}
 
       {/* Vector String with Full Labels */}
       <div>
-        <h4 className="text-sm font-semibold text-gray-700 mb-2">CVSS Vector</h4>
+        <h4 className="text-sm font-semibold text-gray-700 mb-2">{t('vector.title')}</h4>
         <div className="flex flex-wrap gap-1">
           <span className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
-            CVSS:{breakdown.version}
+            {t('vector.versionBadge', { version: breakdown.version })}
           </span>
           {formattedVector.map((part, index) => (
             <span
               key={index}
               className={`rounded border px-2 py-1 text-xs font-semibold ${getMetricColor(part.abbreviation, part.value)}`}
-              title={`${part.label}: ${part.fullLabel}`}
+              title={t('vector.partTooltip', { label: part.label, fullLabel: part.fullLabel })}
             >
               {part.abbreviation}:{part.value}
             </span>
@@ -104,7 +110,7 @@ export function CvssVectorString({ breakdown, showLegend = true, showSubScores =
       {/* Legend with Full Labels */}
       {showLegend && (
         <div className="mt-3 space-y-2">
-          <h4 className="text-sm font-semibold text-gray-700">Vector Details</h4>
+          <h4 className="text-sm font-semibold text-gray-700">{t('legend.title')}</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             {formattedVector.map((part) => (
               <div
@@ -115,7 +121,7 @@ export function CvssVectorString({ breakdown, showLegend = true, showSubScores =
                   {part.abbreviation}:{part.value}
                 </span>
                 <span className="text-gray-600">
-                  <span className="font-medium">{part.label}:</span> {part.fullLabel}
+                  <span className="font-medium">{t('legend.labelPrefix', { label: part.label })}</span> {part.fullLabel}
                 </span>
               </div>
             ))}

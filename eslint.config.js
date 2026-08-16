@@ -145,6 +145,14 @@ export default defineConfig([
       'src/renderer/components/ComponentVulnerabilitiesPopup.tsx',
       'src/renderer/components/audit/AuditExportDialog.tsx',
       'src/renderer/components/audit/EventDiffViewer.tsx',
+      'src/renderer/components/ErrorBoundary.tsx',
+      'src/renderer/components/ContainerScanDialog.tsx',
+      'src/renderer/components/CreateProfileDialog.tsx',
+      'src/renderer/components/CreateProjectDialog.tsx',
+      'src/renderer/components/EmptyState.tsx',
+      'src/renderer/components/cvss/CvssMetricsGrid.tsx',
+      'src/renderer/components/cvss/CvssScoreGauge.tsx',
+      'src/renderer/components/cvss/CvssVectorString.tsx',
     ],
     rules: {
       'no-restricted-syntax': [
@@ -156,7 +164,7 @@ export default defineConfig([
         {
           selector: 'JSXText[value=/[A-Za-z]/]',
           message:
-            "Hardcoded UI text in an i18n-migrated file. Use t(...) and add the string to its lib/i18n/locales/en/<ns>.json.",
+            'Hardcoded UI text in an i18n-migrated file. Use t(...) and add the string to its lib/i18n/locales/en/<ns>.json.',
         },
       ],
     },

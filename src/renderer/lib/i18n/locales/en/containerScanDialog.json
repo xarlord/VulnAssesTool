@@ -1,0 +1,50 @@
+{
+  "title": "Container Image Scan",
+  "description": {
+    "withProject": "Scan and import packages to: {{projectName}}",
+    "noProject": "Scan container images for packages and vulnerabilities"
+  },
+  "warnings": {
+    "noProject": "Please select a project first before scanning containers."
+  },
+  "error": {
+    "title": "Scan Failed"
+  },
+  "imageRef": {
+    "label": "Image Reference",
+    "placeholder": "e.g., nginx:1.21, alpine:latest, ghcr.io/org/image:v1",
+    "hint": "Supports Docker Hub, GitHub Container Registry, and other registries"
+  },
+  "runtime": {
+    "label": "Container Runtime",
+    "docker": "Docker",
+    "podman": "Podman"
+  },
+  "scanImage": "Scan Image",
+  "progressStep": {
+    "checking": "Checking runtime...",
+    "pulling": "Pulling image...",
+    "scanning": "Scanning image..."
+  },
+  "success": {
+    "title": "Scan Complete",
+    "summary": "Found {{uniqueCount}} unique packages across {{layerCount}} layers in {{duration}}",
+    "scanDifferentImage": "Scan Different Image",
+    "addPackages": "Add {{count}} Packages to Project"
+  },
+  "imageInfo": {
+    "image": "Image:",
+    "platform": "Platform:",
+    "layers": "Layers:",
+    "packages": "Packages:"
+  },
+  "layersSection": {
+    "title": "Layers",
+    "layerNumber": "Layer {{number}}",
+    "noPackages": "No packages detected"
+  },
+  "packagePreview": {
+    "title": "Package Preview ({{count}} total)",
+    "more": "... and {{count}} more"
+  }
+}
