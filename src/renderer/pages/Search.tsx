@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   Search as SearchIcon,
   Shield,
@@ -34,6 +35,14 @@ import { NvdCveDetailModal } from '@/components/NvdCveDetailModal'
 import { getSeverityTextClass } from '@/lib/severity'
 import type { Severity } from '@/lib/severity'
 import type { CveResult, NvdSearchRequest } from '@@/types'
+
+/**
+ * Boolean search operators and example queries shown in the search tips. These are query
+ * SYNTAX the user literally types (and literal example strings), not translatable prose —
+ * so they stay as data rather than going through t().
+ */
+const SEARCH_OPERATORS = ['AND', 'OR', 'NOT'] as const
+const SEARCH_EXAMPLES = ['log4j NOT test', '"remote code execution"'] as const
 
 // Type definitions for Electron API
 type NvdSearchType = 'cve-id' | 'cpe' | 'text'
@@ -81,6 +90,7 @@ type SearchMode = 'projects' | 'nvd'
 type NvdSearchMode = 'fts' | 'standard'
 
 export function Search() {
+  const { t } = useTranslation('search')
   const navigate = useNavigate()
   const projects = useProjects()
   const [query, setQuery] = useState('')
@@ -232,7 +242,7 @@ export function Search() {
     try {
       await getPlatform().database.startDeltaSync(false)
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Sync failed')
+      setSyncError(error instanceof Error ? error.message : t('errors.syncFailed'))
       setIsSyncing(false)
       setSyncProgress(null)
     }
@@ -250,10 +260,10 @@ export function Search() {
   const formatTimeRemaining = (ms: number): string => {
     if (ms <= 0) return ''
     const seconds = Math.floor(ms / 1000)
-    if (seconds < 60) return `${seconds}s remaining`
+    if (seconds < 60) return t('sync.secondsRemaining', { seconds })
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
-    return `${minutes}m ${remainingSeconds}s remaining`
+    return t('sync.minutesRemaining', { minutes, seconds: remainingSeconds })
   }
 
   // NVD Database search using IPC
@@ -270,7 +280,7 @@ export function Search() {
           // Check if Electron API is available
           if (!getPlatform()?.database) {
             if (!ignore) {
-              setNvdError('Database API not available. Please make sure you are running in Electron.')
+              setNvdError(t('errors.databaseUnavailable'))
               setNvdResults([])
               setNvdLoading(false)
             }
@@ -305,13 +315,13 @@ export function Search() {
             setNvdResults(response.results)
             console.log('[NVD Search] Found:', response.results.length, 'results')
           } else {
-            setNvdError(response.error || 'Search failed')
+            setNvdError(response.error || t('errors.searchFailed'))
             setNvdResults([])
           }
         } catch (error) {
           if (ignore) return
           console.error('[NVD Search] Error:', error)
-          setNvdError(error instanceof Error ? error.message : 'An unexpected error occurred')
+          setNvdError(error instanceof Error ? error.message : t('errors.unexpectedError'))
           setNvdResults([])
         } finally {
           if (!ignore) setNvdLoading(false)
@@ -331,7 +341,7 @@ export function Search() {
     return () => {
       ignore = true
     }
-  }, [debouncedQuery, searchMode])
+  }, [debouncedQuery, searchMode, t])
 
   // Handle navigation to result
   const handleResultClick = (result: (typeof searchResults)[0]) => {
@@ -430,7 +440,7 @@ export function Search() {
   return (
     <div className="p-6">
       <div className="mx-auto max-w-4xl">
-        <PageHeader title="Search" description="Search across all projects, components, and vulnerabilities" />
+        <PageHeader title={t('title')} description={t('description')} />
         <div className="space-y-6">
           {/* Search Mode Toggle */}
           <div className="flex gap-2 rounded-lg border border-border bg-muted/50 p-1">
@@ -448,7 +458,7 @@ export function Search() {
               }`}
             >
               <Shield className="h-4 w-4" />
-              Project Search
+              {t('modeToggle.projectSearch')}
             </button>
             <button
               onClick={() => {
@@ -463,9 +473,11 @@ export function Search() {
               }`}
             >
               <Database className="h-4 w-4" />
-              NVD Database
+              {t('modeToggle.nvdDatabase')}
               {ftsAvailable && (
-                <span className="ml-1 rounded bg-green-500/10 px-1.5 py-0.5 text-xs text-green-600">FTS Enabled</span>
+                <span className="ml-1 rounded bg-green-500/10 px-1.5 py-0.5 text-xs text-green-600">
+                  {t('modeToggle.ftsEnabled')}
+                </span>
               )}
             </button>
           </div>
@@ -476,11 +488,11 @@ export function Search() {
               {/* Stats Display */}
               {nvdStats && !isSyncing && (
                 <div className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{nvdStats.totalCves.toLocaleString()}</span> CVEs in
-                  database
+                  <span className="font-medium text-foreground">{nvdStats.totalCves.toLocaleString()}</span>{' '}
+                  {t('sync.cvesInDatabase')}
                   {nvdStats.lastSuccessfulSync && (
                     <span className="ml-2">
-                      • Last sync: {new Date(nvdStats.lastSuccessfulSync).toLocaleDateString()}
+                      {t('sync.lastSync')} {new Date(nvdStats.lastSuccessfulSync).toLocaleDateString()}
                     </span>
                   )}
                 </div>
@@ -495,9 +507,9 @@ export function Search() {
                   <RefreshCw className="h-4 w-4 animate-spin" />
                   <div className="flex flex-col items-start">
                     <span className="text-xs">
-                      {syncProgress.phase === 'checking' && 'Checking for updates...'}
-                      {syncProgress.phase === 'fetching' && `Fetching: ${syncProgress.cvesFetched} CVEs`}
-                      {syncProgress.phase === 'importing' && `Importing: ${syncProgress.cvesProcessed} CVEs`}
+                      {syncProgress.phase === 'checking' && t('sync.checkingForUpdates')}
+                      {syncProgress.phase === 'fetching' && t('sync.fetching', { count: syncProgress.cvesFetched })}
+                      {syncProgress.phase === 'importing' && t('sync.importing', { count: syncProgress.cvesProcessed })}
                     </span>
                     {syncProgress.phase === 'checking' ? (
                       <div className="w-24 h-1 bg-orange-200 rounded overflow-hidden mt-1">
@@ -505,9 +517,13 @@ export function Search() {
                       </div>
                     ) : (
                       <span className="text-xs font-bold">
-                        {syncProgress.percentage > 0 ? `${Math.round(syncProgress.percentage)}%` : '...'}
+                        {syncProgress.percentage > 0
+                          ? t('sync.percentValue', { percent: Math.round(syncProgress.percentage) })
+                          : t('sync.percentPending')}
                         {syncProgress.estimatedTimeRemainingMs > 0 &&
-                          ` - ${formatTimeRemaining(syncProgress.estimatedTimeRemainingMs)}`}
+                          t('sync.timeRemainingSuffix', {
+                            time: formatTimeRemaining(syncProgress.estimatedTimeRemainingMs),
+                          })}
                       </span>
                     )}
                   </div>
@@ -517,7 +533,7 @@ export function Search() {
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2 rounded-lg border border-green-400 bg-green-50 px-3 py-1.5 text-sm text-green-700">
                     <Check className="h-4 w-4" />
-                    <span>Synced {syncResult.cvesAdded + syncResult.cvesUpdated} CVEs</span>
+                    <span>{t('sync.synced', { count: syncResult.cvesAdded + syncResult.cvesUpdated })}</span>
                   </div>
                   <button
                     onClick={() => {
@@ -527,7 +543,7 @@ export function Search() {
                     className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                   >
                     <RefreshCw className="h-4 w-4" />
-                    Sync Again
+                    {t('sync.syncAgain')}
                   </button>
                 </div>
               ) : syncError ? (
@@ -544,7 +560,7 @@ export function Search() {
                     className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                   >
                     <RefreshCw className="h-4 w-4" />
-                    Retry
+                    {t('common:actions.retry')}
                   </button>
                 </div>
               ) : (
@@ -554,7 +570,7 @@ export function Search() {
                   className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Sync NVD Data
+                  {t('sync.syncNvdData')}
                 </button>
               )}
             </div>
@@ -573,9 +589,7 @@ export function Search() {
               }}
               onKeyDown={handleKeyDown}
               placeholder={
-                searchMode === 'projects'
-                  ? 'Search projects, components, vulnerabilities...'
-                  : 'Search NVD database by CVE ID (CVE-YYYY-NNNN) or CPE text...'
+                searchMode === 'projects' ? t('searchInput.projectsPlaceholder') : t('searchInput.nvdPlaceholder')
               }
               className="w-full rounded-lg border border-border bg-background pl-12 pr-12 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-ring"
               autoFocus
@@ -583,7 +597,7 @@ export function Search() {
             {query && (
               <button
                 onClick={handleClear}
-                aria-label="Clear search"
+                aria-label={t('searchInput.clearSearch')}
                 className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="h-5 w-5" />
@@ -609,7 +623,7 @@ export function Search() {
             suggestions.length > 0 &&
             searchResults.length === 0 && (
               <div className="rounded-lg border border-border bg-card p-4">
-                <div className="text-sm text-muted-foreground mb-2">Suggestions</div>
+                <div className="text-sm text-muted-foreground mb-2">{t('suggestions.heading')}</div>
                 <div className="space-y-1">
                   {suggestions.map((suggestion, index) => (
                     <button
@@ -632,14 +646,18 @@ export function Search() {
                   <div className="space-y-6">
                     {/* Result Counts */}
                     <div className="text-sm text-muted-foreground">
-                      Found {counts.total} result{counts.total !== 1 ? 's' : ''} ({counts.projects} projects,{' '}
-                      {counts.components} components, {counts.vulnerabilities} vulnerabilities)
+                      {t('results.summary', {
+                        count: counts.total,
+                        projects: counts.projects,
+                        components: counts.components,
+                        vulnerabilities: counts.vulnerabilities,
+                      })}
                     </div>
 
                     {/* Projects Section */}
                     {groupedResults.projects.length > 0 && (
                       <div>
-                        <h2 className="mb-3 text-lg font-semibold">Projects</h2>
+                        <h2 className="mb-3 text-lg font-semibold">{t('results.projectsHeading')}</h2>
                         <div className="space-y-2">
                           {groupedResults.projects.map((result) => (
                             <div
@@ -665,7 +683,7 @@ export function Search() {
                     {/* Components Section */}
                     {groupedResults.components.length > 0 && (
                       <div>
-                        <h2 className="mb-3 text-lg font-semibold">Components</h2>
+                        <h2 className="mb-3 text-lg font-semibold">{t('results.componentsHeading')}</h2>
                         <div className="space-y-2">
                           {groupedResults.components.map((result) => (
                             <div
@@ -679,7 +697,9 @@ export function Search() {
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium">{result.title}</div>
                                 <div className="mt-1 text-sm text-muted-foreground">{result.description}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">in {result.projectName}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {t('results.inProject', { projectName: result.projectName })}
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -690,7 +710,7 @@ export function Search() {
                     {/* Vulnerabilities Section */}
                     {groupedResults.vulnerabilities.length > 0 && (
                       <div>
-                        <h2 className="mb-3 text-lg font-semibold">Vulnerabilities</h2>
+                        <h2 className="mb-3 text-lg font-semibold">{t('results.vulnerabilitiesHeading')}</h2>
                         <div className="space-y-2">
                           {groupedResults.vulnerabilities.map((result) => (
                             <div
@@ -706,7 +726,9 @@ export function Search() {
                                 <div className="mt-1 text-sm text-muted-foreground line-clamp-2">
                                   {result.description}
                                 </div>
-                                <div className="mt-1 text-xs text-muted-foreground">in {result.projectName}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {t('results.inProject', { projectName: result.projectName })}
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -717,10 +739,10 @@ export function Search() {
                 ) : (
                   <EmptyState
                     icon={SearchIcon}
-                    title="No results found"
-                    description={`No matches found for "${debouncedQuery}" in your projects`}
+                    title={t('results.noResultsFound')}
+                    description={t('results.noResultsDescription', { query: debouncedQuery })}
                     action={{
-                      label: 'Clear search',
+                      label: t('searchInput.clearSearch'),
                       onClick: handleClear,
                     }}
                   />
@@ -732,10 +754,10 @@ export function Search() {
                   {nvdError ? (
                     <EmptyState
                       icon={Database}
-                      title="NVD Database Search"
+                      title={t('emptyStates.nvdErrorTitle')}
                       description={nvdError}
                       action={{
-                        label: 'Switch to Project Search',
+                        label: t('emptyStates.switchToProjectSearch'),
                         onClick: () => setSearchMode('projects'),
                       }}
                     />
@@ -743,13 +765,13 @@ export function Search() {
                     <div className="flex items-center justify-center py-12">
                       <div className="text-center">
                         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
-                        <p className="mt-4 text-sm text-muted-foreground">Searching NVD database...</p>
+                        <p className="mt-4 text-sm text-muted-foreground">{t('emptyStates.searchingNvd')}</p>
                       </div>
                     </div>
                   ) : nvdResults.length > 0 ? (
                     <div className="space-y-4">
                       <div className="text-sm text-muted-foreground">
-                        Found {nvdResults.length} result{nvdResults.length !== 1 ? 's' : ''} in NVD database
+                        {t('results.nvdSummary', { count: nvdResults.length })}
                       </div>
                       <VirtualList
                         items={nvdResults}
@@ -769,13 +791,13 @@ export function Search() {
                                     <span
                                       className={`text-xs rounded px-1.5 py-0.5 font-medium ${getSeverityTextClass(normalizeSeverity(vuln.severity))}`}
                                     >
-                                      CVSS {vuln.cvssScore.toFixed(1)}
+                                      {t('results.cvssScore', { score: vuln.cvssScore.toFixed(1) })}
                                     </span>
                                   )}
                                   <span
                                     className={`text-xs uppercase rounded px-1.5 py-0.5 font-medium ${getSeverityTextClass(normalizeSeverity(vuln.severity))}`}
                                   >
-                                    {vuln.severity || 'UNKNOWN'}
+                                    {vuln.severity || t('results.unknownSeverity')}
                                   </span>
                                 </div>
                                 {vuln.description && (
@@ -783,11 +805,15 @@ export function Search() {
                                 )}
                                 <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
                                   {vuln.publishedAt && (
-                                    <span>Published: {new Date(vuln.publishedAt).toLocaleDateString()}</span>
+                                    <span>
+                                      {t('results.published', {
+                                        date: new Date(vuln.publishedAt).toLocaleDateString(),
+                                      })}
+                                    </span>
                                   )}
-                                  {vuln.source && <span>Source: {vuln.source}</span>}
+                                  {vuln.source && <span>{t('results.source', { source: vuln.source })}</span>}
                                 </div>
-                                <div className="mt-2 text-xs text-blue-500">Click to view details</div>
+                                <div className="mt-2 text-xs text-blue-500">{t('results.clickToViewDetails')}</div>
                               </div>
                             </div>
                           </div>
@@ -800,10 +826,10 @@ export function Search() {
                   ) : (
                     <EmptyState
                       icon={Database}
-                      title="Search NVD Database"
-                      description="Search the NVD database by CVE ID (e.g., CVE-2024-1234) or keywords. Results appear from your local database."
+                      title={t('emptyStates.nvdNoResultsTitle')}
+                      description={t('emptyStates.nvdNoResultsDescription')}
                       action={{
-                        label: 'Switch to Project Search',
+                        label: t('emptyStates.switchToProjectSearch'),
                         onClick: () => setSearchMode('projects'),
                       }}
                     />
@@ -814,11 +840,9 @@ export function Search() {
           ) : (
             <EmptyState
               icon={SearchIcon}
-              title="Start searching"
+              title={t('emptyStates.startSearchingTitle')}
               description={
-                searchMode === 'projects'
-                  ? 'Enter a search term to find projects, components, and vulnerabilities'
-                  : 'Enter a CVE ID (e.g., CVE-2024-1234) or CPE text to search the NVD database'
+                searchMode === 'projects' ? t('emptyStates.startSearchingProjects') : t('emptyStates.startSearchingNvd')
               }
             />
           )}
@@ -827,28 +851,31 @@ export function Search() {
           {!debouncedQuery && (
             <div className="rounded-lg border border-border bg-muted/30 p-4">
               <h3 className="mb-2 font-medium">
-                {searchMode === 'projects' ? 'Project Search Tips' : 'NVD Database Search Tips'}
+                {searchMode === 'projects' ? t('tips.project.heading') : t('tips.nvd.heading')}
               </h3>
               <ul className="space-y-1 text-sm text-muted-foreground">
                 {searchMode === 'projects' ? (
                   <>
-                    <li>• Search is case-insensitive</li>
-                    <li>• Matches project names, component names, vulnerability IDs, and descriptions</li>
+                    <li>{t('tips.project.caseInsensitive')}</li>
+                    <li>{t('tips.project.matches')}</li>
                     <li>
-                      • Combine terms with <strong>AND</strong> / <strong>OR</strong> / <strong>NOT</strong>, or quote
-                      an exact phrase: <code>log4j NOT test</code>, <code>&quot;remote code execution&quot;</code>
+                      {t('tips.project.combineTermsPrefix')}
+                      <strong>{SEARCH_OPERATORS[0]}</strong> / <strong>{SEARCH_OPERATORS[1]}</strong> /{' '}
+                      <strong>{SEARCH_OPERATORS[2]}</strong>
+                      {t('tips.project.combineTermsSuffix')}
+                      <code>{SEARCH_EXAMPLES[0]}</code>, <code>{SEARCH_EXAMPLES[1]}</code>
                     </li>
-                    <li>• Save a search to re-run it later</li>
-                    <li>• Use arrow keys to navigate results</li>
-                    <li>• Press Enter to open selected result</li>
-                    <li>• Press Escape to clear search</li>
+                    <li>{t('tips.project.saveSearch')}</li>
+                    <li>{t('tips.project.arrowKeys')}</li>
+                    <li>{t('tips.project.pressEnter')}</li>
+                    <li>{t('tips.project.pressEscape')}</li>
                   </>
                 ) : (
                   <>
-                    <li>• Search by CVE ID: CVE-2024-1234</li>
-                    <li>• Search by CPE text: cpe:2.3:a:vendor:product:*</li>
-                    <li>• Search by component name: apache, nginx, openssl</li>
-                    <li>• Results come from your local NVD database (offline)</li>
+                    <li>{t('tips.nvd.byCveId')}</li>
+                    <li>{t('tips.nvd.byCpeText')}</li>
+                    <li>{t('tips.nvd.byComponentName')}</li>
+                    <li>{t('tips.nvd.offline')}</li>
                   </>
                 )}
               </ul>

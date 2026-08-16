@@ -199,6 +199,14 @@ export default defineConfig([
       'src/renderer/pages/project-detail/EditProjectDialog.tsx',
       'src/renderer/pages/project-detail/HealthTab.tsx',
       'src/renderer/pages/project-detail/OverviewTab.tsx',
+      'src/renderer/pages/project-detail/VulnerabilitiesTab.tsx',
+      'src/renderer/pages/Search.tsx',
+      'src/renderer/pages/Settings.tsx',
+      'src/renderer/pages/settings/AppearanceSection.tsx',
+      'src/renderer/pages/settings/CvssSection.tsx',
+      'src/renderer/pages/settings/NotificationsSection.tsx',
+      'src/renderer/pages/settings/ProfilesSection.tsx',
+      'src/renderer/pages/settings/SettingsNav.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

@@ -1,0 +1,21 @@
+{
+  "heading": "CVSS",
+  "version": {
+    "label": "Preferred CVSS Version",
+    "options": {
+      "v31": "CVSS 3.1",
+      "v30": "CVSS 3.0"
+    },
+    "note": "Applies to the CVSS detail view only. Scores are never recalculated between versions; a CVE that only carries the other version shows an informational note."
+  },
+  "expandBreakdown": {
+    "label": "Expand CVSS Breakdown by Default",
+    "note": "Open the full metric grid without clicking \"Show Details\".",
+    "ariaLabel": "Show CVSS breakdown"
+  },
+  "severityThresholds": {
+    "label": "Severity Thresholds",
+    "bandThreshold": "{{band}} threshold",
+    "note": "Base-score cutoffs used for the CVSS detail view only. They do not change stored severities or the list/dashboard/filter classifications."
+  }
+}

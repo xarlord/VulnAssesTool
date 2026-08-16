@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store/useStore'
 import { getPlatform } from '@/lib/platform'
 import { isValidNvdApiKey } from '@/lib/api/nvd'
@@ -109,6 +110,7 @@ function ConfirmDialog({
 }
 
 export function Settings() {
+  const { t } = useTranslation('settings')
   const { settings, updateSettings, settingsProfiles, exportSettingsProfiles, importSettingsProfiles } = useStore()
 
   // Local state for API key management (using secure storage)
@@ -764,7 +766,7 @@ export function Settings() {
   return (
     <div className="p-6">
       <div className="mx-auto max-w-6xl">
-        <PageHeader title="Settings" />
+        <PageHeader title={t('pageTitle')} />
         <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
           <SettingsNav />
           <div className="min-w-0 space-y-6">
@@ -778,18 +780,18 @@ export function Settings() {
               <div className="flex items-center justify-between border-b border-border p-4">
                 <div className="flex items-center gap-3">
                   <Key className="h-5 w-5 text-muted-foreground" />
-                  <h2 className="font-semibold">API Configuration</h2>
+                  <h2 className="font-semibold">{t('api.heading')}</h2>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {isApiKeyAvailable ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      Secure Storage Enabled
+                      {t('api.secureStorageEnabled')}
                     </>
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 text-yellow-600" />
-                      Secure Storage Unavailable
+                      {t('api.secureStorageUnavailable')}
                     </>
                   )}
                 </div>
@@ -798,13 +800,14 @@ export function Settings() {
                 {/* NVD API Key */}
                 <div>
                   <label className="mb-2 block text-sm font-medium">
-                    NVD API Key <span className="text-muted-foreground font-normal">(Optional)</span>
+                    {t('api.nvdApiKeyLabel')}{' '}
+                    <span className="text-muted-foreground font-normal">{t('api.optional')}</span>
                   </label>
                   <div className="relative">
                     {isLoadingKey ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading API key from secure storage...
+                        {t('api.loadingApiKey')}
                       </div>
                     ) : (
                       <>
@@ -821,8 +824,8 @@ export function Settings() {
                             }
                           }}
                           disabled={!isApiKeyAvailable || isSavingKey}
-                          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                          aria-label="NVD API Key"
+                          placeholder={t('api.apiKeyPlaceholder')}
+                          aria-label={t('api.nvdApiKeyLabel')}
                           className={`w-full rounded-md border bg-background px-3 py-2 pr-20 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
                             apiKeyError ? 'border-destructive' : 'border-border'
                           } ${!isApiKeyAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -833,7 +836,9 @@ export function Settings() {
                           </div>
                         )}
                         {saveSuccess && !isSavingKey && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-green-600">Saved</div>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-green-600">
+                            {t('api.saved')}
+                          </div>
                         )}
                       </>
                     )}
@@ -841,16 +846,16 @@ export function Settings() {
                   {apiKeyError && <p className="mt-1 text-xs text-destructive">{apiKeyError}</p>}
                   <div className="mt-2 flex items-center gap-4">
                     <p className="text-xs text-muted-foreground">
-                      Get your free API key from{' '}
+                      {t('api.getApiKeyBefore')}{' '}
                       <a
                         href="https://nvd.nist.gov/developers/request-an-api-key"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
                       >
-                        NIST
+                        {t('api.nistLinkText')}
                       </a>{' '}
-                      for higher rate limits (5 requests/rolling 30 seconds instead of default)
+                      {t('api.getApiKeyAfter')}
                     </p>
                     {nvdApiKeyInput && isApiKeyAvailable && (
                       <button
@@ -858,14 +863,12 @@ export function Settings() {
                         disabled={isSavingKey}
                         className="text-xs text-destructive hover:underline disabled:opacity-50"
                       >
-                        Delete Key
+                        {t('api.deleteKey')}
                       </button>
                     )}
                   </div>
                   {!isApiKeyAvailable && (
-                    <p className="mt-2 text-xs text-yellow-600">
-                      Secure storage is not available. API keys will be stored in localStorage (less secure).
-                    </p>
+                    <p className="mt-2 text-xs text-yellow-600">{t('api.secureStorageUnavailableNotice')}</p>
                   )}
                 </div>
 
@@ -875,17 +878,15 @@ export function Settings() {
                     <div className="flex items-center gap-3">
                       <RotateCw className="h-5 w-5 text-muted-foreground" />
                       <div>
-                        <div className="font-medium">Auto-refresh Vulnerability Data</div>
-                        <p className="text-sm text-muted-foreground">
-                          Automatically refresh vulnerability data on a schedule while the app is open
-                        </p>
+                        <div className="font-medium">{t('api.autoRefresh.title')}</div>
+                        <p className="text-sm text-muted-foreground">{t('api.autoRefresh.description')}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => updateSettings({ autoRefresh: !settings.autoRefresh })}
                       role="switch"
                       aria-checked={settings.autoRefresh}
-                      aria-label="Toggle auto-refresh vulnerability data"
+                      aria-label={t('api.autoRefresh.toggleAriaLabel')}
                       className={`relative h-6 w-11 rounded-full transition-colors ${
                         settings.autoRefresh ? 'bg-primary' : 'bg-muted-foreground'
                       }`}
@@ -901,7 +902,7 @@ export function Settings() {
                   {/* Refresh interval — disabled (not hidden) while auto-refresh is off (FR-03.6). */}
                   <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
                     <label htmlFor="auto-refresh-interval" className="text-sm font-medium">
-                      Refresh interval
+                      {t('api.autoRefresh.refreshIntervalLabel')}
                     </label>
                     <select
                       id="auto-refresh-interval"
@@ -921,16 +922,14 @@ export function Settings() {
                   {/* Pause on battery guard (FR-03.6). */}
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-medium">Pause on battery</div>
-                      <p className="text-xs text-muted-foreground">
-                        Skip scheduled refreshes while the device is running on battery power
-                      </p>
+                      <div className="text-sm font-medium">{t('api.autoRefresh.pauseOnBatteryTitle')}</div>
+                      <p className="text-xs text-muted-foreground">{t('api.autoRefresh.pauseOnBatteryDescription')}</p>
                     </div>
                     <button
                       onClick={() => updateSettings({ pauseOnBattery: !settings.pauseOnBattery })}
                       role="switch"
                       aria-checked={settings.pauseOnBattery}
-                      aria-label="Toggle pause auto-refresh on battery"
+                      aria-label={t('api.autoRefresh.pauseOnBatteryToggleAriaLabel')}
                       disabled={!settings.autoRefresh}
                       className={`relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                         settings.pauseOnBattery ? 'bg-primary' : 'bg-muted-foreground'
@@ -951,7 +950,7 @@ export function Settings() {
             <div id="database" className="rounded-lg border border-border bg-card scroll-mt-6">
               <div className="flex items-center gap-3 border-b border-border p-4">
                 <Database className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">Database Management</h2>
+                <h2 className="font-semibold">{t('database.heading')}</h2>
               </div>
               <div className="p-4 space-y-6">
                 {/* Database Statistics Grid */}
@@ -961,7 +960,7 @@ export function Settings() {
                       <Shield className="h-5 w-5 text-red-500" />
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Total CVEs</div>
+                      <div className="text-xs text-muted-foreground">{t('database.totalCves')}</div>
                       <div className="text-lg font-semibold">{cveCount.toLocaleString()}</div>
                     </div>
                   </div>
@@ -970,7 +969,7 @@ export function Settings() {
                       <Database className="h-5 w-5 text-blue-500" />
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">CPE Matches</div>
+                      <div className="text-xs text-muted-foreground">{t('database.cpeMatches')}</div>
                       <div className="text-lg font-semibold">{cpeCount.toLocaleString()}</div>
                     </div>
                   </div>
@@ -979,7 +978,7 @@ export function Settings() {
                       <HardDrive className="h-5 w-5 text-green-500" />
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Database Size</div>
+                      <div className="text-xs text-muted-foreground">{t('database.databaseSize')}</div>
                       <div className="text-lg font-semibold">{formatBytes(databaseSize)}</div>
                     </div>
                   </div>
@@ -988,9 +987,9 @@ export function Settings() {
                       <Clock className="h-5 w-5 text-purple-500" />
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Last Sync</div>
+                      <div className="text-xs text-muted-foreground">{t('database.lastSync')}</div>
                       <div className="text-sm font-medium">
-                        {lastSyncAt ? new Date(lastSyncAt).toLocaleDateString() : 'Never'}
+                        {lastSyncAt ? new Date(lastSyncAt).toLocaleDateString() : t('never')}
                       </div>
                     </div>
                   </div>
@@ -1002,14 +1001,14 @@ export function Settings() {
                     <div className="flex items-center gap-3 mb-3">
                       <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
                       <div>
-                        <div className="font-medium text-blue-500">Downloading CVE Data</div>
-                        <div className="text-sm text-muted-foreground">Fetching vulnerability data from NVD API...</div>
+                        <div className="font-medium text-blue-500">{t('database.downloadingCveData')}</div>
+                        <div className="text-sm text-muted-foreground">{t('database.fetchingVulnerabilityData')}</div>
                       </div>
                     </div>
                     <div className="w-full bg-secondary rounded-full h-2">
                       <div className="bg-blue-500 rounded-full h-2 animate-pulse" style={{ width: '60%' }} />
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">This may take several minutes. Please wait...</p>
+                    <p className="text-xs text-muted-foreground mt-2">{t('database.downloadWaitNotice')}</p>
                   </div>
                 )}
 
@@ -1018,7 +1017,7 @@ export function Settings() {
                   <div className="flex items-end justify-between gap-4">
                     <div className="flex-1">
                       <label htmlFor="sync-schedule" className="mb-2 block text-sm font-medium">
-                        Sync Schedule
+                        {t('database.syncScheduleLabel')}
                       </label>
                       <select
                         id="sync-schedule"
@@ -1041,12 +1040,12 @@ export function Settings() {
                       {isSyncing ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Syncing...
+                          {t('syncing')}
                         </>
                       ) : (
                         <>
                           <RefreshCw className="h-4 w-4" />
-                          Sync Now
+                          {t('syncNow')}
                         </>
                       )}
                     </button>
@@ -1054,17 +1053,17 @@ export function Settings() {
                       onClick={handleBulkDownload}
                       disabled={isSyncing || isBulkDownloading}
                       className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      title="Download CVE data from NIST feeds (requires NVD API key)"
+                      title={t('database.bulkDownloadTitle')}
                     >
                       {isBulkDownloading ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Downloading...
+                          {t('database.downloading')}
                         </>
                       ) : (
                         <>
                           <Download className="h-4 w-4" />
-                          Bulk Download
+                          {t('database.bulkDownload')}
                         </>
                       )}
                     </button>
@@ -1074,14 +1073,16 @@ export function Settings() {
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" />
-                    Bulk Download requires an NVD API key. Add your key above or set NVD_API_KEY environment variable.
+                    {t('database.bulkDownloadRequiresApiKey')}
                   </p>
                   {syncStatus && (
                     <div className="mt-2 text-xs text-muted-foreground">
-                      <span className="font-medium">Last sync:</span>{' '}
-                      {syncStatus.lastSyncAt ? new Date(syncStatus.lastSyncAt).toLocaleString() : 'Never'}
+                      <span className="font-medium">{t('database.lastSyncLabel')}</span>{' '}
+                      {syncStatus.lastSyncAt ? new Date(syncStatus.lastSyncAt).toLocaleString() : t('never')}
                       {syncStatus.cvesAdded !== undefined && syncStatus.cvesAdded > 0 && (
-                        <span className="ml-2 text-green-600">+{syncStatus.cvesAdded} CVEs</span>
+                        <span className="ml-2 text-green-600">
+                          {t('database.cvesAddedBadge', { count: syncStatus.cvesAdded })}
+                        </span>
                       )}
                     </div>
                   )}
@@ -1089,7 +1090,7 @@ export function Settings() {
                   {/* Bandwidth Limit (FR-10.3) */}
                   <div className="mt-4">
                     <label htmlFor="bandwidth-limit" className="mb-2 block text-sm font-medium">
-                      Bandwidth Limit (KB/s, 0 = unlimited)
+                      {t('database.bandwidthLimitLabel')}
                     </label>
                     <input
                       id="bandwidth-limit"
@@ -1099,9 +1100,7 @@ export function Settings() {
                       onChange={(e) => handleBandwidthLimitChange(Number(e.target.value))}
                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Throttles NVD update downloads so a sync does not saturate the connection. 0 means no limit.
-                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">{t('database.bandwidthLimitDescription')}</p>
                   </div>
                 </div>
 
@@ -1109,24 +1108,22 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <HardDrive className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="font-medium">Storage Management</h3>
+                    <h3 className="font-medium">{t('database.storageManagementHeading')}</h3>
                   </div>
 
                   {/* Storage Location (FR-10.3) — read-only; changing it is an env/restart concern */}
                   <div>
-                    <label className="mb-2 block text-sm font-medium">Storage Location</label>
+                    <label className="mb-2 block text-sm font-medium">{t('database.storageLocationLabel')}</label>
                     <p className="break-all rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-                      {dbPath ?? 'Not available'}
+                      {dbPath ?? t('database.notAvailable')}
                     </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Set via the DATA_DIR environment variable; requires an application restart to change.
-                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">{t('database.storageLocationDescription')}</p>
                   </div>
 
                   {/* Storage Limit Slider */}
                   <div>
                     <label htmlFor="max-database-size" className="mb-2 block text-sm font-medium">
-                      Maximum Database Size
+                      {t('database.maxDatabaseSizeLabel')}
                     </label>
                     <select
                       id="max-database-size"
@@ -1140,9 +1137,7 @@ export function Settings() {
                         </option>
                       ))}
                     </select>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Database will be pruned when it exceeds this limit
-                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">{t('database.maxDatabaseSizeDescription')}</p>
                   </div>
 
                   {/* Prune Old CVEs */}
@@ -1150,17 +1145,15 @@ export function Settings() {
                     <div className="flex items-center gap-3">
                       <Trash2 className="h-5 w-5 text-muted-foreground" />
                       <div>
-                        <div className="font-medium">Prune Old CVEs</div>
-                        <p className="text-sm text-muted-foreground">
-                          Remove CVEs older than a specified year to save space
-                        </p>
+                        <div className="font-medium">{t('database.pruneOldCvesTitle')}</div>
+                        <p className="text-sm text-muted-foreground">{t('database.pruneOldCvesDescription')}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => handleStorageSettingChange('pruneOldCves', !storageSettings.pruneOldCves)}
                       role="switch"
                       aria-checked={storageSettings.pruneOldCves}
-                      aria-label="Toggle prune old CVEs"
+                      aria-label={t('database.pruneOldCvesAriaLabel')}
                       className={`relative h-6 w-11 rounded-full transition-colors ${
                         storageSettings.pruneOldCves ? 'bg-primary' : 'bg-muted-foreground'
                       }`}
@@ -1177,7 +1170,7 @@ export function Settings() {
                   {storageSettings.pruneOldCves && (
                     <div>
                       <label htmlFor="prune-year" className="mb-2 block text-sm font-medium">
-                        Keep CVEs From
+                        {t('database.keepCvesFromLabel')}
                       </label>
                       <select
                         id="prune-year"
@@ -1202,14 +1195,14 @@ export function Settings() {
                     className="flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                   >
                     <RefreshCw className="h-4 w-4" />
-                    Rebuild Indexes
+                    {t('database.rebuildIndexes')}
                   </button>
                   <button
                     onClick={() => setShowResetDialog(true)}
                     className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors"
                   >
                     <Trash2 className="h-4 w-4" />
-                    Reset Database
+                    {t('database.resetDatabase')}
                   </button>
                 </div>
               </div>
@@ -1219,7 +1212,7 @@ export function Settings() {
             <div id="backup" className="rounded-lg border border-border bg-card scroll-mt-6">
               <div className="flex items-center gap-3 border-b border-border p-4">
                 <Archive className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">Backup & Recovery</h2>
+                <h2 className="font-semibold">{t('backup.heading')}</h2>
               </div>
               <div className="p-4 space-y-6">
                 {/* Status Messages */}
@@ -1246,12 +1239,12 @@ export function Settings() {
                     {isCreatingBackup ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Creating...
+                        {t('backup.creating')}
                       </>
                     ) : (
                       <>
                         <Save className="h-4 w-4" />
-                        Create Backup
+                        {t('backup.createBackup')}
                       </>
                     )}
                   </button>
@@ -1261,13 +1254,13 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Settings2 className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="font-medium">Backup Configuration</h3>
+                    <h3 className="font-medium">{t('backup.configHeading')}</h3>
                   </div>
 
                   {/* Retention Count */}
                   <div>
                     <label htmlFor="backup-retention" className="mb-2 block text-sm font-medium">
-                      Keep Backups
+                      {t('backup.keepBackupsLabel')}
                     </label>
                     <select
                       id="backup-retention"
@@ -1279,14 +1272,12 @@ export function Settings() {
                       }}
                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      <option value={1}>1 backup</option>
-                      <option value={3}>3 backups</option>
-                      <option value={5}>5 backups</option>
-                      <option value={10}>10 backups</option>
+                      <option value={1}>{t('backup.retentionOptions.backups1')}</option>
+                      <option value={3}>{t('backup.retentionOptions.backups3')}</option>
+                      <option value={5}>{t('backup.retentionOptions.backups5')}</option>
+                      <option value={10}>{t('backup.retentionOptions.backups10')}</option>
                     </select>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Older backups will be automatically deleted when limit is reached
-                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">{t('backup.retentionDescription')}</p>
                   </div>
                 </div>
 
@@ -1294,12 +1285,12 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <History className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="font-medium">Available Backups ({backups.length})</h3>
+                    <h3 className="font-medium">{t('backup.availableBackups', { count: backups.length })}</h3>
                   </div>
 
                   {backups.length === 0 ? (
                     <div className="text-sm text-muted-foreground p-4 rounded-lg bg-muted text-center">
-                      No backups available. Create your first backup to protect your data.
+                      {t('backup.noBackups')}
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-[300px] overflow-y-auto">
@@ -1332,8 +1323,8 @@ export function Settings() {
                               <div className="text-sm font-medium">{new Date(backup.timestamp).toLocaleString()}</div>
                               <div className="text-xs text-muted-foreground">
                                 {formatBackupSize(backup.size)}
-                                {backup.integrity === 'valid' && ' • Verified'}
-                                {backup.integrity === 'invalid' && ' • Corrupted'}
+                                {backup.integrity === 'valid' && t('backup.verifiedSuffix')}
+                                {backup.integrity === 'invalid' && t('backup.corruptedSuffix')}
                               </div>
                             </div>
                           </div>
@@ -1341,8 +1332,8 @@ export function Settings() {
                             <button
                               onClick={() => handleVerifyBackup(backup.id)}
                               className="p-2 rounded-md hover:bg-muted transition-colors"
-                              aria-label="Verify backup integrity"
-                              title="Verify integrity"
+                              aria-label={t('backup.verifyIntegrityAriaLabel')}
+                              title={t('backup.verifyIntegrityTitle')}
                             >
                               <RefreshCw className="h-4 w-4 text-muted-foreground" />
                             </button>
@@ -1353,16 +1344,16 @@ export function Settings() {
                               }}
                               disabled={backup.integrity === 'invalid'}
                               className="p-2 rounded-md hover:bg-muted transition-colors disabled:opacity-50"
-                              aria-label="Restore backup"
-                              title="Restore backup"
+                              aria-label={t('backup.restoreAction')}
+                              title={t('backup.restoreAction')}
                             >
                               <RotateCcw className="h-4 w-4 text-muted-foreground" />
                             </button>
                             <button
                               onClick={() => handleDeleteBackup(backup.id)}
                               className="p-2 rounded-md hover:bg-destructive/10 transition-colors"
-                              aria-label="Delete backup"
-                              title="Delete backup"
+                              aria-label={t('backup.deleteAction')}
+                              title={t('backup.deleteAction')}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </button>
@@ -1379,13 +1370,13 @@ export function Settings() {
             <div id="performance" className="rounded-lg border border-border bg-card scroll-mt-6">
               <div className="flex items-center gap-3 border-b border-border p-4">
                 <Gauge className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">Performance Tuning</h2>
+                <h2 className="font-semibold">{t('performance.heading')}</h2>
               </div>
               <div className="p-4 space-y-4">
                 {/* Search Result Limit */}
                 <div>
                   <label htmlFor="search-result-limit" className="mb-2 block text-sm font-medium">
-                    Search Result Limit
+                    {t('performance.searchResultLimitLabel')}
                   </label>
                   <select
                     id="search-result-limit"
@@ -1399,9 +1390,7 @@ export function Settings() {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Maximum number of results returned from vulnerability searches
-                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">{t('performance.searchResultLimitDescription')}</p>
                 </div>
 
                 {/* Search Cache Toggle */}
@@ -1409,8 +1398,8 @@ export function Settings() {
                   <div className="flex items-center gap-3">
                     <Zap className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <div className="font-medium">Enable Search Cache</div>
-                      <p className="text-sm text-muted-foreground">Cache search results for faster repeated queries</p>
+                      <div className="font-medium">{t('performance.enableSearchCacheTitle')}</div>
+                      <p className="text-sm text-muted-foreground">{t('performance.enableSearchCacheDescription')}</p>
                     </div>
                   </div>
                   <button
@@ -1419,7 +1408,7 @@ export function Settings() {
                     }
                     role="switch"
                     aria-checked={performanceSettings.enableSearchCache}
-                    aria-label="Toggle search cache"
+                    aria-label={t('performance.toggleSearchCacheAriaLabel')}
                     className={`relative h-6 w-11 rounded-full transition-colors ${
                       performanceSettings.enableSearchCache ? 'bg-primary' : 'bg-muted-foreground'
                     }`}
@@ -1436,7 +1425,7 @@ export function Settings() {
                 {performanceSettings.enableSearchCache && (
                   <div>
                     <label htmlFor="cache-size" className="mb-2 block text-sm font-medium">
-                      Cache Size
+                      {t('performance.cacheSizeLabel')}
                     </label>
                     <select
                       id="cache-size"
@@ -1450,9 +1439,7 @@ export function Settings() {
                         </option>
                       ))}
                     </select>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Maximum memory allocated for search result caching
-                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">{t('performance.cacheSizeDescription')}</p>
                   </div>
                 )}
               </div>
@@ -1462,16 +1449,14 @@ export function Settings() {
             <div id="data-management" className="rounded-lg border border-border bg-card scroll-mt-6">
               <div className="flex items-center gap-3 border-b border-border p-4">
                 <FileText className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">Data Management</h2>
+                <h2 className="font-semibold">{t('dataManagement.heading')}</h2>
               </div>
               <div className="p-4 space-y-4">
                 {/* Import/Export Profiles */}
                 <div className="rounded-lg border border-border bg-muted p-4">
                   <div className="mb-3">
-                    <div className="font-medium">Import/Export Settings Profiles</div>
-                    <p className="text-sm text-muted-foreground">
-                      Share your settings profiles across different installations
-                    </p>
+                    <div className="font-medium">{t('dataManagement.importExportTitle')}</div>
+                    <p className="text-sm text-muted-foreground">{t('dataManagement.importExportDescription')}</p>
                   </div>
                   <div className="flex gap-3">
                     <button
@@ -1480,16 +1465,16 @@ export function Settings() {
                       className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Download className="h-4 w-4" />
-                      Export Profiles
+                      {t('dataManagement.exportProfiles')}
                     </button>
                     <label className="flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 cursor-pointer transition-colors">
                       <Upload className="h-4 w-4" />
-                      Import Profiles
+                      {t('dataManagement.importProfiles')}
                       <input type="file" accept=".json" onChange={handleImportProfiles} className="hidden" />
                     </label>
                   </div>
                   {importSuccess && (
-                    <div className="mt-3 text-sm text-green-600">Settings profiles imported successfully!</div>
+                    <div className="mt-3 text-sm text-green-600">{t('dataManagement.importedSuccessfully')}</div>
                   )}
                   {importError && <div className="mt-3 text-sm text-destructive">{importError}</div>}
                 </div>
@@ -1497,7 +1482,7 @@ export function Settings() {
                 {/* Data Retention */}
                 <div>
                   <label htmlFor="data-retention" className="mb-2 block text-sm font-medium">
-                    Data Retention Period
+                    {t('dataManagement.dataRetentionLabel')}
                   </label>
                   <select
                     id="data-retention"
@@ -1505,19 +1490,19 @@ export function Settings() {
                     onChange={(e) => updateSettings({ dataRetentionDays: Number(e.target.value) })}
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   >
-                    <option value={7}>7 days</option>
-                    <option value={30}>30 days</option>
-                    <option value={60}>60 days</option>
-                    <option value={90}>90 days</option>
-                    <option value={180}>6 months</option>
-                    <option value={365}>1 year</option>
-                    <option value={-1}>Never (keep all data)</option>
+                    <option value={7}>{t('dataManagement.retentionOptions.days7')}</option>
+                    <option value={30}>{t('dataManagement.retentionOptions.days30')}</option>
+                    <option value={60}>{t('dataManagement.retentionOptions.days60')}</option>
+                    <option value={90}>{t('dataManagement.retentionOptions.days90')}</option>
+                    <option value={180}>{t('dataManagement.retentionOptions.months6')}</option>
+                    <option value={365}>{t('dataManagement.retentionOptions.year1')}</option>
+                    <option value={-1}>{t('dataManagement.retentionOptions.never')}</option>
                   </select>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Scan results older than the specified period will be automatically deleted
+                    {t('dataManagement.retentionDescription')}
                     {settings.dataRetentionDays === -1
-                      ? '. Data is never deleted automatically.'
-                      : ` (every ${settings.dataRetentionDays} days).`}
+                      ? t('dataManagement.retentionNeverSuffix')
+                      : t('dataManagement.retentionDaysSuffix', { days: settings.dataRetentionDays })}
                   </p>
                 </div>
               </div>
@@ -1527,7 +1512,7 @@ export function Settings() {
             <div id="threat-intel" className="rounded-lg border border-border bg-card scroll-mt-6">
               <div className="flex items-center gap-3 border-b border-border p-4">
                 <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">Threat Intelligence</h2>
+                <h2 className="font-semibold">{t('threatIntel.heading')}</h2>
               </div>
               <div className="p-4 space-y-6">
                 {/* Status Messages */}
@@ -1551,7 +1536,7 @@ export function Settings() {
                       <AlertTriangle className="h-5 w-5 text-red-500" />
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">KEV Entries</div>
+                      <div className="text-xs text-muted-foreground">{t('threatIntel.kevEntries')}</div>
                       <div className="text-lg font-semibold">{kevStats?.total ?? 0}</div>
                     </div>
                   </div>
@@ -1560,7 +1545,7 @@ export function Settings() {
                       <Shield className="h-5 w-5 text-orange-500" />
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Ransomware</div>
+                      <div className="text-xs text-muted-foreground">{t('threatIntel.ransomware')}</div>
                       <div className="text-lg font-semibold">{kevStats?.ransomwareRelated ?? 0}</div>
                     </div>
                   </div>
@@ -1569,9 +1554,9 @@ export function Settings() {
                       <Clock className="h-5 w-5 text-purple-500" />
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Last Updated</div>
+                      <div className="text-xs text-muted-foreground">{t('threatIntel.lastUpdated')}</div>
                       <div className="text-sm font-medium">
-                        {kevStats?.lastUpdated ? new Date(kevStats.lastUpdated).toLocaleDateString() : 'Never'}
+                        {kevStats?.lastUpdated ? new Date(kevStats.lastUpdated).toLocaleDateString() : t('never')}
                       </div>
                     </div>
                   </div>
@@ -1582,10 +1567,8 @@ export function Settings() {
                   <div className="flex items-center gap-3">
                     <RefreshCw className={`h-5 w-5 text-muted-foreground ${isSyncingKev ? 'animate-spin' : ''}`} />
                     <div>
-                      <div className="font-medium">Sync KEV Catalog</div>
-                      <p className="text-sm text-muted-foreground">
-                        Download latest CISA Known Exploited Vulnerabilities catalog
-                      </p>
+                      <div className="font-medium">{t('threatIntel.syncKevTitle')}</div>
+                      <p className="text-sm text-muted-foreground">{t('threatIntel.syncKevDescription')}</p>
                     </div>
                   </div>
                   <button
@@ -1596,12 +1579,12 @@ export function Settings() {
                     {isSyncingKev ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Syncing...
+                        {t('syncing')}
                       </>
                     ) : (
                       <>
                         <RefreshCw className="h-4 w-4" />
-                        Sync Now
+                        {t('syncNow')}
                       </>
                     )}
                   </button>
@@ -1610,8 +1593,8 @@ export function Settings() {
                 {/* Info */}
                 <div className="text-xs text-muted-foreground">
                   <p>
-                    The <strong>CISA KEV Catalog</strong> contains vulnerabilities that have been actively exploited in
-                    the wild. EPSS scores predict the likelihood of exploitation based on threat intelligence.
+                    {t('threatIntel.infoBefore')} <strong>{t('threatIntel.infoStrong')}</strong>{' '}
+                    {t('threatIntel.infoAfter')}
                   </p>
                 </div>
               </div>
@@ -1620,24 +1603,21 @@ export function Settings() {
             {/* Danger Zone */}
             <div id="danger-zone" className="rounded-lg border border-destructive/50 bg-destructive/5 scroll-mt-6">
               <div className="border-b border-destructive/50 p-4">
-                <h2 className="font-semibold text-destructive">Danger Zone</h2>
+                <h2 className="font-semibold text-destructive">{t('dangerZone.heading')}</h2>
               </div>
               <div className="p-4">
                 <button
                   onClick={() => setShowResetSettingsDialog(true)}
                   className="rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
                 >
-                  Reset All Settings to Defaults
+                  {t('dangerZone.resetAllSettings')}
                 </button>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  This will reset all settings to their default values. Your projects and vulnerability data will not be
-                  affected.
-                </p>
+                <p className="mt-2 text-xs text-muted-foreground">{t('dangerZone.resetAllSettingsDescription')}</p>
               </div>
             </div>
 
             {/* Version Info */}
-            <div className="text-center text-sm text-muted-foreground">VulnAssessTool v0.1.0</div>
+            <div className="text-center text-sm text-muted-foreground">{t('versionInfo')}</div>
           </div>
         </div>
       </div>
@@ -1645,10 +1625,10 @@ export function Settings() {
       {/* Reset Settings Confirmation Dialog */}
       <ConfirmDialog
         open={showResetSettingsDialog}
-        title="Reset Settings"
-        message="Reset all settings to default values? Your projects and vulnerability data will not be affected."
-        confirmLabel="Reset to Defaults"
-        cancelLabel="Cancel"
+        title={t('dialogs.resetSettings.title')}
+        message={t('dialogs.resetSettings.message')}
+        confirmLabel={t('dialogs.resetSettings.confirmLabel')}
+        cancelLabel={t('common:actions.cancel')}
         variant="danger"
         onConfirm={handleConfirmResetSettings}
         onCancel={() => setShowResetSettingsDialog(false)}
@@ -1657,10 +1637,10 @@ export function Settings() {
       {/* Reset Database Confirmation Dialog */}
       <ConfirmDialog
         open={showResetDialog}
-        title="Reset Database"
-        message="This will delete all CVE data from the local database. You will need to re-sync the database after resetting. This action cannot be undone."
-        confirmLabel="Reset Database"
-        cancelLabel="Cancel"
+        title={t('dialogs.resetDatabase.title')}
+        message={t('dialogs.resetDatabase.message')}
+        confirmLabel={t('dialogs.resetDatabase.confirmLabel')}
+        cancelLabel={t('common:actions.cancel')}
         variant="danger"
         onConfirm={handleResetDatabase}
         onCancel={() => setShowResetDialog(false)}
@@ -1670,10 +1650,10 @@ export function Settings() {
       {/* Rebuild Indexes Confirmation Dialog */}
       <ConfirmDialog
         open={showRebuildDialog}
-        title="Rebuild Indexes"
-        message="This will rebuild all database indexes. The operation may take a few minutes depending on the database size. Search functionality may be temporarily slower during the rebuild."
-        confirmLabel="Rebuild Indexes"
-        cancelLabel="Cancel"
+        title={t('dialogs.rebuildIndexes.title')}
+        message={t('dialogs.rebuildIndexes.message')}
+        confirmLabel={t('dialogs.rebuildIndexes.confirmLabel')}
+        cancelLabel={t('common:actions.cancel')}
         variant="warning"
         onConfirm={handleRebuildIndexes}
         onCancel={() => setShowRebuildDialog(false)}
@@ -1683,10 +1663,10 @@ export function Settings() {
       {/* Restore Backup Confirmation Dialog */}
       <ConfirmDialog
         open={showRestoreDialog}
-        title="Restore Backup"
-        message="This will replace your current database with the selected backup. Any changes made since the backup was created will be lost. The application will reload after restoration."
-        confirmLabel="Restore Backup"
-        cancelLabel="Cancel"
+        title={t('dialogs.restoreBackup.title')}
+        message={t('dialogs.restoreBackup.message')}
+        confirmLabel={t('dialogs.restoreBackup.confirmLabel')}
+        cancelLabel={t('common:actions.cancel')}
         variant="warning"
         onConfirm={() => selectedBackupId && handleRestoreBackup(selectedBackupId)}
         onCancel={() => {

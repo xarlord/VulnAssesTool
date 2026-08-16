@@ -1,0 +1,12 @@
+{
+  "title": "Notifications",
+  "enableNotifications": "Enable Notifications",
+  "desktopNotifications": "Desktop Notifications",
+  "categoriesLabel": "Categories",
+  "categories": {
+    "critical_vuln": "Critical vulnerabilities",
+    "scan_complete": "Scan complete",
+    "update_available": "Update available",
+    "system": "System"
+  }
+}

@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
   Filter,
@@ -35,6 +36,7 @@ interface VulnerabilitiesTabProps {
 }
 
 export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: VulnerabilitiesTabProps) {
+  const { t } = useTranslation('vulnerabilitiesTab')
   const [severityFilter, setSeverityFilter] = React.useState<'all' | Vulnerability['severity']>('all')
   const [vulnSearch, setVulnSearch] = React.useState('')
   const [sortField, setSortField] = React.useState<'severity' | 'cvss' | 'date'>('severity')
@@ -143,7 +145,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
       filters,
     }
     setFilterPresets([...filterPresets, newPreset])
-    toast.success('Preset Saved', `Filter preset "${name}" has been saved.`)
+    toast.success(t('toast.presetSaved.title'), t('toast.presetSaved.message', { name }))
   }
 
   // Load filter preset
@@ -174,13 +176,13 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
       setExploitFilter(filters.exploited ? 'exploited' : 'not-exploited')
     }
 
-    toast.success('Preset Loaded', `Filter preset "${preset.name}" has been applied.`)
+    toast.success(t('toast.presetLoaded.title'), t('toast.presetLoaded.message', { name: preset.name }))
   }
 
   // Delete filter preset
   const handleDeletePreset = (presetId: string) => {
     setFilterPresets(filterPresets.filter((p) => p.id !== presetId))
-    toast.success('Preset Deleted', 'Filter preset has been deleted.')
+    toast.success(t('toast.presetDeleted.title'), t('toast.presetDeleted.message'))
   }
 
   // Get current filters for saving
@@ -230,10 +232,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
     if (selected.length === 0) return
     const csv = exportVulnerabilitiesToCsv(selected, buildComponentMap(selected))
     downloadCsv(csv, generateFilename(project.name, 'csv', 'vulnerabilities'))
-    toast.success(
-      'Export Complete',
-      `Exported ${selected.length} selected vulnerabilit${selected.length === 1 ? 'y' : 'ies'} to CSV.`,
-    )
+    toast.success(t('toast.exportComplete.title'), t('toast.exportComplete.message', { count: selected.length }))
   }
 
   // Handle copy vulnerability ID
@@ -241,12 +240,12 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
     try {
       await navigator.clipboard.writeText(vulnId)
       setCopiedVulnId(vulnId)
-      toast.success(`Copied ${vulnId} to clipboard`)
+      toast.success(t('toast.copied', { id: vulnId }))
       if (copiedVulnIdTimerRef.current) clearTimeout(copiedVulnIdTimerRef.current)
       copiedVulnIdTimerRef.current = setTimeout(() => setCopiedVulnId(null), 2000)
     } catch (error) {
       console.error('Failed to copy:', error)
-      toast.error('Failed to copy to clipboard')
+      toast.error(t('toast.copyFailed'))
     }
   }
 
@@ -259,10 +258,10 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
 
   return (
     <div className="mx-auto max-w-7xl mt-6 space-y-4">
-      <h2 className="text-lg font-semibold">Vulnerabilities</h2>
+      <h2 className="text-lg font-semibold">{t('heading')}</h2>
       <div className="rounded-lg border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border p-4">
-          <h2 className="font-semibold">Vulnerabilities ({project.vulnerabilities.length})</h2>
+          <h2 className="font-semibold">{t('header.title', { count: project.vulnerabilities.length })}</h2>
           {project.vulnerabilities.length > 0 && (
             <div className="flex items-center gap-2">
               <FilterPresets
@@ -277,20 +276,20 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                 className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
               >
                 <Filter className="h-4 w-4" />
-                Advanced Filters
+                {t('toolbar.advancedFilters')}
                 {showAdvancedFilters ? <CheckCircle2 className="h-4 w-4" /> : null}
               </button>
               <label
                 className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-sm"
-                title="Hide low-confidence name-only matches on unversioned components (KEV / high-risk findings are always shown)"
+                title={t('toolbar.hideNameOnlyMatches.title')}
               >
                 <input
                   type="checkbox"
                   checked={hideNameOnlyMatches}
                   onChange={(e) => setHideNameOnlyMatches(e.target.checked)}
-                  aria-label="Hide low-confidence name-only matches"
+                  aria-label={t('toolbar.hideNameOnlyMatches.ariaLabel')}
                 />
-                Hide low-confidence
+                {t('toolbar.hideNameOnlyMatches.label')}
               </label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -298,32 +297,32 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                   type="text"
                   value={vulnSearch}
                   onChange={(e) => setVulnSearch(e.target.value)}
-                  placeholder="Search by CVE ID or keyword..."
-                  aria-label="Search vulnerabilities"
+                  placeholder={t('toolbar.search.placeholder')}
+                  aria-label={t('toolbar.search.ariaLabel')}
                   className="w-56 rounded-md border border-border bg-background py-1 pl-8 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <select
                 value={sortField}
                 onChange={(e) => setSortField(e.target.value as 'severity' | 'cvss' | 'date')}
-                aria-label="Sort by"
+                aria-label={t('toolbar.sort.ariaLabel')}
                 className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                <option value="severity">Sort: Severity</option>
-                <option value="cvss">Sort: CVSS Score</option>
-                <option value="date">Sort: Publication Date</option>
+                <option value="severity">{t('toolbar.sort.severity')}</option>
+                <option value="cvss">{t('toolbar.sort.cvss')}</option>
+                <option value="date">{t('toolbar.sort.date')}</option>
               </select>
               <select
                 value={severityFilter}
                 onChange={(e) => setSeverityFilter(e.target.value as 'all' | Vulnerability['severity'])}
-                aria-label="Filter by severity"
+                aria-label={t('toolbar.severityFilter.ariaLabel')}
                 className="rounded-md border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                <option value="all">All Severities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
+                <option value="all">{t('toolbar.severityFilter.all')}</option>
+                <option value="critical">{t('toolbar.severityFilter.critical')}</option>
+                <option value="high">{t('toolbar.severityFilter.high')}</option>
+                <option value="medium">{t('toolbar.severityFilter.medium')}</option>
+                <option value="low">{t('toolbar.severityFilter.low')}</option>
               </select>
             </div>
           )}
@@ -335,31 +334,31 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <CvssRangeSlider value={cvssRange} onChange={setCvssRange} />
               <MultiSelectFilter
-                label="Source"
+                label={t('advancedPanel.source.label')}
                 options={[
-                  { value: 'nvd', label: 'NVD' },
-                  { value: 'osv', label: 'OSV' },
-                  { value: 'both', label: 'Both' },
+                  { value: 'nvd', label: t('advancedPanel.source.nvd') },
+                  { value: 'osv', label: t('advancedPanel.source.osv') },
+                  { value: 'both', label: t('advancedPanel.source.both') },
                 ]}
                 selected={sourceFilter}
                 onChange={setSourceFilter}
               />
               <MultiSelectFilter
-                label="Reference Tags"
+                label={t('advancedPanel.referenceTags.label')}
                 options={[
-                  { value: 'exploit', label: 'Exploit' },
-                  { value: 'patch', label: 'Patch Available' },
-                  { value: 'vendor advisory', label: 'Vendor Advisory' },
-                  { value: 'third party advisory', label: 'Third Party Advisory' },
-                  { value: 'mitigation', label: 'Mitigation' },
-                  { value: 'release notes', label: 'Release Notes' },
+                  { value: 'exploit', label: t('advancedPanel.referenceTags.exploit') },
+                  { value: 'patch', label: t('advancedPanel.referenceTags.patch') },
+                  { value: 'vendor advisory', label: t('advancedPanel.referenceTags.vendorAdvisory') },
+                  { value: 'third party advisory', label: t('advancedPanel.referenceTags.thirdPartyAdvisory') },
+                  { value: 'mitigation', label: t('advancedPanel.referenceTags.mitigation') },
+                  { value: 'release notes', label: t('advancedPanel.referenceTags.releaseNotes') },
                 ]}
                 selected={referenceTagFilter}
                 onChange={setReferenceTagFilter}
               />
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="patch-availability-filter">
-                  Patch Availability
+                  {t('advancedPanel.patchAvailability.label')}
                 </label>
                 <select
                   id="patch-availability-filter"
@@ -367,14 +366,14 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                   onChange={(e) => setPatchFilter(e.target.value as 'all' | 'available' | 'unavailable')}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="all">All</option>
-                  <option value="available">Has Patch</option>
-                  <option value="unavailable">No Patch</option>
+                  <option value="all">{t('advancedPanel.patchAvailability.all')}</option>
+                  <option value="available">{t('advancedPanel.patchAvailability.available')}</option>
+                  <option value="unavailable">{t('advancedPanel.patchAvailability.unavailable')}</option>
                 </select>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="exploit-status-filter">
-                  Exploit Status
+                  {t('advancedPanel.exploitStatus.label')}
                 </label>
                 <select
                   id="exploit-status-filter"
@@ -382,9 +381,9 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                   onChange={(e) => setExploitFilter(e.target.value as 'all' | 'exploited' | 'not-exploited')}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="all">All</option>
-                  <option value="exploited">Exploited (KEV)</option>
-                  <option value="not-exploited">Not Exploited</option>
+                  <option value="all">{t('advancedPanel.exploitStatus.all')}</option>
+                  <option value="exploited">{t('advancedPanel.exploitStatus.exploited')}</option>
+                  <option value="not-exploited">{t('advancedPanel.exploitStatus.notExploited')}</option>
                 </select>
               </div>
             </div>
@@ -395,7 +394,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                   cvssRange[0] !== 0 ||
                   cvssRange[1] !== 10 ||
                   patchFilter !== 'all' ||
-                  exploitFilter !== 'all') && <span>Advanced filters active</span>}
+                  exploitFilter !== 'all') && <span>{t('advancedPanel.active')}</span>}
               </span>
               <button
                 onClick={() => {
@@ -407,7 +406,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                 }}
                 className="text-sm text-primary hover:underline"
               >
-                Clear Advanced Filters
+                {t('advancedPanel.clear')}
               </button>
             </div>
           </div>
@@ -416,20 +415,20 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
           {/* Bulk-select action bar (FR-04.1) — appears only once vulnerabilities are checked. */}
           {selectedVulnIds.size > 0 && (
             <div className="mb-4 flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm">
-              <span className="font-medium">{selectedVulnIds.size} selected</span>
+              <span className="font-medium">{t('bulkActions.selectedCount', { count: selectedVulnIds.size })}</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSelectedVulnIds(new Set())}
                   className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:underline"
                 >
-                  Clear
+                  {t('bulkActions.clear')}
                 </button>
                 <button
                   onClick={handleExportSelected}
                   className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
                   <Download className="h-4 w-4" />
-                  Export Selected ({selectedVulnIds.size})
+                  {t('bulkActions.exportSelected', { count: selectedVulnIds.size })}
                 </button>
               </div>
             </div>
@@ -438,10 +437,9 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
           {hideNameOnlyMatches && nameOnlyNoise.hidden > 0 && (
             <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
               <span className="font-medium text-amber-700 dark:text-amber-400">
-                {nameOnlyNoise.gapComponents} component{nameOnlyNoise.gapComponents === 1 ? '' : 's'} with coverage gaps
+                {t('noise.gapComponentsCount', { count: nameOnlyNoise.gapComponents })}
               </span>{' '}
-              have {nameOnlyNoise.hidden} low-confidence (name-only) match
-              {nameOnlyNoise.hidden === 1 ? '' : 'es'} hidden.{' '}
+              {t('noise.hiddenCount', { count: nameOnlyNoise.hidden })}{' '}
               <button
                 onClick={() => setHideNameOnlyMatches(false)}
                 // text-foreground, not text-primary: text-primary on this amber-tinted
@@ -449,7 +447,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                 // (NFR-04.5). Always-on underline keeps it identifiable as a link.
                 className="font-medium text-foreground underline hover:no-underline"
               >
-                Reveal
+                {t('noise.reveal')}
               </button>
             </div>
           )}
@@ -458,16 +456,14 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
             // — text-destructive on bg-destructive/10 composited to only 3.64:1 in dark mode,
             // below WCAG AA 4.5:1 (NFR-04.5). Same fix pattern as the severity headers above.
             <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-foreground">
-              {nameOnlyNoise.keptHighRisk} high-risk finding
-              {nameOnlyNoise.keptHighRisk === 1 ? '' : 's'} kept visible despite low match confidence (KEV / high EPSS /
-              critical or high severity).
+              {t('noise.keptHighRiskCount', { count: nameOnlyNoise.keptHighRisk })}
             </div>
           )}
           {project.vulnerabilities.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <AlertTriangle className="mb-3 h-12 w-12 text-muted-foreground" />
-              <p className="text-muted-foreground">No vulnerabilities found</p>
-              <p className="text-sm text-muted-foreground">Run a vulnerability scan to check for security issues</p>
+              <p className="text-muted-foreground">{t('empty.title')}</p>
+              <p className="text-sm text-muted-foreground">{t('empty.subtitle')}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -507,10 +503,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                   groupedVulns = { all: flat }
                   severityConfig = {
                     all: {
-                      label:
-                        sortField === 'cvss'
-                          ? 'All vulnerabilities (highest CVSS first)'
-                          : 'All vulnerabilities (newest first)',
+                      label: sortField === 'cvss' ? t('group.label.allByCvss') : t('group.label.allByDate'),
                       color: 'text-foreground',
                       textColor: 'text-foreground',
                       bgColor: 'bg-muted/30',
@@ -527,28 +520,28 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                   }
                   severityConfig = {
                     critical: {
-                      label: 'Critical',
+                      label: t('group.label.critical'),
                       color: 'text-destructive',
                       textColor: 'text-foreground',
                       bgColor: 'bg-destructive/10',
                       borderColor: 'border-destructive/30',
                     },
                     high: {
-                      label: 'High',
+                      label: t('group.label.high'),
                       color: 'text-orange-700 dark:text-orange-400',
                       textColor: 'text-orange-700 dark:text-orange-400',
                       bgColor: 'bg-orange-500/10',
                       borderColor: 'border-orange-500/30',
                     },
                     medium: {
-                      label: 'Medium',
+                      label: t('group.label.medium'),
                       color: 'text-amber-700 dark:text-amber-400',
                       textColor: 'text-amber-700 dark:text-amber-400',
                       bgColor: 'bg-yellow-600/10',
                       borderColor: 'border-yellow-600/30',
                     },
                     low: {
-                      label: 'Low',
+                      label: t('group.label.low'),
                       color: 'text-blue-700 dark:text-blue-400',
                       textColor: 'text-blue-700 dark:text-blue-400',
                       bgColor: 'bg-blue-500/10',
@@ -562,8 +555,8 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                 return totalShown === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <Filter className="mb-3 h-12 w-12 text-muted-foreground" />
-                    <p className="text-muted-foreground">No vulnerabilities match the current filters</p>
-                    <p className="text-sm text-muted-foreground">Try adjusting your filter settings</p>
+                    <p className="text-muted-foreground">{t('noResults.title')}</p>
+                    <p className="text-sm text-muted-foreground">{t('noResults.subtitle')}</p>
                     <button
                       onClick={() => {
                         setSeverityFilter('all')
@@ -576,7 +569,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                       }}
                       className="mt-2 text-sm text-primary hover:underline"
                     >
-                      Clear all filters
+                      {t('noResults.clearAll')}
                     </button>
                   </div>
                 ) : (
@@ -596,7 +589,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                 <h3 className={`font-semibold ${config.textColor}`}>{config.label}</h3>
                               </div>
                               <span className={`text-sm font-medium ${config.textColor}`}>
-                                {vulns.length} {vulns.length === 1 ? 'vulnerability' : 'vulnerabilities'}
+                                {t('group.count', { count: vulns.length })}
                               </span>
                             </div>
 
@@ -626,7 +619,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                             type="checkbox"
                                             checked={selectedVulnIds.has(vuln.id)}
                                             onChange={() => toggleVulnSelected(vuln.id)}
-                                            aria-label={`Select ${primaryId}`}
+                                            aria-label={t('row.selectAriaLabel', { id: primaryId })}
                                             className="shrink-0 mt-1 md:mt-0 h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-ring"
                                           />
                                           <button
@@ -642,7 +635,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                               })
                                             }}
                                             className="shrink-0 mt-0.5 md:mt-0"
-                                            aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                                            aria-label={isExpanded ? t('row.collapseDetails') : t('row.expandDetails')}
                                           >
                                             {isExpanded ? (
                                               <ChevronDown className={`h-4 w-4 ${config.color}`} />
@@ -682,23 +675,25 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                               ))}
                                               {hasExploitRef && (
                                                 <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900/40 dark:text-red-300">
-                                                  Exploit
+                                                  {t('row.badges.exploit')}
                                                 </span>
                                               )}
                                               {hasPatchRef && (
                                                 <span className="inline-flex items-center rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                                                  Patch
+                                                  {t('row.badges.patch')}
                                                 </span>
                                               )}
                                               {hasMitigationRef && (
                                                 <span className="inline-flex items-center rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-medium text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300">
-                                                  Mitigation
+                                                  {t('row.badges.mitigation')}
                                                 </span>
                                               )}
                                               {aliases.length > 0 && (
                                                 <span className="text-xs text-muted-foreground font-normal truncate max-w-[120px] md:max-w-none">
-                                                  (aka: {aliases.slice(0, 2).join(', ')}
-                                                  {aliases.length > 2 ? ` +${aliases.length - 2}` : ''})
+                                                  {t('row.akaPrefix')}
+                                                  {aliases.slice(0, 2).join(', ')}
+                                                  {aliases.length > 2 ? ` +${aliases.length - 2}` : ''}
+                                                  {t('row.akaSuffix')}
                                                 </span>
                                               )}
                                             </div>
@@ -709,24 +704,27 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                                   : vuln.source.toUpperCase()}
                                               </span>
                                               {vuln.cvssScore && (
-                                                <span className="whitespace-nowrap">CVSS: {vuln.cvssScore}</span>
+                                                <span className="whitespace-nowrap">
+                                                  {t('row.cvss', { score: vuln.cvssScore })}
+                                                </span>
                                               )}
                                               {sbomFilenames.length > 0 && (
                                                 <span className="whitespace-nowrap hidden sm:inline">
-                                                  From: {sbomFilenames.slice(0, 1).join(', ')}
+                                                  {t('row.fromPrefix')}
+                                                  {sbomFilenames.slice(0, 1).join(', ')}
                                                   {sbomFilenames.length > 1 ? ` +${sbomFilenames.length - 1}` : ''}
                                                 </span>
                                               )}
                                               {vuln.affectedComponents.length > 0 && (
                                                 <span className="whitespace-nowrap hidden sm:inline">
-                                                  {vuln.affectedComponents.length} component
-                                                  {vuln.affectedComponents.length > 1 ? 's' : ''}
+                                                  {t('row.affectedComponents', {
+                                                    count: vuln.affectedComponents.length,
+                                                  })}
                                                 </span>
                                               )}
                                               {(vuln.references?.length ?? 0) > 0 && (
                                                 <span className="whitespace-nowrap">
-                                                  {vuln.references?.length} ref
-                                                  {(vuln.references?.length ?? 0) > 1 ? 's' : ''}
+                                                  {t('row.referenceCount', { count: vuln.references?.length ?? 0 })}
                                                 </span>
                                               )}
                                             </div>
@@ -736,11 +734,11 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                           <button
                                             onClick={() => handleCopyVulnId(primaryId)}
                                             className="flex items-center gap-1 rounded border border-border bg-secondary px-2 py-1 text-xs font-medium hover:bg-secondary/80 transition-colors"
-                                            aria-label={`Copy ${primaryId} to clipboard`}
+                                            aria-label={t('row.copyAriaLabel', { id: primaryId })}
                                           >
                                             <Copy className="h-3.5 w-3.5" />
                                             <span className="hidden sm:inline">
-                                              {copiedVulnId === primaryId ? 'Copied' : 'Copy'}
+                                              {copiedVulnId === primaryId ? t('row.copied') : t('row.copy')}
                                             </span>
                                           </button>
                                           <button
@@ -752,7 +750,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                             // without relying on color alone.
                                             className="text-sm text-foreground underline hover:no-underline whitespace-nowrap"
                                           >
-                                            View Details
+                                            {t('row.viewDetails')}
                                           </button>
                                         </div>
                                       </div>
@@ -760,7 +758,9 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                         <div className="border-t border-border px-4 pb-3 pt-2 ml-7 md:ml-11 space-y-2">
                                           {vuln.cwes && vuln.cwes.length > 0 && (
                                             <div className="flex flex-wrap items-center gap-1.5">
-                                              <span className="text-xs font-medium text-muted-foreground">CWE:</span>
+                                              <span className="text-xs font-medium text-muted-foreground">
+                                                {t('details.cwe')}
+                                              </span>
                                               {vuln.cwes.map((cwe) => (
                                                 <a
                                                   key={cwe}
@@ -778,7 +778,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                           {vuln.references && vuln.references.length > 0 && (
                                             <div>
                                               <span className="text-xs font-medium text-muted-foreground">
-                                                References:
+                                                {t('details.references')}
                                               </span>
                                               <div className="mt-1 space-y-1">
                                                 {vuln.references.slice(0, 5).map((ref, idx) => {
@@ -825,7 +825,7 @@ export function VulnerabilitiesTab({ project, projectId, onViewVulnerability }: 
                                                 })}
                                                 {vuln.references.length > 5 && (
                                                   <span className="text-xs text-muted-foreground">
-                                                    +{vuln.references.length - 5} more references
+                                                    {t('details.moreReferences', { count: vuln.references.length - 5 })}
                                                   </span>
                                                 )}
                                               </div>

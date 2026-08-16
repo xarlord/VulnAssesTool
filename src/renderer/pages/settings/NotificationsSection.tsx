@@ -1,4 +1,5 @@
 import { Bell } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useNotificationPreferences, useNotificationsStore } from '@/lib/notifications/notificationsStore'
 import type { NotificationPreferences } from '@@/types'
 
@@ -8,12 +9,12 @@ import type { NotificationPreferences } from '@@/types'
  * not part of per-profile AppSettings).
  */
 
-const CATEGORY_LABELS: Record<keyof NotificationPreferences['categories'], string> = {
-  critical_vuln: 'Critical vulnerabilities',
-  scan_complete: 'Scan complete',
-  update_available: 'Update available',
-  system: 'System',
-}
+const CATEGORY_KEYS: Array<keyof NotificationPreferences['categories']> = [
+  'critical_vuln',
+  'scan_complete',
+  'update_available',
+  'system',
+]
 
 interface ToggleSwitchProps {
   label: string
@@ -49,38 +50,37 @@ function ToggleSwitch({ label, checked, disabled = false, onChange }: ToggleSwit
 }
 
 export function NotificationsSection() {
+  const { t } = useTranslation('notificationsSection')
   const preferences = useNotificationPreferences()
   const updatePreferences = useNotificationsStore((s) => s.updatePreferences)
   const setCategoryEnabled = useNotificationsStore((s) => s.setCategoryEnabled)
-
-  const categoryKeys = Object.keys(CATEGORY_LABELS) as Array<keyof NotificationPreferences['categories']>
 
   return (
     <div id="notifications" className="rounded-lg border border-border bg-card scroll-mt-6">
       <div className="flex items-center gap-3 border-b border-border p-4">
         <Bell className="h-5 w-5 text-muted-foreground" />
-        <h2 className="font-semibold">Notifications</h2>
+        <h2 className="font-semibold">{t('title')}</h2>
       </div>
       <div className="p-4 space-y-4">
         <ToggleSwitch
-          label="Enable Notifications"
+          label={t('enableNotifications')}
           checked={preferences.enabled}
           onChange={(value) => updatePreferences({ enabled: value })}
         />
         <ToggleSwitch
-          label="Desktop Notifications"
+          label={t('desktopNotifications')}
           checked={preferences.desktopEnabled}
           disabled={!preferences.enabled}
           onChange={(value) => updatePreferences({ desktopEnabled: value })}
         />
 
         <div className="pt-2">
-          <p className="mb-3 text-sm font-medium">Categories</p>
+          <p className="mb-3 text-sm font-medium">{t('categoriesLabel')}</p>
           <div className="space-y-3">
-            {categoryKeys.map((category) => (
+            {CATEGORY_KEYS.map((category) => (
               <ToggleSwitch
                 key={category}
-                label={CATEGORY_LABELS[category]}
+                label={t(`categories.${category}`)}
                 checked={preferences.categories[category]}
                 disabled={!preferences.enabled}
                 onChange={(value) => setCategoryEnabled(category, value)}

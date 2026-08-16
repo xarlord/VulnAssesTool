@@ -1,0 +1,16 @@
+{
+  "ariaLabel": "Settings sections",
+  "sections": {
+    "profiles": "Profiles",
+    "appearance": "Appearance",
+    "notifications": "Notifications",
+    "cvss": "CVSS",
+    "api": "API",
+    "database": "Database",
+    "backup": "Backup",
+    "performance": "Performance",
+    "dataManagement": "Data Management",
+    "threatIntel": "Threat Intel",
+    "dangerZone": "Danger Zone"
+  }
+}
