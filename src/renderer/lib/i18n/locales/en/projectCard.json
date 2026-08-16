@@ -1,0 +1,28 @@
+{
+  "card": {
+    "viewAriaLabel": "View project {{name}}"
+  },
+  "stats": {
+    "components": "{{count}} components",
+    "vulnerabilities": "{{count}} vulnerabilities",
+    "updated": "Updated {{date}}"
+  },
+  "severity": {
+    "critical": "{{count}} Critical",
+    "high": "{{count}} High",
+    "medium": "{{count}} Medium"
+  },
+  "actions": {
+    "view": "View",
+    "fpf": "FPF",
+    "fpfTitle": "False Positive Filter",
+    "refreshAriaLabel": "Refresh vulnerability data",
+    "forceRefreshAriaLabel": "Force refresh vulnerability data (bypass cache)",
+    "forceRefreshTitle": "Force refresh — bypass cache and query fresh data",
+    "deleteAriaLabel": "Delete project"
+  },
+  "confirmDelete": {
+    "title": "Delete project",
+    "message": "Delete \"{{name}}\"? This cannot be undone."
+  }
+}

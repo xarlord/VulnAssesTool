@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Shield, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { getHealthColor } from '@/lib/health'
 import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
@@ -27,6 +28,7 @@ export function RemediationQueue({
   onViewComponent,
   onViewVulnerability,
 }: RemediationQueueProps) {
+  const { t } = useTranslation('remediationQueue')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['critical', 'high']))
 
   // Sort component healths by score (worst first) and group by severity
@@ -101,8 +103,8 @@ export function RemediationQueue({
     return (
       <div className="rounded-lg border border-border bg-card p-8 text-center">
         <Shield className="mx-auto mb-4 h-12 w-12 text-green-600" />
-        <h3 className="text-lg font-medium">All components are healthy!</h3>
-        <p className="mt-2 text-sm text-muted-foreground">No components require immediate attention</p>
+        <h3 className="text-lg font-medium">{t('emptyState.title')}</h3>
+        <p className="mt-2 text-sm text-muted-foreground">{t('emptyState.subtitle')}</p>
       </div>
     )
   }
@@ -112,8 +114,8 @@ export function RemediationQueue({
       {/* Critical Components */}
       {grouped.critical.length > 0 && (
         <RemediationGroup
-          title="Critical Priority"
-          subtitle={`${grouped.critical.length} component${grouped.critical.length > 1 ? 's' : ''} requiring immediate attention`}
+          title={t('critical.title')}
+          subtitle={t('critical.subtitle', { count: grouped.critical.length })}
           count={grouped.critical.length}
           color="destructive"
           expanded={expandedGroups.has('critical')}
@@ -135,8 +137,8 @@ export function RemediationQueue({
       {/* High Priority Components */}
       {grouped.high.length > 0 && (
         <RemediationGroup
-          title="High Priority"
-          subtitle={`${grouped.high.length} component${grouped.high.length > 1 ? 's' : ''} with high-severity vulnerabilities`}
+          title={t('high.title')}
+          subtitle={t('high.subtitle', { count: grouped.high.length })}
           count={grouped.high.length}
           color="orange"
           expanded={expandedGroups.has('high')}
@@ -158,8 +160,8 @@ export function RemediationQueue({
       {/* Medium Priority Components */}
       {grouped.medium.length > 0 && (
         <RemediationGroup
-          title="Medium Priority"
-          subtitle={`${grouped.medium.length} component${grouped.medium.length > 1 ? 's' : ''} with medium-severity vulnerabilities`}
+          title={t('medium.title')}
+          subtitle={t('medium.subtitle', { count: grouped.medium.length })}
           count={grouped.medium.length}
           color="yellow"
           expanded={expandedGroups.has('medium')}
@@ -181,8 +183,8 @@ export function RemediationQueue({
       {/* Low Priority Components */}
       {grouped.low.length > 0 && (
         <RemediationGroup
-          title="Low Priority"
-          subtitle={`${grouped.low.length} component${grouped.low.length > 1 ? 's' : ''} with minor issues`}
+          title={t('low.title')}
+          subtitle={t('low.subtitle', { count: grouped.low.length })}
           count={grouped.low.length}
           color="blue"
           expanded={expandedGroups.has('low')}
@@ -260,6 +262,7 @@ function RemediationItem({
   onViewComponent,
   onViewVulnerability,
 }: RemediationItemProps) {
+  const { t } = useTranslation('remediationQueue')
   // Check if component has high or critical vulnerabilities
   const hasHighOrCritical = vulnerabilities.some((v) => v.severity === 'critical' || v.severity === 'high')
 
@@ -271,11 +274,12 @@ function RemediationItem({
             <h4 className="font-medium">{component.name}</h4>
             <span className="text-sm text-muted-foreground">{component.version}</span>
             <div className={`rounded-full border px-2 py-0.5 text-xs font-medium ${getHealthColor(health.category)}`}>
-              {health.score}/100
+              {health.score}
+              {t('item.scoreSuffix')}
             </div>
             {hasHighOrCritical && (
               <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 border border-red-200">
-                Needs Attention
+                {t('item.needsAttention')}
               </span>
             )}
           </div>
@@ -297,7 +301,9 @@ function RemediationItem({
                 )
               })}
               {vulnerabilities.length > 3 && (
-                <span className="text-xs text-muted-foreground">+{vulnerabilities.length - 3} more</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('item.moreCount', { count: vulnerabilities.length - 3 })}
+                </span>
               )}
             </div>
           )}
@@ -305,7 +311,7 @@ function RemediationItem({
           {/* Recommended Action */}
           {component.patchInfo?.hasFixAvailable && component.patchInfo.recommendedVersion && (
             <div className="mt-2 text-xs text-green-600">
-              Update available: {component.patchInfo.recommendedVersion}
+              {t('item.updateAvailable', { version: component.patchInfo.recommendedVersion })}
             </div>
           )}
         </div>
@@ -319,7 +325,7 @@ function RemediationItem({
             // without relying on color alone.
             className="ml-2 text-sm text-foreground underline hover:no-underline whitespace-nowrap"
           >
-            View Details
+            {t('item.viewDetails')}
           </button>
         )}
       </div>

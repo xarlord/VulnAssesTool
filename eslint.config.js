@@ -172,6 +172,12 @@ export default defineConfig([
       'src/renderer/components/LicenseComplianceCard.tsx',
       'src/renderer/components/NotificationCenter.tsx',
       'src/renderer/components/NvdCveDetailModal.tsx',
+      'src/renderer/components/onboarding/OnboardingTour.tsx',
+      'src/renderer/components/patch/PatchLinkCard.tsx',
+      'src/renderer/components/patch/RemediationSteps.tsx',
+      'src/renderer/components/ProjectCard.tsx',
+      'src/renderer/components/RemediationQueue.tsx',
+      'src/renderer/components/SbomGeneratorDialog.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

@@ -1,0 +1,19 @@
+{
+  "priority": {
+    "label": "{{priority}} Priority",
+    "separator": "•"
+  },
+  "stepsSection": {
+    "title": "Remediation Steps"
+  },
+  "workarounds": {
+    "title": "Temporary Workarounds"
+  },
+  "effort": {
+    "label": "Estimated Effort: "
+  },
+  "command": {
+    "copy": "Copy",
+    "copied": "Copied!"
+  }
+}

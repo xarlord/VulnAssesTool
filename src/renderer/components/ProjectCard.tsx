@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Shield, AlertTriangle, Calendar, Trash2, RefreshCw, RefreshCcw, Filter } from 'lucide-react'
 import { useSettings, useRefreshingProjectIds } from '@/store/useStore'
 import { StalenessBadge } from './StalenessIndicator'
@@ -16,6 +17,7 @@ interface ProjectCardProps {
 }
 
 const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete, onRefresh, onFpf }: ProjectCardProps) {
+  const { t } = useTranslation('projectCard')
   const settings = useSettings()
   const refreshingProjectIds = useRefreshingProjectIds()
   const isRefreshing = refreshingProjectIds.has(project.id)
@@ -53,7 +55,7 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
         onKeyDown={handleKeyDown}
         role="button"
         tabIndex={0}
-        aria-label={`View project ${project.name}`}
+        aria-label={t('card.viewAriaLabel', { name: project.name })}
       >
         <div className="flex-1">
           <div className="flex items-center gap-3">
@@ -73,19 +75,19 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
             {/* Components count */}
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Shield className="h-3.5 w-3.5" />
-              <span>{project.statistics.totalComponents} components</span>
+              <span>{t('stats.components', { count: project.statistics.totalComponents })}</span>
             </div>
 
             {/* Vulnerabilities count */}
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <AlertTriangle className={`h-3.5 w-3.5 ${getSeverityColor(project.statistics.criticalCount)}`} />
-              <span>{project.statistics.totalVulnerabilities} vulnerabilities</span>
+              <span>{t('stats.vulnerabilities', { count: project.statistics.totalVulnerabilities })}</span>
             </div>
 
             {/* Last updated */}
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Calendar className="h-3.5 w-3.5" />
-              <span>Updated {formatDate(project.updatedAt)}</span>
+              <span>{t('stats.updated', { date: formatDate(project.updatedAt) })}</span>
             </div>
 
             {/* Next refresh time (if auto-refresh enabled) */}
@@ -102,17 +104,17 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
             <div className="mt-2 flex flex-wrap gap-1.5">
               {project.statistics.criticalCount > 0 && (
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass('critical')}`}>
-                  {project.statistics.criticalCount} Critical
+                  {t('severity.critical', { count: project.statistics.criticalCount })}
                 </span>
               )}
               {project.statistics.highCount > 0 && (
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass('high')}`}>
-                  {project.statistics.highCount} High
+                  {t('severity.high', { count: project.statistics.highCount })}
                 </span>
               )}
               {project.statistics.mediumCount > 0 && (
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getSeverityClass('medium')}`}>
-                  {project.statistics.mediumCount} Medium
+                  {t('severity.medium', { count: project.statistics.mediumCount })}
                 </span>
               )}
             </div>
@@ -128,7 +130,7 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
             }}
             className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
           >
-            View
+            {t('actions.view')}
           </button>
           {onFpf && (
             <button
@@ -137,10 +139,10 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
                 onFpf(project.id)
               }}
               className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 flex items-center gap-1.5"
-              title="False Positive Filter"
+              title={t('actions.fpfTitle')}
             >
               <Filter className="h-3.5 w-3.5" />
-              FPF
+              {t('actions.fpf')}
             </button>
           )}
           {onRefresh && (
@@ -152,7 +154,7 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
                 }}
                 disabled={isRefreshing}
                 className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="Refresh vulnerability data"
+                aria-label={t('actions.refreshAriaLabel')}
               >
                 <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
@@ -163,8 +165,8 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
                 }}
                 disabled={isRefreshing}
                 className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="Force refresh vulnerability data (bypass cache)"
-                title="Force refresh — bypass cache and query fresh data"
+                aria-label={t('actions.forceRefreshAriaLabel')}
+                title={t('actions.forceRefreshTitle')}
               >
                 <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
@@ -173,7 +175,7 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
           <button
             onClick={handleDeleteClick}
             className="rounded-md border border-border bg-secondary p-1.5 text-destructive hover:bg-destructive/10"
-            aria-label="Delete project"
+            aria-label={t('actions.deleteAriaLabel')}
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -182,9 +184,9 @@ const ProjectCard = React.memo(function ProjectCard({ project, onView, onDelete,
 
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete project"
-        message={`Delete "${project.name}"? This cannot be undone.`}
-        confirmLabel="Delete"
+        title={t('confirmDelete.title')}
+        message={t('confirmDelete.message', { name: project.name })}
+        confirmLabel={t('common:actions.delete')}
         variant="danger"
         onConfirm={() => {
           onDelete(project.id)

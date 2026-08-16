@@ -1,0 +1,11 @@
+{
+  "empty": "No patch links available",
+  "types": {
+    "commit": "Commit",
+    "pr": "Pull Request",
+    "advisory": "Advisory",
+    "release": "Release",
+    "vendor": "Vendor"
+  },
+  "source": "from {{source}}"
+}

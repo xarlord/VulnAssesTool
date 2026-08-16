@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { driver } from 'driver.js'
 import type { DriveStep, Config } from 'driver.js'
 import 'driver.js/dist/driver.css'
@@ -140,6 +141,7 @@ export function OnboardingTour({
   onComplete,
   onSkip,
 }: OnboardingTourProps) {
+  const { t } = useTranslation('onboardingTour')
   const driverRef = useRef<ReturnType<typeof driver> | null>(null)
   const {
     startTour,
@@ -174,9 +176,9 @@ export function OnboardingTour({
       stagePadding: 8,
       stageRadius: 8,
       popoverClass: 'tour-popover',
-      nextBtnText: 'Next',
-      prevBtnText: 'Previous',
-      doneBtnText: 'Finish',
+      nextBtnText: t('nav.next'),
+      prevBtnText: t('nav.previous'),
+      doneBtnText: t('nav.finish'),
       steps: driverSteps,
       onDestroyStarted: () => {
         // Fires on BOTH finishing the last step and closing early. Distinguish them so completion
@@ -216,7 +218,7 @@ export function OnboardingTour({
     // Start the tour
     startTour(tourId)
     driverObj.drive()
-  }, [tourConfig, tourId, startTour, handleDestroy, completeTour, skipTour, onComplete, onSkip])
+  }, [tourConfig, tourId, startTour, handleDestroy, completeTour, skipTour, onComplete, onSkip, t])
 
   // Handle completion
   useEffect(() => {

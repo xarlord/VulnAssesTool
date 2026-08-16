@@ -1,0 +1,129 @@
+{
+  "title": "Generate SBOM from Excel",
+  "description": "Upload an Excel file to generate a CycloneDX SBOM",
+  "steps": {
+    "upload": "Upload",
+    "mapColumns": "Map Columns",
+    "preview": "Preview",
+    "cpes": "CPEs",
+    "generate": "Generate",
+    "download": "Download"
+  },
+  "columns": {
+    "name": "Component Name",
+    "version": "Version",
+    "type": "Type",
+    "license": "License",
+    "purl": "PURL",
+    "cpe": "CPE",
+    "description": "Description",
+    "supplier": "Supplier",
+    "group": "Group"
+  },
+  "actions": {
+    "back": "Back"
+  },
+  "upload": {
+    "processing": "Processing...",
+    "dropzone": "Click to upload or drag and drop",
+    "fileTypes": "Excel files (.xlsx, .xls)",
+    "requiredColumnsTitle": "Required Excel Columns:",
+    "nameField": {
+      "label": "name",
+      "description": "Component name"
+    },
+    "versionField": {
+      "label": "version",
+      "description": "Component version"
+    },
+    "optionalColumnsTitle": "Optional Columns:",
+    "optionalType": "• type (library/framework)",
+    "optionalLicense": "• license (MIT, Apache-2.0)",
+    "optionalPurl": "• purl (pkg:npm/package@1.0.0)",
+    "optionalCpe": "• cpe (cpe:2.3:...)",
+    "optionalDescription": "• description",
+    "optionalSupplier": "• supplier",
+    "tipTitle": "💡 Tip:",
+    "tipText": "The generator will auto-detect columns. You can review and adjust the mapping in the next step."
+  },
+  "loading": {
+    "parsing": "Parsing Excel file...",
+    "generating": "Generating CycloneDX SBOM..."
+  },
+  "mapping": {
+    "detectedColumns": "Detected columns ({{count}}):",
+    "sbomField": "SBOM Field",
+    "excelColumn": "Excel Column",
+    "optionalTag": "(optional)",
+    "selectColumnPlaceholder": "-- Select column --",
+    "nextStep": "Next Step"
+  },
+  "preview": {
+    "missingCpeWarningTitle": "Components Missing CPE",
+    "missingCpeWarningBody": "{{count}} component(s) don't have CPE identifiers. You'll be able to select suggested CPEs in the next step for better vulnerability matching.",
+    "metadataTitle": "SBOM Metadata",
+    "nameLabel": "Name *",
+    "namePlaceholder": "My Application SBOM",
+    "versionLabel": "Version *",
+    "versionPlaceholder": "1.0.0",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "SBOM for my application",
+    "authorLabel": "Author",
+    "authorPlaceholder": "Your Name or Company",
+    "componentsPreviewTitle": "Components Preview ({{count}})",
+    "table": {
+      "name": "Name",
+      "version": "Version",
+      "type": "Type",
+      "license": "License",
+      "cpe": "CPE",
+      "suggestionsCount": "{{count}} suggestions"
+    },
+    "noComponents": "No components to display",
+    "andMoreComponents": "... and {{count}} more components",
+    "generateSbom": "Generate SBOM"
+  },
+  "cpeSelection": {
+    "infoTitle": "Some components are missing CPE identifiers",
+    "infoBody": "CPEs help with accurate vulnerability scanning. Select a suggested CPE or enter a custom one for each component below. You can also skip this step if you don't need CPE-based vulnerability matching.",
+    "missingCpeHeading": "Components Missing CPE ({{count}})",
+    "skipAllLink": "Skip all",
+    "versionLabel": "Version: {{version}}",
+    "cpeSelectedBadge": "CPE selected",
+    "suggestedCpesTitle": "Suggested CPEs:",
+    "vendorProduct": "Vendor: {{vendor}} | Product: {{product}}",
+    "customCpeTitle": "Or enter a custom CPE:",
+    "customCpePlaceholder": "cpe:2.3:a:vendor:product:version:*:*:*:*:*:*:*",
+    "apply": "Apply",
+    "skipComponent": "Skip this component",
+    "selectCpeWithCount": "Select CPE ({{count}} suggestions)",
+    "enterCpeManually": "Enter CPE manually",
+    "changeCpe": "Change CPE",
+    "progressCpe": "{{withCpe}} of {{total}} components have CPE",
+    "progressReviewed": "{{count}} reviewed",
+    "skipAllButton": "Skip All",
+    "continue": "Continue"
+  },
+  "success": {
+    "title": "SBOM Generated Successfully!",
+    "body": "Your CycloneDX SBOM has been generated with {{count}} components",
+    "fileInfo": "CycloneDX 1.5 JSON • {{count}} components • {{size}} KB",
+    "downloadSbom": "Download SBOM"
+  },
+  "errorState": {
+    "title": "Error",
+    "startOver": "Start Over"
+  },
+  "errors": {
+    "emptyFile": "The Excel file appears to be empty or has no valid data rows.",
+    "parseFailed": "Failed to parse Excel file",
+    "missingColumns": "Please map the following required columns: {{columns}}",
+    "noDataRows": "No data rows found. Please upload a valid Excel file.",
+    "noValidComponents": "No valid components could be created from the Excel data. Please check your column mappings and data.",
+    "mappingFailed": "Failed to process component mapping",
+    "noComponentsToGenerate": "No components to generate SBOM from.",
+    "generateFailed": "Failed to generate SBOM",
+    "invalidFileType": "Please upload an Excel file (.xlsx or .xls)",
+    "invalidCpeFormat": "Invalid CPE format. Expected format: cpe:2.3:a:vendor:product:version:*:*:*:*:*:*:*"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "compact": {
+    "onlineTitle": "Online",
+    "offlineTitle": "Offline - {{count}} requests queued",
+    "badgeCap": "9+"
+  },
+  "status": {
+    "syncing": "Syncing... {{progress}}%",
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "queueInfo_one": "({{count}} request queued)",
+  "queueInfo_other": "({{count}} requests queued)",
+  "syncCount": "{{processed}}/{{total}}",
+  "banner": {
+    "syncing": "Syncing {{processed}}/{{total}} requests...",
+    "offline": "You are offline",
+    "queueWillSync_one": "• {{count}} request will sync when back online",
+    "queueWillSync_other": "• {{count}} requests will sync when back online"
+  }
+}

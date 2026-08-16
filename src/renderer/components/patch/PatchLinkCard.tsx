@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ExternalLink, GitCommit, GitPullRequest, Package, AlertTriangle } from 'lucide-react'
 import type { PatchLink } from '@@/types'
 
@@ -11,11 +12,13 @@ interface PatchLinkCardProps {
  * Displays links to patches, commits, PRs, and advisories
  */
 export function PatchLinkCard({ links, onLinkClick }: PatchLinkCardProps) {
+  const { t } = useTranslation('patchLinkCard')
+
   if (links.length === 0) {
     return (
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
         <AlertTriangle className="mx-auto h-8 w-8 text-gray-400" />
-        <p className="mt-2 text-sm text-gray-600">No patch links available</p>
+        <p className="mt-2 text-sm text-gray-600">{t('empty')}</p>
       </div>
     )
   }
@@ -37,11 +40,11 @@ export function PatchLinkCard({ links, onLinkClick }: PatchLinkCardProps) {
 
   const getTypeLabel = (type: PatchLink['type']) => {
     const labels = {
-      commit: 'Commit',
-      pr: 'Pull Request',
-      advisory: 'Advisory',
-      release: 'Release',
-      vendor: 'Vendor',
+      commit: t('types.commit'),
+      pr: t('types.pr'),
+      advisory: t('types.advisory'),
+      release: t('types.release'),
+      vendor: t('types.vendor'),
     }
     return labels[type] || type
   }
@@ -61,7 +64,7 @@ export function PatchLinkCard({ links, onLinkClick }: PatchLinkCardProps) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase text-gray-500">{getTypeLabel(link.type)}</span>
-              <span className="text-xs text-gray-400">from {link.source}</span>
+              <span className="text-xs text-gray-400">{t('source', { source: link.source })}</span>
             </div>
             {link.description && <p className="mt-1 text-sm text-gray-700 line-clamp-2">{link.description}</p>}
             <p className="mt-1 text-xs text-gray-500 truncate">{link.url}</p>
