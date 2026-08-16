@@ -159,6 +159,12 @@ export default defineConfig([
       'src/renderer/components/executive/widgets/DashboardLayoutEditor.tsx',
       'src/renderer/components/executive/widgets/RiskGauge.tsx',
       'src/renderer/components/executive/widgets/TopCriticalVulnerabilities.tsx',
+      'src/renderer/components/executive/widgets/TeamProductivity.tsx',
+      'src/renderer/components/ExportDialog.tsx',
+      'src/renderer/components/FilterPresets.tsx',
+      'src/renderer/components/FPF/ConfigWizard.tsx',
+      'src/renderer/components/FPF/FilterDashboard.tsx',
+      'src/renderer/components/FPF/FilteredItemsReview.tsx',
     ],
     rules: {
       'no-restricted-syntax': [

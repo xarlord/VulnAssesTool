@@ -1,0 +1,16 @@
+{
+  "title": "Team Productivity",
+  "stats": {
+    "totalScans": "Total Scans",
+    "sbomsProcessed": "SBOMs Processed",
+    "componentsAnalyzed": "Components Analyzed",
+    "vulnerabilitiesAssessed": "Vulnerabilities Assessed"
+  },
+  "recentActivity": {
+    "title": "Recent Activity",
+    "thisWeek": "This Week",
+    "thisMonth": "This Month",
+    "avgScanTime": "Avg Scan Time",
+    "avgScanTimeValue": "{{minutes}}m"
+  }
+}

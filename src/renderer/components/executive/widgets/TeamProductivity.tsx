@@ -4,6 +4,7 @@
  */
 
 import { Activity, FileText, Scan, Clock, Calendar } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ProductivityMetrics } from '@/lib/analytics'
 
 interface TeamProductivityProps {
@@ -11,30 +12,31 @@ interface TeamProductivityProps {
 }
 
 export function TeamProductivity({ productivity }: TeamProductivityProps) {
+  const { t } = useTranslation('teamProductivity')
   const stats = [
     {
-      label: 'Total Scans',
+      label: t('stats.totalScans'),
       value: productivity.totalScans,
       icon: Scan,
       color: 'text-blue-600',
       bgColor: 'bg-blue-100',
     },
     {
-      label: 'SBOMs Processed',
+      label: t('stats.sbomsProcessed'),
       value: productivity.sbomsProcessed,
       icon: FileText,
       color: 'text-green-600',
       bgColor: 'bg-green-100',
     },
     {
-      label: 'Components Analyzed',
+      label: t('stats.componentsAnalyzed'),
       value: productivity.componentsAnalyzed.toLocaleString(),
       icon: Activity,
       color: 'text-purple-600',
       bgColor: 'bg-purple-100',
     },
     {
-      label: 'Vulnerabilities Assessed',
+      label: t('stats.vulnerabilitiesAssessed'),
       value: productivity.vulnerabilitiesAssessed.toLocaleString(),
       icon: Activity,
       color: 'text-orange-600',
@@ -44,18 +46,18 @@ export function TeamProductivity({ productivity }: TeamProductivityProps) {
 
   const recentActivity = [
     {
-      label: 'This Week',
+      label: t('recentActivity.thisWeek'),
       value: productivity.scansThisWeek,
       icon: Calendar,
     },
     {
-      label: 'This Month',
+      label: t('recentActivity.thisMonth'),
       value: productivity.scansThisMonth,
       icon: Calendar,
     },
     {
-      label: 'Avg Scan Time',
-      value: `${productivity.averageScanTime}m`,
+      label: t('recentActivity.avgScanTime'),
+      value: t('recentActivity.avgScanTimeValue', { minutes: productivity.averageScanTime }),
       icon: Clock,
     },
   ]
@@ -63,7 +65,7 @@ export function TeamProductivity({ productivity }: TeamProductivityProps) {
   return (
     <div className="bg-card rounded-lg border p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm text-foreground">Team Productivity</h3>
+        <h3 className="font-semibold text-sm text-foreground">{t('title')}</h3>
         <Activity className="w-4 h-4 text-muted-foreground" />
       </div>
 
@@ -85,7 +87,7 @@ export function TeamProductivity({ productivity }: TeamProductivityProps) {
 
       {/* Recent Activity */}
       <div className="border-t pt-4 mt-auto">
-        <div className="text-xs font-semibold text-foreground mb-3">Recent Activity</div>
+        <div className="text-xs font-semibold text-foreground mb-3">{t('recentActivity.title')}</div>
         <div className="space-y-2">
           {recentActivity.map((activity) => {
             const Icon = activity.icon

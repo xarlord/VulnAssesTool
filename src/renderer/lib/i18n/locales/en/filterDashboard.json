@@ -1,0 +1,36 @@
+{
+  "header": {
+    "title": "False Positive Filter",
+    "subtitle": "ISO 21434 compliant vulnerability filtering",
+    "badge": "3-Tier Hybrid Filter"
+  },
+  "configStatus": {
+    "missingTitle": "Configuration Required",
+    "missingDescription": "Set up your project configuration to enable filtering",
+    "activeTitle": "Configuration Active",
+    "activeDetail": "{{name}} v{{version}} - Tier: {{tier}}"
+  },
+  "actions": {
+    "runFilter": "Run Filter",
+    "filtering": "Filtering...",
+    "configure": "Configure",
+    "exportReport": "Export Report"
+  },
+  "stats": {
+    "totalVulnerabilities": "Total Vulnerabilities",
+    "filtered": "Filtered (FP)",
+    "kept": "Kept (Real)",
+    "escalated": "Escalated"
+  },
+  "effectiveness": {
+    "title": "Filter Effectiveness",
+    "empty": "No filter results yet. Run the filter to see effectiveness metrics.",
+    "filterRate": "Filter Rate",
+    "filterRateDetail": "{{filtered}} of {{total}} filtered",
+    "escalationRate": "Escalation Rate",
+    "escalationRateDetail": "{{escalated}} need review",
+    "bySeverity": "Results by Severity",
+    "severityDetail": "{{kept}} kept / {{filtered}} filtered / {{escalated}} escalated",
+    "processedIn": "Processed in {{seconds}}s"
+  }
+}

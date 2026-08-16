@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Undo2,
   Sparkles,
@@ -111,6 +112,7 @@ function SeverityBadge({ severity }: { severity: Severity }) {
 }
 
 function ConfidenceIndicator({ confidence }: { confidence: number }) {
+  const { t } = useTranslation('filteredItemsReview')
   const getColor = (conf: number) => {
     if (conf >= 90) return 'text-green-500'
     if (conf >= 70) return 'text-yellow-500'
@@ -122,26 +124,27 @@ function ConfidenceIndicator({ confidence }: { confidence: number }) {
       <div className="h-2 w-16 overflow-hidden rounded-full bg-muted">
         <div className={`h-full ${getColor(confidence)} bg-current`} style={{ width: `${confidence}%` }} />
       </div>
-      <span className={`text-xs ${getColor(confidence)}`}>{confidence}%</span>
+      <span className={`text-xs ${getColor(confidence)}`}>{t('confidence.percent', { value: confidence })}</span>
     </div>
   )
 }
 
 function ActionBadge({ action }: { action: FilterAction }) {
+  const { t } = useTranslation('filteredItemsReview')
   const config = {
     filtered: {
       icon: <CheckCircle className="h-3 w-3" />,
-      text: 'Filtered',
+      text: t('actionBadge.filtered'),
       color: 'bg-green-500/10 text-green-500',
     },
     kept: {
       icon: <AlertTriangle className="h-3 w-3" />,
-      text: 'Kept',
+      text: t('actionBadge.kept'),
       color: 'bg-orange-500/10 text-orange-700 dark:text-orange-400',
     },
     escalated: {
       icon: <AlertCircle className="h-3 w-3" />,
-      text: 'Escalated',
+      text: t('actionBadge.escalated'),
       color: 'bg-yellow-500/10 text-amber-700 dark:text-amber-400',
     },
   }
@@ -199,6 +202,7 @@ export function FilteredItemsReview({
   llmLoadingIds = [],
   className = '',
 }: FilteredItemsReviewProps) {
+  const { t } = useTranslation('filteredItemsReview')
   const [activeTab, setActiveTab] = useState<ReviewTab>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
@@ -289,17 +293,17 @@ export function FilteredItemsReview({
   }
 
   const getConfidenceLabel = (confidence: number): string => {
-    if (confidence >= 90) return 'High confidence — strong evidence this is a false positive'
-    if (confidence >= 70) return 'Medium confidence — likely a false positive but worth reviewing'
-    if (confidence >= 50) return 'Low confidence — consider manual review'
-    return 'Very low confidence — manual review recommended'
+    if (confidence >= 90) return t('confidence.high')
+    if (confidence >= 70) return t('confidence.medium')
+    if (confidence >= 50) return t('confidence.low')
+    return t('confidence.veryLow')
   }
 
   return (
     <div className={`space-y-4 ${className}`} data-testid="filtered-items-review">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">Filtered Items Review</h3>
+        <h3 className="text-lg font-medium">{t('header.title')}</h3>
         <button
           onClick={() => onExport(filteredItems)}
           disabled={filteredItems.length === 0 || isLoading}
@@ -307,7 +311,7 @@ export function FilteredItemsReview({
           data-testid="export-all-button"
         >
           <Download className="h-4 w-4" />
-          Export All
+          {t('header.exportAll')}
         </button>
       </div>
 
@@ -321,7 +325,7 @@ export function FilteredItemsReview({
           }}
           count={tabCounts.all}
         >
-          All
+          {t('tabs.all')}
         </TabButton>
         <TabButton
           active={activeTab === 'filtered'}
@@ -331,7 +335,7 @@ export function FilteredItemsReview({
           }}
           count={tabCounts.filtered}
         >
-          Filtered
+          {t('tabs.filtered')}
         </TabButton>
         <TabButton
           active={activeTab === 'review_queue'}
@@ -341,7 +345,7 @@ export function FilteredItemsReview({
           }}
           count={tabCounts.review_queue}
         >
-          Review Queue
+          {t('tabs.reviewQueue')}
         </TabButton>
         <TabButton
           active={activeTab === 'miss_filtered'}
@@ -351,7 +355,7 @@ export function FilteredItemsReview({
           }}
           count={tabCounts.miss_filtered}
         >
-          Miss-Filtered
+          {t('tabs.missFiltered')}
         </TabButton>
       </div>
 
@@ -360,13 +364,13 @@ export function FilteredItemsReview({
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Search by CVE ID, component, or filter reason..."
+          placeholder={t('search.placeholder')}
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value)
             setCurrentPage(1)
           }}
-          aria-label="Search filtered items"
+          aria-label={t('search.ariaLabel')}
           className="w-full rounded-md border border-border bg-background py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           data-testid="search-input"
         />
@@ -375,22 +379,20 @@ export function FilteredItemsReview({
       {/* Bulk Actions */}
       {selectedItems.size > 0 && (
         <div className="flex items-center justify-between rounded-lg border border-border bg-muted/50 px-4 py-2">
-          <span className="text-sm">
-            {selectedItems.size} item{selectedItems.size !== 1 ? 's' : ''} selected
-          </span>
+          <span className="text-sm">{t('bulkActions.selected', { count: selectedItems.size })}</span>
           <div className="flex gap-2">
             <button
               onClick={() => setSelectedItems(new Set())}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
-              Clear
+              {t('bulkActions.clear')}
             </button>
             <button
               onClick={handleExportSelected}
               className="flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Download className="h-3 w-3" />
-              Export Selected
+              {t('bulkActions.exportSelected')}
             </button>
           </div>
         </div>
@@ -406,17 +408,17 @@ export function FilteredItemsReview({
                   type="checkbox"
                   checked={filteredItems.length > 0 && selectedItems.size === filteredItems.length}
                   onChange={handleSelectAll}
-                  aria-label="Select all items"
+                  aria-label={t('table.selectAllAriaLabel')}
                   className="h-4 w-4 rounded border-border"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium">CVE ID</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Severity</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Component</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Filtered By</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Confidence</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Action</th>
-              <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
+              <th className="px-4 py-3 text-left text-sm font-medium">{t('table.columns.cveId')}</th>
+              <th className="px-4 py-3 text-left text-sm font-medium">{t('table.columns.severity')}</th>
+              <th className="px-4 py-3 text-left text-sm font-medium">{t('table.columns.component')}</th>
+              <th className="px-4 py-3 text-left text-sm font-medium">{t('table.columns.filteredBy')}</th>
+              <th className="px-4 py-3 text-left text-sm font-medium">{t('table.columns.confidence')}</th>
+              <th className="px-4 py-3 text-left text-sm font-medium">{t('table.columns.action')}</th>
+              <th className="px-4 py-3 text-right text-sm font-medium">{t('table.columns.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -425,7 +427,7 @@ export function FilteredItemsReview({
                 <td colSpan={8} className="px-4 py-8 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    <span className="text-sm text-muted-foreground">Loading...</span>
+                    <span className="text-sm text-muted-foreground">{t('table.loading')}</span>
                   </div>
                 </td>
               </tr>
@@ -434,7 +436,7 @@ export function FilteredItemsReview({
                 <td colSpan={8} className="px-4 py-8 text-center">
                   <div className="text-muted-foreground">
                     <AlertCircle className="mx-auto h-8 w-8 opacity-50" />
-                    <p className="mt-2 text-sm">No items to display</p>
+                    <p className="mt-2 text-sm">{t('table.empty')}</p>
                   </div>
                 </td>
               </tr>
@@ -467,9 +469,9 @@ export function FilteredItemsReview({
                           {item.isMissFilter && (
                             <span
                               className="rounded bg-yellow-500/20 px-1 text-xs text-yellow-600"
-                              title="Potential miss-filter"
+                              title={t('row.missFilterTitle')}
                             >
-                              MF
+                              {t('row.missFilterBadge')}
                             </span>
                           )}
                           <a
@@ -490,13 +492,15 @@ export function FilteredItemsReview({
                       <td className="px-4 py-3">
                         <div>
                           <p className="text-sm font-medium">{item.componentName}</p>
-                          <p className="text-xs text-muted-foreground">v{item.componentVersion}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {t('row.versionPrefix', { version: item.componentVersion })}
+                          </p>
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <div>
                           <p className="text-sm">{item.filteredBy}</p>
-                          <p className="text-xs text-muted-foreground">Tier {item.tier}</p>
+                          <p className="text-xs text-muted-foreground">{t('row.tierPrefix', { tier: item.tier })}</p>
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -511,7 +515,7 @@ export function FilteredItemsReview({
                             <button
                               onClick={() => onViewDetails(item.vulnerabilityId)}
                               className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                              title="View details"
+                              title={t('row.viewDetailsTitle')}
                               data-testid={`view-details-${item.vulnerabilityId}`}
                             >
                               <Eye className="h-4 w-4" />
@@ -520,7 +524,7 @@ export function FilteredItemsReview({
                           <button
                             onClick={() => onUndo(item.vulnerabilityId)}
                             className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                            title="Undo filter decision"
+                            title={t('row.undoTitle')}
                             data-testid={`undo-${item.vulnerabilityId}`}
                           >
                             <Undo2 className="h-4 w-4" />
@@ -529,7 +533,7 @@ export function FilteredItemsReview({
                             onClick={() => onLlmAnalysis(item.vulnerabilityId)}
                             disabled={llmLoadingIds.includes(item.vulnerabilityId)}
                             className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                            title="Run LLM analysis"
+                            title={t('row.llmAnalysisTitle')}
                             data-testid={`llm-analysis-${item.vulnerabilityId}`}
                           >
                             <Sparkles
@@ -545,20 +549,24 @@ export function FilteredItemsReview({
                           <div className="space-y-1 text-sm">
                             <div className="flex gap-6">
                               <div>
-                                <span className="text-muted-foreground">Filter type:</span>{' '}
-                                <span className="font-medium">{item.filterType ?? 'N/A'}</span>
+                                <span className="text-muted-foreground">{t('detail.filterType')}</span>{' '}
+                                <span className="font-medium">{item.filterType ?? t('detail.notAvailable')}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground">Tier:</span>{' '}
+                                <span className="text-muted-foreground">{t('detail.tier')}</span>{' '}
                                 <span className="font-medium">{item.tier}</span>
                               </div>
                               <div>
-                                <span className="text-muted-foreground">Confidence:</span>{' '}
-                                <span className="font-medium">{item.confidence}%</span>
+                                <span className="text-muted-foreground">{t('detail.confidence')}</span>{' '}
+                                <span className="font-medium">
+                                  {t('confidence.percent', { value: item.confidence })}
+                                </span>
                               </div>
                             </div>
                             <p className="text-xs text-muted-foreground">{getConfidenceLabel(item.confidence)}</p>
-                            <p className="text-xs text-muted-foreground">Reason: {item.filteredBy}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {t('detail.reason', { filteredBy: item.filteredBy })}
+                            </p>
                           </div>
                         </td>
                       </tr>
@@ -575,8 +583,11 @@ export function FilteredItemsReview({
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(currentPage - 1) * itemsPerPage + 1} -{' '}
-            {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length}
+            {t('pagination.showing', {
+              start: (currentPage - 1) * itemsPerPage + 1,
+              end: Math.min(currentPage * itemsPerPage, filteredItems.length),
+              total: filteredItems.length,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -586,9 +597,7 @@ export function FilteredItemsReview({
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm">
-              Page {currentPage} of {totalPages}
-            </span>
+            <span className="text-sm">{t('pagination.page', { current: currentPage, total: totalPages })}</span>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
