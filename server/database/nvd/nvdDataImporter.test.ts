@@ -864,6 +864,12 @@ describe('NvdDataImporter', () => {
       expect(result.importedCves).toBe(0)
       expect(progressUpdates.length).toBeGreaterThan(0)
       expect(progressUpdates.every((p) => p.cvesPerSecond === 0)).toBe(true)
+      // WHY: a batch where EVERY CVE failed imported nothing, so reporting success:true
+      // would let a caller (sync/bulk-import) treat a total failure as a good run and
+      // advance its sync cursor past data it never stored. `success` must reflect whether
+      // anything was actually imported, not merely that the transaction committed.
+      expect(result.success).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
     })
 
     it('should return zero cvesPerSecond instead of NaN/Infinity for an empty CVE list', async () => {

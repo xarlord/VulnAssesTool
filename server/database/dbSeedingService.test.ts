@@ -1382,12 +1382,12 @@ describe('runBackgroundSync - external pause mid-sync', () => {
     vi.clearAllMocks()
   })
 
-  it('stops importing further years once a pause is observed, but currently records the run as complete rather than paused', async () => {
-    // KNOWN BEHAVIOR (see foundBug; not fixed here per task scope): the loop correctly
-    // breaks out on pause, but the unconditional "mark as complete" write immediately
-    // after the loop overwrites the paused status and discards yearsRemaining, so a
-    // resumed sync starts over instead of continuing where it left off. This test pins
-    // the CURRENT behavior rather than the intended one.
+  it('keeps the run resumable when paused mid-sync instead of recording it as complete', async () => {
+    // WHY: pausing exists so a long multi-year sync can be stopped and RESUMED. The loop
+    // breaks out on pause correctly, but if the post-loop write unconditionally marks the
+    // run 'complete' with an empty yearsRemaining, the pause is silently lost: a resumed
+    // sync restarts from year 0 and re-downloads everything already imported. The paused
+    // status and the outstanding years must both survive.
     seedingService.startBackgroundSync()
 
     // Let the first (mocked, near-instant) year import finish and the loop enter its
@@ -1406,7 +1406,9 @@ describe('runBackgroundSync - external pause mid-sync', () => {
     await new Promise((resolve) => setTimeout(resolve, 1300))
 
     const finalState = seedingService.getBackgroundSyncState()
-    expect(finalState?.status).toBe('complete')
+    expect(finalState?.status).toBe('paused')
+    // The years that never ran must still be listed, or resuming re-imports from scratch.
+    expect(finalState?.yearsRemaining?.length).toBeGreaterThan(0)
   }, 8000)
 })
 

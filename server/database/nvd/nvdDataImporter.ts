@@ -308,6 +308,15 @@ export class NvdDataImporter {
       this.progress.errors.push(`Transaction failed: ${error}`)
     }
 
+    // A committed transaction is not the same as a successful import: if there was work to do
+    // and EVERY CVE failed, nothing was stored. Reporting success there lets callers advance a
+    // sync cursor past data that was never persisted. Partial failures stay successful — callers
+    // inspect failedCves for those.
+    if (result.success && result.totalCves > 0 && result.failedCves === result.totalCves) {
+      result.success = false
+      result.errors.push(`Import failed: all ${result.totalCves} CVEs failed to import`)
+    }
+
     result.durationMs = Date.now() - this.startTime
     result.cvesPerSecond = result.totalCves / (result.durationMs / 1000) || 0
 

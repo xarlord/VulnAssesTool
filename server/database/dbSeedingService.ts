@@ -642,10 +642,13 @@ export class DbSeedingService {
     this.progress.yearsRemaining = years
     this.updateProgress(options)
 
+    let pausedMidRun = false
+
     for (let i = startFrom; i < years.length; i++) {
       // Check if we should continue
       const currentState = this.getBackgroundSyncState()
       if (currentState?.status === 'paused') {
+        pausedMidRun = true
         break
       }
 
@@ -684,6 +687,20 @@ export class DbSeedingService {
         console.error(`Failed to sync year ${year}:`, error)
         // Continue with next year
       }
+    }
+
+    // A run stopped by an external pause is NOT complete: overwriting the status here would
+    // discard yearsRemaining, so resuming would restart from the first year and re-import
+    // everything already fetched. Keep it paused with the outstanding years intact, and don't
+    // record a sync that never finished.
+    if (pausedMidRun) {
+      this.saveBackgroundSyncState({
+        status: 'paused',
+        startedAt: state?.startedAt,
+        yearsCompleted: completed,
+        yearsRemaining: years.filter((y) => !completed.includes(y)),
+      })
+      return
     }
 
     // Mark as complete

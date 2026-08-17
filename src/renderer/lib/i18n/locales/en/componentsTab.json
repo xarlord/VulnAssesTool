@@ -77,7 +77,7 @@
       "estimated": "{{cpe}} (est. {{confidence}})"
     },
     "vulnCount_one": "{{count}} vulnerability",
-    "vulnCount_other": "{{count}} vulnerabilitys"
+    "vulnCount_other": "{{count}} vulnerabilities"
   },
   "toast": {
     "presetSaved": {

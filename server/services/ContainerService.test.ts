@@ -1178,10 +1178,12 @@ describe('ContainerService.extractPackages', () => {
     expect(result).toEqual({ packages: [], layers: [], warnings: [] })
   })
 
-  it("reads a present Config file's layer history without failing extraction (skips emptyLayer entries)", async () => {
-    // WHY: history-walking must tolerate real config.json shapes — including leading
-    // emptyLayer entries (e.g. Dockerfile ENV/LABEL instructions) that must be skipped rather
-    // than mis-attributed or crashing the scan.
+  it("attributes the layer's Dockerfile command from config history, skipping emptyLayer entries", async () => {
+    // WHY: the whole point of parsing config.json's history is to tell the user WHICH
+    // Dockerfile instruction introduced a vulnerable layer — ScanImageResponse exposes a
+    // per-layer `command` for exactly that. Leading emptyLayer entries (ENV/LABEL, which
+    // produce no filesystem layer) must be skipped so the command isn't mis-attributed.
+    // If the parsed entry isn't carried onto the layer, this parsing is pure wasted I/O.
     const digest = '1'.repeat(64)
     execState.handlers.set('docker', () => ({ stdout: '', stderr: '' }))
     execState.handlers.set('tar', (args, options) => {
@@ -1209,6 +1211,8 @@ describe('ContainerService.extractPackages', () => {
 
     expect(result.packages.map((p) => p.name)).toEqual(['bash'])
     expect(result.warnings).toEqual([])
+    // The emptyLayer entry is skipped; the real layer carries the instruction that built it.
+    expect(result.layers[0].command).toBe('RUN echo hi')
   })
 
   it('does not fail extraction when manifest.json references a Config file that was not exported', async () => {

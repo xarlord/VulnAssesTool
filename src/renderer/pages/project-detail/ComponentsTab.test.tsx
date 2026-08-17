@@ -367,15 +367,14 @@ describe('ComponentsTab branch coverage', () => {
     }
     render(<ComponentsTab project={project} onComponentClick={vi.fn()} />)
 
-    // The count and pluralized suffix render as separate text nodes within the same span, so match
-    // on the span's combined textContent rather than a single exact text node. NOTE: the current
-    // implementation concatenates 'vulnerability' + 's' with no space, yielding "vulnerabilitys"
-    // (not the grammatically correct "vulnerabilities") — this asserts the CURRENT behavior.
+    // WHY: this badge is user-facing on every component row, so the plural must be the real
+    // English word ("vulnerabilities"), not a naive 'vulnerability' + 's' concatenation.
+    // Match on the span's combined textContent since count and word are separate text nodes.
     expect(
       screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '• 1 vulnerability'),
     ).toBeInTheDocument()
     expect(
-      screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '• 2 vulnerabilitys'),
+      screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '• 2 vulnerabilities'),
     ).toBeInTheDocument()
   })
 
