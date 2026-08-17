@@ -9,6 +9,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SbomGeneratorDialog } from '../SbomGeneratorDialog'
 import * as generators from '@/lib/generators'
+import type { ExcelRow, ComponentType } from '@/lib/generators'
 import * as cpeUtils from '@/lib/utils/cpeUtils'
 
 // Mock File.prototype.arrayBuffer for jsdom environment
@@ -1400,6 +1401,398 @@ describe('SbomGeneratorDialog', () => {
       await screen.findByText(/1 of 1 components have CPE/, {}, { timeout: 3000 })
       expect(await screen.findByText(/1 reviewed/)).toBeInTheDocument()
       expect(await screen.findByText(/Components Missing CPE \(0\)/)).toBeInTheDocument()
+    })
+  })
+
+  describe('Branch Coverage Gaps', () => {
+    it('falls back to a generic message when parseExcel rejects with a non-Error value', async () => {
+      // WHY: a rejected promise can reject with any value, not just an Error (e.g. a
+      // plain string from a worker/library edge case). The catch handler's `err
+      // instanceof Error` guard must still produce a real, actionable message
+      // instead of leaking `undefined` or crashing on `err.message`.
+      mockParseExcel.mockRejectedValue('boom: not an Error instance')
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+
+      await screen.findByText('Error', {}, { timeout: 3000 })
+      expect(await screen.findByText('Failed to parse Excel file')).toBeInTheDocument()
+    })
+
+    it('skips a non-object entry from a malformed parseExcel result without failing the whole batch', async () => {
+      // WHY: parseExcel's contract is ExcelRow[], but the per-row loop still guards
+      // against a malformed entry (e.g. null) landing in that array. One bad entry
+      // must not crash the mapping pass or block the other, valid rows from
+      // becoming components.
+      mockParseExcel.mockResolvedValue([{ name: 'good-row', version: '1.0.0' }, null as unknown as ExcelRow])
+      mockMapRowToComponent.mockImplementation((row) => ({
+        id: `pkg:npm/${row.name}@${row.version}`,
+        name: row.name as string,
+        version: row.version as string,
+        type: 'library' as const,
+        licenses: [],
+        vulnerabilities: [],
+      }))
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+
+      // Only the one valid row becomes a component; the null entry is silently skipped.
+      expect(await screen.findByText(/Components Preview \(1\)/)).toBeInTheDocument()
+    })
+
+    it('skips a row whose mapped name/version cells are blank, keeping the other rows', async () => {
+      // WHY: Excel data is frequently sparse — a row can have the right columns
+      // mapped but a blank cell for name or version. Such a row cannot become a
+      // valid component and must be dropped rather than reach mapRowToComponent
+      // with half-built data.
+      mockParseExcel.mockResolvedValue([
+        { name: 'has-everything', version: '1.0.0' },
+        { name: '', version: '2.0.0' },
+      ])
+      mockMapRowToComponent.mockImplementation((row) => ({
+        id: `pkg:npm/${row.name}@${row.version}`,
+        name: row.name as string,
+        version: row.version as string,
+        type: 'library' as const,
+        licenses: [],
+        vulnerabilities: [],
+      }))
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+
+      expect(await screen.findByText(/Components Preview \(1\)/)).toBeInTheDocument()
+    })
+
+    it('maps every optional Excel column when populated, and drops it to undefined when the mapped cell is blank', async () => {
+      // WHY: type, license, purl, cpe, description, supplier and group each have their
+      // own "column mapped but cell blank" fallback to undefined, so a half-filled
+      // sheet does not leak empty strings into the generated SBOM. Every other test
+      // fixture in this suite only ever maps name/version/type/license (and
+      // sometimes cpe) — purl/description/supplier/group are never exercised — so
+      // this must hold independently for each optional column.
+      mockParseExcel.mockResolvedValue([
+        {
+          name: 'fully-populated',
+          version: '1.0.0',
+          type: 'framework',
+          license: 'MIT',
+          purl: 'pkg:npm/fully-populated@1.0.0',
+          cpe: 'cpe:2.3:a:vendor:fully-populated:1.0.0:*:*:*:*:*:*:*',
+          description: 'a complete row',
+          supplier: 'Acme',
+          group: 'com.acme',
+        },
+        {
+          name: 'sparsely-populated',
+          version: '2.0.0',
+          type: '',
+          license: '',
+          purl: '',
+          cpe: '',
+          description: '',
+          supplier: '',
+          group: '',
+        },
+      ])
+      mockMapRowToComponent.mockImplementation((row) => ({
+        id: `pkg:npm/${row.name}@${row.version}`,
+        name: row.name as string,
+        version: row.version as string,
+        type: (row.type as ComponentType) || 'library',
+        licenses: row.license ? [row.license] : [],
+        purl: row.purl,
+        cpe: row.cpe,
+        description: row.description,
+        supplier: row.supplier,
+        vulnerabilities: [],
+      }))
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+
+      // Both rows survive as components, proving the blank optional cells were
+      // coerced to undefined rather than throwing or being silently dropped.
+      expect(await screen.findByText(/Components Preview \(2\)/)).toBeInTheDocument()
+    })
+
+    it('surfaces an Error thrown by CPE suggestion generation as the mapping-step error', async () => {
+      // WHY: suggestCPEs runs, for every component missing a CPE, inside the same
+      // try/catch as the rest of the mapping pass. If it throws (e.g. a bug in the
+      // suggestion heuristics), the user must see that real failure — and not be
+      // left staring at a step that silently never advances.
+      mockParseExcel.mockResolvedValue([{ name: 'react', version: '18.2.0' }])
+      mockMapRowToComponent.mockReturnValue({
+        id: 'pkg:npm/react@18.2.0',
+        name: 'react',
+        version: '18.2.0',
+        type: 'library',
+        licenses: [],
+        vulnerabilities: [],
+      })
+      mockSuggestCPEs.mockImplementation(() => {
+        throw new Error('Suggestion engine crashed')
+      })
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+
+      await screen.findByText('Error', {}, { timeout: 3000 })
+      expect(await screen.findByText('Suggestion engine crashed')).toBeInTheDocument()
+    })
+
+    it('falls back to a generic mapping-error message when CPE suggestion generation throws a non-Error', async () => {
+      mockParseExcel.mockResolvedValue([{ name: 'react', version: '18.2.0' }])
+      mockMapRowToComponent.mockReturnValue({
+        id: 'pkg:npm/react@18.2.0',
+        name: 'react',
+        version: '18.2.0',
+        type: 'library',
+        licenses: [],
+        vulnerabilities: [],
+      })
+      mockSuggestCPEs.mockImplementation(() => {
+        throw 'not-an-error-object'
+      })
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+
+      await screen.findByText('Error', {}, { timeout: 3000 })
+      expect(await screen.findByText('Failed to process component mapping')).toBeInTheDocument()
+    })
+
+    it('falls back to a generic message when direct SBOM generation rejects with a non-Error', async () => {
+      // WHY: same "err instanceof Error" fallback as the parse step, but on the
+      // direct-generate path (no CPE step needed) — the user must still get a
+      // real error state instead of an uncaught rejection or a blank screen.
+      mockParseExcel.mockResolvedValue([
+        { name: 'react', version: '18.2.0', cpe: 'cpe:2.3:a:facebook:react:18.2.0:*:*:*:*:*:*:*' },
+      ])
+      mockMapRowToComponent.mockImplementation((row) => ({
+        id: `pkg:npm/${row.name}@${row.version}`,
+        name: row.name as string,
+        version: row.version as string,
+        type: 'library' as const,
+        licenses: [],
+        vulnerabilities: [],
+        cpe: row.cpe ? String(row.cpe) : undefined,
+      }))
+      mockGenerateCycloneDX.mockRejectedValue('generation blew up')
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+      await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
+
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
+
+      await screen.findByText('Error', {}, { timeout: 5000 })
+      expect(await screen.findByText('Failed to generate SBOM')).toBeInTheDocument()
+    })
+
+    it('falls back to a generic message when SBOM generation rejects with a non-Error after CPE selection', async () => {
+      mockParseExcel.mockResolvedValue(mockExcelRows)
+      mockGenerateCycloneDX.mockRejectedValue('boom')
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+      await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
+      await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
+
+      fireEvent.click(await screen.findByRole('button', { name: /Continue/i }))
+
+      await screen.findByText('Error', {}, { timeout: 5000 })
+      expect(await screen.findByText('Failed to generate SBOM')).toBeInTheDocument()
+    })
+
+    it('shows zero detected columns when the parsed row has no keys at all', async () => {
+      // WHY: `excelHeaders?.length || 0` only matters when parseExcel legitimately
+      // returns a row object without enumerable keys. The counter must read a real
+      // 0, not silently omit the number or throw on `.length` of undefined.
+      mockParseExcel.mockResolvedValue([{}])
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+
+      expect(await screen.findByText(/Detected columns \(0\)/)).toBeInTheDocument()
+    })
+
+    it('renders placeholder dashes and a library-type badge for a component with blank display fields', async () => {
+      // WHY: the preview table is the last check before generating the real SBOM.
+      // If a component ever reaches it without a name/version/type (e.g. a future
+      // non-Excel data source with looser validation than mapRowToComponent), the
+      // table must show a placeholder instead of an empty-looking cell, and must
+      // still assign each row a stable React key via the `id || idx` fallback.
+      mockParseExcel.mockResolvedValue([{ name: 'placeholder-row', version: '1.0.0' }])
+      mockMapRowToComponent.mockReturnValue({
+        id: '',
+        name: '',
+        version: '',
+        type: '' as ComponentType,
+        licenses: [],
+        vulnerabilities: [],
+      })
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+
+      await screen.findByText(/Components Preview \(1\)/, {}, { timeout: 3000 })
+      // name, version, license and CPE columns all fall back to '-'; type falls
+      // back to the 'library' badge text. The row also renders without crashing,
+      // which is the only way to observe the `id || idx` key fallback.
+      const dashes = await screen.findAllByText('-')
+      expect(dashes.length).toBeGreaterThanOrEqual(2)
+      expect(await screen.findByText('library')).toBeInTheDocument()
+    })
+
+    it('labels every suggested-CPE confidence tier so users can gauge match quality', async () => {
+      // WHY: the confidence badge is how a user decides whether to trust a
+      // suggested CPE. Every fixture elsewhere in this suite only ever supplies a
+      // 'high' suggestion, which would hide a broken badge for the 'medium'/'low'
+      // tiers the real estimator can also return.
+      mockParseExcel.mockResolvedValue([{ name: 'multi-suggestion-lib', version: '1.0.0' }])
+      mockMapRowToComponent.mockReturnValue({
+        id: 'pkg:npm/multi-suggestion-lib@1.0.0',
+        name: 'multi-suggestion-lib',
+        version: '1.0.0',
+        type: 'library',
+        licenses: [],
+        vulnerabilities: [],
+      })
+      mockSuggestCPEs.mockReturnValue([
+        {
+          cpe: 'cpe:2.3:a:vendor:multi-suggestion-lib:1.0.0:*:*:*:*:*:*:*',
+          vendor: 'vendor',
+          product: 'multi-suggestion-lib',
+          confidence: 'medium',
+          source: 'inferred',
+        },
+        {
+          cpe: 'cpe:2.3:a:vendor:multi-suggestion-lib-fallback:1.0.0:*:*:*:*:*:*:*',
+          vendor: 'vendor',
+          product: 'multi-suggestion-lib-fallback',
+          confidence: 'low',
+          source: 'fallback',
+        },
+      ])
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+      await screen.findByText(/Components Preview/i, {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /Generate SBOM/i }))
+      await screen.findByText(/Components Missing CPE/i, {}, { timeout: 3000 })
+
+      fireEvent.click(await screen.findByText(/Select CPE/))
+      await screen.findByText('Suggested CPEs:', {}, { timeout: 3000 })
+
+      expect(await screen.findByText('medium')).toBeInTheDocument()
+      expect(await screen.findByText('low')).toBeInTheDocument()
+    })
+
+    it('shows the full CPE string in the preview table when it is 30 characters or fewer', async () => {
+      // WHY: the preview table truncates long CPEs with an ellipsis so the column
+      // stays readable, but a short CPE must render in full — truncating (or
+      // otherwise mangling) a CPE that already fits would misrepresent the exact
+      // identifier that gets written into the generated SBOM.
+      const shortCpe = 'cpe:2.3:a:acme:x:1.0'
+      mockParseExcel.mockResolvedValue([{ name: 'comp', version: '1.0.0', cpe: shortCpe }])
+      mockMapRowToComponent.mockImplementation((row) => ({
+        id: `pkg:npm/${row.name}@${row.version}`,
+        name: row.name as string,
+        version: row.version as string,
+        type: 'library' as const,
+        licenses: [],
+        vulnerabilities: [],
+        cpe: row.cpe ? String(row.cpe) : undefined,
+      }))
+
+      render(<SbomGeneratorDialog open={true} onClose={mockOnClose} />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['content'], 'test.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      fireEvent.change(input, { target: { files: [file] } })
+      await screen.findByText('Map Columns', {}, { timeout: 3000 })
+      fireEvent.click(await screen.findByRole('button', { name: /next step/i }))
+
+      const cpeEl = await screen.findByTitle(shortCpe)
+      expect(cpeEl.textContent).toBe(shortCpe)
     })
   })
 })

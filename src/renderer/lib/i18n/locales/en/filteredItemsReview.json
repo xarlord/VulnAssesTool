@@ -1,0 +1,68 @@
+{
+  "header": {
+    "title": "Filtered Items Review",
+    "exportAll": "Export All"
+  },
+  "tabs": {
+    "all": "All",
+    "filtered": "Filtered",
+    "reviewQueue": "Review Queue",
+    "missFiltered": "Miss-Filtered"
+  },
+  "search": {
+    "placeholder": "Search by CVE ID, component, or filter reason...",
+    "ariaLabel": "Search filtered items"
+  },
+  "bulkActions": {
+    "selected_one": "{{count}} item selected",
+    "selected_other": "{{count}} items selected",
+    "clear": "Clear",
+    "exportSelected": "Export Selected"
+  },
+  "table": {
+    "selectAllAriaLabel": "Select all items",
+    "columns": {
+      "cveId": "CVE ID",
+      "severity": "Severity",
+      "component": "Component",
+      "filteredBy": "Filtered By",
+      "confidence": "Confidence",
+      "action": "Action",
+      "actions": "Actions"
+    },
+    "loading": "Loading...",
+    "empty": "No items to display"
+  },
+  "row": {
+    "missFilterTitle": "Potential miss-filter",
+    "missFilterBadge": "MF",
+    "versionPrefix": "v{{version}}",
+    "tierPrefix": "Tier {{tier}}",
+    "viewDetailsTitle": "View details",
+    "undoTitle": "Undo filter decision",
+    "llmAnalysisTitle": "Run LLM analysis"
+  },
+  "confidence": {
+    "percent": "{{value}}%",
+    "high": "High confidence — strong evidence this is a false positive",
+    "medium": "Medium confidence — likely a false positive but worth reviewing",
+    "low": "Low confidence — consider manual review",
+    "veryLow": "Very low confidence — manual review recommended"
+  },
+  "detail": {
+    "filterType": "Filter type:",
+    "notAvailable": "N/A",
+    "tier": "Tier:",
+    "confidence": "Confidence:",
+    "reason": "Reason: {{filteredBy}}"
+  },
+  "actionBadge": {
+    "filtered": "Filtered",
+    "kept": "Kept",
+    "escalated": "Escalated"
+  },
+  "pagination": {
+    "showing": "Showing {{start}} - {{end}} of {{total}}",
+    "page": "Page {{current}} of {{total}}"
+  }
+}

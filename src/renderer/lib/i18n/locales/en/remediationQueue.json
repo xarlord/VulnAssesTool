@@ -1,0 +1,33 @@
+{
+  "emptyState": {
+    "title": "All components are healthy!",
+    "subtitle": "No components require immediate attention"
+  },
+  "critical": {
+    "title": "Critical Priority",
+    "subtitle_one": "{{count}} component requiring immediate attention",
+    "subtitle_other": "{{count}} components requiring immediate attention"
+  },
+  "high": {
+    "title": "High Priority",
+    "subtitle_one": "{{count}} component with high-severity vulnerabilities",
+    "subtitle_other": "{{count}} components with high-severity vulnerabilities"
+  },
+  "medium": {
+    "title": "Medium Priority",
+    "subtitle_one": "{{count}} component with medium-severity vulnerabilities",
+    "subtitle_other": "{{count}} components with medium-severity vulnerabilities"
+  },
+  "low": {
+    "title": "Low Priority",
+    "subtitle_one": "{{count}} component with minor issues",
+    "subtitle_other": "{{count}} components with minor issues"
+  },
+  "item": {
+    "scoreSuffix": "/100",
+    "needsAttention": "Needs Attention",
+    "moreCount": "+{{count}} more",
+    "updateAvailable": "Update available: {{version}}",
+    "viewDetails": "View Details"
+  }
+}

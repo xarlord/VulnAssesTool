@@ -1,0 +1,7 @@
+{
+  "title": "Top Critical Vulnerabilities",
+  "topCount": "Top {{count}}",
+  "componentCount": "• {{count}} component(s)",
+  "notAvailable": "N/A",
+  "noData": "No critical vulnerabilities"
+}

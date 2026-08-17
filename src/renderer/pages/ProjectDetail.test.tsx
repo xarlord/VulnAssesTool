@@ -1149,9 +1149,9 @@ describe('ProjectDetail', () => {
       renderProjectDetail()
       clickComponentsTab()
 
-      // lodash (comp-1) is affected by both mock vulnerabilities
-      // The count is in a span with class "text-destructive"
-      const vulnCountElements = screen.getAllByText(/vulnerability/)
+      // lodash (comp-1) is affected by both mock vulnerabilities, so the badge renders the
+      // plural form. Match either form: the badge is what matters, not the word's inflection.
+      const vulnCountElements = screen.getAllByText(/vulnerabilit(y|ies)/)
       const vulnCountSpan = vulnCountElements.find((el) => el.classList.contains('text-destructive'))
       expect(vulnCountSpan).toBeTruthy()
     })
@@ -1280,10 +1280,10 @@ describe('ProjectDetail', () => {
       // The lodash component should show vulnerability count
       const lodashElements = screen.getAllByText(/lodash/)
       expect(lodashElements.length).toBeGreaterThan(0)
-      // lodash (comp-1) is affected by both mock vulnerabilities
-      // Text is split across nodes: "• 2 vulnerabilitys"
-      // "vulnerability" appears in project description too, so filter by class
-      const vulnCountElements = screen.getAllByText(/vulnerability/)
+      // lodash (comp-1) is affected by both mock vulnerabilities, so the badge reads
+      // "• 2 vulnerabilities" (text split across nodes). The word also appears in the project
+      // description, so filter by the badge's class. Match singular or plural.
+      const vulnCountElements = screen.getAllByText(/vulnerabilit(y|ies)/)
       const vulnCountSpan = vulnCountElements.find((el) => el.classList.contains('text-destructive'))
       expect(vulnCountSpan).toBeTruthy()
 

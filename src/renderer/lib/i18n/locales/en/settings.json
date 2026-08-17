@@ -1,0 +1,153 @@
+{
+  "pageTitle": "Settings",
+  "never": "Never",
+  "syncNow": "Sync Now",
+  "syncing": "Syncing...",
+  "versionInfo": "VulnAssessTool v0.1.0",
+  "api": {
+    "heading": "API Configuration",
+    "secureStorageEnabled": "Secure Storage Enabled",
+    "secureStorageUnavailable": "Secure Storage Unavailable",
+    "nvdApiKeyLabel": "NVD API Key",
+    "optional": "(Optional)",
+    "loadingApiKey": "Loading API key from secure storage...",
+    "apiKeyPlaceholder": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "saved": "Saved",
+    "getApiKeyBefore": "Get your free API key from",
+    "nistLinkText": "NIST",
+    "getApiKeyAfter": "for higher rate limits (5 requests/rolling 30 seconds instead of default)",
+    "deleteKey": "Delete Key",
+    "secureStorageUnavailableNotice": "Secure storage is not available. API keys will be stored in localStorage (less secure).",
+    "autoRefresh": {
+      "title": "Auto-refresh Vulnerability Data",
+      "description": "Automatically refresh vulnerability data on a schedule while the app is open",
+      "toggleAriaLabel": "Toggle auto-refresh vulnerability data",
+      "refreshIntervalLabel": "Refresh interval",
+      "pauseOnBatteryTitle": "Pause on battery",
+      "pauseOnBatteryDescription": "Skip scheduled refreshes while the device is running on battery power",
+      "pauseOnBatteryToggleAriaLabel": "Toggle pause auto-refresh on battery"
+    }
+  },
+  "database": {
+    "heading": "Database Management",
+    "totalCves": "Total CVEs",
+    "cpeMatches": "CPE Matches",
+    "databaseSize": "Database Size",
+    "lastSync": "Last Sync",
+    "downloadingCveData": "Downloading CVE Data",
+    "fetchingVulnerabilityData": "Fetching vulnerability data from NVD API...",
+    "downloadWaitNotice": "This may take several minutes. Please wait...",
+    "syncScheduleLabel": "Sync Schedule",
+    "bulkDownloadTitle": "Download CVE data from NIST feeds (requires NVD API key)",
+    "bulkDownload": "Bulk Download",
+    "downloading": "Downloading...",
+    "bulkDownloadRequiresApiKey": "Bulk Download requires an NVD API key. Add your key above or set NVD_API_KEY environment variable.",
+    "lastSyncLabel": "Last sync:",
+    "cvesAddedBadge": "+{{count}} CVEs",
+    "bandwidthLimitLabel": "Bandwidth Limit (KB/s, 0 = unlimited)",
+    "bandwidthLimitDescription": "Throttles NVD update downloads so a sync does not saturate the connection. 0 means no limit.",
+    "storageManagementHeading": "Storage Management",
+    "storageLocationLabel": "Storage Location",
+    "notAvailable": "Not available",
+    "storageLocationDescription": "Set via the DATA_DIR environment variable; requires an application restart to change.",
+    "maxDatabaseSizeLabel": "Maximum Database Size",
+    "maxDatabaseSizeDescription": "Database will be pruned when it exceeds this limit",
+    "pruneOldCvesTitle": "Prune Old CVEs",
+    "pruneOldCvesDescription": "Remove CVEs older than a specified year to save space",
+    "pruneOldCvesAriaLabel": "Toggle prune old CVEs",
+    "keepCvesFromLabel": "Keep CVEs From",
+    "rebuildIndexes": "Rebuild Indexes",
+    "resetDatabase": "Reset Database"
+  },
+  "backup": {
+    "heading": "Backup & Recovery",
+    "creating": "Creating...",
+    "createBackup": "Create Backup",
+    "configHeading": "Backup Configuration",
+    "keepBackupsLabel": "Keep Backups",
+    "retentionOptions": {
+      "backups1": "1 backup",
+      "backups3": "3 backups",
+      "backups5": "5 backups",
+      "backups10": "10 backups"
+    },
+    "retentionDescription": "Older backups will be automatically deleted when limit is reached",
+    "availableBackups": "Available Backups ({{count}})",
+    "noBackups": "No backups available. Create your first backup to protect your data.",
+    "verifiedSuffix": " • Verified",
+    "corruptedSuffix": " • Corrupted",
+    "verifyIntegrityAriaLabel": "Verify backup integrity",
+    "verifyIntegrityTitle": "Verify integrity",
+    "restoreAction": "Restore backup",
+    "deleteAction": "Delete backup"
+  },
+  "performance": {
+    "heading": "Performance Tuning",
+    "searchResultLimitLabel": "Search Result Limit",
+    "searchResultLimitDescription": "Maximum number of results returned from vulnerability searches",
+    "enableSearchCacheTitle": "Enable Search Cache",
+    "enableSearchCacheDescription": "Cache search results for faster repeated queries",
+    "toggleSearchCacheAriaLabel": "Toggle search cache",
+    "cacheSizeLabel": "Cache Size",
+    "cacheSizeDescription": "Maximum memory allocated for search result caching"
+  },
+  "dataManagement": {
+    "heading": "Data Management",
+    "importExportTitle": "Import/Export Settings Profiles",
+    "importExportDescription": "Share your settings profiles across different installations",
+    "exportProfiles": "Export Profiles",
+    "importProfiles": "Import Profiles",
+    "importedSuccessfully": "Settings profiles imported successfully!",
+    "dataRetentionLabel": "Data Retention Period",
+    "retentionOptions": {
+      "days7": "7 days",
+      "days30": "30 days",
+      "days60": "60 days",
+      "days90": "90 days",
+      "months6": "6 months",
+      "year1": "1 year",
+      "never": "Never (keep all data)"
+    },
+    "retentionDescription": "Scan results older than the specified period will be automatically deleted",
+    "retentionNeverSuffix": ". Data is never deleted automatically.",
+    "retentionDaysSuffix": " (every {{days}} days)."
+  },
+  "threatIntel": {
+    "heading": "Threat Intelligence",
+    "kevEntries": "KEV Entries",
+    "ransomware": "Ransomware",
+    "lastUpdated": "Last Updated",
+    "syncKevTitle": "Sync KEV Catalog",
+    "syncKevDescription": "Download latest CISA Known Exploited Vulnerabilities catalog",
+    "infoBefore": "The",
+    "infoStrong": "CISA KEV Catalog",
+    "infoAfter": "contains vulnerabilities that have been actively exploited in the wild. EPSS scores predict the likelihood of exploitation based on threat intelligence."
+  },
+  "dangerZone": {
+    "heading": "Danger Zone",
+    "resetAllSettings": "Reset All Settings to Defaults",
+    "resetAllSettingsDescription": "This will reset all settings to their default values. Your projects and vulnerability data will not be affected."
+  },
+  "dialogs": {
+    "resetSettings": {
+      "title": "Reset Settings",
+      "message": "Reset all settings to default values? Your projects and vulnerability data will not be affected.",
+      "confirmLabel": "Reset to Defaults"
+    },
+    "resetDatabase": {
+      "title": "Reset Database",
+      "message": "This will delete all CVE data from the local database. You will need to re-sync the database after resetting. This action cannot be undone.",
+      "confirmLabel": "Reset Database"
+    },
+    "rebuildIndexes": {
+      "title": "Rebuild Indexes",
+      "message": "This will rebuild all database indexes. The operation may take a few minutes depending on the database size. Search functionality may be temporarily slower during the rebuild.",
+      "confirmLabel": "Rebuild Indexes"
+    },
+    "restoreBackup": {
+      "title": "Restore Backup",
+      "message": "This will replace your current database with the selected backup. Any changes made since the backup was created will be lost. The application will reload after restoration.",
+      "confirmLabel": "Restore Backup"
+    }
+  }
+}

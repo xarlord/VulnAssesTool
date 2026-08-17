@@ -7,6 +7,7 @@
  */
 
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSettings } from '@/store/useStore'
 
 export interface AppLogoProps {
@@ -25,6 +26,7 @@ const sizeMap = {
 }
 
 export function AppLogo({ size = 'md', showText = true, className = '' }: AppLogoProps) {
+  const { t } = useTranslation('appLogo')
   const settings = useSettings()
 
   // Determine if we're in dark mode
@@ -84,14 +86,14 @@ export function AppLogo({ size = 'md', showText = true, className = '' }: AppLog
         ) : (
           <img
             src={isDark ? '/logo-dark.png' : '/logo-light.png'}
-            alt="D-Fence"
+            alt={t('alt')}
             height={height}
             className="h-full w-auto object-contain"
             onError={() => setImageError(true)}
           />
         )}
       </div>
-      {showText && <h1 className="text-2xl font-bold">D-Fence</h1>}
+      {showText && <h1 className="text-2xl font-bold">{t('title')}</h1>}
     </div>
   )
 }

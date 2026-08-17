@@ -101,6 +101,18 @@ describe('POST /api/container/check-runtime', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, error: 'runtime is not installed or not in PATH' })
   })
+
+  // Protects the `error instanceof Error ? ... : 'default message'` fallback branch: a rejection
+  // that is not an Error instance (e.g. a raw string thrown from native bindings) must still
+  // produce a stable, generic message rather than leaking the non-Error value or crashing.
+  it('falls back to a generic message when the service rejects with a non-Error value', async () => {
+    containerServiceMock.checkRuntime.mockRejectedValue('docker daemon socket refused')
+
+    const res = await request(app).post('/api/container/check-runtime').send({ runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Failed to check container runtime' })
+  })
 })
 
 describe('POST /api/container/pull', () => {
@@ -124,6 +136,35 @@ describe('POST /api/container/pull', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, error: 'pull failed: unknown image ref' })
+  })
+
+  // Protects the progress-forwarding wiring: the status callback handed to pullImage is not a
+  // dead parameter — when the service actually invokes it mid-pull, the route must run that
+  // callback body (broadcasting scan-progress) rather than only wiring it up unused.
+  it('invokes the pull-status callback for each progress update reported by the service', async () => {
+    containerServiceMock.pullImage.mockImplementation(
+      async (_imageRef, _runtime, onStatus: (status: string) => void) => {
+        onStatus('Downloading layer 1/3')
+        onStatus('Downloading layer 2/3')
+        return { digest: 'sha256:pulled456' }
+      },
+    )
+
+    const res = await request(app).post('/api/container/pull').send({ imageRef: 'nginx:latest', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true, digest: 'sha256:pulled456' })
+  })
+
+  // Protects the `error instanceof Error ? ... : 'default message'` fallback branch for this
+  // route specifically — a non-Error rejection must still yield the route's own generic message.
+  it('falls back to a generic message when the pull rejects with a non-Error value', async () => {
+    containerServiceMock.pullImage.mockRejectedValue({ code: 'ENOENT' })
+
+    const res = await request(app).post('/api/container/pull').send({ imageRef: 'nginx:latest', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Failed to pull image' })
   })
 })
 
@@ -158,6 +199,17 @@ describe('POST /api/container/manifest', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, error: 'manifest lookup failed' })
+  })
+
+  // Protects the `error instanceof Error ? ... : 'default message'` fallback branch for this
+  // route specifically — a non-Error rejection must still yield the route's own generic message.
+  it('falls back to a generic message when the lookup rejects with a non-Error value', async () => {
+    containerServiceMock.getManifest.mockRejectedValue(42)
+
+    const res = await request(app).post('/api/container/manifest').send({ imageRef: 'nginx:latest', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Failed to get manifest' })
   })
 })
 
@@ -209,6 +261,17 @@ describe('POST /api/container/inspect', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, error: 'inspect failed' })
+  })
+
+  // Protects the `error instanceof Error ? ... : 'default message'` fallback branch for this
+  // route specifically — a non-Error rejection must still yield the route's own generic message.
+  it('falls back to a generic message when inspect rejects with a non-Error value', async () => {
+    containerServiceMock.inspectImage.mockRejectedValue('not-an-error')
+
+    const res = await request(app).post('/api/container/inspect').send({ imageRef: 'nginx:latest', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Failed to inspect image' })
   })
 })
 
@@ -308,6 +371,169 @@ describe('POST /api/container/scan', () => {
     expect(res.body).toEqual({ success: false, error: 'pull failed: network error' })
     expect(containerServiceMock.getManifest).not.toHaveBeenCalled()
   })
+
+  // Protects the `error instanceof Error ? ... : 'default message'` fallback branch for this
+  // route specifically — a non-Error rejection mid-pipeline must still yield the route's own
+  // generic message rather than propagating the raw rejection value.
+  it('falls back to a generic message when a downstream step rejects with a non-Error value', async () => {
+    containerServiceMock.checkRuntime.mockResolvedValue({ type: 'docker', version: '24.0.5', available: true })
+    containerServiceMock.pullImage.mockRejectedValue('network unreachable')
+
+    const res = await request(app).post('/api/container/scan').send({ imageRef: 'alpine:3.19', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Failed to scan image' })
+  })
+
+  // Protects the progress-forwarding wiring for both the pull and extract phases of a scan: the
+  // callbacks handed to pullImage/extractPackages must actually run (broadcasting scan-progress)
+  // when the service invokes them, not just be wired up and left unused.
+  it('invokes the pull-status and extract-phase callbacks reported by the service during a scan', async () => {
+    containerServiceMock.checkRuntime.mockResolvedValue({ type: 'docker', version: '24.0.5', available: true })
+    containerServiceMock.pullImage.mockImplementation(
+      async (_imageRef, _runtime, onStatus: (status: string) => void) => {
+        onStatus('Downloading layer 1/1')
+        return { digest: 'sha256:pulled' }
+      },
+    )
+    containerServiceMock.getManifest.mockResolvedValue({
+      digest: 'sha256:manifestdigest',
+      config: { digest: 'sha256:configdigest' },
+      layers: [],
+    })
+    containerServiceMock.inspectImage.mockResolvedValue({ os: 'linux', architecture: 'amd64' })
+    containerServiceMock.extractPackages.mockImplementation(
+      async (_imageRef, _runtime, _layerDigests, onPhase: (phase: string) => void) => {
+        onPhase('scanning apk database')
+        return { packages: [], layers: [], warnings: [] }
+      },
+    )
+
+    const res = await request(app).post('/api/container/scan').send({ imageRef: 'alpine:3.19', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+  })
+
+  // Protects the route's own optional-chaining/default fallbacks that run on top of the mocked
+  // service calls: a manifest missing `config`/`digest` must not throw (imageDigest/manifestDigest
+  // fall back to ''), an inspect result missing os/architecture must default to linux/amd64 here
+  // too (this is a separate branch from the /inspect endpoint's own defaulting), and packages that
+  // collide on manager+name+architecture (falling back to 'noarch' when architecture is absent)
+  // must be deduplicated down to the last-seen entry rather than double-counted in stats.
+  it('defaults missing manifest digests and platform fields, and deduplicates same-key packages', async () => {
+    containerServiceMock.checkRuntime.mockResolvedValue({ type: 'docker', version: '24.0.5', available: true })
+    containerServiceMock.pullImage.mockResolvedValue({ digest: 'sha256:pulled' })
+    containerServiceMock.getManifest.mockResolvedValue({ digest: '', config: undefined, layers: [] })
+    containerServiceMock.inspectImage.mockResolvedValue({})
+    containerServiceMock.extractPackages.mockResolvedValue({
+      packages: [
+        { name: 'openssl', version: '1.1.1n-r0', manager: 'apk', layerDigest: 'sha256:layer1' },
+        { name: 'openssl', version: '1.1.1t-r0', manager: 'apk', layerDigest: 'sha256:layer2' },
+      ],
+      layers: [
+        { digest: 'sha256:layer1', size: 100, mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip' },
+        { digest: 'sha256:layer2', size: 200, mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip' },
+      ],
+      warnings: [],
+    })
+
+    const res = await request(app).post('/api/container/scan').send({ imageRef: 'alpine:3.19', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.result.imageDigest).toBe('')
+    expect(res.body.result.manifestDigest).toBe('')
+    expect(res.body.result.platform).toEqual({ os: 'linux', architecture: 'amd64' })
+    // Both packages share manager:name:noarch (no architecture given) — the second (later) entry
+    // wins the dedup, so only one survives in the consolidated list and stats.
+    expect(res.body.result.packages).toHaveLength(1)
+    expect(res.body.result.packages[0].version).toBe('1.1.1t-r0')
+    expect(res.body.result.stats.totalPackages).toBe(2)
+    expect(res.body.result.stats.uniquePackages).toBe(1)
+  })
+
+  describe('image reference parsing (parseImageRef)', () => {
+    beforeEach(() => {
+      containerServiceMock.checkRuntime.mockResolvedValue({ type: 'docker', version: '24.0.5', available: true })
+      containerServiceMock.pullImage.mockResolvedValue({ digest: 'sha256:pulled' })
+      containerServiceMock.getManifest.mockResolvedValue({
+        digest: 'sha256:m',
+        config: { digest: 'sha256:c' },
+        layers: [],
+      })
+      containerServiceMock.inspectImage.mockResolvedValue({ os: 'linux', architecture: 'amd64' })
+      containerServiceMock.extractPackages.mockResolvedValue({ packages: [], layers: [], warnings: [] })
+    })
+
+    // Protects the registry-detection branch (a first path segment containing '.') plus the
+    // explicit-tag branch: a fully-qualified ref must have its registry host split off, not left
+    // fused into the repository path.
+    it('splits a dotted registry host and repository path off a fully-qualified ref', async () => {
+      const res = await request(app)
+        .post('/api/container/scan')
+        .send({ imageRef: 'myregistry.example.com/team/app:v2.1.0', runtime: 'docker' })
+
+      expect(res.body.result.image).toMatchObject({
+        name: 'myregistry.example.com/team/app:v2.1.0',
+        registry: 'myregistry.example.com',
+        repository: 'team/app',
+        tag: 'v2.1.0',
+        original: 'myregistry.example.com/team/app:v2.1.0',
+      })
+      expect(res.body.result.image.digest).toBeUndefined()
+    })
+
+    // Protects the registry-detection branch's other trigger (a first path segment containing
+    // ':', e.g. a host:port registry) together with the default-tag branch (no tag in the ref).
+    it('splits a host:port registry off the repository and defaults the tag to latest', async () => {
+      const res = await request(app)
+        .post('/api/container/scan')
+        .send({ imageRef: 'localhost:5000/myapp', runtime: 'docker' })
+
+      expect(res.body.result.image).toMatchObject({
+        name: 'localhost:5000/myapp:latest',
+        registry: 'localhost:5000',
+        repository: 'myapp',
+        tag: 'latest',
+        original: 'localhost:5000/myapp',
+      })
+    })
+
+    // Protects the case where a ref has a path segment but neither a dot nor a colon in the first
+    // part (e.g. a docker.io namespace/repo) — the registry-detection branch must be false, leaving
+    // the default docker.io registry and keeping the namespace fused into the repository.
+    it('keeps a namespace/repo path fused into the repository when no registry host is present', async () => {
+      const res = await request(app)
+        .post('/api/container/scan')
+        .send({ imageRef: 'library/nginx:latest', runtime: 'docker' })
+
+      expect(res.body.result.image).toMatchObject({
+        name: 'docker.io/library/nginx:latest',
+        registry: 'docker.io',
+        repository: 'library/nginx',
+        tag: 'latest',
+        original: 'library/nginx:latest',
+      })
+    })
+
+    // Protects the digest branch: a @sha256:-pinned ref must populate `digest` and omit `tag`
+    // entirely (the digest/tag ternary), rather than trying to also parse a tag off the digest.
+    it('treats a @sha256-pinned ref as digest-addressed and omits the tag field', async () => {
+      const digest = `sha256:${'a'.repeat(64)}`
+      const res = await request(app)
+        .post('/api/container/scan')
+        .send({ imageRef: `alpine@${digest}`, runtime: 'docker' })
+
+      expect(res.body.result.image).toMatchObject({
+        name: `docker.io/alpine@${digest}`,
+        registry: 'docker.io',
+        repository: 'alpine',
+        digest,
+        original: `alpine@${digest}`,
+      })
+      expect(res.body.result.image.tag).toBeUndefined()
+    })
+  })
 })
 
 describe('POST /api/container/extract', () => {
@@ -345,5 +571,35 @@ describe('POST /api/container/extract', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: false, error: 'extraction failed' })
+  })
+
+  // Protects the progress-forwarding wiring: the phase callback handed to extractPackages must
+  // actually run (broadcasting scan-progress) when the service invokes it, not just be wired up
+  // and left unused.
+  it('invokes the extract-phase callback for each phase reported by the service', async () => {
+    containerServiceMock.extractPackages.mockImplementation(
+      async (_imageRef, _runtime, _layerDigests, onPhase: (phase: string) => void) => {
+        onPhase('reading apk database')
+        return { packages: [], layers: [], warnings: [] }
+      },
+    )
+
+    const res = await request(app)
+      .post('/api/container/extract')
+      .send({ imageRef: 'alpine:3.19', runtime: 'docker', layerDigests: ['sha256:layer1'] })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true, packages: [] })
+  })
+
+  // Protects the `error instanceof Error ? ... : 'default message'` fallback branch for this
+  // route specifically — a non-Error rejection must still yield the route's own generic message.
+  it('falls back to a generic message when extraction rejects with a non-Error value', async () => {
+    containerServiceMock.extractPackages.mockRejectedValue('not-an-error')
+
+    const res = await request(app).post('/api/container/extract').send({ imageRef: 'alpine:3.19', runtime: 'docker' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: false, error: 'Failed to extract packages' })
   })
 })

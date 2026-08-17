@@ -1,0 +1,18 @@
+{
+  "header": {
+    "title": "Reports",
+    "description": "High-level security overview and compliance metrics",
+    "exportReport": "Export Report"
+  },
+  "summary": {
+    "title": "Executive Summary",
+    "statusLabel": "Status: {{status}}",
+    "keyPoint": "• {{point}}"
+  },
+  "empty": {
+    "title": "No Data Available",
+    "noProjects": "Create projects and upload SBOMs to see executive dashboard data.",
+    "noMatch": "No projects match the selected date range. Adjust the filters or add new projects.",
+    "goToDashboard": "Go to Dashboard"
+  }
+}

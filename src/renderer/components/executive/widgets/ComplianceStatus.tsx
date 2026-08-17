@@ -4,6 +4,7 @@
  */
 
 import { CheckCircle, AlertCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ComplianceMetrics } from '@/lib/analytics'
 
 interface ComplianceStatusProps {
@@ -14,6 +15,8 @@ interface ComplianceStatusProps {
 }
 
 export function ComplianceStatus({ compliance, nextReviewDate }: ComplianceStatusProps) {
+  const { t } = useTranslation('complianceStatus')
+
   const getComplianceStatus = (score: number) => {
     if (score >= 90) return { color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle }
     if (score >= 70) return { color: 'text-yellow-600', bgColor: 'bg-yellow-100', icon: AlertCircle }
@@ -25,37 +28,37 @@ export function ComplianceStatus({ compliance, nextReviewDate }: ComplianceStatu
 
   const metrics = [
     {
-      label: 'Overall SLA',
+      label: t('metrics.overallSla'),
       value: `${compliance.slaCompliance.slaOverall}%`,
       target: '80%',
       status: compliance.slaCompliance.slaOverall >= 80,
     },
     {
-      label: 'Critical SLA',
+      label: t('metrics.criticalSla'),
       value: `${compliance.slaCompliance.slaCritical}%`,
       target: '90%',
       status: compliance.slaCompliance.slaCritical >= 90,
     },
     {
-      label: 'High SLA',
+      label: t('metrics.highSla'),
       value: `${compliance.slaCompliance.slaHigh}%`,
       target: '70%',
       status: compliance.slaCompliance.slaHigh >= 70,
     },
     {
-      label: 'Scan Coverage',
+      label: t('metrics.scanCoverage'),
       value: `${compliance.scanCoverage}%`,
       target: '80%',
       status: compliance.scanCoverage >= 80,
     },
     {
-      label: 'Data Freshness',
+      label: t('metrics.dataFreshness'),
       value: `${compliance.dataFreshness}%`,
       target: '70%',
       status: compliance.dataFreshness >= 70,
     },
     {
-      label: 'Remediation Rate',
+      label: t('metrics.remediationRate'),
       value: `${compliance.remediationRate}%`,
       target: '60%',
       status: compliance.remediationRate >= 60,
@@ -76,7 +79,7 @@ export function ComplianceStatus({ compliance, nextReviewDate }: ComplianceStatu
   return (
     <div className="bg-card rounded-lg border p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm text-foreground">Compliance Status</h3>
+        <h3 className="font-semibold text-sm text-foreground">{t('title')}</h3>
         <div className={`p-2 rounded-lg ${slaStatus.bgColor}`}>
           <SlaIcon className={`w-4 h-4 ${slaStatus.color}`} />
         </div>
@@ -84,9 +87,9 @@ export function ComplianceStatus({ compliance, nextReviewDate }: ComplianceStatu
 
       {/* Overall SLA Badge */}
       <div className="text-center mb-4 p-3 bg-muted rounded-lg">
-        <div className="text-xs text-muted-foreground mb-1">Overall SLA Compliance</div>
+        <div className="text-xs text-muted-foreground mb-1">{t('overallLabel')}</div>
         <div className={`text-3xl font-bold ${slaStatus.color}`}>{compliance.slaCompliance.slaOverall}%</div>
-        <div className="text-xs text-muted-foreground mt-1">Target: 80%</div>
+        <div className="text-xs text-muted-foreground mt-1">{t('overallTarget')}</div>
       </div>
 
       {/* Detailed Metrics */}
@@ -116,9 +119,9 @@ export function ComplianceStatus({ compliance, nextReviewDate }: ComplianceStatu
       {/* Footer */}
       <div className="border-t pt-3 mt-3">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Next compliance review</span>
+          <span className="text-muted-foreground">{t('nextReview')}</span>
           <span className="font-medium text-foreground">
-            {nextReviewDate ? nextReviewDate.toLocaleDateString() : 'Not scheduled'}
+            {nextReviewDate ? nextReviewDate.toLocaleDateString() : t('notScheduled')}
           </span>
         </div>
       </div>

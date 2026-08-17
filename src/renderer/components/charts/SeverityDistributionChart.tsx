@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Cell, Pie, PieChart, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 import type { Vulnerability } from '@@/types'
 import { SEVERITY_COLORS } from '@@/constants'
@@ -66,6 +67,7 @@ export const SeverityDistributionChart = React.memo(function SeverityDistributio
   showLegend = true,
   showLabels = true,
 }: SeverityDistributionChartProps) {
+  const { t } = useTranslation('severityDistributionChart')
   // Calculate distribution
   const distribution = React.useMemo(() => {
     return calculateSeverityDistribution(vulnerabilities, counts)
@@ -76,7 +78,7 @@ export const SeverityDistributionChart = React.memo(function SeverityDistributio
   if (total === 0) {
     return (
       <div className="flex h-full items-center justify-center text-gray-500">
-        <p className="text-sm">No vulnerabilities found</p>
+        <p className="text-sm">{t('empty')}</p>
       </div>
     )
   }
@@ -88,9 +90,7 @@ export const SeverityDistributionChart = React.memo(function SeverityDistributio
       return (
         <div className="rounded-lg border bg-white px-3 py-2 shadow-md">
           <p className="text-sm font-semibold">{data.name}</p>
-          <p className="text-xs text-gray-600">
-            {data.value} vulnerabilities ({percentage}%)
-          </p>
+          <p className="text-xs text-gray-600">{t('tooltip.count', { count: data.value, percentage })}</p>
         </div>
       )
     }
@@ -114,14 +114,13 @@ export const SeverityDistributionChart = React.memo(function SeverityDistributio
         dominantBaseline="central"
         className="text-xs font-semibold"
       >
-        {`${(percent * 100).toFixed(0)}%`}
+        {t('label.percentage', { percent: (percent * 100).toFixed(0) })}
       </text>
     )
   }
 
-  const ariaLabel = `Donut chart of vulnerability severity distribution across ${total} vulnerabilit${
-    total === 1 ? 'y' : 'ies'
-  }. ${distribution.map((item) => `${item.name}: ${item.value}`).join(', ')}.`
+  const severityList = distribution.map((item) => `${item.name}: ${item.value}`).join(', ')
+  const ariaLabel = t('ariaLabel', { count: total, list: severityList })
 
   return (
     <div role="img" aria-label={ariaLabel}>
@@ -149,7 +148,7 @@ export const SeverityDistributionChart = React.memo(function SeverityDistributio
               height={36}
               formatter={(value, entry: any) => (
                 <span className="text-sm text-gray-700">
-                  {value}: {entry.payload.value}
+                  {t('legend.itemFormat', { name: value, count: entry.payload.value })}
                 </span>
               )}
             />

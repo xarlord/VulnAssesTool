@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { CvssBreakdown } from '@@/types'
 
@@ -17,6 +18,7 @@ export const CvssMetricsGrid = React.memo(function CvssMetricsGrid({
   expanded = false,
   onToggle,
 }: CvssMetricsGridProps) {
+  const { t } = useTranslation('cvssMetricsGrid')
   const [isExpanded, setIsExpanded] = React.useState(expanded)
 
   const handleToggle = () => {
@@ -27,16 +29,16 @@ export const CvssMetricsGrid = React.memo(function CvssMetricsGrid({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-gray-700">CVSS Metrics</h4>
+        <h4 className="text-sm font-semibold text-gray-700">{t('title')}</h4>
         <button onClick={handleToggle} className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
           {isExpanded ? (
             <>
-              <span>Hide</span>
+              <span>{t('toggle.hide')}</span>
               <ChevronUp className="h-4 w-4" />
             </>
           ) : (
             <>
-              <span>Show</span>
+              <span>{t('toggle.show')}</span>
               <ChevronDown className="h-4 w-4" />
             </>
           )}
@@ -65,10 +67,12 @@ interface TemporalMetricsBlockProps {
  * Only the metrics actually present are shown, so a base-only vector renders nothing here.
  */
 function TemporalMetricsBlock({ temporal }: TemporalMetricsBlockProps) {
+  const { t } = useTranslation('cvssMetricsGrid')
   const rows: Array<{ label: string; value: string }> = []
-  if (temporal.exploitCodeMaturity) rows.push({ label: 'Exploit Code Maturity', value: temporal.exploitCodeMaturity })
-  if (temporal.remediationLevel) rows.push({ label: 'Remediation Level', value: temporal.remediationLevel })
-  if (temporal.reportConfidence) rows.push({ label: 'Report Confidence', value: temporal.reportConfidence })
+  if (temporal.exploitCodeMaturity)
+    rows.push({ label: t('temporal.exploitCodeMaturity'), value: temporal.exploitCodeMaturity })
+  if (temporal.remediationLevel) rows.push({ label: t('temporal.remediationLevel'), value: temporal.remediationLevel })
+  if (temporal.reportConfidence) rows.push({ label: t('temporal.reportConfidence'), value: temporal.reportConfidence })
 
   if (rows.length === 0) {
     return null
@@ -76,7 +80,7 @@ function TemporalMetricsBlock({ temporal }: TemporalMetricsBlockProps) {
 
   return (
     <div className="space-y-2">
-      <h5 className="text-xs font-semibold text-gray-700">Temporal Metrics</h5>
+      <h5 className="text-xs font-semibold text-gray-700">{t('temporal.title')}</h5>
       <div className="grid gap-3 md:grid-cols-2">
         {rows.map((row) => (
           <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
@@ -102,6 +106,7 @@ interface MetricCardProps {
 }
 
 function MetricCard({ explanation }: MetricCardProps) {
+  const { t } = useTranslation('cvssMetricsGrid')
   const getValueColor = (metric: string, value: string): string => {
     // Which value is HIGH risk depends on the metric, not the value string alone: "None" is high
     // risk for Privileges Required / User Interaction but LOW risk for the C/I/A impacts, and
@@ -134,11 +139,11 @@ function MetricCard({ explanation }: MetricCardProps) {
       </div>
       <p className="mb-2 text-xs text-gray-600">{explanation.description}</p>
       <div className="mb-1 text-xs">
-        <span className="font-semibold text-gray-700">Impact: </span>
+        <span className="font-semibold text-gray-700">{t('metricCard.impact')}</span>
         <span className="text-gray-600">{explanation.implications}</span>
       </div>
       <div className="text-xs">
-        <span className="font-semibold text-gray-700">Example: </span>
+        <span className="font-semibold text-gray-700">{t('metricCard.example')}</span>
         <span className="text-gray-600">{explanation.example}</span>
       </div>
     </div>

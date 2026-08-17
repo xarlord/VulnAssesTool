@@ -1,4 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { useTranslation } from 'react-i18next'
 import type { HealthSnapshot } from '@/lib/health/healthHistory'
 
 interface HealthTrendChartProps {
@@ -11,16 +12,18 @@ interface HealthTrendChartProps {
  * rendering an empty axis.
  */
 export function HealthTrendChart({ history }: HealthTrendChartProps) {
+  const { t } = useTranslation('healthTrendChart')
+
   if (history.length < 2) {
     return (
       <div className="flex h-64 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        Not enough history yet — a health score is recorded once per day. The trend line appears once at least two days
-        of scores exist.
+        {t('emptyState')}
       </div>
     )
   }
 
-  const ariaLabel = `Health score trend line. ${history.map((point) => `${point.date}: ${point.score}`).join(', ')}.`
+  const points = history.map((point) => `${point.date}: ${point.score}`).join(', ')
+  const ariaLabel = t('ariaLabel', { points })
 
   return (
     <div className="h-64" style={{ minHeight: '256px', minWidth: '300px' }} role="img" aria-label={ariaLabel}>

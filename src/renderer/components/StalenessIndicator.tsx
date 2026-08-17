@@ -1,4 +1,5 @@
 import { Clock, RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { isVulnDataStale, getStalenessText } from '@/lib/cache'
 import type { AppSettings } from '@@/types'
 
@@ -17,6 +18,7 @@ export function StalenessIndicator({
   isRefreshing = false,
   compact = false,
 }: StalenessIndicatorProps) {
+  const { t } = useTranslation('stalenessIndicator')
   const isStale = isVulnDataStale(lastRefresh, settings.vulnDataCacheTTL)
   const stalenessText = getStalenessText(lastRefresh, settings.vulnDataCacheTTL)
 
@@ -24,7 +26,7 @@ export function StalenessIndicator({
     return (
       <div
         className={`flex items-center gap-1.5 text-xs ${isStale ? 'text-orange-600' : 'text-gray-500'}`}
-        title={`Last refreshed: ${stalenessText}`}
+        title={t('lastRefreshedTitle', { text: stalenessText })}
       >
         <Clock className="h-3 w-3" />
         <span>{stalenessText}</span>
@@ -42,7 +44,7 @@ export function StalenessIndicator({
     >
       <Clock className="h-4 w-4" />
       <span>
-        Last refreshed: <strong>{stalenessText}</strong>
+        {t('lastRefreshedLabel')} <strong>{stalenessText}</strong>
       </span>
       {isStale && (
         <button
@@ -51,7 +53,7 @@ export function StalenessIndicator({
           className="ml-1 flex items-center gap-1 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 hover:bg-orange-200 disabled:opacity-50"
         >
           <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Refreshing...' : 'Refresh Now'}
+          {isRefreshing ? t('refreshing') : t('refreshNow')}
         </button>
       )}
     </div>
@@ -62,6 +64,7 @@ export function StalenessIndicator({
  * Smaller badge-style staleness indicator
  */
 export function StalenessBadge({ lastRefresh, settings }: Pick<StalenessIndicatorProps, 'lastRefresh' | 'settings'>) {
+  const { t } = useTranslation('stalenessIndicator')
   const isStale = isVulnDataStale(lastRefresh, settings.vulnDataCacheTTL)
   const stalenessText = getStalenessText(lastRefresh, settings.vulnDataCacheTTL)
 
@@ -70,7 +73,7 @@ export function StalenessBadge({ lastRefresh, settings }: Pick<StalenessIndicato
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
         isStale ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
       }`}
-      title={`Last refreshed: ${stalenessText}`}
+      title={t('lastRefreshedTitle', { text: stalenessText })}
     >
       <Clock className="h-3 w-3" />
       <span>{stalenessText}</span>

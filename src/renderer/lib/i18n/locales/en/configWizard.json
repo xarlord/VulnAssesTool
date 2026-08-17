@@ -1,0 +1,96 @@
+{
+  "header": {
+    "title": "FPF Configuration Wizard",
+    "description": "Configure the False Positive Filter for your project"
+  },
+  "wizardSteps": {
+    "projectInfo": {
+      "title": "Project Information",
+      "description": "Basic project details and tier selection"
+    },
+    "interfaces": {
+      "title": "Interface Configuration",
+      "description": "Enable or disable network interfaces"
+    },
+    "services": {
+      "title": "Service Configuration",
+      "description": "Configure external service access"
+    },
+    "features": {
+      "title": "Feature Flags",
+      "description": "Enable or disable application features"
+    },
+    "review": {
+      "title": "Review & Save",
+      "description": "Review configuration before saving"
+    }
+  },
+  "projectInfoStep": {
+    "nameLabel": "Project Name",
+    "nameHelp": "The name of your project",
+    "namePlaceholder": "My Application",
+    "versionLabel": "Version",
+    "versionHelp": "Current project version",
+    "versionPlaceholder": "1.0.0",
+    "tierLabel": "Project Tier",
+    "tierHelp": "Tier affects filter strictness: prototype (lenient), development (balanced), production (strict)",
+    "tierFiltering": {
+      "prototype": "Lenient filtering",
+      "development": "Balanced filtering",
+      "production": "Strict filtering"
+    },
+    "attackSurfaceLabel": "Attack Surface",
+    "attackSurfaceHelp": "ISO 21434 attack surface classification"
+  },
+  "interfacesStep": {
+    "description": "Configure which network interfaces are enabled in your project. Disabled interfaces will filter vulnerabilities that require those interfaces.",
+    "exposureLabel": "Exposure:",
+    "exposureOptions": {
+      "isolated": "Isolated",
+      "internal": "Internal",
+      "external": "External"
+    }
+  },
+  "servicesStep": {
+    "description": "Configure which services are available and whether they accept external connections.",
+    "allowExternalAccess": "Allow external access"
+  },
+  "featuresStep": {
+    "description": "Enable or disable specific features. Vulnerabilities affecting disabled features may be filtered."
+  },
+  "reviewStep": {
+    "incompleteTitle": "Configuration Incomplete",
+    "incompleteMessage": "Please complete the required fields before saving.",
+    "projectSummary": {
+      "title": "Project Information",
+      "name": "Name:",
+      "version": "Version:",
+      "tier": "Tier:",
+      "attackSurface": "Attack Surface:"
+    },
+    "interfacesSummary": {
+      "title": "Interfaces",
+      "enabled": "Enabled:",
+      "disabled": "Disabled:"
+    },
+    "servicesSummary": {
+      "title": "Services",
+      "enabled": "Enabled:",
+      "enabledCount": "{{count}} services",
+      "externalAccess": "External access:"
+    },
+    "featuresSummary": {
+      "title": "Features",
+      "enabled": "Enabled:",
+      "enabledCount": "{{count}} features",
+      "disabled": "Disabled:"
+    },
+    "saving": "Saving...",
+    "saveButton": "Save Configuration"
+  },
+  "navigation": {
+    "previous": "Previous",
+    "next": "Next",
+    "stepIndicator": "Step {{current}} of {{total}}: {{title}}"
+  }
+}

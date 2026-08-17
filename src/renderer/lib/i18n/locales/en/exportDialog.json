@@ -1,0 +1,32 @@
+{
+  "title": "Export Data",
+  "description": "Choose the export format and data type for your report.",
+  "format": {
+    "label": "Export Format",
+    "csv": {
+      "label": "CSV",
+      "description": "Spreadsheet-compatible format, ideal for data analysis"
+    },
+    "json": {
+      "label": "JSON",
+      "description": "Machine-readable format, ideal for integration"
+    },
+    "pdf": {
+      "label": "PDF",
+      "description": "Formatted report, ideal for sharing and documentation"
+    }
+  },
+  "dataType": {
+    "label": "Data Type",
+    "allProjects": "All Projects Summary",
+    "project": "Full Project Report",
+    "vulnerabilities": "Vulnerabilities Only",
+    "components": "Components Only"
+  },
+  "preview": {
+    "label": "Export Preview",
+    "allProjects": "Exporting {{count}} projects as {{format}}",
+    "singleProject": "Exporting \"{{name}}\" - {{label}} as {{format}}"
+  },
+  "exporting": "Exporting..."
+}

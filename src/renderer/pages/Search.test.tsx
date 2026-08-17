@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 import { Search } from './Search'
 import { useStore, useProjects } from '@/store/useStore'
+import type { SearchResult } from '@/lib/search'
+import type { CveResult } from '@@/types'
 
 // Mock the store — must include useProjects export
 vi.mock('@/store/useStore', () => ({
@@ -1712,6 +1714,671 @@ describe('Search Page', () => {
       await user.click(screen.getByText('NVD Database'))
       expect(screen.queryByText('Saved searches')).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Nginx' })).not.toBeInTheDocument()
+    })
+  })
+
+  // handleSaveSearch wraps saveSearch in try/catch because saveSearch throws on an empty
+  // name/query — a case the SavedSearches UI already prevents by disabling Save. If saveSearch
+  // ever throws for a *non-empty* input (e.g. a storage-quota error), the page must swallow it
+  // and log rather than crash the Search view.
+  describe('Save search failure handling', () => {
+    it('logs and keeps the page usable when saveSearch throws for a non-empty query', async () => {
+      const searchLib = await import('@/lib/search')
+      const saveSpy = vi.spyOn(searchLib, 'saveSearch').mockImplementation(() => {
+        throw new Error('storage quota exceeded')
+      })
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      const input = screen.getByPlaceholderText(/search projects, components, vulnerabilities/i)
+      await user.type(input, 'react')
+      await user.click(screen.getByRole('button', { name: /Save current/i }))
+      await user.type(screen.getByLabelText('Saved search name'), 'Will fail')
+      await user.click(screen.getByRole('button', { name: /^Save$/i }))
+
+      // The throw was caught: it was logged, no chip was created, and the query the
+      // user typed is still intact (the page did not crash or lose state).
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to save search:', expect.any(Error))
+      expect(screen.queryByRole('button', { name: 'Will fail' })).not.toBeInTheDocument()
+      expect(input).toHaveValue('react')
+
+      saveSpy.mockRestore()
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  // ResultIcon's switch only has 'project'/'component' cases (vulnerability is intercepted
+  // earlier by the `type === 'vulnerability' || severity` check), falling through to `default:
+  // return null` for anything else. The SearchResult union only ever produces those three
+  // values, so this guards the defensive fallback in case a future/mismatched result type
+  // reaches rendering — the row must still render (no icon, no crash) rather than throw.
+  describe('ResultIcon defensive fallback', () => {
+    it('renders the result row without an icon for a result type outside the known union', async () => {
+      const searchLib = await import('@/lib/search')
+      const weirdResult = {
+        type: 'unknown-type',
+        id: 'weird-1',
+        title: 'Unclassified Result',
+        description: 'A result whose type the icon switch does not recognize',
+        relevance: 1,
+      } as unknown as SearchResult
+
+      vi.spyOn(searchLib, 'searchIndex').mockReturnValue([weirdResult])
+      vi.spyOn(searchLib, 'groupSearchResults').mockReturnValue({
+        projects: [weirdResult],
+        components: [],
+        vulnerabilities: [],
+      })
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      const input = screen.getByPlaceholderText(/search projects, components, vulnerabilities/i)
+      await user.type(input, 'anything')
+
+      // The row still renders using the data it was given, even though no icon matched.
+      expect(await screen.findByText('Unclassified Result')).toBeInTheDocument()
+
+      // handleResultClick's if/else-if only recognizes 'project' and 'component'/'vulnerability';
+      // clicking a row of an unrecognized type must be a safe no-op rather than navigating
+      // somewhere wrong (result.projectId is undefined here, so a naive navigate would be broken).
+      fireEvent.click(screen.getByText('Unclassified Result'))
+      expect(mockNavigate).not.toHaveBeenCalled()
+
+      vi.mocked(searchLib.searchIndex).mockRestore()
+      vi.mocked(searchLib.groupSearchResults).mockRestore()
+    })
+  })
+
+  // Enter-to-navigate is a project-search convenience; NVD mode has no per-row keyboard
+  // navigation target (clicking opens the CVE modal instead), so pressing Enter there — even
+  // with a result "selected" via arrow keys — must not misfire a project navigation.
+  describe('Enter key is a no-op in NVD mode', () => {
+    it('does not navigate when Enter is pressed after selecting an NVD result', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.search).mockResolvedValue({
+        success: true,
+        results: [
+          { id: 'CVE-2024-30303', cveId: 'CVE-2024-30303', severity: 'HIGH', description: 'Test', source: 'NVD' },
+        ],
+        totalResults: 1,
+      })
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      const input = screen.getByTestId('nvd-search-input')
+      await user.type(input, 'test')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('nvd-result')).toBeInTheDocument()
+      })
+
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(mockNavigate).not.toHaveBeenCalled()
+    })
+  })
+
+  // The sync button shows a live "NN%" readout once the backend reports progress, but during
+  // the earliest tick(s) percentage can still be 0 (nothing measurable yet) — the UI must fall
+  // back to a neutral "..." rather than printing a misleading "0%".
+  describe('Sync progress percentage fallback', () => {
+    it('shows "..." instead of a percentage while percentage is still 0', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      const cleanupFn = vi.fn()
+      vi.mocked(platform.database.onSyncProgress).mockImplementationOnce((cb) => {
+        cb({
+          phase: 'fetching',
+          lastSyncAt: null,
+          fetchingFrom: '',
+          cvesFetched: 0,
+          cvesProcessed: 0,
+          cvesAdded: 0,
+          cvesUpdated: 0,
+          cvesSkipped: 0,
+          percentage: 0,
+          elapsedTimeMs: 0,
+          estimatedTimeRemainingMs: 0,
+          errors: [],
+        })
+        return cleanupFn
+      })
+
+      renderWithRouter(<Search />)
+      fireEvent.click(screen.getByText('NVD Database'))
+
+      await waitFor(() => {
+        expect(screen.getByText('...')).toBeInTheDocument()
+      })
+    })
+  })
+
+  // The "Found N results" summary must read grammatically for a single match ("1 result"),
+  // not just the common multi-match case — a hardcoded "s" would misreport the count as plural.
+  describe('Result count pluralization', () => {
+    it('shows the plural "results" when a project search matches more than one item', async () => {
+      vi.mocked(useProjects).mockReturnValue([
+        {
+          id: 'proj-alpha-1',
+          name: 'Alpha One',
+          description: 'first alpha project',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          sbomFiles: [],
+          components: [],
+          vulnerabilities: [],
+          statistics: {
+            totalVulnerabilities: 0,
+            criticalCount: 0,
+            highCount: 0,
+            mediumCount: 0,
+            lowCount: 0,
+            totalComponents: 0,
+            vulnerableComponents: 0,
+          },
+        },
+        {
+          id: 'proj-alpha-2',
+          name: 'Alpha Two',
+          description: 'second alpha project',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          sbomFiles: [],
+          components: [],
+          vulnerabilities: [],
+          statistics: {
+            totalVulnerabilities: 0,
+            criticalCount: 0,
+            highCount: 0,
+            mediumCount: 0,
+            lowCount: 0,
+            totalComponents: 0,
+            vulnerableComponents: 0,
+          },
+        },
+      ])
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      const input = screen.getByPlaceholderText(/search/i)
+      await user.type(input, 'Alpha')
+
+      await waitFor(
+        () => {
+          expect(screen.getByText(/Found 2 results \(/)).toBeInTheDocument()
+        },
+        { timeout: 1000 },
+      )
+    })
+  })
+
+  // Selecting a result with the arrow keys must highlight it wherever it lives — including the
+  // Vulnerabilities section, not just Projects — so keyboard users get visual feedback for every
+  // result type before pressing Enter to open it.
+  describe('Keyboard highlight in Vulnerabilities section', () => {
+    it('rings the selected row when the arrow-selected result is a vulnerability', async () => {
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      const input = screen.getByPlaceholderText(/search/i)
+      await user.type(input, 'CVE')
+
+      await waitFor(() => {
+        expect(screen.getByText('Vulnerabilities')).toBeInTheDocument()
+      })
+
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+      await waitFor(() => {
+        const highlighted = screen.getByText('CVE-2023-1234').closest('.ring-2.ring-ring')
+        expect(highlighted).not.toBeNull()
+      })
+    })
+  })
+
+  // While the NVD query is in flight, the results area must show the searching spinner rather
+  // than a stale empty-state or a jarring blank gap — otherwise a slow database read looks like
+  // the search silently did nothing.
+  describe('NVD loading state', () => {
+    it('shows the searching indicator while the NVD query is still pending', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      let resolveSearch: (value: { success: boolean; results: CveResult[]; totalResults: number }) => void = () => {}
+      vi.mocked(platform.database.search).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSearch = resolve
+          }),
+      )
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      await user.type(screen.getByTestId('nvd-search-input'), 'test')
+
+      // The debounced query has fired the search, which is still unresolved: the spinner shows.
+      expect(await screen.findByText('Searching NVD database...')).toBeInTheDocument()
+
+      resolveSearch({ success: true, results: [], totalResults: 0 })
+
+      await waitFor(() => {
+        expect(screen.queryByText('Searching NVD database...')).not.toBeInTheDocument()
+      })
+    })
+  })
+
+  // fetchNvdStats only calls setNvdStats when the backend actually returned a `stats` payload;
+  // a `success: true` response with no stats (e.g. a not-yet-implemented backend) must not crash
+  // by handing an undefined value to the stats display.
+  describe('Fetch NVD Stats without a stats payload', () => {
+    it('does not render CVE counts when the response has no stats object', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.getDetailedStats).mockResolvedValueOnce({
+        success: true,
+        stats: undefined as unknown as Awaited<ReturnType<typeof platform.database.getDetailedStats>>['stats'],
+      })
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Sync NVD Data')).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/CVEs in database/)).not.toBeInTheDocument()
+    })
+  })
+
+  // handleStartSync guards on the platform actually exposing startDeltaSync — on a backend that
+  // hasn't wired up sync yet, clicking the button must be a harmless no-op instead of throwing.
+  describe('Sync guarded when startDeltaSync is unavailable', () => {
+    it('does nothing when Sync NVD Data is clicked without a startDeltaSync API', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(getPlatform).mockReturnValue({
+        ...platform,
+        database: {
+          ...platform.database,
+          startDeltaSync: undefined as unknown as typeof platform.database.startDeltaSync,
+        },
+      })
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByTestId('nvd-sync-button'))
+
+      // No progress/syncing UI appears — the guard returned before any state changed.
+      expect(screen.queryByText('Checking for updates...')).not.toBeInTheDocument()
+      expect(screen.getByTestId('nvd-sync-button')).toBeInTheDocument()
+
+      vi.mocked(getPlatform).mockReturnValue(platform)
+    })
+  })
+
+  // Same guard for cancel: if the platform never exposes cancelSync, clicking the (still visible)
+  // cancel control during an in-flight sync must not throw — it should just leave sync running.
+  describe('Cancel guarded when cancelSync is unavailable', () => {
+    it('does nothing when cancel is clicked without a cancelSync API', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      const cleanupFn = vi.fn()
+      vi.mocked(platform.database.onSyncProgress).mockImplementationOnce((cb) => {
+        cb({
+          phase: 'fetching',
+          lastSyncAt: null,
+          fetchingFrom: '',
+          cvesFetched: 1,
+          cvesProcessed: 0,
+          cvesAdded: 0,
+          cvesUpdated: 0,
+          cvesSkipped: 0,
+          percentage: 10,
+          elapsedTimeMs: 1000,
+          estimatedTimeRemainingMs: 0,
+          errors: [],
+        })
+        return cleanupFn
+      })
+      vi.mocked(getPlatform).mockReturnValue({
+        ...platform,
+        database: { ...platform.database, cancelSync: undefined as unknown as typeof platform.database.cancelSync },
+      })
+
+      renderWithRouter(<Search />)
+      fireEvent.click(screen.getByText('NVD Database'))
+
+      const cancelButton = (await screen.findByText(/Fetching: 1 CVEs/)).closest('button')
+      if (cancelButton) fireEvent.click(cancelButton)
+
+      // Sync is still shown as in-progress — the guard prevented cancelSync/state changes.
+      expect(screen.getByText(/Fetching: 1 CVEs/)).toBeInTheDocument()
+
+      vi.mocked(getPlatform).mockReturnValue(platform)
+    })
+  })
+
+  // handleStartSync's catch stringifies non-Error throws to a generic message, same as the NVD
+  // search catch does — a thrown string/object must not leak `[object Object]` or crash the retry UI.
+  describe('Sync failure with a non-Error throw', () => {
+    it('shows the generic "Sync failed" message when startDeltaSync rejects with a non-Error', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.startDeltaSync).mockRejectedValueOnce('boom' as unknown as Error)
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      await user.click(screen.getByTestId('nvd-sync-button'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Sync failed')).toBeInTheDocument()
+      })
+    })
+  })
+
+  // The NVD search catch falls back to a generic message for non-Error throws too (e.g. a
+  // rejected string), so a search failure never surfaces "undefined" or crashes the results view.
+  describe('NVD search failure with a non-Error throw', () => {
+    it('shows the generic error message when the search rejects with a non-Error value', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.search).mockRejectedValue('network down')
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      await user.type(screen.getByTestId('nvd-search-input'), 'test')
+
+      await waitFor(
+        () => {
+          expect(screen.getByText('An unexpected error occurred')).toBeInTheDocument()
+        },
+        { timeout: 3000 },
+      )
+    })
+  })
+
+  // response.error is optional — a `success: false` reply that omits it must still show a
+  // sensible message instead of rendering an empty/undefined error string.
+  describe('NVD search failure without an error message', () => {
+    it('falls back to "Search failed" when the response has success:false and no error field', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.search).mockResolvedValue({
+        success: false,
+        results: [],
+        totalResults: 0,
+      })
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      await user.type(screen.getByTestId('nvd-search-input'), 'test')
+
+      await waitFor(
+        () => {
+          expect(screen.getByText('Search failed')).toBeInTheDocument()
+        },
+        { timeout: 3000 },
+      )
+    })
+  })
+
+  // The `ignore` flag exists specifically to drop a slow, superseded NVD search response so it
+  // can't clobber the results of a newer query the user has since typed — this is the core
+  // correctness guarantee of the debounced-search effect's cleanup.
+  describe('Stale NVD search responses are ignored', () => {
+    it('discards a slow successful response that resolves after the query changed again', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      let resolveFirst: (value: { success: boolean; results: CveResult[]; totalResults: number }) => void = () => {}
+      vi.mocked(platform.database.search)
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve
+            }),
+        )
+        .mockResolvedValueOnce({
+          success: true,
+          results: [
+            { id: 'CVE-2024-40404', cveId: 'CVE-2024-40404', severity: 'LOW', description: 'fresh', source: 'NVD' },
+          ],
+          totalResults: 1,
+        })
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      const input = screen.getByTestId('nvd-search-input')
+
+      await user.type(input, 'first')
+      await waitFor(() => expect(platform.database.search).toHaveBeenCalledTimes(1))
+
+      // A new debounced query supersedes the first before it resolves — this runs the first
+      // effect's cleanup (ignore = true) and starts a second, independent search.
+      await user.clear(input)
+      await user.type(input, 'second')
+      await waitFor(() => expect(platform.database.search).toHaveBeenCalledTimes(2))
+
+      await waitFor(() => {
+        expect(screen.getByText('CVE-2024-40404')).toBeInTheDocument()
+      })
+
+      // Now the stale first promise resolves. Its (different) results must NOT appear.
+      resolveFirst({
+        success: true,
+        results: [
+          { id: 'CVE-2024-11111', cveId: 'CVE-2024-11111', severity: 'HIGH', description: 'stale', source: 'NVD' },
+        ],
+        totalResults: 1,
+      })
+
+      await new Promise((r) => setTimeout(r, 50))
+      expect(screen.queryByText('CVE-2024-11111')).not.toBeInTheDocument()
+      expect(screen.getByText('CVE-2024-40404')).toBeInTheDocument()
+    })
+
+    it('discards a slow failing response that rejects after the query changed again', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      let rejectFirst: (reason: unknown) => void = () => {}
+      vi.mocked(platform.database.search)
+        .mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectFirst = reject
+            }),
+        )
+        .mockResolvedValueOnce({
+          success: true,
+          results: [
+            { id: 'CVE-2024-50505', cveId: 'CVE-2024-50505', severity: 'LOW', description: 'fresh', source: 'NVD' },
+          ],
+          totalResults: 1,
+        })
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      await user.click(screen.getByText('NVD Database'))
+      const input = screen.getByTestId('nvd-search-input')
+
+      await user.type(input, 'first')
+      await waitFor(() => expect(platform.database.search).toHaveBeenCalledTimes(1))
+
+      await user.clear(input)
+      await user.type(input, 'second')
+      await waitFor(() => expect(platform.database.search).toHaveBeenCalledTimes(2))
+
+      await waitFor(() => {
+        expect(screen.getByText('CVE-2024-50505')).toBeInTheDocument()
+      })
+
+      // The stale first search now rejects. It must not overwrite the current (successful) view.
+      rejectFirst(new Error('stale failure'))
+
+      await new Promise((r) => setTimeout(r, 50))
+      expect(screen.queryByText('stale failure')).not.toBeInTheDocument()
+      expect(screen.getByText('CVE-2024-50505')).toBeInTheDocument()
+    })
+  })
+
+  // ArrowDown must stop at the last result instead of pushing selectedIndex past the end of the
+  // list, which would desync the highlight from any real row.
+  describe('Arrow key navigation boundaries', () => {
+    it('stops ArrowDown at the last result instead of advancing past it', async () => {
+      vi.mocked(useProjects).mockReturnValue([
+        {
+          id: 'proj-a',
+          name: 'Boundary Alpha',
+          description: 'boundary test project a',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          sbomFiles: [],
+          components: [],
+          vulnerabilities: [],
+          statistics: {
+            totalVulnerabilities: 0,
+            criticalCount: 0,
+            highCount: 0,
+            mediumCount: 0,
+            lowCount: 0,
+            totalComponents: 0,
+            vulnerableComponents: 0,
+          },
+        },
+        {
+          id: 'proj-b',
+          name: 'Boundary Beta',
+          description: 'boundary test project b',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          sbomFiles: [],
+          components: [],
+          vulnerabilities: [],
+          statistics: {
+            totalVulnerabilities: 0,
+            criticalCount: 0,
+            highCount: 0,
+            mediumCount: 0,
+            lowCount: 0,
+            totalComponents: 0,
+            vulnerableComponents: 0,
+          },
+        },
+      ])
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      const input = screen.getByPlaceholderText(/search/i)
+      await user.type(input, 'Boundary')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Found 2 results \(/)).toBeInTheDocument()
+      })
+
+      // Two results: index goes 0, then 1 (last). A third ArrowDown must stay at 1, still
+      // highlighting exactly one row rather than losing the highlight or erroring.
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+      await waitFor(() => {
+        expect(document.querySelectorAll('.ring-2.ring-ring').length).toBe(1)
+      })
+    })
+
+    it('steps ArrowUp back one result at a time instead of jumping straight to no selection', async () => {
+      vi.mocked(useProjects).mockReturnValue([
+        {
+          id: 'proj-c',
+          name: 'Boundary Gamma',
+          description: 'boundary test project c',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          sbomFiles: [],
+          components: [],
+          vulnerabilities: [],
+          statistics: {
+            totalVulnerabilities: 0,
+            criticalCount: 0,
+            highCount: 0,
+            mediumCount: 0,
+            lowCount: 0,
+            totalComponents: 0,
+            vulnerableComponents: 0,
+          },
+        },
+        {
+          id: 'proj-d',
+          name: 'Boundary Delta',
+          description: 'boundary test project d',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          sbomFiles: [],
+          components: [],
+          vulnerabilities: [],
+          statistics: {
+            totalVulnerabilities: 0,
+            criticalCount: 0,
+            highCount: 0,
+            mediumCount: 0,
+            lowCount: 0,
+            totalComponents: 0,
+            vulnerableComponents: 0,
+          },
+        },
+      ])
+
+      const user = userEvent.setup()
+      renderWithRouter(<Search />)
+
+      const input = screen.getByPlaceholderText(/search/i)
+      await user.type(input, 'Boundary')
+
+      await waitFor(() => {
+        expect(screen.getByText(/Found 2 results \(/)).toBeInTheDocument()
+      })
+
+      // Move to index 1, then back up to index 0 (not -1): the highlight must still be showing
+      // on exactly one row, proving ArrowUp decremented rather than resetting the selection.
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      fireEvent.keyDown(input, { key: 'ArrowUp' })
+
+      await waitFor(() => {
+        expect(document.querySelectorAll('.ring-2.ring-ring').length).toBe(1)
+      })
     })
   })
 })

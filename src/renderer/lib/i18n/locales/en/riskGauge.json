@@ -1,0 +1,12 @@
+{
+  "title": "Overall Risk Level",
+  "healthScore": {
+    "suffix": "/100",
+    "label": "Health Score"
+  },
+  "stats": {
+    "critical": "Critical",
+    "high": "High",
+    "exploited": "Exploited"
+  }
+}

@@ -3,6 +3,7 @@
  * Ranked list of the most severe individual CVEs across all projects.
  */
 
+import { useTranslation } from 'react-i18next'
 import type { TopVulnerabilityItem } from '@/lib/analytics'
 import { getSeverityTextClass } from '@/lib/severity'
 
@@ -12,11 +13,12 @@ interface TopCriticalVulnerabilitiesProps {
 }
 
 export function TopCriticalVulnerabilities({ vulnerabilities, onProjectClick }: TopCriticalVulnerabilitiesProps) {
+  const { t } = useTranslation('topCriticalVulnerabilities')
   return (
     <div data-testid="top-critical-vulnerabilities" className="bg-card rounded-lg border p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm text-foreground">Top Critical Vulnerabilities</h3>
-        <div className="text-xs text-muted-foreground">Top {vulnerabilities.length}</div>
+        <h3 className="font-semibold text-sm text-foreground">{t('title')}</h3>
+        <div className="text-xs text-muted-foreground">{t('topCount', { count: vulnerabilities.length })}</div>
       </div>
 
       <div className="flex-1">
@@ -33,20 +35,18 @@ export function TopCriticalVulnerabilities({ vulnerabilities, onProjectClick }: 
                   <span className="flex-1 min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">{vuln.id}</span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      <span>{vuln.projectName}</span> • {vuln.affectedComponentCount} component(s)
+                      <span>{vuln.projectName}</span> {t('componentCount', { count: vuln.affectedComponentCount })}
                     </span>
                   </span>
                   <span className={`text-xs font-semibold shrink-0 ${getSeverityTextClass('critical')}`}>
-                    {vuln.cvssScore !== undefined ? vuln.cvssScore.toFixed(1) : 'N/A'}
+                    {vuln.cvssScore !== undefined ? vuln.cvssScore.toFixed(1) : t('notAvailable')}
                   </span>
                 </button>
               </li>
             ))}
           </ol>
         ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            No critical vulnerabilities
-          </div>
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">{t('noData')}</div>
         )}
       </div>
     </div>

@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -27,16 +28,6 @@ const categoryIcons: Record<CommandCategory, LucideIcon> = {
   edit: Edit,
 }
 
-// Category labels
-const categoryLabels: Record<CommandCategory, string> = {
-  navigation: 'Navigation',
-  actions: 'Actions',
-  settings: 'Settings',
-  help: 'Help',
-  view: 'View',
-  edit: 'Edit',
-}
-
 interface CommandPaletteProps {
   /** Whether the palette is open */
   open: boolean
@@ -45,6 +36,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+  const { t } = useTranslation('commandPalette')
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -139,8 +131,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 shadow-lg max-w-xl">
-        <DialogTitle className="sr-only">Command palette</DialogTitle>
-        <DialogDescription className="sr-only">Search and run application commands</DialogDescription>
+        <DialogTitle className="sr-only">{t('dialog.title')}</DialogTitle>
+        <DialogDescription className="sr-only">{t('dialog.description')}</DialogDescription>
         <div className="flex items-center border-b px-3">
           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
           <Input
@@ -151,16 +143,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               setSelectedIndex(0)
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Search commands..."
+            placeholder={t('search.placeholder')}
             role="combobox"
             aria-expanded={results.length > 0}
             aria-controls="command-results-list"
             aria-activedescendant={selectedIndex >= 0 ? `cmd-result-${selectedIndex}` : undefined}
-            aria-label="Search commands"
+            aria-label={t('search.ariaLabel')}
             className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-1 h-12"
           />
           <Badge variant="outline" className="text-xs">
-            ESC
+            {t('search.escBadge')}
           </Badge>
         </div>
 
@@ -169,18 +161,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           className="max-h-80"
           id="command-results-list"
           role="listbox"
-          aria-label="Command search results"
+          aria-label={t('results.ariaLabel')}
         >
           {results.length === 0 ? (
             <div role="status" className="py-6 text-center text-sm text-muted-foreground">
-              No commands found for "{query}"
+              {t('results.empty', { query })}
             </div>
           ) : (
             <div className="py-2">
               {Object.entries(groupedResults).map(([category, commands]) => (
                 <div key={category}>
                   <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    {categoryLabels[category as CommandCategory] || category}
+                    {t(`categories.${category}`, { defaultValue: category })}
                   </div>
                   {commands.map((result) => {
                     const command = result.command
@@ -223,16 +215,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
         <div className="border-t px-3 py-2 flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-muted rounded">↑↓</kbd>
-            Navigate
+            <kbd className="px-1.5 py-0.5 bg-muted rounded">{t('footer.arrowKeys')}</kbd>
+            {t('footer.navigate')}
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-muted rounded">↵</kbd>
-            Select
+            <kbd className="px-1.5 py-0.5 bg-muted rounded">{t('footer.enterKey')}</kbd>
+            {t('footer.select')}
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-muted rounded">esc</kbd>
-            Close
+            <kbd className="px-1.5 py-0.5 bg-muted rounded">{t('footer.escKey')}</kbd>
+            {t('common:actions.close')}
           </span>
         </div>
       </DialogContent>

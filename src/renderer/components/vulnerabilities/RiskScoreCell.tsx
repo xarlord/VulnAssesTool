@@ -8,6 +8,7 @@
  */
 
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Shield, AlertTriangle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -41,6 +42,7 @@ export function RiskScoreCell({
   size = 'md',
   className,
 }: RiskScoreCellProps): React.ReactElement {
+  const { t } = useTranslation('riskScoreCell')
   const result = calculateRiskScore({ isKev, epssPercentile, severity })
   const levelClasses = getRiskLevelClasses(result.level)
 
@@ -110,34 +112,37 @@ export function RiskScoreCell({
         >
           <div className="font-semibold mb-2 flex items-center gap-2">
             <Shield className="w-4 h-4" />
-            Risk Score Breakdown
+            {t('breakdown.title')}
           </div>
           <div className="space-y-1.5">
             {/* KEV factor */}
             <div className="flex items-center justify-between">
-              <span className="text-gray-400">KEV Status:</span>
+              <span className="text-gray-400">{t('breakdown.kevStatus')}</span>
               <span className={cn(result.factors.kev > 0 ? 'text-red-400' : 'text-gray-500')}>
                 {result.factors.kev > 0 ? `+${result.factors.kev}` : '0'}
               </span>
             </div>
             {/* EPSS factor */}
             <div className="flex items-center justify-between">
-              <span className="text-gray-400">EPSS Percentile:</span>
+              <span className="text-gray-400">{t('breakdown.epssPercentile')}</span>
               <span className={cn(result.factors.epss > 0 ? 'text-yellow-400' : 'text-gray-500')}>
                 +{result.factors.epss}
               </span>
             </div>
             {/* Severity factor */}
             <div className="flex items-center justify-between">
-              <span className="text-gray-400">Severity ({severity}):</span>
+              <span className="text-gray-400">{t('breakdown.severity', { severity })}</span>
               <span className="text-blue-400">+{result.factors.severity}</span>
             </div>
             {/* Divider */}
             <div className="border-t border-gray-700 my-1.5" />
             {/* Total */}
             <div className="flex items-center justify-between font-semibold">
-              <span>Total Score:</span>
-              <span style={{ color: getRiskLevelColor(result.level) }}>{result.score}/100</span>
+              <span>{t('breakdown.totalScore')}</span>
+              <span style={{ color: getRiskLevelColor(result.level) }}>
+                {result.score}
+                {t('breakdown.totalScoreSuffix')}
+              </span>
             </div>
           </div>
           {/* Arrow */}
@@ -182,11 +187,12 @@ export function RiskScoreBadge({
  * Risk score legend component
  */
 export function RiskScoreLegend({ className }: { className?: string }): React.ReactElement {
+  const { t } = useTranslation('riskScoreCell')
   const levels: Array<{ level: RiskLevel; label: string; range: string }> = [
-    { level: 'critical', label: 'Critical', range: '70-100' },
-    { level: 'high', label: 'High', range: '50-69' },
-    { level: 'medium', label: 'Medium', range: '30-49' },
-    { level: 'low', label: 'Low', range: '0-29' },
+    { level: 'critical', label: t('legend.critical'), range: '70-100' },
+    { level: 'high', label: t('legend.high'), range: '50-69' },
+    { level: 'medium', label: t('legend.medium'), range: '30-49' },
+    { level: 'low', label: t('legend.low'), range: '0-29' },
   ]
 
   return (

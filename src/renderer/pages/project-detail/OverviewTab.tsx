@@ -1,4 +1,5 @@
 import { Shield, Upload, FileText, AlertTriangle, Container, Binary } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { LicenseComplianceCard } from '@/components/LicenseComplianceCard'
 import { getSeverityTextClass } from '@/lib/severity'
 import type { Project } from '@@/types'
@@ -30,22 +31,23 @@ export function OverviewTab({
   onOpenUpload,
   onRemoveSbom,
 }: OverviewTabProps) {
+  const { t } = useTranslation('overviewTab')
   return (
     <div className="mx-auto max-w-7xl mt-6 space-y-6">
-      <h2 className="text-lg font-semibold">Overview</h2>
+      <h2 className="text-lg font-semibold">{t('title')}</h2>
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-border bg-card p-6">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Shield className="h-4 w-4" />
-            <span className="text-sm">Components</span>
+            <span className="text-sm">{t('stats.components')}</span>
           </div>
           <div className="mt-2 text-3xl font-bold">{project.statistics.totalComponents}</div>
         </div>
         <div className="rounded-lg border border-border bg-card p-6">
           <div className={`flex items-center gap-2 ${getSeverityTextClass('critical')}`}>
             <AlertTriangle className="h-4 w-4" />
-            <span className="text-sm">Critical</span>
+            <span className="text-sm">{t('stats.critical')}</span>
           </div>
           <div className={`mt-2 text-3xl font-bold ${getSeverityTextClass('critical')}`}>
             {project.statistics.criticalCount}
@@ -54,7 +56,7 @@ export function OverviewTab({
         <div className="rounded-lg border border-border bg-card p-6">
           <div className={`flex items-center gap-2 ${getSeverityTextClass('high')}`}>
             <AlertTriangle className="h-4 w-4" />
-            <span className="text-sm">High</span>
+            <span className="text-sm">{t('stats.high')}</span>
           </div>
           <div className={`mt-2 text-3xl font-bold ${getSeverityTextClass('high')}`}>
             {project.statistics.highCount}
@@ -63,7 +65,7 @@ export function OverviewTab({
         <div className="rounded-lg border border-border bg-card p-6">
           <div className="flex items-center gap-2 text-muted-foreground">
             <AlertTriangle className="h-4 w-4" />
-            <span className="text-sm">Total Vulns</span>
+            <span className="text-sm">{t('stats.totalVulns')}</span>
           </div>
           <div className="mt-2 text-3xl font-bold">{project.statistics.totalVulnerabilities}</div>
         </div>
@@ -83,28 +85,28 @@ export function OverviewTab({
       {/* SBOM Files Section */}
       <div className="rounded-lg border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border p-4">
-          <h2 className="font-semibold">SBOM Files</h2>
+          <h2 className="font-semibold">{t('sbom.title')}</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={onOpenContainerScan}
               className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
             >
               <Container className="h-4 w-4" />
-              Scan Container
+              {t('sbom.scanContainer')}
             </button>
             <button
               onClick={onOpenBinarySbom}
               className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
             >
               <Binary className="h-4 w-4" />
-              Generate from Binary
+              {t('sbom.generateFromBinary')}
             </button>
             <button
               onClick={onOpenUpload}
               className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
             >
               <Upload className="h-4 w-4" />
-              Upload SBOM
+              {t('sbom.uploadSbom')}
             </button>
           </div>
         </div>
@@ -112,8 +114,8 @@ export function OverviewTab({
           {project.sbomFiles.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <FileText className="mb-3 h-12 w-12 text-muted-foreground" />
-              <p className="text-muted-foreground">No SBOM files uploaded yet</p>
-              <p className="text-sm text-muted-foreground">Upload a CycloneDX or SPDX file to get started</p>
+              <p className="text-muted-foreground">{t('sbom.empty.title')}</p>
+              <p className="text-sm text-muted-foreground">{t('sbom.empty.hint')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -127,7 +129,7 @@ export function OverviewTab({
                     <div>
                       <div className="font-medium">{file.filename}</div>
                       <div className="text-sm text-muted-foreground">
-                        {file.format} • {file.componentCount} components
+                        {t('sbom.fileMeta', { format: file.format, count: file.componentCount })}
                       </div>
                     </div>
                   </div>
@@ -135,7 +137,7 @@ export function OverviewTab({
                     onClick={() => onRemoveSbom(file.id)}
                     className="text-sm text-muted-foreground hover:text-destructive"
                   >
-                    Remove
+                    {t('common:actions.remove')}
                   </button>
                 </div>
               ))}
@@ -146,24 +148,24 @@ export function OverviewTab({
 
       {/* Metadata */}
       <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="mb-4 font-semibold">Project Information</h2>
+        <h2 className="mb-4 font-semibold">{t('metadata.title')}</h2>
         <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
           <div>
-            <div className="text-muted-foreground">Created</div>
+            <div className="text-muted-foreground">{t('metadata.created')}</div>
             <div className="font-medium">{formatDate(project.createdAt)}</div>
           </div>
           <div>
-            <div className="text-muted-foreground">Last Updated</div>
+            <div className="text-muted-foreground">{t('metadata.lastUpdated')}</div>
             <div className="font-medium">{formatDate(project.updatedAt)}</div>
           </div>
           {project.lastScanAt && (
             <div>
-              <div className="text-muted-foreground">Last Scan</div>
+              <div className="text-muted-foreground">{t('metadata.lastScan')}</div>
               <div className="font-medium">{formatDate(project.lastScanAt)}</div>
             </div>
           )}
           <div>
-            <div className="text-muted-foreground">Vulnerable Components</div>
+            <div className="text-muted-foreground">{t('metadata.vulnerableComponents')}</div>
             <div className="font-medium">{project.statistics.vulnerableComponents}</div>
           </div>
         </div>

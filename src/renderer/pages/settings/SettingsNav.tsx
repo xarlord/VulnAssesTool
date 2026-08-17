@@ -12,25 +12,27 @@ import {
   Bell,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface NavItem {
   id: string
-  label: string
+  /** i18n key (settingsNav namespace) for the visible label. */
+  labelKey: string
   icon: LucideIcon
 }
 
 const SECTIONS: NavItem[] = [
-  { id: 'profiles', label: 'Profiles', icon: UserCircle },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'cvss', label: 'CVSS', icon: ShieldAlert },
-  { id: 'api', label: 'API', icon: Key },
-  { id: 'database', label: 'Database', icon: Database },
-  { id: 'backup', label: 'Backup', icon: Archive },
-  { id: 'performance', label: 'Performance', icon: Gauge },
-  { id: 'data-management', label: 'Data Management', icon: FileText },
-  { id: 'threat-intel', label: 'Threat Intel', icon: Shield },
-  { id: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle },
+  { id: 'profiles', labelKey: 'sections.profiles', icon: UserCircle },
+  { id: 'appearance', labelKey: 'sections.appearance', icon: Palette },
+  { id: 'notifications', labelKey: 'sections.notifications', icon: Bell },
+  { id: 'cvss', labelKey: 'sections.cvss', icon: ShieldAlert },
+  { id: 'api', labelKey: 'sections.api', icon: Key },
+  { id: 'database', labelKey: 'sections.database', icon: Database },
+  { id: 'backup', labelKey: 'sections.backup', icon: Archive },
+  { id: 'performance', labelKey: 'sections.performance', icon: Gauge },
+  { id: 'data-management', labelKey: 'sections.dataManagement', icon: FileText },
+  { id: 'threat-intel', labelKey: 'sections.threatIntel', icon: Shield },
+  { id: 'danger-zone', labelKey: 'sections.dangerZone', icon: AlertTriangle },
 ]
 
 /**
@@ -40,17 +42,18 @@ const SECTIONS: NavItem[] = [
  * simply stack.
  */
 export function SettingsNav() {
+  const { t } = useTranslation('settingsNav')
   return (
-    <nav aria-label="Settings sections" className="hidden lg:block">
+    <nav aria-label={t('ariaLabel')} className="hidden lg:block">
       <ul className="sticky top-6 space-y-1">
-        {SECTIONS.map(({ id, label, icon: Icon }) => (
+        {SECTIONS.map(({ id, labelKey, icon: Icon }) => (
           <li key={id}>
             <a
               href={`#${id}`}
               className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {label}
+              {t(labelKey)}
             </a>
           </li>
         ))}

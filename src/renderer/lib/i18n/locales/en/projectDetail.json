@@ -1,0 +1,31 @@
+{
+  "notFound": {
+    "pageTitle": "Project Not Found",
+    "heading": "Project not found",
+    "description": "The project you're looking for doesn't exist",
+    "backToDashboard": "Back to Dashboard"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "components": "Components",
+    "vulnerabilities": "Vulnerabilities",
+    "health": "Health"
+  },
+  "forceRefresh": {
+    "ariaLabel": "Force refresh vulnerability data (bypass cache)",
+    "title": "Force refresh — bypass cache and query fresh data"
+  },
+  "scanning": "Scanning {{progress}}%",
+  "scan": "Scan for Vulnerabilities",
+  "generateReport": "Generate Report",
+  "compliance": "Compliance",
+  "falsePositiveFilter": "False Positive Filter",
+  "deleteConfirm": {
+    "title": "Delete project",
+    "message": "Are you sure you want to delete \"{{name}}\"? This cannot be undone."
+  },
+  "sbomRemoved": {
+    "title": "SBOM Removed",
+    "message": "Removed {{filename}} and {{count}} associated component(s) from project"
+  }
+}

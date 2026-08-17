@@ -1,0 +1,126 @@
+{
+  "dialog": {
+    "title": "CVE Vulnerability Details",
+    "description": "Detailed vulnerability information including CVSS scores, affected software, references, and timeline."
+  },
+  "header": {
+    "copyAriaLabel": "Copy {{id}} to clipboard",
+    "copied": "Copied",
+    "copy": "Copy",
+    "cvssBadge": "CVSS {{score}}",
+    "source": "Source: {{source}}",
+    "assigner": " • Assigner: {{assigner}}",
+    "vulnStatus": " • Status: {{status}}"
+  },
+  "noCveData": "No CVE data",
+  "errorBanner": {
+    "title": "Error loading CVE details",
+    "retry": "Try again"
+  },
+  "patchAlert": {
+    "title": "Patch Available",
+    "description": "A patch or fix is available for this vulnerability. Check the references section for patch links."
+  },
+  "description": {
+    "heading": "Description"
+  },
+  "cvss": {
+    "heading": "CVSS Scores",
+    "multiSourceHeading": "All CVSS Scores (Multiple Sources)",
+    "multiTable": {
+      "source": "Source",
+      "type": "Type",
+      "version": "Version",
+      "score": "Score",
+      "severity": "Severity",
+      "versionPrefix": "v{{version}}"
+    },
+    "vectorTable": {
+      "code": "Code",
+      "metric": "Metric",
+      "value": "Value",
+      "description": "Description"
+    },
+    "v31": { "heading": "CVSS v3.1" },
+    "v30": { "heading": "CVSS v3.0" },
+    "v2": { "heading": "CVSS v2.0" }
+  },
+  "cvssVector": {
+    "metricNames": {
+      "attackVector": "Attack Vector",
+      "attackComplexity": "Attack Complexity",
+      "privilegesRequired": "Privileges Required",
+      "userInteraction": "User Interaction",
+      "scope": "Scope",
+      "confidentiality": "Confidentiality",
+      "integrity": "Integrity",
+      "availability": "Availability",
+      "accessVector": "Access Vector",
+      "accessComplexity": "Access Complexity",
+      "authentication": "Authentication"
+    },
+    "values": {
+      "network": "Network",
+      "adjacent": "Adjacent",
+      "local": "Local",
+      "physical": "Physical",
+      "low": "Low",
+      "high": "High",
+      "none": "None",
+      "required": "Required",
+      "unchanged": "Unchanged",
+      "changed": "Changed",
+      "medium": "Medium",
+      "single": "Single",
+      "multiple": "Multiple",
+      "partial": "Partial",
+      "complete": "Complete"
+    }
+  },
+  "cpe": {
+    "heading": "Affected Software ({{count}} configurations)",
+    "unknownProduct": "Unknown Product",
+    "byVendor": "by {{vendor}}",
+    "affectedVersionsLabel": "Affected Versions:",
+    "versionFallback": "Version {{version}}",
+    "range": {
+      "fromInclusive": "from {{version}} (inclusive)",
+      "fromExclusive": "from {{version}} (exclusive)",
+      "toInclusive": "up to {{version}} (inclusive)",
+      "toExclusive": "up to {{version}} (exclusive)",
+      "allVersions": "All versions"
+    },
+    "rangeLabel": {
+      "fromInclusive": "From (≥):",
+      "fromExclusive": "From (>):",
+      "toInclusive": "Up to (≤):",
+      "toExclusive": "Up to (<):"
+    },
+    "notAffectedHeading": "Not Affected (Fixed Versions)",
+    "notAffectedSuffix": "- Version {{version}} is not affected"
+  },
+  "cwe": {
+    "heading": "CWE References ({{count}})"
+  },
+  "references": {
+    "heading": "References ({{count}})",
+    "source": "Source: {{source}}"
+  },
+  "timeline": {
+    "heading": "Timeline",
+    "published": "Published",
+    "lastModified": "Last Modified"
+  },
+  "footer": {
+    "viewOnNvd": "View on NVD"
+  },
+  "errors": {
+    "fetchFailed": "Failed to fetch CVE details",
+    "generic": "An error occurred",
+    "copyFailed": "Failed to copy to clipboard"
+  },
+  "toast": {
+    "copied": "Copied {{id}} to clipboard"
+  },
+  "dateUnknown": "Unknown"
+}

@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -32,6 +33,7 @@ interface ReportPreviewProps {
 }
 
 export function ReportPreview({ open, onOpenChange, data, projectName = 'Project' }: ReportPreviewProps) {
+  const { t } = useTranslation('reportPreview')
   const [isGenerating, setIsGenerating] = useState(false)
   const [activeTab, setActiveTab] = useState<'preview' | 'options'>('preview')
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
@@ -143,7 +145,7 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl">
-          <div className="py-8 text-center text-muted-foreground">No data available for report preview</div>
+          <div className="py-8 text-center text-muted-foreground">{t('noData')}</div>
         </DialogContent>
       </Dialog>
     )
@@ -156,13 +158,17 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              Report Preview
+              {t('title')}
             </DialogTitle>
             {quickStats && (
               <div className="flex items-center gap-2 text-sm">
-                <Badge variant="outline">{quickStats.total} total</Badge>
-                {quickStats.critical > 0 && <Badge variant="destructive">{quickStats.critical} critical</Badge>}
-                {quickStats.high > 0 && <Badge className="bg-orange-500">{quickStats.high} high</Badge>}
+                <Badge variant="outline">{t('stats.total', { count: quickStats.total })}</Badge>
+                {quickStats.critical > 0 && (
+                  <Badge variant="destructive">{t('stats.critical', { count: quickStats.critical })}</Badge>
+                )}
+                {quickStats.high > 0 && (
+                  <Badge className="bg-orange-500">{t('stats.high', { count: quickStats.high })}</Badge>
+                )}
               </div>
             )}
           </div>
@@ -176,17 +182,21 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="preview" className="flex items-center gap-2">
               <Eye className="h-4 w-4" />
-              Preview
+              {t('tabs.preview')}
             </TabsTrigger>
             <TabsTrigger value="options" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
-              Options
+              {t('tabs.options')}
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="preview" className="flex-1 min-h-0 mt-4">
             <ScrollArea className="h-[60vh] rounded-md border">
-              <iframe srcDoc={previewHtml} className="w-full h-full min-h-[60vh] border-0" title="Report Preview" />
+              <iframe
+                srcDoc={previewHtml}
+                className="w-full h-full min-h-[60vh] border-0"
+                title={t('previewFrameTitle')}
+              />
             </ScrollArea>
           </TabsContent>
 
@@ -195,25 +205,25 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
               <div className="space-y-6 pr-4">
                 {/* Title */}
                 <div className="space-y-2">
-                  <Label htmlFor="title">Report Title</Label>
+                  <Label htmlFor="title">{t('titleField.label')}</Label>
                   <Input
                     id="title"
                     value={options.title}
                     onChange={(e) => handleOptionChange('title', e.target.value)}
-                    placeholder="Enter report title"
+                    placeholder={t('titleField.placeholder')}
                   />
                 </div>
 
                 {/* Theme */}
                 <div className="space-y-2">
-                  <Label htmlFor="theme">Theme</Label>
+                  <Label htmlFor="theme">{t('themeField.label')}</Label>
                   <Select value={options.theme} onValueChange={(v) => handleOptionChange('theme', v)}>
                     <SelectTrigger id="theme">
-                      <SelectValue placeholder="Select theme" />
+                      <SelectValue placeholder={t('themeField.placeholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
+                      <SelectItem value="light">{t('themeField.light')}</SelectItem>
+                      <SelectItem value="dark">{t('themeField.dark')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -222,8 +232,8 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label>Executive Summary</Label>
-                      <p className="text-xs text-muted-foreground">Include risk score and key findings</p>
+                      <Label>{t('toggles.executiveSummary.label')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('toggles.executiveSummary.description')}</p>
                     </div>
                     <Switch
                       checked={options.includeExecutiveSummary}
@@ -233,8 +243,8 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label>Charts & Visualizations</Label>
-                      <p className="text-xs text-muted-foreground">Include severity distribution chart</p>
+                      <Label>{t('toggles.charts.label')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('toggles.charts.description')}</p>
                     </div>
                     <Switch
                       checked={options.includeCharts}
@@ -244,8 +254,8 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label>Recommendations</Label>
-                      <p className="text-xs text-muted-foreground">Include remediation recommendations</p>
+                      <Label>{t('toggles.recommendations.label')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('toggles.recommendations.description')}</p>
                     </div>
                     <Switch
                       checked={options.includeRecommendations}
@@ -256,30 +266,30 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
 
                 {/* Company branding */}
                 <div className="space-y-2">
-                  <Label htmlFor="companyName">Company Name (optional)</Label>
+                  <Label htmlFor="companyName">{t('companyName.label')}</Label>
                   <Input
                     id="companyName"
                     value={options.companyName || ''}
                     onChange={(e) => handleOptionChange('companyName', e.target.value)}
-                    placeholder="Enter company name for footer"
+                    placeholder={t('companyName.placeholder')}
                   />
                 </div>
 
                 {/* Company Logo Upload */}
                 <div className="space-y-2">
-                  <Label>Company Logo (optional)</Label>
+                  <Label>{t('companyLogo.label')}</Label>
                   <div className="flex items-start gap-4">
                     {logoPreview || options.companyLogo ? (
                       <div className="relative group">
                         <img
                           src={logoPreview || options.companyLogo}
-                          alt="Company logo"
+                          alt={t('companyLogo.alt')}
                           className="h-16 w-16 object-contain rounded border"
                         />
                         <button
                           type="button"
                           onClick={handleLogoRemove}
-                          aria-label="Remove logo"
+                          aria-label={t('companyLogo.removeAriaLabel')}
                           className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity focus-visible:ring-2 focus-visible:ring-ring focus-visible:opacity-100"
                         >
                           <X className="h-3 w-3" />
@@ -288,13 +298,13 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
                     ) : (
                       <label className="flex flex-col items-center justify-center h-16 w-full border-2 border-dashed rounded-md cursor-pointer hover:border-primary hover:bg-muted/50 transition-colors">
                         <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                        <span className="text-xs text-muted-foreground">Upload Logo</span>
+                        <span className="text-xs text-muted-foreground">{t('companyLogo.uploadLabel')}</span>
                         <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
                       </label>
                     )}
                     <div className="flex-1 text-xs text-muted-foreground">
-                      <p>Upload a company logo to include in the report header.</p>
-                      <p className="mt-1">Supported formats: PNG, JPG, SVG. Max size: 2MB</p>
+                      <p>{t('companyLogo.helpText')}</p>
+                      <p className="mt-1">{t('companyLogo.supportedFormats')}</p>
                     </div>
                   </div>
                 </div>
@@ -305,7 +315,7 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
 
         <DialogFooter className="flex gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('common:actions.cancel')}
           </Button>
           <Button
             variant="outline"
@@ -314,11 +324,11 @@ export function ReportPreview({ open, onOpenChange, data, projectName = 'Project
             className="flex items-center gap-2"
           >
             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-            HTML
+            {t('actions.html')}
           </Button>
           <Button onClick={handleDownloadPDF} disabled={isGenerating} className="flex items-center gap-2">
             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileImage className="h-4 w-4" />}
-            Download PDF
+            {t('actions.downloadPdf')}
           </Button>
         </DialogFooter>
       </DialogContent>

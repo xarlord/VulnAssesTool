@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Download, FileSpreadsheet, FileJson, FileText } from 'lucide-react'
 import {
   Dialog,
@@ -39,6 +40,7 @@ function describeProjectExport(
 }
 
 export function ExportDialog({ open, onClose, project, projects }: ExportDialogProps) {
+  const { t } = useTranslation('exportDialog')
   const [isExporting, setIsExporting] = useState(false)
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('csv')
   const [selectedDataType, setSelectedDataType] = useState<ExportDataType>('vulnerabilities')
@@ -83,30 +85,30 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
   const formats: { value: ExportFormat; label: string; icon: typeof FileSpreadsheet; description: string }[] = [
     {
       value: 'csv',
-      label: 'CSV',
+      label: t('format.csv.label'),
       icon: FileSpreadsheet,
-      description: 'Spreadsheet-compatible format, ideal for data analysis',
+      description: t('format.csv.description'),
     },
     {
       value: 'json',
-      label: 'JSON',
+      label: t('format.json.label'),
       icon: FileJson,
-      description: 'Machine-readable format, ideal for integration',
+      description: t('format.json.description'),
     },
     {
       value: 'pdf',
-      label: 'PDF',
+      label: t('format.pdf.label'),
       icon: FileText,
-      description: 'Formatted report, ideal for sharing and documentation',
+      description: t('format.pdf.description'),
     },
   ]
 
   const dataTypes: { value: ExportDataType; label: string }[] = isAllProjects
-    ? [{ value: 'all-projects', label: 'All Projects Summary' }]
+    ? [{ value: 'all-projects', label: t('dataType.allProjects') }]
     : [
-        { value: 'project', label: 'Full Project Report' },
-        { value: 'vulnerabilities', label: 'Vulnerabilities Only' },
-        { value: 'components', label: 'Components Only' },
+        { value: 'project', label: t('dataType.project') },
+        { value: 'vulnerabilities', label: t('dataType.vulnerabilities') },
+        { value: 'components', label: t('dataType.components') },
       ]
 
   return (
@@ -119,15 +121,15 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Export Data</DialogTitle>
-          <DialogDescription>Choose the export format and data type for your report.</DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         {/* Content */}
         <div className="space-y-6">
           {/* Format Selection */}
           <div className="space-y-3">
-            <label className="text-sm font-medium">Export Format</label>
+            <label className="text-sm font-medium">{t('format.label')}</label>
             <div className="grid grid-cols-3 gap-3">
               {formats.map((format) => {
                 const Icon = format.icon
@@ -154,7 +156,7 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
 
           {/* Data Type Selection */}
           <div className="space-y-3">
-            <label className="text-sm font-medium">Data Type</label>
+            <label className="text-sm font-medium">{t('dataType.label')}</label>
             <div className="space-y-2">
               {dataTypes.map((dataType) => (
                 <button
@@ -177,12 +179,16 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
           <div className="rounded-lg bg-muted p-3">
             <div className="flex items-center gap-2 text-sm">
               <Download className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">Export Preview</span>
+              <span className="font-medium">{t('preview.label')}</span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {isAllProjects
-                ? `Exporting ${projects?.length || 0} projects as ${selectedFormat.toUpperCase()}`
-                : `Exporting "${project?.name}" - ${dataTypes.find((d) => d.value === selectedDataType)?.label} as ${selectedFormat.toUpperCase()}`}
+                ? t('preview.allProjects', { count: projects?.length || 0, format: selectedFormat.toUpperCase() })
+                : t('preview.singleProject', {
+                    name: project?.name,
+                    label: dataTypes.find((d) => d.value === selectedDataType)?.label,
+                    format: selectedFormat.toUpperCase(),
+                  })}
             </p>
           </div>
         </div>
@@ -193,14 +199,14 @@ export function ExportDialog({ open, onClose, project, projects }: ExportDialogP
             disabled={isExporting}
             className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none"
           >
-            Cancel
+            {t('common:actions.cancel')}
           </button>
           <button
             onClick={handleExport}
             disabled={isExporting}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none"
           >
-            {isExporting ? 'Exporting...' : 'Export'}
+            {isExporting ? t('exporting') : t('common:actions.export')}
           </button>
         </DialogFooter>
       </DialogContent>

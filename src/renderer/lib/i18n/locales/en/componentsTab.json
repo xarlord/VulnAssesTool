@@ -1,0 +1,96 @@
+{
+  "heading": {
+    "title": "Components",
+    "panelTitle": "Components ({{count}})"
+  },
+  "search": {
+    "placeholder": "Search components...",
+    "ariaLabel": "Search components"
+  },
+  "filters": {
+    "type": {
+      "ariaLabel": "Filter by component type",
+      "all": "All Types",
+      "library": "Libraries",
+      "framework": "Frameworks",
+      "application": "Applications",
+      "container": "Containers",
+      "other": "Other"
+    },
+    "vulnerability": {
+      "ariaLabel": "Filter by vulnerability status",
+      "all": "All",
+      "vulnerable": "Has Vulnerabilities",
+      "safe": "No Vulnerabilities"
+    },
+    "coverage": {
+      "ariaLabel": "Filter by coverage",
+      "all": "All Coverage",
+      "identified": "Identified",
+      "gap": "Coverage Gap"
+    },
+    "license": {
+      "ariaLabel": "Filter by license",
+      "all": "All Licenses"
+    },
+    "patch": {
+      "ariaLabel": "Filter by patch availability",
+      "all": "All Patch Status",
+      "available": "Has Patch",
+      "unavailable": "No Patch"
+    },
+    "sort": {
+      "ariaLabel": "Sort components by",
+      "name": "Sort: Name",
+      "version": "Sort: Version",
+      "type": "Sort: Type"
+    }
+  },
+  "emptyState": {
+    "title": "No components found",
+    "subtitle": "Upload an SBOM file to view components"
+  },
+  "noResults": {
+    "title": "No components match your filters",
+    "clearFilters": "Clear filters"
+  },
+  "componentCard": {
+    "unknownVersion": "—",
+    "badges": {
+      "source": "Source: {{filename}}",
+      "cpeVerified": "CPE Verified",
+      "cpeVerifiedTitle": "CPE: {{cpe}}",
+      "cpeEstimated": "CPE Estimated",
+      "cpeEstimatedTitle": "{{count}} suggested CPEs available",
+      "noCpe": "No CPE",
+      "noCpeTitle": "No CPE available - vulnerability matching may be less accurate",
+      "coverageGap": "Coverage Gap",
+      "coverageGapDefaultNote": "Coverage gap: present but not reliably versioned — matches need manual review"
+    },
+    "provenance": {
+      "title": "How this component was catalogued",
+      "prefix": "via {{sources}}"
+    },
+    "matchedCpe": {
+      "title": "Matched CPE used for vulnerability scanning",
+      "suggestedTitle": "Estimated CPE ({{confidence}} confidence); {{count}} suggestion(s)",
+      "estimated": "{{cpe}} (est. {{confidence}})"
+    },
+    "vulnCount_one": "{{count}} vulnerability",
+    "vulnCount_other": "{{count}} vulnerabilities"
+  },
+  "toast": {
+    "presetSaved": {
+      "title": "Preset Saved",
+      "message": "Filter preset \"{{name}}\" has been saved."
+    },
+    "presetLoaded": {
+      "title": "Preset Loaded",
+      "message": "Filter preset \"{{name}}\" has been applied."
+    },
+    "presetDeleted": {
+      "title": "Preset Deleted",
+      "message": "Filter preset has been deleted."
+    }
+  }
+}

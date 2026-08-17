@@ -2636,7 +2636,230 @@ describe('Settings', () => {
     })
   })
 
+  describe('CPE Count Loading (cpeSearch on mount)', () => {
+    it('displays the CPE match count returned by cpeSearch so the stat is not stuck at 0', async () => {
+      // WHY: cpeCount starts at 0 in state; if the success branch of the cpeSearch
+      // effect never wires the response into state, the "CPE Matches" tile would
+      // always read 0 regardless of what the database actually holds.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.cpeSearch).mockResolvedValueOnce({
+        success: true,
+        results: [
+          {
+            cpe23Uri: 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*',
+            vendor: 'vendor',
+            product: 'product',
+            version: '1.0',
+            vulnerable: false,
+          },
+          {
+            cpe23Uri: 'cpe:2.3:a:vendor:product:2.0:*:*:*:*:*:*:*',
+            vendor: 'vendor',
+            product: 'product',
+            version: '2.0',
+            vulnerable: false,
+          },
+          {
+            cpe23Uri: 'cpe:2.3:a:vendor:product:3.0:*:*:*:*:*:*:*',
+            vendor: 'vendor',
+            product: 'product',
+            version: '3.0',
+            vulnerable: false,
+          },
+        ],
+      })
+
+      renderSettings()
+
+      await waitFor(() => {
+        const label = screen.getByText('CPE Matches')
+        expect(label.parentElement?.textContent).toContain('3')
+      })
+    })
+
+    it('leaves the database stats rendered when cpeSearch rejects (inner try/catch is independent of the outer stats load)', async () => {
+      // WHY: the CPE count fetch is wrapped in its own try/catch specifically so a
+      // failure there cannot take down the rest of the database stats load; a
+      // regression that let the rejection escape would blank the whole section.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.cpeSearch).mockRejectedValueOnce(new Error('CPE index not built'))
+
+      renderSettings()
+
+      await waitFor(() => {
+        expect(screen.getByText('Database Management')).toBeInTheDocument()
+        expect(screen.getByText('Total CVEs')).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('Sync Config Load on Mount', () => {
+    it('applies a previously saved sync interval and bandwidth limit from getSyncConfig', async () => {
+      // WHY: syncSchedule/bandwidthLimit are local component state seeded from
+      // DEFAULT_DATABASE_SETTINGS; the getSyncConfig effect must overwrite that
+      // default with the server's saved config, or a user's saved schedule would
+      // silently revert to "Weekly" / 0 KB/s on every reload.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.getSyncConfig).mockResolvedValueOnce({
+        success: true,
+        config: { syncInterval: 'daily', bandwidthLimitKBps: 250 },
+      })
+
+      renderSettings()
+
+      await waitFor(() => {
+        // Not getByDisplayValue('Daily') — the Auto-refresh interval select (default
+        // value 24) also renders the option label "Daily", so that query is ambiguous.
+        expect(screen.getByLabelText('Sync Schedule')).toHaveValue('daily')
+        expect(screen.getByLabelText(/bandwidth limit/i)).toHaveValue(250)
+      })
+    })
+  })
+
+  describe('Bandwidth Limit Normalization', () => {
+    it('normalizes a negative bandwidth limit to 0 instead of persisting a nonsensical value', async () => {
+      // WHY: handleBandwidthLimitChange guards against Number.isFinite(value) && value > 0;
+      // without it, a stray negative input would be sent to the server and could be
+      // misread as "no limit" or crash a throttling calculation downstream.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      renderSettings()
+
+      const input = screen.getByLabelText(/bandwidth limit/i)
+      fireEvent.change(input, { target: { value: '-50' } })
+
+      await waitFor(() => {
+        expect(platform.database.updateSyncConfig).toHaveBeenCalledWith({ bandwidthLimitKBps: 0 })
+        expect(input).toHaveValue(0)
+      })
+    })
+  })
+
+  describe('Backup Size Formatting', () => {
+    it('formats a sub-1KB backup in bytes rather than misleadingly rounding to "0.0 KB"', async () => {
+      // WHY: formatBackupSize has three size tiers (B/KB/MB); only the KB and MB
+      // tiers were exercised elsewhere in this file, leaving the plain-bytes branch
+      // for backups under 1024 bytes unverified.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.backup.listBackups).mockResolvedValueOnce({
+        success: true,
+        backups: [{ id: 'tiny-backup', createdAt: '2024-06-01T10:00:00Z', size: 500, verified: true }],
+      })
+
+      renderSettings()
+
+      await waitFor(() => {
+        // formatBackupSize's output shares a text node with the " • Verified" suffix,
+        // so match by substring rather than the exact string.
+        expect(screen.getByText(/500 B/)).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('Backup Integrity: invalid', () => {
+    it('marks a backup Corrupted and disables Restore once verifyBackup reports invalid integrity', async () => {
+      // WHY: the restore button's disabled={backup.integrity === 'invalid'} guard exists
+      // to stop a user from restoring a backup already known to be corrupted; this only
+      // triggers once verifyBackup's response feeds 'invalid' back into backup state.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.backup.listBackups).mockResolvedValueOnce({
+        success: true,
+        backups: [{ id: 'backup-1', createdAt: '2024-06-01T10:00:00Z', size: 1024, verified: false }],
+      })
+      vi.mocked(platform.backup.verifyBackup).mockResolvedValueOnce({
+        success: true,
+        integrity: 'invalid',
+      })
+
+      renderSettings()
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Verify backup integrity')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByLabelText('Verify backup integrity'))
+
+      await waitFor(() => {
+        expect(screen.getByText(/Corrupted/)).toBeInTheDocument()
+        expect(screen.getByLabelText('Restore backup')).toBeDisabled()
+      })
+    })
+  })
+
+  describe('Sync Result Delta Badge', () => {
+    it('shows a "+N CVEs" badge only when the sync actually added CVEs', async () => {
+      // WHY: the badge is gated on `cvesAdded !== undefined && cvesAdded > 0` — a sync
+      // that succeeds but adds nothing (already up to date) must not render a stale or
+      // misleading "+0 CVEs" badge.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.startDeltaSync).mockResolvedValueOnce({
+        success: true,
+        cvesAdded: 0,
+        cvesUpdated: 3,
+      })
+
+      renderSettings()
+
+      const syncButtons = screen.getAllByText('Sync Now')
+      fireEvent.click(syncButtons[0])
+
+      await waitFor(() => {
+        expect(screen.getByText(/Last sync:/)).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/\+0 CVEs/)).not.toBeInTheDocument()
+    })
+
+    it('shows the "+N CVEs" badge when the sync added new CVEs', async () => {
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.database.startDeltaSync).mockResolvedValueOnce({
+        success: true,
+        cvesAdded: 12,
+        cvesUpdated: 3,
+      })
+
+      renderSettings()
+
+      const syncButtons = screen.getAllByText('Sync Now')
+      fireEvent.click(syncButtons[0])
+
+      await waitFor(() => {
+        expect(screen.getByText('+12 CVEs')).toBeInTheDocument()
+      })
+    })
+  })
+
   describe('Load Error Paths on Mount', () => {
+    it('should handle loadKevStats error gracefully', async () => {
+      // WHY: this mount effect's catch block was the one Load-Error-Paths case not yet
+      // exercised in this suite — an NVD/KEV outage on load must not blank the page.
+      const { getPlatform } = await import('@/lib/platform')
+      const platform = getPlatform()
+
+      vi.mocked(platform.intelligence.getKevStats).mockRejectedValueOnce(new Error('KEV service unreachable'))
+
+      vi.mocked(useStore).mockImplementation((() => createMockStore()) as unknown as typeof useStore)
+      renderSettings()
+
+      await waitFor(() => {
+        expect(screen.getByText('Threat Intelligence')).toBeInTheDocument()
+        expect(screen.getByText('KEV Entries')).toBeInTheDocument()
+      })
+    })
+
     it('should handle loadApiKey error gracefully', async () => {
       vi.doMock('@/lib/storage', () => ({
         getSecureKeyService: () => ({

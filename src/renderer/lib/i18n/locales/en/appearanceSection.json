@@ -1,0 +1,15 @@
+{
+  "title": "Appearance",
+  "theme": {
+    "label": "Theme",
+    "note": {
+      "followsSystem": "Follows your system theme preference",
+      "alwaysUse": "Always use {{theme}} theme"
+    }
+  },
+  "fontSize": {
+    "label": "Font Size",
+    "preview": "Aa",
+    "note": "Adjust the text size throughout the application"
+  }
+}

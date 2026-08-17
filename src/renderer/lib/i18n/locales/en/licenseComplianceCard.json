@@ -1,0 +1,16 @@
+{
+  "title": "License Compliance",
+  "stats": {
+    "allowed": "Allowed",
+    "review": "Review",
+    "denied": "Denied",
+    "noLicense": "No license"
+  },
+  "flagged": {
+    "heading": "Flagged components ({{count}})",
+    "allow": "Allow",
+    "allowTitle": "Allow {{licenses}} for this project",
+    "noLicenseId": "no license id",
+    "noLicenseIdTitle": "No declared license to approve — the SBOM/scan captured no license for this component"
+  }
+}

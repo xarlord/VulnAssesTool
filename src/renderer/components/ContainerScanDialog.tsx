@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getPlatform } from '@/lib/platform'
 import { Container, Loader2, AlertCircle, CheckCircle, ChevronDown, ChevronRight, Package, Layers } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -55,11 +56,12 @@ interface ContainerScanDialogProps {
 }
 
 const RUNTIMES = [
-  { value: 'docker' as const, label: 'Docker' },
-  { value: 'podman' as const, label: 'Podman' },
+  { value: 'docker' as const, labelKey: 'runtime.docker' },
+  { value: 'podman' as const, labelKey: 'runtime.podman' },
 ]
 
 export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanDialogProps) {
+  const { t } = useTranslation('containerScanDialog')
   const currentProject = useCurrentProject()
   const updateProject = useStore((s) => s.updateProject)
 
@@ -249,12 +251,12 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Container className="h-5 w-5" />
-            Container Image Scan
+            {t('title')}
           </DialogTitle>
           <DialogDescription>
             {targetProject
-              ? `Scan and import packages to: ${targetProject.name}`
-              : 'Scan container images for packages and vulnerabilities'}
+              ? t('description.withProject', { projectName: targetProject.name })
+              : t('description.noProject')}
           </DialogDescription>
         </DialogHeader>
 
@@ -262,16 +264,14 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
         {(step === 'idle' || step === 'error') && (
           <div className="space-y-4">
             {!targetProject && (
-              <div className="rounded-md bg-yellow-500/15 p-3 text-sm text-yellow-600">
-                Please select a project first before scanning containers.
-              </div>
+              <div className="rounded-md bg-yellow-500/15 p-3 text-sm text-yellow-600">{t('warnings.noProject')}</div>
             )}
 
             {step === 'error' && error && (
               <div className="flex items-start gap-3 rounded-md bg-destructive/15 p-4">
                 <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
                 <div className="flex-1">
-                  <p className="font-medium text-destructive">Scan Failed</p>
+                  <p className="font-medium text-destructive">{t('error.title')}</p>
                   <p className="text-sm text-destructive mt-1">{error}</p>
                 </div>
               </div>
@@ -279,23 +279,21 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
 
             {/* Image Reference Input */}
             <div>
-              <label className="block text-sm font-medium mb-1">Image Reference</label>
+              <label className="block text-sm font-medium mb-1">{t('imageRef.label')}</label>
               <input
                 type="text"
                 value={imageRef}
                 onChange={(e) => setImageRef(e.target.value)}
-                placeholder="e.g., nginx:1.21, alpine:latest, ghcr.io/org/image:v1"
+                placeholder={t('imageRef.placeholder')}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 disabled={!targetProject}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Supports Docker Hub, GitHub Container Registry, and other registries
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">{t('imageRef.hint')}</p>
             </div>
 
             {/* Runtime Selection */}
             <div>
-              <label className="block text-sm font-medium mb-1">Container Runtime</label>
+              <label className="block text-sm font-medium mb-1">{t('runtime.label')}</label>
               <div className="flex gap-2">
                 {RUNTIMES.map((r) => (
                   <button
@@ -307,7 +305,7 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
                         : 'border-border bg-background hover:bg-muted'
                     }`}
                   >
-                    {r.label}
+                    {t(r.labelKey)}
                   </button>
                 ))}
               </div>
@@ -319,7 +317,7 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
                 onClick={handleClose}
                 className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
               >
-                Cancel
+                {t('common:actions.cancel')}
               </button>
               <button
                 onClick={handleScan}
@@ -327,7 +325,7 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Container className="h-4 w-4" />
-                Scan Image
+                {t('scanImage')}
               </button>
             </div>
           </div>
@@ -339,10 +337,10 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <p className="mt-4 text-sm font-medium capitalize">
               {step === 'checking'
-                ? 'Checking runtime...'
+                ? t('progressStep.checking')
                 : step === 'pulling'
-                  ? 'Pulling image...'
-                  : 'Scanning image...'}
+                  ? t('progressStep.pulling')
+                  : t('progressStep.scanning')}
             </p>
             {progress && <p className="text-sm text-muted-foreground mt-1">{progress.message}</p>}
           </div>
@@ -355,10 +353,13 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
             <div className="flex items-start gap-3 rounded-md bg-green-500/15 p-4">
               <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
               <div className="flex-1">
-                <p className="font-medium text-green-600">Scan Complete</p>
+                <p className="font-medium text-green-600">{t('success.title')}</p>
                 <p className="text-sm text-green-600 mt-1">
-                  Found {scanResult.stats.uniquePackages} unique packages across {scanResult.stats.totalLayers} layers
-                  in {formatDuration(scanResult.stats.scanTimeMs)}
+                  {t('success.summary', {
+                    uniqueCount: scanResult.stats.uniquePackages,
+                    layerCount: scanResult.stats.totalLayers,
+                    duration: formatDuration(scanResult.stats.scanTimeMs),
+                  })}
                 </p>
               </div>
             </div>
@@ -367,21 +368,21 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
             <div className="rounded-md border border-border bg-muted p-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Image:</span>
+                  <span className="text-muted-foreground">{t('imageInfo.image')}</span>
                   <span className="ml-2 font-medium">{scanResult.image}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Platform:</span>
+                  <span className="text-muted-foreground">{t('imageInfo.platform')}</span>
                   <span className="ml-2 font-medium">
                     {scanResult.platform.os}/{scanResult.platform.architecture}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Layers:</span>
+                  <span className="text-muted-foreground">{t('imageInfo.layers')}</span>
                   <span className="ml-2 font-medium">{scanResult.stats.totalLayers}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Packages:</span>
+                  <span className="text-muted-foreground">{t('imageInfo.packages')}</span>
                   <span className="ml-2 font-medium">{scanResult.stats.uniquePackages}</span>
                 </div>
               </div>
@@ -392,7 +393,7 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
               <div className="rounded-md border border-border bg-muted p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Layers className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm font-medium">Layers</p>
+                  <p className="text-sm font-medium">{t('layersSection.title')}</p>
                 </div>
                 <div className="space-y-1 max-h-60 overflow-y-auto">
                   {scanResult.layers.map((layer, index) => (
@@ -406,7 +407,9 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
                         ) : (
                           <ChevronRight className="h-3 w-3 shrink-0" />
                         )}
-                        <span className="text-muted-foreground">Layer {index + 1}</span>
+                        <span className="text-muted-foreground">
+                          {t('layersSection.layerNumber', { number: index + 1 })}
+                        </span>
                         <span className="text-xs text-muted-foreground truncate flex-1">
                           {layer.digest.substring(0, 19)}...
                         </span>
@@ -430,7 +433,7 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
                               </div>
                             ))}
                           {layer.packageCount === 0 && (
-                            <p className="text-xs text-muted-foreground italic">No packages detected</p>
+                            <p className="text-xs text-muted-foreground italic">{t('layersSection.noPackages')}</p>
                           )}
                         </div>
                       )}
@@ -443,7 +446,9 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
             {/* Package Sample */}
             {scanResult.packages.length > 0 && (
               <div className="rounded-md border border-border bg-muted p-4">
-                <p className="text-sm font-medium mb-2">Package Preview ({scanResult.stats.uniquePackages} total)</p>
+                <p className="text-sm font-medium mb-2">
+                  {t('packagePreview.title', { count: scanResult.stats.uniquePackages })}
+                </p>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
                   {scanResult.packages.slice(0, 10).map((pkg) => (
                     <div key={`${pkg.manager}-${pkg.name}`} className="flex items-center gap-2 text-sm">
@@ -455,7 +460,9 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
                     </div>
                   ))}
                   {scanResult.packages.length > 10 && (
-                    <p className="text-xs text-muted-foreground">... and {scanResult.packages.length - 10} more</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('packagePreview.more', { count: scanResult.packages.length - 10 })}
+                    </p>
                   )}
                 </div>
               </div>
@@ -467,14 +474,14 @@ export function ContainerScanDialog({ open, onClose, projectId }: ContainerScanD
                 onClick={resetState}
                 className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
               >
-                Scan Different Image
+                {t('success.scanDifferentImage')}
               </button>
               <button
                 onClick={handleImport}
                 disabled={scanResult.packages.length === 0}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Add {scanResult.stats.uniquePackages} Packages to Project
+                {t('success.addPackages', { count: scanResult.stats.uniquePackages })}
               </button>
             </div>
           </div>

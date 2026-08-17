@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Shield, Filter, Settings, AlertTriangle } from 'lucide-react'
 import { useProjects } from '@/store/useStore'
@@ -85,6 +86,7 @@ function resultToReviewItem(
 }
 
 export function FalsePositiveFilterPage() {
+  const { t } = useTranslation('falsePositiveFilter')
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
   const projects = useProjects()
@@ -305,12 +307,12 @@ export function FalsePositiveFilterPage() {
   )
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <Shield className="w-4 h-4" /> },
-    { id: 'review', label: 'Review Filtered', icon: <Filter className="w-4 h-4" /> },
-    { id: 'config', label: 'Configuration', icon: <Settings className="w-4 h-4" /> },
+    { id: 'dashboard', label: t('tabs.dashboard'), icon: <Shield className="w-4 h-4" /> },
+    { id: 'review', label: t('tabs.review'), icon: <Filter className="w-4 h-4" /> },
+    { id: 'config', label: t('tabs.config'), icon: <Settings className="w-4 h-4" /> },
     {
       id: 'missfilter',
-      label: 'Miss-Filter Detection',
+      label: t('tabs.missFilter'),
       icon: <AlertTriangle className="w-4 h-4" />,
     },
   ]
@@ -321,15 +323,13 @@ export function FalsePositiveFilterPage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center py-12">
             <Shield className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-            <h1 className="text-2xl font-semibold mb-2">No Project Selected</h1>
-            <p className="text-muted-foreground mb-4">
-              Select a project from the dashboard to use the False Positive Filter.
-            </p>
+            <h1 className="text-2xl font-semibold mb-2">{t('noProject.heading')}</h1>
+            <p className="text-muted-foreground mb-4">{t('noProject.description')}</p>
             <button
               onClick={() => navigate('/dashboard')}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             >
-              Go to Dashboard
+              {t('noProject.goToDashboard')}
             </button>
           </div>
         </div>
@@ -344,10 +344,10 @@ export function FalsePositiveFilterPage() {
           title={
             <span className="flex items-center gap-2">
               <Shield className="h-6 w-6 text-primary" />
-              False Positive Filter
+              {t('header.title')}
             </span>
           }
-          description={`Project: ${project.name}`}
+          description={t('header.description', { name: project.name })}
         />
       </div>
 
@@ -398,13 +398,13 @@ export function FalsePositiveFilterPage() {
         {activeTab === 'review' && !filterResult && (
           <div className="text-center py-12">
             <Filter className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Filter Results</h3>
-            <p className="text-muted-foreground mb-4">Run the filter to see results here.</p>
+            <h3 className="text-lg font-medium mb-2">{t('noResults.heading')}</h3>
+            <p className="text-muted-foreground mb-4">{t('noResults.description')}</p>
             <button
               onClick={() => setActiveTab('dashboard')}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             >
-              Go to Dashboard
+              {t('noResults.goToDashboard')}
             </button>
           </div>
         )}

@@ -1,0 +1,85 @@
+{
+  "title": "Search",
+  "description": "Search across all projects, components, and vulnerabilities",
+  "modeToggle": {
+    "projectSearch": "Project Search",
+    "nvdDatabase": "NVD Database",
+    "ftsEnabled": "FTS Enabled"
+  },
+  "sync": {
+    "cvesInDatabase": "CVEs in database",
+    "lastSync": "• Last sync:",
+    "checkingForUpdates": "Checking for updates...",
+    "fetching": "Fetching: {{count}} CVEs",
+    "importing": "Importing: {{count}} CVEs",
+    "percentValue": "{{percent}}%",
+    "percentPending": "...",
+    "timeRemainingSuffix": " - {{time}}",
+    "secondsRemaining": "{{seconds}}s remaining",
+    "minutesRemaining": "{{minutes}}m {{seconds}}s remaining",
+    "synced": "Synced {{count}} CVEs",
+    "syncAgain": "Sync Again",
+    "syncNvdData": "Sync NVD Data"
+  },
+  "searchInput": {
+    "projectsPlaceholder": "Search projects, components, vulnerabilities...",
+    "nvdPlaceholder": "Search NVD database by CVE ID (CVE-YYYY-NNNN) or CPE text...",
+    "clearSearch": "Clear search"
+  },
+  "suggestions": {
+    "heading": "Suggestions"
+  },
+  "results": {
+    "summary_one": "Found {{count}} result ({{projects}} projects, {{components}} components, {{vulnerabilities}} vulnerabilities)",
+    "summary_other": "Found {{count}} results ({{projects}} projects, {{components}} components, {{vulnerabilities}} vulnerabilities)",
+    "nvdSummary_one": "Found {{count}} result in NVD database",
+    "nvdSummary_other": "Found {{count}} results in NVD database",
+    "projectsHeading": "Projects",
+    "componentsHeading": "Components",
+    "vulnerabilitiesHeading": "Vulnerabilities",
+    "inProject": "in {{projectName}}",
+    "noResultsFound": "No results found",
+    "noResultsDescription": "No matches found for \"{{query}}\" in your projects",
+    "unknownSeverity": "UNKNOWN",
+    "cvssScore": "CVSS {{score}}",
+    "published": "Published: {{date}}",
+    "source": "Source: {{source}}",
+    "clickToViewDetails": "Click to view details"
+  },
+  "emptyStates": {
+    "nvdErrorTitle": "NVD Database Search",
+    "searchingNvd": "Searching NVD database...",
+    "nvdNoResultsTitle": "Search NVD Database",
+    "nvdNoResultsDescription": "Search the NVD database by CVE ID (e.g., CVE-2024-1234) or keywords. Results appear from your local database.",
+    "switchToProjectSearch": "Switch to Project Search",
+    "startSearchingTitle": "Start searching",
+    "startSearchingProjects": "Enter a search term to find projects, components, and vulnerabilities",
+    "startSearchingNvd": "Enter a CVE ID (e.g., CVE-2024-1234) or CPE text to search the NVD database"
+  },
+  "tips": {
+    "project": {
+      "heading": "Project Search Tips",
+      "caseInsensitive": "• Search is case-insensitive",
+      "matches": "• Matches project names, component names, vulnerability IDs, and descriptions",
+      "combineTermsPrefix": "• Combine terms with ",
+      "combineTermsSuffix": ", or quote an exact phrase: ",
+      "saveSearch": "• Save a search to re-run it later",
+      "arrowKeys": "• Use arrow keys to navigate results",
+      "pressEnter": "• Press Enter to open selected result",
+      "pressEscape": "• Press Escape to clear search"
+    },
+    "nvd": {
+      "heading": "NVD Database Search Tips",
+      "byCveId": "• Search by CVE ID: CVE-2024-1234",
+      "byCpeText": "• Search by CPE text: cpe:2.3:a:vendor:product:*",
+      "byComponentName": "• Search by component name: apache, nginx, openssl",
+      "offline": "• Results come from your local NVD database (offline)"
+    }
+  },
+  "errors": {
+    "databaseUnavailable": "Database API not available. Please make sure you are running in Electron.",
+    "searchFailed": "Search failed",
+    "unexpectedError": "An unexpected error occurred",
+    "syncFailed": "Sync failed"
+  }
+}

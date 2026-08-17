@@ -34,6 +34,8 @@ interface ScannedLayer {
   digest: string
   size: number
   mediaType: string
+  /** Dockerfile instruction that created this layer, from the image config's history. */
+  command?: string
 }
 
 /**
@@ -360,11 +362,14 @@ export class ContainerService {
           continue
         }
 
-        // Find the corresponding command from history
+        // Find the corresponding command from history. emptyLayer entries (ENV/LABEL etc.)
+        // produce no filesystem layer, so skip them to keep commands aligned with layers.
+        let layerCommand: string | undefined
         while (nonEmptyHistoryIndex < history.length) {
           const entry = history[nonEmptyHistoryIndex]
           nonEmptyHistoryIndex++
           if (!entry.emptyLayer) {
+            layerCommand = entry.createdBy
             break
           }
         }
@@ -390,6 +395,7 @@ export class ContainerService {
           digest: layerDigest,
           size: layerSize,
           mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip',
+          command: layerCommand,
         })
 
         const layerDir = path.join(tmpDir, `layer-${layerIndex}`)

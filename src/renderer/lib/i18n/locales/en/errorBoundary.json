@@ -1,0 +1,39 @@
+{
+  "header": {
+    "title": {
+      "default": "Something went wrong",
+      "exhausted": "Multiple errors detected"
+    },
+    "subtitle": {
+      "default": "An unexpected error occurred",
+      "exhausted": "The application encountered repeated errors"
+    }
+  },
+  "retryCounter": {
+    "attempt": "Retry attempt {{retryCount}} of {{maxRetries}}",
+    "limitReachedSuffix": " - Limit reached"
+  },
+  "errorMessage": {
+    "unknown": "Unknown error",
+    "errorId": "Error ID: {{errorId}}"
+  },
+  "actions": {
+    "tryAgain": "Try Again",
+    "retrying": "Retrying...",
+    "reloadApp": "Reload App",
+    "goHome": "Go Home"
+  },
+  "recovery": {
+    "optionsLabel": "Recovery options:",
+    "clearCacheAndReload": "Clear Cache & Reload",
+    "clearCacheHint": "This will clear cached data but preserve your preferences"
+  },
+  "copyError": {
+    "button": "Copy Error Details",
+    "countSuffix": " ({{count}} errors)"
+  },
+  "technicalDetails": {
+    "summary": "Technical Details",
+    "componentStackLabel": "\n\nComponent Stack:\n"
+  }
+}

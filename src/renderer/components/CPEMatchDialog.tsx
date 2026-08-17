@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { AlertCircle, CheckCircle, HelpCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 /**
@@ -68,20 +70,21 @@ function truncateCPE(cpe: string, maxLength: number = 40): string {
 /**
  * Get match type label
  */
-function getMatchTypeLabel(matchType: CPEMatchResult['matchType']): string {
+function getMatchTypeLabel(matchType: CPEMatchResult['matchType'], t: TFunction): string {
   switch (matchType) {
     case 'exact':
-      return 'Exact Match'
+      return t('matchType.exact')
     case 'token':
-      return 'Token Match'
+      return t('matchType.token')
     case 'fuzzy':
-      return 'Fuzzy Match'
+      return t('matchType.fuzzy')
     default:
-      return 'Unknown'
+      return t('matchType.unknown')
   }
 }
 
 export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }: CPEMatchDialogProps) {
+  const { t } = useTranslation('cPEMatchDialog')
   const [selections, setSelections] = useState<Map<string, string>>(new Map())
   const [isLoading, setIsLoading] = useState(false)
 
@@ -169,12 +172,9 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-amber-500" />
-              <DialogTitle className="text-xl font-semibold text-foreground">CPE Estimation Required</DialogTitle>
+              <DialogTitle className="text-xl font-semibold text-foreground">{t('title')}</DialogTitle>
             </div>
-            <DialogDescription className="text-sm text-muted-foreground mt-2">
-              The following components need CPE confirmation before export. Please review and select the appropriate CPE
-              for each component.
-            </DialogDescription>
+            <DialogDescription className="text-sm text-muted-foreground mt-2">{t('description')}</DialogDescription>
           </div>
         </DialogHeader>
 
@@ -184,25 +184,25 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
             <div className="flex items-center justify-center py-12">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                <p className="text-sm text-muted-foreground">Processing CPE selections...</p>
+                <p className="text-sm text-muted-foreground">{t('loading')}</p>
               </div>
             </div>
           ) : ambiguousComponents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <HelpCircle className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium text-foreground">No components require CPE estimation</p>
-              <p className="text-sm text-muted-foreground mt-1">All components already have CPE values assigned.</p>
+              <p className="text-lg font-medium text-foreground">{t('emptyState.title')}</p>
+              <p className="text-sm text-muted-foreground mt-1">{t('emptyState.description')}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-muted border-b border-border">
-                    <th className="text-left p-3 font-semibold text-foreground w-12">Select</th>
-                    <th className="text-left p-3 font-semibold text-foreground">Component Name</th>
-                    <th className="text-left p-3 font-semibold text-foreground w-24">Version</th>
-                    <th className="text-left p-3 font-semibold text-foreground">Suggested CPE</th>
-                    <th className="text-center p-3 font-semibold text-foreground w-24">Confidence</th>
+                    <th className="text-left p-3 font-semibold text-foreground w-12">{t('table.select')}</th>
+                    <th className="text-left p-3 font-semibold text-foreground">{t('table.componentName')}</th>
+                    <th className="text-left p-3 font-semibold text-foreground w-24">{t('table.version')}</th>
+                    <th className="text-left p-3 font-semibold text-foreground">{t('table.suggestedCpe')}</th>
+                    <th className="text-center p-3 font-semibold text-foreground w-24">{t('table.confidence')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -223,10 +223,9 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-border p-4 bg-muted/50">
           <div className="text-sm text-muted-foreground">
-            {ambiguousComponents.length} component{ambiguousComponents.length !== 1 ? 's' : ''}{' '}
-            {ambiguousComponents.length === 1 ? 'requires' : 'require'} CPE estimation
+            {t('footer.componentCount', { count: ambiguousComponents.length })}
             {highConfidenceCount > 0 && (
-              <span className="ml-2">({highConfidenceCount} with high confidence &gt;80%)</span>
+              <span className="ml-2">{t('footer.highConfidenceNote', { count: highConfidenceCount })}</span>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -236,7 +235,7 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
               data-testid="accept-all-high-confidence"
               className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Accept All High Confidence (&gt;80%)
+              {t('actions.acceptAllHighConfidence')}
             </button>
             <button
               onClick={handleSkip}
@@ -244,7 +243,7 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
               data-testid="skip-cpes"
               className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Skip CPEs
+              {t('actions.skip')}
             </button>
             <button
               onClick={handleConfirm}
@@ -252,7 +251,7 @@ export function CPEMatchDialog({ open, onClose, onConfirm, ambiguousComponents }
               data-testid="confirm-selections"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Confirming...' : 'Confirm'}
+              {isLoading ? t('actions.confirming') : t('common:actions.confirm')}
             </button>
           </div>
         </div>
@@ -271,6 +270,7 @@ interface ComponentRowProps {
 }
 
 function ComponentRow({ component, selectedCPE, onSelectionChange }: ComponentRowProps) {
+  const { t } = useTranslation('cPEMatchDialog')
   const hasMultipleCPEs = component.suggestedCPEs.length > 1
 
   // Sort CPEs by confidence (highest first)
@@ -285,7 +285,7 @@ function ComponentRow({ component, selectedCPE, onSelectionChange }: ComponentRo
           <div className="flex items-center gap-2 text-red-600">
             <AlertCircle className="h-4 w-4" />
             <span className="font-medium">{component.name}</span>
-            <span className="text-muted-foreground">- No CPE suggestions available</span>
+            <span className="text-muted-foreground">{t('componentRow.noSuggestions')}</span>
           </div>
         </td>
       </tr>
@@ -320,7 +320,7 @@ function ComponentRow({ component, selectedCPE, onSelectionChange }: ComponentRo
           <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${colors.badge}`}>
             {cpe.confidence}%
           </span>
-          <div className="text-xs text-muted-foreground mt-1">{getMatchTypeLabel(cpe.matchType)}</div>
+          <div className="text-xs text-muted-foreground mt-1">{getMatchTypeLabel(cpe.matchType, t)}</div>
         </td>
       </tr>
     )
@@ -348,7 +348,7 @@ function ComponentRow({ component, selectedCPE, onSelectionChange }: ComponentRo
                   checked={isSelected}
                   onChange={() => onSelectionChange(component.id, cpe.cpe)}
                   className="h-4 w-4 text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                  aria-label={`Select CPE ${cpe.cpe} for ${component.name}`}
+                  aria-label={t('componentRow.selectCpeAriaLabel', { cpe: cpe.cpe, name: component.name })}
                 />
               </div>
             </td>
@@ -356,7 +356,7 @@ function ComponentRow({ component, selectedCPE, onSelectionChange }: ComponentRo
               {isFirst ? (
                 <span className="font-medium text-foreground">{component.name}</span>
               ) : (
-                <span className="text-muted-foreground text-xs pl-4">alternative</span>
+                <span className="text-muted-foreground text-xs pl-4">{t('componentRow.alternative')}</span>
               )}
             </td>
             <td className="p-3">
@@ -376,7 +376,7 @@ function ComponentRow({ component, selectedCPE, onSelectionChange }: ComponentRo
               <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${colors.badge}`}>
                 {cpe.confidence}%
               </span>
-              <div className="text-xs text-muted-foreground mt-1">{getMatchTypeLabel(cpe.matchType)}</div>
+              <div className="text-xs text-muted-foreground mt-1">{getMatchTypeLabel(cpe.matchType, t)}</div>
             </td>
           </tr>
         )

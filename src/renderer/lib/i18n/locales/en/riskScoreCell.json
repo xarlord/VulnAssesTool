@@ -1,0 +1,16 @@
+{
+  "breakdown": {
+    "title": "Risk Score Breakdown",
+    "kevStatus": "KEV Status:",
+    "epssPercentile": "EPSS Percentile:",
+    "severity": "Severity ({{severity}}):",
+    "totalScore": "Total Score:",
+    "totalScoreSuffix": "/100"
+  },
+  "legend": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  }
+}

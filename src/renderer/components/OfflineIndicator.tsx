@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Wifi, WifiOff, Cloud, CloudOff, RefreshCw } from 'lucide-react'
 import { getOfflineQueue, type OfflineQueueEvent, type QueueStats } from '@/lib/services/OfflineQueue'
 
@@ -45,6 +46,7 @@ export function OfflineIndicator({
   className = '',
   compact = false,
 }: OfflineIndicatorProps) {
+  const { t } = useTranslation('offlineIndicator')
   const [isOnline, setIsOnline] = useState(true)
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null)
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({
@@ -131,7 +133,7 @@ export function OfflineIndicator({
     return (
       <div
         className={`flex items-center gap-1 ${className}`}
-        title={isOnline ? 'Online' : `Offline - ${queueLength} requests queued`}
+        title={isOnline ? t('compact.onlineTitle') : t('compact.offlineTitle', { count: queueLength })}
       >
         {syncProgress.isSyncing ? (
           <RefreshCw className="h-4 w-4 animate-spin text-primary" />
@@ -142,7 +144,7 @@ export function OfflineIndicator({
             <WifiOff className="h-4 w-4 text-destructive" />
             {queueLength > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                {queueLength > 9 ? '9+' : queueLength}
+                {queueLength > 9 ? t('compact.badgeCap') : queueLength}
               </span>
             )}
           </div>
@@ -171,14 +173,16 @@ export function OfflineIndicator({
 
       {/* Status Text */}
       <span className="font-medium">
-        {syncProgress.isSyncing ? `Syncing... ${syncProgress.progress}%` : isOnline ? 'Online' : 'Offline'}
+        {syncProgress.isSyncing
+          ? t('status.syncing', { progress: syncProgress.progress })
+          : isOnline
+            ? t('status.online')
+            : t('status.offline')}
       </span>
 
       {/* Queue Info */}
       {showQueueInfo && queueLength > 0 && !syncProgress.isSyncing && (
-        <span className="text-xs opacity-75">
-          ({queueLength} {queueLength === 1 ? 'request' : 'requests'} queued)
-        </span>
+        <span className="text-xs opacity-75">{t('queueInfo', { count: queueLength })}</span>
       )}
 
       {/* Sync Progress Bar */}
@@ -191,7 +195,7 @@ export function OfflineIndicator({
             />
           </div>
           <span className="text-xs opacity-75">
-            {syncProgress.processed}/{syncProgress.total}
+            {t('syncCount', { processed: syncProgress.processed, total: syncProgress.total })}
           </span>
         </div>
       )}
@@ -204,6 +208,7 @@ export function OfflineIndicator({
  * Shows at the top of the screen when offline
  */
 export function OfflineBanner({ className = '' }: { className?: string }) {
+  const { t } = useTranslation('offlineIndicator')
   const [isOnline, setIsOnline] = useState(true)
   const [queueLength, setQueueLength] = useState(0)
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({
@@ -274,9 +279,7 @@ export function OfflineBanner({ className = '' }: { className?: string }) {
       {syncProgress.isSyncing ? (
         <>
           <RefreshCw className="h-4 w-4 animate-spin" />
-          <span>
-            Syncing {syncProgress.processed}/{syncProgress.total} requests...
-          </span>
+          <span>{t('banner.syncing', { processed: syncProgress.processed, total: syncProgress.total })}</span>
           <div className="h-1.5 w-24 overflow-hidden rounded-full bg-primary-foreground/20">
             <div
               className="h-full rounded-full bg-primary-foreground transition-all duration-300"
@@ -287,12 +290,8 @@ export function OfflineBanner({ className = '' }: { className?: string }) {
       ) : (
         <>
           <WifiOff className="h-4 w-4" />
-          <span>You are offline</span>
-          {queueLength > 0 && (
-            <span className="opacity-75">
-              • {queueLength} {queueLength === 1 ? 'request' : 'requests'} will sync when back online
-            </span>
-          )}
+          <span>{t('banner.offline')}</span>
+          {queueLength > 0 && <span className="opacity-75">{t('banner.queueWillSync', { count: queueLength })}</span>}
         </>
       )}
     </div>

@@ -6,6 +6,7 @@
  */
 
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Play,
   Settings,
@@ -105,6 +106,8 @@ function StatCard({ label, value, icon, color, trend }: StatCardProps) {
 }
 
 function ConfigurationStatus({ config }: { config: SystemConfig | null }) {
+  const { t } = useTranslation('filterDashboard')
+
   if (!config) {
     return (
       <div
@@ -113,8 +116,8 @@ function ConfigurationStatus({ config }: { config: SystemConfig | null }) {
       >
         <AlertCircle className="h-5 w-5 text-yellow-500" />
         <div>
-          <p className="text-sm font-medium">Configuration Required</p>
-          <p className="text-xs text-muted-foreground">Set up your project configuration to enable filtering</p>
+          <p className="text-sm font-medium">{t('configStatus.missingTitle')}</p>
+          <p className="text-xs text-muted-foreground">{t('configStatus.missingDescription')}</p>
         </div>
       </div>
     )
@@ -127,9 +130,13 @@ function ConfigurationStatus({ config }: { config: SystemConfig | null }) {
     >
       <CheckCircle className="h-5 w-5 text-green-500" />
       <div>
-        <p className="text-sm font-medium">Configuration Active</p>
+        <p className="text-sm font-medium">{t('configStatus.activeTitle')}</p>
         <p className="text-xs text-muted-foreground">
-          {config.project.name} v{config.project.version} - Tier: {config.project.tier}
+          {t('configStatus.activeDetail', {
+            name: config.project.name,
+            version: config.project.version,
+            tier: config.project.tier,
+          })}
         </p>
       </div>
     </div>
@@ -137,13 +144,13 @@ function ConfigurationStatus({ config }: { config: SystemConfig | null }) {
 }
 
 function EffectivenessMetrics({ result }: { result: FilterBatchResult | null }) {
+  const { t } = useTranslation('filterDashboard')
+
   if (!result) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-6 text-center" data-testid="no-filter-results">
         <Filter className="mx-auto h-8 w-8 text-muted-foreground" />
-        <p className="mt-2 text-sm text-muted-foreground">
-          No filter results yet. Run the filter to see effectiveness metrics.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('effectiveness.empty')}</p>
       </div>
     )
   }
@@ -155,22 +162,24 @@ function EffectivenessMetrics({ result }: { result: FilterBatchResult | null }) 
     <div data-testid="effectiveness-metrics" className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Filter Rate</p>
+          <p className="text-xs text-muted-foreground">{t('effectiveness.filterRate')}</p>
           <p className="text-xl font-bold text-green-500">{filterRate}%</p>
           <p className="text-xs text-muted-foreground">
-            {result.filtered} of {result.total} filtered
+            {t('effectiveness.filterRateDetail', { filtered: result.filtered, total: result.total })}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Escalation Rate</p>
+          <p className="text-xs text-muted-foreground">{t('effectiveness.escalationRate')}</p>
           <p className="text-xl font-bold text-yellow-500">{escalationRate}%</p>
-          <p className="text-xs text-muted-foreground">{result.escalated} need review</p>
+          <p className="text-xs text-muted-foreground">
+            {t('effectiveness.escalationRateDetail', { escalated: result.escalated })}
+          </p>
         </div>
       </div>
 
       {/* Severity breakdown */}
       <div className="rounded-lg border border-border bg-card p-3">
-        <p className="mb-2 text-xs font-medium text-muted-foreground">Results by Severity</p>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">{t('effectiveness.bySeverity')}</p>
         <div className="space-y-2">
           {(['critical', 'high', 'medium', 'low'] as const).map((severity) => {
             const data = result.bySeverity[severity]
@@ -189,7 +198,11 @@ function EffectivenessMetrics({ result }: { result: FilterBatchResult | null }) 
                 <div className="flex items-center justify-between text-xs">
                   <span className="capitalize">{severity}</span>
                   <span className="text-muted-foreground">
-                    {data.kept} kept / {data.filtered} filtered / {data.escalated} escalated
+                    {t('effectiveness.severityDetail', {
+                      kept: data.kept,
+                      filtered: data.filtered,
+                      escalated: data.escalated,
+                    })}
                   </span>
                 </div>
                 <div className="flex h-2 overflow-hidden rounded-full bg-muted">
@@ -221,7 +234,7 @@ function EffectivenessMetrics({ result }: { result: FilterBatchResult | null }) 
       {/* Processing time */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Clock className="h-3 w-3" />
-        <span>Processed in {(result.processingTimeMs / 1000).toFixed(2)}s</span>
+        <span>{t('effectiveness.processedIn', { seconds: (result.processingTimeMs / 1000).toFixed(2) })}</span>
       </div>
     </div>
   )
@@ -242,6 +255,8 @@ export function FilterDashboard({
   isFiltering = false,
   className = '',
 }: FilterDashboardProps) {
+  const { t } = useTranslation('filterDashboard')
+
   // Support both fpfState object and individual props
   const config = fpfState?.config ?? propConfig ?? null
   const lastFilterResult = fpfState?.lastFilterResult ?? propFilterResult ?? null
@@ -266,12 +281,12 @@ export function FilterDashboard({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold">False Positive Filter</h2>
-          <p className="text-sm text-muted-foreground">ISO 21434 compliant vulnerability filtering</p>
+          <h2 className="text-xl font-semibold">{t('header.title')}</h2>
+          <p className="text-sm text-muted-foreground">{t('header.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">3-Tier Hybrid Filter</span>
+          <span className="text-sm text-muted-foreground">{t('header.badge')}</span>
         </div>
       </div>
 
@@ -287,7 +302,7 @@ export function FilterDashboard({
           data-testid="run-filter-button"
         >
           <Play className={`h-4 w-4 ${isFiltering ? 'animate-spin' : ''}`} />
-          {isFiltering ? 'Filtering...' : 'Run Filter'}
+          {isFiltering ? t('actions.filtering') : t('actions.runFilter')}
         </button>
         <button
           onClick={onConfigure}
@@ -296,7 +311,7 @@ export function FilterDashboard({
           data-testid="configure-button"
         >
           <Settings className="h-4 w-4" />
-          Configure
+          {t('actions.configure')}
         </button>
         <button
           onClick={onExportReport}
@@ -305,26 +320,41 @@ export function FilterDashboard({
           data-testid="export-report-button"
         >
           <FileDown className="h-4 w-4" />
-          Export Report
+          {t('actions.exportReport')}
         </button>
       </div>
 
       {/* Summary Statistics */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard
-          label="Total Vulnerabilities"
+          label={t('stats.totalVulnerabilities')}
           value={stats.total}
           icon={<AlertTriangle className="h-5 w-5" />}
           color="blue"
         />
-        <StatCard label="Filtered (FP)" value={stats.filtered} icon={<Filter className="h-5 w-5" />} color="green" />
-        <StatCard label="Kept (Real)" value={stats.kept} icon={<CheckCircle className="h-5 w-5" />} color="purple" />
-        <StatCard label="Escalated" value={stats.escalated} icon={<AlertCircle className="h-5 w-5" />} color="yellow" />
+        <StatCard
+          label={t('stats.filtered')}
+          value={stats.filtered}
+          icon={<Filter className="h-5 w-5" />}
+          color="green"
+        />
+        <StatCard
+          label={t('stats.kept')}
+          value={stats.kept}
+          icon={<CheckCircle className="h-5 w-5" />}
+          color="purple"
+        />
+        <StatCard
+          label={t('stats.escalated')}
+          value={stats.escalated}
+          icon={<AlertCircle className="h-5 w-5" />}
+          color="yellow"
+        />
       </div>
 
       {/* Effectiveness Metrics */}
       <div className="rounded-lg border border-border bg-card p-4">
-        <h3 className="mb-4 text-lg font-medium">Filter Effectiveness</h3>
+        <h3 className="mb-4 text-lg font-medium">{t('effectiveness.title')}</h3>
         <EffectivenessMetrics result={lastFilterResult} />
       </div>
     </div>

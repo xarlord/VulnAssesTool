@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Scale, Check } from 'lucide-react'
 import { scanComponentLicenses, createDefaultLicensePolicy } from '@/lib/services/license'
 import type { LicenseScanInput, LicenseVerdict, ComponentLicenseFinding } from '@/lib/services/license'
@@ -49,6 +50,7 @@ function allowableLicenseIds(finding: ComponentLicenseFinding): string[] {
  * approved into the project's per-project allow-list.
  */
 export function LicenseComplianceCard({ components, allowedLicenses, onAllowLicenses }: LicenseComplianceCardProps) {
+  const { t } = useTranslation('licenseComplianceCard')
   const policy = useMemo(
     () => ({ ...createDefaultLicensePolicy(), allowedLicenses: allowedLicenses ?? [] }),
     [allowedLicenses],
@@ -62,15 +64,25 @@ export function LicenseComplianceCard({ components, allowedLicenses, onAllowLice
 
   const stats: Array<{ label: string; value: number; testId: string; className: string }> = [
     {
-      label: 'Allowed',
+      label: t('stats.allowed'),
       value: summary.byVerdict.allowed,
       testId: 'license-allowed-count',
       className: 'text-green-600',
     },
-    { label: 'Review', value: summary.byVerdict.review, testId: 'license-review-count', className: 'text-yellow-600' },
-    { label: 'Denied', value: summary.byVerdict.denied, testId: 'license-denied-count', className: 'text-red-600' },
     {
-      label: 'No license',
+      label: t('stats.review'),
+      value: summary.byVerdict.review,
+      testId: 'license-review-count',
+      className: 'text-yellow-600',
+    },
+    {
+      label: t('stats.denied'),
+      value: summary.byVerdict.denied,
+      testId: 'license-denied-count',
+      className: 'text-red-600',
+    },
+    {
+      label: t('stats.noLicense'),
       value: summary.componentsWithoutLicense,
       testId: 'license-missing-count',
       className: 'text-muted-foreground',
@@ -81,7 +93,7 @@ export function LicenseComplianceCard({ components, allowedLicenses, onAllowLice
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-center gap-2">
         <Scale className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-semibold text-foreground">License Compliance</h3>
+        <h3 className="font-semibold text-foreground">{t('title')}</h3>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -97,7 +109,7 @@ export function LicenseComplianceCard({ components, allowedLicenses, onAllowLice
 
       {flagged.length > 0 && (
         <div className="space-y-1">
-          <p className="text-sm font-medium text-foreground">Flagged components ({flagged.length})</p>
+          <p className="text-sm font-medium text-foreground">{t('flagged.heading', { count: flagged.length })}</p>
           <div className="max-h-64 space-y-1 overflow-y-auto">
             {flagged.map((finding) => {
               const allowable = allowableLicenseIds(finding)
@@ -123,18 +135,18 @@ export function LicenseComplianceCard({ components, allowedLicenses, onAllowLice
                         <button
                           type="button"
                           onClick={() => onAllowLicenses(allowable)}
-                          title={`Allow ${allowable.join(', ')} for this project`}
+                          title={t('flagged.allowTitle', { licenses: allowable.join(', ') })}
                           className="inline-flex items-center gap-1 rounded-md border border-green-600/40 px-2 py-0.5 text-xs font-medium text-green-700 hover:bg-green-100 dark:text-green-300 dark:hover:bg-green-900/30"
                         >
                           <Check className="h-3 w-3" />
-                          Allow
+                          {t('flagged.allow')}
                         </button>
                       ) : (
                         <span
                           className="text-[10px] italic text-muted-foreground"
-                          title="No declared license to approve — the SBOM/scan captured no license for this component"
+                          title={t('flagged.noLicenseIdTitle')}
                         >
-                          no license id
+                          {t('flagged.noLicenseId')}
                         </span>
                       ))}
                   </div>

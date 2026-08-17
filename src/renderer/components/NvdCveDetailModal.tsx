@@ -14,6 +14,8 @@ import {
   AlertCircle,
   Layers,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { toast } from './Toaster'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
@@ -128,23 +130,23 @@ const parseCpe = (cpeUri: string): { vendor: string; product: string; version: s
 }
 
 // Format version range for display
-const formatVersionRange = (match: CpeMatchFull): string => {
+const formatVersionRange = (match: CpeMatchFull, t: TFunction): string => {
   const parts: string[] = []
 
   if (match.versionStartIncluding) {
-    parts.push(`from ${match.versionStartIncluding} (inclusive)`)
+    parts.push(t('cpe.range.fromInclusive', { version: match.versionStartIncluding }))
   } else if (match.versionStartExcluding) {
-    parts.push(`from ${match.versionStartExcluding} (exclusive)`)
+    parts.push(t('cpe.range.fromExclusive', { version: match.versionStartExcluding }))
   }
 
   if (match.versionEndIncluding) {
-    parts.push(`up to ${match.versionEndIncluding} (inclusive)`)
+    parts.push(t('cpe.range.toInclusive', { version: match.versionEndIncluding }))
   } else if (match.versionEndExcluding) {
-    parts.push(`up to ${match.versionEndExcluding} (exclusive)`)
+    parts.push(t('cpe.range.toExclusive', { version: match.versionEndExcluding }))
   }
 
   if (parts.length === 0) {
-    return 'All versions'
+    return t('cpe.range.allVersions')
   }
 
   return parts.join(' ')
@@ -153,27 +155,75 @@ const formatVersionRange = (match: CpeMatchFull): string => {
 // Parse CVSS vector string to components
 const parseCvssVector = (
   vector: string | undefined,
+  t: TFunction,
 ): { code: string; name: string; value: string; valueName: string }[] => {
   if (!vector) return []
 
-  const cvss3Metrics: Record<string, { name: string; values: Record<string, string> }> = {
-    AV: { name: 'Attack Vector', values: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
-    AC: { name: 'Attack Complexity', values: { L: 'Low', H: 'High' } },
-    PR: { name: 'Privileges Required', values: { N: 'None', L: 'Low', H: 'High' } },
-    UI: { name: 'User Interaction', values: { N: 'None', R: 'Required' } },
-    S: { name: 'Scope', values: { U: 'Unchanged', C: 'Changed' } },
-    C: { name: 'Confidentiality', values: { N: 'None', L: 'Low', H: 'High' } },
-    I: { name: 'Integrity', values: { N: 'None', L: 'Low', H: 'High' } },
-    A: { name: 'Availability', values: { N: 'None', L: 'Low', H: 'High' } },
+  const cvss3Metrics: Record<string, { nameKey: string; values: Record<string, string> }> = {
+    AV: {
+      nameKey: 'cvssVector.metricNames.attackVector',
+      values: {
+        N: 'cvssVector.values.network',
+        A: 'cvssVector.values.adjacent',
+        L: 'cvssVector.values.local',
+        P: 'cvssVector.values.physical',
+      },
+    },
+    AC: {
+      nameKey: 'cvssVector.metricNames.attackComplexity',
+      values: { L: 'cvssVector.values.low', H: 'cvssVector.values.high' },
+    },
+    PR: {
+      nameKey: 'cvssVector.metricNames.privilegesRequired',
+      values: { N: 'cvssVector.values.none', L: 'cvssVector.values.low', H: 'cvssVector.values.high' },
+    },
+    UI: {
+      nameKey: 'cvssVector.metricNames.userInteraction',
+      values: { N: 'cvssVector.values.none', R: 'cvssVector.values.required' },
+    },
+    S: {
+      nameKey: 'cvssVector.metricNames.scope',
+      values: { U: 'cvssVector.values.unchanged', C: 'cvssVector.values.changed' },
+    },
+    C: {
+      nameKey: 'cvssVector.metricNames.confidentiality',
+      values: { N: 'cvssVector.values.none', L: 'cvssVector.values.low', H: 'cvssVector.values.high' },
+    },
+    I: {
+      nameKey: 'cvssVector.metricNames.integrity',
+      values: { N: 'cvssVector.values.none', L: 'cvssVector.values.low', H: 'cvssVector.values.high' },
+    },
+    A: {
+      nameKey: 'cvssVector.metricNames.availability',
+      values: { N: 'cvssVector.values.none', L: 'cvssVector.values.low', H: 'cvssVector.values.high' },
+    },
   }
 
-  const cvss2Metrics: Record<string, { name: string; values: Record<string, string> }> = {
-    AV: { name: 'Access Vector', values: { N: 'Network', A: 'Adjacent', L: 'Local' } },
-    AC: { name: 'Access Complexity', values: { L: 'Low', M: 'Medium', H: 'High' } },
-    Au: { name: 'Authentication', values: { N: 'None', S: 'Single', M: 'Multiple' } },
-    C: { name: 'Confidentiality', values: { N: 'None', P: 'Partial', C: 'Complete' } },
-    I: { name: 'Integrity', values: { N: 'None', P: 'Partial', C: 'Complete' } },
-    A: { name: 'Availability', values: { N: 'None', P: 'Partial', C: 'Complete' } },
+  const cvss2Metrics: Record<string, { nameKey: string; values: Record<string, string> }> = {
+    AV: {
+      nameKey: 'cvssVector.metricNames.accessVector',
+      values: { N: 'cvssVector.values.network', A: 'cvssVector.values.adjacent', L: 'cvssVector.values.local' },
+    },
+    AC: {
+      nameKey: 'cvssVector.metricNames.accessComplexity',
+      values: { L: 'cvssVector.values.low', M: 'cvssVector.values.medium', H: 'cvssVector.values.high' },
+    },
+    Au: {
+      nameKey: 'cvssVector.metricNames.authentication',
+      values: { N: 'cvssVector.values.none', S: 'cvssVector.values.single', M: 'cvssVector.values.multiple' },
+    },
+    C: {
+      nameKey: 'cvssVector.metricNames.confidentiality',
+      values: { N: 'cvssVector.values.none', P: 'cvssVector.values.partial', C: 'cvssVector.values.complete' },
+    },
+    I: {
+      nameKey: 'cvssVector.metricNames.integrity',
+      values: { N: 'cvssVector.values.none', P: 'cvssVector.values.partial', C: 'cvssVector.values.complete' },
+    },
+    A: {
+      nameKey: 'cvssVector.metricNames.availability',
+      values: { N: 'cvssVector.values.none', P: 'cvssVector.values.partial', C: 'cvssVector.values.complete' },
+    },
   }
 
   const isCvss2 = vector.includes('CVSS:2.0') || (!vector.includes('CVSS:3') && vector.includes('Au'))
@@ -191,9 +241,9 @@ const parseCvssVector = (
     if (metric) {
       result.push({
         code,
-        name: metric.name,
+        name: t(metric.nameKey),
         value,
-        valueName: metric.values[value] || value,
+        valueName: metric.values[value] ? t(metric.values[value]) : value,
       })
     }
   }
@@ -213,6 +263,7 @@ const getTagStyle = (tag: string): { bg: string; text: string; border: string } 
 }
 
 export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalProps) {
+  const { t } = useTranslation('nvdCveDetailModal')
   const [cve, setCve] = useState<CveFullDetails | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -239,10 +290,10 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
       if (response.success) {
         setCve(response.cve)
       } else {
-        setError(response.error || 'Failed to fetch CVE details')
+        setError(response.error || t('errors.fetchFailed'))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : t('errors.generic'))
     } finally {
       setLoading(false)
     }
@@ -254,11 +305,11 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
     try {
       await navigator.clipboard.writeText(cve.id)
       setCopied(true)
-      toast.success(`Copied ${cve.id} to clipboard`)
+      toast.success(t('toast.copied', { id: cve.id }))
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
       console.error('Failed to copy:', error)
-      toast.error('Failed to copy to clipboard')
+      toast.error(t('errors.copyFailed'))
     }
   }
 
@@ -268,7 +319,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
   }
 
   const formatDate = (dateStr?: string) => {
-    if (!dateStr) return 'Unknown'
+    if (!dateStr) return t('dateUnknown')
     try {
       return new Intl.DateTimeFormat('en-US', {
         month: 'short',
@@ -298,10 +349,8 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
         className="max-w-4xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col"
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>CVE Vulnerability Details</DialogTitle>
-          <DialogDescription>
-            Detailed vulnerability information including CVSS scores, affected software, references, and timeline.
-          </DialogDescription>
+          <DialogTitle>{t('dialog.title')}</DialogTitle>
+          <DialogDescription>{t('dialog.description')}</DialogDescription>
         </DialogHeader>
 
         {/* Header */}
@@ -324,17 +373,17 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                     onClick={handleCopyId}
                     data-testid="cve-copy-id"
                     className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                    aria-label={`Copy ${cve.id} to clipboard`}
+                    aria-label={t('header.copyAriaLabel', { id: cve.id })}
                   >
                     {copied ? (
                       <>
                         <Check className="h-3.5 w-3.5 text-green-600" />
-                        <span className="text-green-600">Copied</span>
+                        <span className="text-green-600">{t('header.copied')}</span>
                       </>
                     ) : (
                       <>
                         <Copy className="h-3.5 w-3.5" />
-                        <span>Copy</span>
+                        <span>{t('header.copy')}</span>
                       </>
                     )}
                   </button>
@@ -347,7 +396,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-bold ${getSeverityBgColor(cve.severity)} ${getSeverityColor(cve.severity)}`}
                     >
-                      CVSS {cve.cvssScore.toFixed(1)}
+                      {t('header.cvssBadge', { score: cve.cvssScore.toFixed(1) })}
                     </span>
                   )}
                   {/* Show reference type tags prominently */}
@@ -368,13 +417,13 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                     })}
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Source: {cve.source}
-                  {cve.assigner && ` • Assigner: ${cve.assigner}`}
-                  {cve.vulnStatus && ` • Status: ${cve.vulnStatus}`}
+                  {t('header.source', { source: cve.source })}
+                  {cve.assigner && t('header.assigner', { assigner: cve.assigner })}
+                  {cve.vulnStatus && t('header.vulnStatus', { status: cve.vulnStatus })}
                 </p>
               </>
             ) : (
-              <div className="text-muted-foreground">No CVE data</div>
+              <div className="text-muted-foreground">{t('noCveData')}</div>
             )}
           </div>
         </div>
@@ -399,11 +448,11 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
               <div className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-5 w-5" />
-                <span className="font-medium">Error loading CVE details</span>
+                <span className="font-medium">{t('errorBanner.title')}</span>
               </div>
               <p className="mt-1 text-sm text-destructive">{error}</p>
               <button onClick={fetchCveDetails} className="mt-3 text-sm text-destructive underline hover:no-underline">
-                Try again
+                {t('errorBanner.retry')}
               </button>
             </div>
           ) : cve ? (
@@ -413,17 +462,15 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                 <div className="rounded-lg border-2 border-green-400 bg-green-50 p-4">
                   <div className="flex items-center gap-2 text-green-700">
                     <Wrench className="h-5 w-5" />
-                    <span className="font-bold text-lg">Patch Available</span>
+                    <span className="font-bold text-lg">{t('patchAlert.title')}</span>
                   </div>
-                  <p className="mt-1 text-sm text-green-600">
-                    A patch or fix is available for this vulnerability. Check the references section for patch links.
-                  </p>
+                  <p className="mt-1 text-sm text-green-600">{t('patchAlert.description')}</p>
                 </div>
               )}
 
               {/* Description */}
               <div>
-                <h3 className="font-semibold mb-2 text-foreground">Description</h3>
+                <h3 className="font-semibold mb-2 text-foreground">{t('description.heading')}</h3>
                 <p className="text-sm leading-relaxed text-muted-foreground">{cve.description}</p>
               </div>
 
@@ -440,7 +487,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                   >
                     <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                       <Shield className="h-5 w-5 text-muted-foreground" />
-                      CVSS Scores
+                      {t('cvss.heading')}
                     </h3>
                     {cvssExpanded ? (
                       <ChevronUp className="h-5 w-5 text-muted-foreground" />
@@ -457,17 +504,27 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                         <div className="mb-4">
                           <h4 className="text-sm font-bold text-muted-foreground mb-2 flex items-center gap-2">
                             <AlertCircle className="h-4 w-4" />
-                            All CVSS Scores (Multiple Sources)
+                            {t('cvss.multiSourceHeading')}
                           </h4>
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs border-collapse">
                               <thead>
                                 <tr className="bg-muted">
-                                  <th className="text-left p-2 border border-border font-semibold">Source</th>
-                                  <th className="text-left p-2 border border-border font-semibold">Type</th>
-                                  <th className="text-left p-2 border border-border font-semibold">Version</th>
-                                  <th className="text-center p-2 border border-border font-semibold">Score</th>
-                                  <th className="text-left p-2 border border-border font-semibold">Severity</th>
+                                  <th className="text-left p-2 border border-border font-semibold">
+                                    {t('cvss.multiTable.source')}
+                                  </th>
+                                  <th className="text-left p-2 border border-border font-semibold">
+                                    {t('cvss.multiTable.type')}
+                                  </th>
+                                  <th className="text-left p-2 border border-border font-semibold">
+                                    {t('cvss.multiTable.version')}
+                                  </th>
+                                  <th className="text-center p-2 border border-border font-semibold">
+                                    {t('cvss.multiTable.score')}
+                                  </th>
+                                  <th className="text-left p-2 border border-border font-semibold">
+                                    {t('cvss.multiTable.severity')}
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -483,7 +540,9 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                         {metric.type}
                                       </span>
                                     </td>
-                                    <td className="p-2 border border-border font-mono">v{metric.version}</td>
+                                    <td className="p-2 border border-border font-mono">
+                                      {t('cvss.multiTable.versionPrefix', { version: metric.version })}
+                                    </td>
                                     <td className="p-2 border border-border text-center">
                                       <span className={`text-lg font-bold ${getSeverityColor(metric.severity)}`}>
                                         {metric.score.toFixed(1)}
@@ -509,7 +568,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                         <div>
                           <div className="flex items-center gap-3 mb-3">
                             <span className="text-sm font-bold text-muted-foreground uppercase tracking-wide">
-                              CVSS v3.1
+                              {t('cvss.v31.heading')}
                             </span>
                             <span
                               className={`text-2xl font-bold ${getSeverityColor(cve.cvssV31Severity || cve.severity)}`}
@@ -527,14 +586,22 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                               <table className="w-full text-xs border-collapse">
                                 <thead>
                                   <tr className="bg-muted">
-                                    <th className="text-left p-2 border border-border font-semibold w-16">Code</th>
-                                    <th className="text-left p-2 border border-border font-semibold">Metric</th>
-                                    <th className="text-center p-2 border border-border font-semibold w-16">Value</th>
-                                    <th className="text-left p-2 border border-border font-semibold">Description</th>
+                                    <th className="text-left p-2 border border-border font-semibold w-16">
+                                      {t('cvss.vectorTable.code')}
+                                    </th>
+                                    <th className="text-left p-2 border border-border font-semibold">
+                                      {t('cvss.vectorTable.metric')}
+                                    </th>
+                                    <th className="text-center p-2 border border-border font-semibold w-16">
+                                      {t('cvss.vectorTable.value')}
+                                    </th>
+                                    <th className="text-left p-2 border border-border font-semibold">
+                                      {t('cvss.vectorTable.description')}
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {parseCvssVector(cve.cvssV31Vector).map((metric, idx) => (
+                                  {parseCvssVector(cve.cvssV31Vector, t).map((metric, idx) => (
                                     <tr key={metric.code} className={idx % 2 === 0 ? 'bg-card' : 'bg-muted/50'}>
                                       <td className="p-2 border border-border font-mono font-bold text-muted-foreground">
                                         {metric.code}
@@ -560,7 +627,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                         <div>
                           <div className="flex items-center gap-3 mb-3">
                             <span className="text-sm font-bold text-muted-foreground uppercase tracking-wide">
-                              CVSS v3.0
+                              {t('cvss.v30.heading')}
                             </span>
                             <span
                               className={`text-2xl font-bold ${getSeverityColor(cve.cvssV30Severity || cve.severity)}`}
@@ -578,14 +645,22 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                               <table className="w-full text-xs border-collapse">
                                 <thead>
                                   <tr className="bg-muted">
-                                    <th className="text-left p-2 border border-border font-semibold w-16">Code</th>
-                                    <th className="text-left p-2 border border-border font-semibold">Metric</th>
-                                    <th className="text-center p-2 border border-border font-semibold w-16">Value</th>
-                                    <th className="text-left p-2 border border-border font-semibold">Description</th>
+                                    <th className="text-left p-2 border border-border font-semibold w-16">
+                                      {t('cvss.vectorTable.code')}
+                                    </th>
+                                    <th className="text-left p-2 border border-border font-semibold">
+                                      {t('cvss.vectorTable.metric')}
+                                    </th>
+                                    <th className="text-center p-2 border border-border font-semibold w-16">
+                                      {t('cvss.vectorTable.value')}
+                                    </th>
+                                    <th className="text-left p-2 border border-border font-semibold">
+                                      {t('cvss.vectorTable.description')}
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {parseCvssVector(cve.cvssV30Vector).map((metric, idx) => (
+                                  {parseCvssVector(cve.cvssV30Vector, t).map((metric, idx) => (
                                     <tr key={metric.code} className={idx % 2 === 0 ? 'bg-card' : 'bg-muted/50'}>
                                       <td className="p-2 border border-border font-mono font-bold text-muted-foreground">
                                         {metric.code}
@@ -611,7 +686,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                         <div>
                           <div className="flex items-center gap-3 mb-3">
                             <span className="text-sm font-bold text-muted-foreground uppercase tracking-wide">
-                              CVSS v2.0
+                              {t('cvss.v2.heading')}
                             </span>
                             <span
                               className={`text-2xl font-bold ${getSeverityColor(cve.cvssV2Severity || cve.severity)}`}
@@ -629,14 +704,22 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                               <table className="w-full text-xs border-collapse">
                                 <thead>
                                   <tr className="bg-muted">
-                                    <th className="text-left p-2 border border-border font-semibold w-16">Code</th>
-                                    <th className="text-left p-2 border border-border font-semibold">Metric</th>
-                                    <th className="text-center p-2 border border-border font-semibold w-16">Value</th>
-                                    <th className="text-left p-2 border border-border font-semibold">Description</th>
+                                    <th className="text-left p-2 border border-border font-semibold w-16">
+                                      {t('cvss.vectorTable.code')}
+                                    </th>
+                                    <th className="text-left p-2 border border-border font-semibold">
+                                      {t('cvss.vectorTable.metric')}
+                                    </th>
+                                    <th className="text-center p-2 border border-border font-semibold w-16">
+                                      {t('cvss.vectorTable.value')}
+                                    </th>
+                                    <th className="text-left p-2 border border-border font-semibold">
+                                      {t('cvss.vectorTable.description')}
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {parseCvssVector(cve.cvssV2Vector).map((metric, idx) => (
+                                  {parseCvssVector(cve.cvssV2Vector, t).map((metric, idx) => (
                                     <tr key={metric.code} className={idx % 2 === 0 ? 'bg-card' : 'bg-muted/50'}>
                                       <td className="p-2 border border-border font-mono font-bold text-muted-foreground">
                                         {metric.code}
@@ -671,7 +754,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                   >
                     <h3 className="font-semibold text-foreground flex items-center gap-2">
                       <Layers className="h-5 w-5 text-muted-foreground" />
-                      Affected Software ({cve.cpeMatches.filter((m) => m.vulnerable).length} configurations)
+                      {t('cpe.heading', { count: cve.cpeMatches.filter((m) => m.vulnerable).length })}
                     </h3>
                     {cpeExpanded ? (
                       <ChevronUp className="h-5 w-5 text-muted-foreground" />
@@ -700,10 +783,12 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                   {/* Product Info */}
                                   <div className="flex items-center gap-2 mb-2">
                                     <span className="font-bold text-foreground">
-                                      {parsed.product || 'Unknown Product'}
+                                      {parsed.product || t('cpe.unknownProduct')}
                                     </span>
                                     {parsed.vendor && (
-                                      <span className="text-muted-foreground text-sm">by {parsed.vendor}</span>
+                                      <span className="text-muted-foreground text-sm">
+                                        {t('cpe.byVendor', { vendor: parsed.vendor })}
+                                      </span>
                                     )}
                                   </div>
 
@@ -715,10 +800,12 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                   {/* Version Range */}
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs font-semibold text-muted-foreground uppercase">
-                                      Affected Versions:
+                                      {t('cpe.affectedVersionsLabel')}
                                     </span>
                                     <span className="text-sm text-red-700 font-medium">
-                                      {hasVersionRange ? formatVersionRange(match) : `Version ${parsed.version}`}
+                                      {hasVersionRange
+                                        ? formatVersionRange(match, t)
+                                        : t('cpe.versionFallback', { version: parsed.version })}
                                     </span>
                                   </div>
 
@@ -727,23 +814,26 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                     <div className="mt-2 flex flex-wrap gap-3 text-xs">
                                       {match.versionStartIncluding && (
                                         <span className="bg-muted px-2 py-1 rounded">
-                                          <span className="font-medium">From (≥):</span> {match.versionStartIncluding}
+                                          <span className="font-medium">{t('cpe.rangeLabel.fromInclusive')}</span>{' '}
+                                          {match.versionStartIncluding}
                                         </span>
                                       )}
                                       {match.versionStartExcluding && (
                                         <span className="bg-muted px-2 py-1 rounded">
-                                          <span className="font-medium">From (&gt;):</span>{' '}
+                                          <span className="font-medium">{t('cpe.rangeLabel.fromExclusive')}</span>{' '}
                                           {match.versionStartExcluding}
                                         </span>
                                       )}
                                       {match.versionEndIncluding && (
                                         <span className="bg-muted px-2 py-1 rounded">
-                                          <span className="font-medium">Up to (≤):</span> {match.versionEndIncluding}
+                                          <span className="font-medium">{t('cpe.rangeLabel.toInclusive')}</span>{' '}
+                                          {match.versionEndIncluding}
                                         </span>
                                       )}
                                       {match.versionEndExcluding && (
                                         <span className="bg-muted px-2 py-1 rounded">
-                                          <span className="font-medium">Up to (&lt;):</span> {match.versionEndExcluding}
+                                          <span className="font-medium">{t('cpe.rangeLabel.toExclusive')}</span>{' '}
+                                          {match.versionEndExcluding}
                                         </span>
                                       )}
                                     </div>
@@ -758,7 +848,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                       {cve.cpeMatches.filter((m) => !m.vulnerable).length > 0 && (
                         <div className="mt-4 pt-4 border-t border-border">
                           <h4 className="text-sm font-semibold text-muted-foreground mb-2">
-                            Not Affected (Fixed Versions)
+                            {t('cpe.notAffectedHeading')}
                           </h4>
                           <div className="space-y-2">
                             {cve.cpeMatches
@@ -773,7 +863,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                     <span className="font-medium text-green-700">{parsed.product}</span>
                                     <span className="text-muted-foreground">
                                       {' '}
-                                      - Version {parsed.version} is not affected
+                                      {t('cpe.notAffectedSuffix', { version: parsed.version })}
                                     </span>
                                   </div>
                                 )
@@ -796,7 +886,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                   >
                     <h3 className="font-semibold text-foreground flex items-center gap-2">
                       <AlertCircle className="h-5 w-5 text-muted-foreground" />
-                      CWE References ({cve.cweReferences.length})
+                      {t('cwe.heading', { count: cve.cweReferences.length })}
                     </h3>
                     {cweExpanded ? (
                       <ChevronUp className="h-5 w-5 text-muted-foreground" />
@@ -840,7 +930,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                   >
                     <h3 className="font-semibold text-foreground flex items-center gap-2">
                       <Link2 className="h-5 w-5 text-muted-foreground" />
-                      References ({cve.references.length})
+                      {t('references.heading', { count: cve.references.length })}
                     </h3>
                     {refsExpanded ? (
                       <ChevronUp className="h-5 w-5 text-muted-foreground" />
@@ -896,7 +986,9 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
 
                               {/* Source */}
                               {ref.source && (
-                                <div className="text-xs text-muted-foreground mt-1">Source: {ref.source}</div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {t('references.source', { source: ref.source })}
+                                </div>
                               )}
                             </div>
                             <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 ml-2 mt-0.5" />
@@ -912,14 +1004,14 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
               <div className="rounded-lg border border-border bg-muted/50 p-4">
                 <h3 className="font-semibold mb-3 text-foreground flex items-center gap-2">
                   <Clock className="h-5 w-5 text-muted-foreground" />
-                  Timeline
+                  {t('timeline.heading')}
                 </h3>
                 <div className="space-y-2">
                   {cve.publishedAt && (
                     <div className="flex items-center gap-3">
                       <div className="w-2 h-2 rounded-full bg-blue-500" />
                       <div className="flex-1">
-                        <div className="text-sm text-muted-foreground">Published</div>
+                        <div className="text-sm text-muted-foreground">{t('timeline.published')}</div>
                         <div className="text-sm font-medium text-foreground">{formatDate(cve.publishedAt)}</div>
                       </div>
                     </div>
@@ -928,7 +1020,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                     <div className="flex items-center gap-3">
                       <div className="w-2 h-2 rounded-full bg-orange-500" />
                       <div className="flex-1">
-                        <div className="text-sm text-muted-foreground">Last Modified</div>
+                        <div className="text-sm text-muted-foreground">{t('timeline.lastModified')}</div>
                         <div className="text-sm font-medium text-foreground">{formatDate(cve.modifiedAt)}</div>
                       </div>
                     </div>
@@ -949,14 +1041,14 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
               className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
             >
               <ExternalLink className="h-4 w-4" />
-              View on NVD
+              {t('footer.viewOnNvd')}
             </a>
           )}
           <button
             onClick={onClose}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            Close
+            {t('common:actions.close')}
           </button>
         </div>
       </DialogContent>

@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useStore, useProjects, useSettings } from '@/store/useStore'
 import {
   Plus,
@@ -39,41 +40,51 @@ const SeverityDistributionChart = lazy(() =>
 
 // Getting-started guide (relocated from the removed marketing HomePage). Shown
 // in the empty state so a brand-new user still gets the workflow orientation.
-const GETTING_STARTED: Array<{ icon: LucideIcon; title: string; description: string }> = [
-  { icon: Plus, title: 'Create a project', description: 'Organize assessments per software product or component.' },
+// title/description live in the dashboard i18n namespace (see titleKey/descriptionKey) —
+// this array is a module-level constant with no access to the useTranslation() hook.
+const GETTING_STARTED: Array<{ icon: LucideIcon; titleKey: string; descriptionKey: string }> = [
+  {
+    icon: Plus,
+    titleKey: 'gettingStarted.createProject.title',
+    descriptionKey: 'gettingStarted.createProject.description',
+  },
   {
     icon: Upload,
-    title: 'Import an SBOM',
-    description: 'Scan CycloneDX or SPDX components against NVD, KEV, and EPSS.',
+    titleKey: 'gettingStarted.importSbom.title',
+    descriptionKey: 'gettingStarted.importSbom.description',
   },
-  { icon: Search, title: 'Search vulnerabilities', description: 'Query the NVD database by CVE ID, keyword, or CPE.' },
+  {
+    icon: Search,
+    titleKey: 'gettingStarted.searchVulnerabilities.title',
+    descriptionKey: 'gettingStarted.searchVulnerabilities.description',
+  },
   {
     icon: BarChart3,
-    title: 'View reports',
-    description: 'Generate VEX documents, attack graphs, and executive reports.',
+    titleKey: 'gettingStarted.viewReports.title',
+    descriptionKey: 'gettingStarted.viewReports.description',
   },
 ]
 
-const TIPS: Array<{ icon: LucideIcon; title: string; description: string }> = [
+const TIPS: Array<{ icon: LucideIcon; titleKey: string; descriptionKey: string }> = [
   {
     icon: Zap,
-    title: 'CPE matching',
-    description:
-      'D-Fence estimates CPEs for components without them — review and approve suggested matches for accurate scanning.',
+    titleKey: 'tips.cpeMatching.title',
+    descriptionKey: 'tips.cpeMatching.description',
   },
   {
     icon: FileText,
-    title: 'SBOM formats',
-    description: 'CycloneDX (JSON/XML) and SPDX (JSON) are supported; Excel-based SBOMs can be generated and imported.',
+    titleKey: 'tips.sbomFormats.title',
+    descriptionKey: 'tips.sbomFormats.description',
   },
   {
     icon: ShieldCheck,
-    title: 'False positive filters',
-    description: 'Use the FPF system to suppress known non-issues and keep reports actionable.',
+    titleKey: 'tips.falsePositiveFilters.title',
+    descriptionKey: 'tips.falsePositiveFilters.description',
   },
 ]
 
 export function Dashboard() {
+  const { t } = useTranslation('dashboard')
   const navigate = useNavigate()
   const projects = useProjects()
   const deleteProject = useStore((s) => s.deleteProject)
@@ -254,8 +265,8 @@ export function Dashboard() {
     <div className="p-6" data-tour="dashboard">
       <div className="mx-auto max-w-7xl">
         <PageHeader
-          title="Dashboard"
-          description="Vulnerability assessment across all your projects"
+          title={t('header.title')}
+          description={t('header.description')}
           actions={
             <>
               <button
@@ -264,7 +275,7 @@ export function Dashboard() {
                 className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4" />
-                New Project
+                {t('actions.newProject')}
               </button>
               <button
                 onClick={() => setShowUploadDialog(true)}
@@ -273,14 +284,14 @@ export function Dashboard() {
                 className="flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
               >
                 <Upload className="h-4 w-4" />
-                Import SBOM
+                {t('actions.importSbom')}
               </button>
               <button
                 onClick={() => setShowSbomGeneratorDialog(true)}
                 className="flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
               >
                 <FileText className="h-4 w-4" />
-                Generate SBOM from Excel
+                {t('actions.generateSbomFromExcel')}
               </button>
               <button
                 onClick={() => setShowExportDialog(true)}
@@ -288,7 +299,7 @@ export function Dashboard() {
                 className="flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
               >
                 <Download className="h-4 w-4" />
-                Export All
+                {t('actions.exportAll')}
               </button>
             </>
           }
@@ -297,24 +308,24 @@ export function Dashboard() {
         {/* Statistics */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
-            label="Projects"
+            label={t('stats.projects')}
             value={statistics.totalProjects}
             icon={<FolderOpen className="h-4 w-4 text-muted-foreground" />}
           />
           <StatCard
-            label="Critical"
+            label={t('stats.critical')}
             value={statistics.criticalCount}
             valueClassName={getSeverityTextClass('critical')}
             icon={<ShieldAlert className={`h-4 w-4 ${getSeverityTextClass('critical')}`} />}
           />
           <StatCard
-            label="High"
+            label={t('stats.high')}
             value={statistics.highCount}
             valueClassName={getSeverityTextClass('high')}
             icon={<AlertTriangle className={`h-4 w-4 ${getSeverityTextClass('high')}`} />}
           />
           <StatCard
-            label="Total Vulnerabilities"
+            label={t('stats.totalVulnerabilities')}
             value={statistics.totalVulnerabilities}
             icon={<Bug className="h-4 w-4 text-muted-foreground" />}
           />
@@ -323,7 +334,7 @@ export function Dashboard() {
         {/* Severity distribution — only meaningful once there are findings. */}
         {statistics.totalVulnerabilities > 0 && (
           <div className="mb-8">
-            <ChartCard title="Severity distribution" description="Across all projects">
+            <ChartCard title={t('severityChart.title')} description={t('severityChart.description')}>
               <Suspense fallback={<div className="h-[300px] animate-pulse rounded-md bg-muted/40" />}>
                 <SeverityDistributionChart
                   counts={{
@@ -343,7 +354,9 @@ export function Dashboard() {
         {/* Projects List */}
         <div>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Recent Projects {projects.length > 0 && `(${projects.length})`}</h2>
+            <h2 className="text-xl font-semibold">
+              {t('projects.heading')} {projects.length > 0 && `(${projects.length})`}
+            </h2>
             {projects.length > 0 && (
               <button
                 onClick={handleToggleBulkMode}
@@ -353,7 +366,7 @@ export function Dashboard() {
                     : 'border-border bg-secondary hover:bg-secondary/80'
                 }`}
               >
-                {isBulkMode ? 'Exit Selection' : 'Select Projects'}
+                {isBulkMode ? t('projects.exitSelection') : t('projects.selectProjects')}
               </button>
             )}
           </div>
@@ -363,10 +376,10 @@ export function Dashboard() {
             <div className="mb-4 flex items-center justify-between rounded-lg border border-border bg-muted/50 px-4 py-3">
               <div className="flex items-center gap-4">
                 <span className="text-sm font-medium">
-                  {selectedProjectIds.size} project{selectedProjectIds.size !== 1 ? 's' : ''} selected
+                  {t('bulkBar.selectedCount', { count: selectedProjectIds.size })}
                 </span>
                 <button onClick={handleClearSelection} className="text-sm text-muted-foreground hover:text-foreground">
-                  Clear selection
+                  {t('bulkBar.clearSelection')}
                 </button>
               </div>
               <div className="flex items-center gap-2">
@@ -375,13 +388,13 @@ export function Dashboard() {
                   className="flex items-center gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80"
                 >
                   <Download className="h-4 w-4" />
-                  Export
+                  {t('common:actions.export')}
                 </button>
                 <button
                   onClick={() => setShowBulkDeleteConfirm(true)}
                   className="flex items-center gap-2 rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
                 >
-                  Delete
+                  {t('common:actions.delete')}
                 </button>
               </div>
             </div>
@@ -391,15 +404,13 @@ export function Dashboard() {
             <div className="rounded-lg border border-border bg-muted/50 p-8">
               <div className="flex flex-col items-center text-center">
                 <ShieldCheck className="mb-4 h-16 w-16 text-muted-foreground" />
-                <h3 className="text-lg font-medium">No projects yet</h3>
-                <p className="mt-1 max-w-md text-muted-foreground">
-                  Create a new project to get started with vulnerability assessment
-                </p>
+                <h3 className="text-lg font-medium">{t('emptyState.title')}</h3>
+                <p className="mt-1 max-w-md text-muted-foreground">{t('emptyState.description')}</p>
                 <button
                   onClick={() => setShowCreateDialog(true)}
                   className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  Create Your First Project
+                  {t('emptyState.createFirstProject')}
                 </button>
               </div>
 
@@ -408,10 +419,10 @@ export function Dashboard() {
                 {GETTING_STARTED.map((step) => {
                   const Icon = step.icon
                   return (
-                    <div key={step.title} className="rounded-lg border border-border bg-card p-4">
+                    <div key={step.titleKey} className="rounded-lg border border-border bg-card p-4">
                       <Icon className="mb-2 h-5 w-5 text-primary" aria-hidden="true" />
-                      <h4 className="text-sm font-semibold">{step.title}</h4>
-                      <p className="mt-1 text-xs text-muted-foreground">{step.description}</p>
+                      <h4 className="text-sm font-semibold">{t(step.titleKey)}</h4>
+                      <p className="mt-1 text-xs text-muted-foreground">{t(step.descriptionKey)}</p>
                     </div>
                   )
                 })}
@@ -421,11 +432,11 @@ export function Dashboard() {
                 {TIPS.map((tip) => {
                   const Icon = tip.icon
                   return (
-                    <div key={tip.title} className="flex gap-3 rounded-lg border border-border bg-background p-4">
+                    <div key={tip.titleKey} className="flex gap-3 rounded-lg border border-border bg-background p-4">
                       <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
                       <div>
-                        <h4 className="text-xs font-semibold">{tip.title}</h4>
-                        <p className="mt-1 text-xs text-muted-foreground">{tip.description}</p>
+                        <h4 className="text-xs font-semibold">{t(tip.titleKey)}</h4>
+                        <p className="mt-1 text-xs text-muted-foreground">{t(tip.descriptionKey)}</p>
                       </div>
                     </div>
                   )
@@ -451,8 +462,8 @@ export function Dashboard() {
                     />
                     <span className="text-sm font-medium">
                       {selectedProjectIds.size === projects.length && projects.length > 0
-                        ? 'Deselect All'
-                        : 'Select All'}
+                        ? t('projects.deselectAll')
+                        : t('projects.selectAll')}
                     </span>
                   </label>
                 </div>
@@ -505,9 +516,9 @@ export function Dashboard() {
       {/* Bulk delete confirmation (replaces native confirm()) */}
       <ConfirmDialog
         open={showBulkDeleteConfirm}
-        title="Delete selected projects"
-        message={`Delete ${selectedProjectIds.size} selected project${selectedProjectIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
-        confirmLabel="Delete"
+        title={t('confirmBulkDelete.title')}
+        message={t('confirmBulkDelete.message', { count: selectedProjectIds.size })}
+        confirmLabel={t('common:actions.delete')}
         variant="danger"
         onConfirm={() => {
           handleBulkAction('delete')

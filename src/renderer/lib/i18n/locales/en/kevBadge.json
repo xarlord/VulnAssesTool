@@ -1,0 +1,18 @@
+{
+  "compact": {
+    "title": "Actively Exploited (CISA KEV)"
+  },
+  "label": {
+    "exploited": "Exploited",
+    "ransomware": "Ransomware"
+  },
+  "title": {
+    "exploited": "Actively exploited (CISA KEV)",
+    "ransomware": "Actively exploited and used in ransomware campaigns"
+  },
+  "tooltip": {
+    "heading": "CISA Known Exploited Vulnerability",
+    "exploited": "This vulnerability has been actively exploited in the wild.",
+    "ransomware": "This vulnerability is actively exploited in ransomware campaigns."
+  }
+}

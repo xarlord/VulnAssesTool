@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Copy } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import type { SettingsProfile, AppSettings } from '@@/types'
 
@@ -18,6 +19,7 @@ export function CreateProfileDialog({
   existingProfiles,
   currentSettings,
 }: CreateProfileDialogProps) {
+  const { t } = useTranslation('createProfileDialog')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [copyFromProfileId, setCopyFromProfileId] = useState<string>('')
@@ -28,19 +30,19 @@ export function CreateProfileDialog({
 
     // Validation
     if (!name.trim()) {
-      setError('Profile name is required')
+      setError(t('errors.nameRequired'))
       return
     }
 
     if (name.trim().length < 3) {
-      setError('Profile name must be at least 3 characters')
+      setError(t('errors.nameTooShort'))
       return
     }
 
     // Check for duplicate names
     const nameExists = existingProfiles.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())
     if (nameExists) {
-      setError('A profile with this name already exists')
+      setError(t('errors.nameDuplicate'))
       return
     }
 
@@ -77,8 +79,8 @@ export function CreateProfileDialog({
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <DialogHeader>
-          <DialogTitle>Create New Settings Profile</DialogTitle>
-          <DialogDescription>Create a custom settings profile for different use cases</DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         {/* Form */}
@@ -86,7 +88,7 @@ export function CreateProfileDialog({
           {/* Name Field */}
           <div className="space-y-2">
             <label htmlFor="profile-name" className="text-sm font-medium">
-              Profile Name <span className="text-destructive">*</span>
+              {t('fields.nameLabel')} <span className="text-destructive">*</span>
             </label>
             <input
               id="profile-name"
@@ -96,7 +98,7 @@ export function CreateProfileDialog({
                 setName(e.target.value)
                 setError('')
               }}
-              placeholder="e.g., Development, Production, Security Audit"
+              placeholder={t('fields.namePlaceholder')}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               autoFocus
             />
@@ -105,13 +107,13 @@ export function CreateProfileDialog({
           {/* Description Field */}
           <div className="space-y-2">
             <label htmlFor="profile-description" className="text-sm font-medium">
-              Description
+              {t('fields.descriptionLabel')}
             </label>
             <textarea
               id="profile-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description of when to use this profile..."
+              placeholder={t('fields.descriptionPlaceholder')}
               rows={2}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
             />
@@ -122,7 +124,7 @@ export function CreateProfileDialog({
             <div className="space-y-2">
               <label htmlFor="copy-from" className="text-sm font-medium flex items-center gap-2">
                 <Copy className="h-4 w-4" />
-                Copy Settings From
+                {t('copyFrom.label')}
               </label>
               <select
                 id="copy-from"
@@ -130,45 +132,45 @@ export function CreateProfileDialog({
                 onChange={(e) => setCopyFromProfileId(e.target.value)}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               >
-                <option value="">Use Current Settings</option>
+                <option value="">{t('copyFrom.useCurrentSettings')}</option>
                 {existingProfiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
                     {profile.name}
-                    {profile.isDefault ? ' (Default)' : ''}
+                    {profile.isDefault ? t('copyFrom.defaultSuffix') : ''}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-muted-foreground">
-                Optionally copy settings from an existing profile. Otherwise, current settings will be used.
-              </p>
+              <p className="text-xs text-muted-foreground">{t('copyFrom.hint')}</p>
             </div>
           )}
 
           {/* Settings Preview */}
           <div className="rounded-md bg-muted p-3 space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">Settings Summary:</div>
+            <div className="text-xs font-medium text-muted-foreground">{t('summary.title')}</div>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Theme:</span>
+                <span className="text-muted-foreground">{t('summary.theme')}</span>
                 <span className="font-medium capitalize">
                   {currentSettings.theme.charAt(0).toUpperCase() + currentSettings.theme.slice(1)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Font:</span>
+                <span className="text-muted-foreground">{t('summary.font')}</span>
                 <span className="font-medium">
                   {currentSettings.fontSize === 'default'
-                    ? 'Default'
+                    ? t('summary.fontDefault')
                     : currentSettings.fontSize.charAt(0).toUpperCase() + currentSettings.fontSize.slice(1)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Auto-refresh:</span>
-                <span className="font-medium">{currentSettings.autoRefresh ? 'On' : 'Off'}</span>
+                <span className="text-muted-foreground">{t('summary.autoRefresh')}</span>
+                <span className="font-medium">{currentSettings.autoRefresh ? t('summary.on') : t('summary.off')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Cache TTL:</span>
-                <span className="font-medium">{currentSettings.vulnDataCacheTTL}h</span>
+                <span className="text-muted-foreground">{t('summary.cacheTtl')}</span>
+                <span className="font-medium">
+                  {t('summary.cacheTtlValue', { hours: currentSettings.vulnDataCacheTTL })}
+                </span>
               </div>
             </div>
           </div>
@@ -183,13 +185,13 @@ export function CreateProfileDialog({
               onClick={handleCancel}
               className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Create Profile
+              {t('actions.createProfile')}
             </button>
           </div>
         </form>

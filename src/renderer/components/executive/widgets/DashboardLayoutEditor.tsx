@@ -10,6 +10,7 @@
 
 import { useState } from 'react'
 import { LayoutGrid } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store/useStore'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { WIDGET_LABELS, type DashboardWidgetSlot, type WidgetSizePreset } from '@/lib/dashboard/dashboardLayout'
@@ -22,6 +23,7 @@ interface DashboardLayoutEditorProps {
 const SIZE_OPTIONS: WidgetSizePreset[] = ['small', 'medium', 'large']
 
 export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorProps) {
+  const { t } = useTranslation('dashboardLayoutEditor')
   const profiles = useStore((s) => s.dashboardLayoutProfiles)
   const activeProfileId = useStore((s) => s.activeDashboardLayoutProfileId)
   const setActiveProfileId = useStore((s) => s.setActiveDashboardLayoutProfileId)
@@ -88,7 +90,7 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
       className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-secondary/80 flex items-center gap-2"
     >
       <LayoutGrid className="w-4 h-4" />
-      Customize Layout
+      {t('trigger.label')}
     </button>
   )
 
@@ -102,19 +104,19 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
       <Dialog open={isOpen} onOpenChange={(next) => !next && close()}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Customize Dashboard Layout</DialogTitle>
-            <DialogDescription>Show/hide, reorder and resize widgets, or save a new layout profile.</DialogDescription>
+            <DialogTitle>{t('dialog.title')}</DialogTitle>
+            <DialogDescription>{t('dialog.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Profile selector */}
             <div className="flex items-center gap-2">
               <label className="text-sm font-semibold" htmlFor="dashboard-layout-profile">
-                Profile
+                {t('profile.label')}
               </label>
               <select
                 id="dashboard-layout-profile"
-                aria-label="Active layout profile"
+                aria-label={t('profile.ariaLabel')}
                 value={activeProfileId}
                 onChange={(e) => handleProfileChange(e.target.value)}
                 className="rounded-md border border-border bg-background px-2 py-1 text-sm"
@@ -133,14 +135,14 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
                 <li key={slot.id} className="flex items-center gap-2 rounded border border-border p-2">
                   <input
                     type="checkbox"
-                    aria-label={`Show ${WIDGET_LABELS[slot.id]}`}
+                    aria-label={t('widget.showAriaLabel', { label: WIDGET_LABELS[slot.id] })}
                     checked={slot.visible}
                     onChange={(e) => setSlot(index, { visible: e.target.checked })}
                   />
                   <span className="flex-1 text-sm">{WIDGET_LABELS[slot.id]}</span>
                   <button
                     type="button"
-                    aria-label={`Move ${WIDGET_LABELS[slot.id]} up`}
+                    aria-label={t('widget.moveUpAriaLabel', { label: WIDGET_LABELS[slot.id] })}
                     onClick={() => move(index, -1)}
                     disabled={index === 0}
                     className="rounded border border-border px-2 text-sm disabled:opacity-40"
@@ -149,7 +151,7 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
                   </button>
                   <button
                     type="button"
-                    aria-label={`Move ${WIDGET_LABELS[slot.id]} down`}
+                    aria-label={t('widget.moveDownAriaLabel', { label: WIDGET_LABELS[slot.id] })}
                     onClick={() => move(index, 1)}
                     disabled={index === draft.length - 1}
                     className="rounded border border-border px-2 text-sm disabled:opacity-40"
@@ -157,7 +159,7 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
                     ↓
                   </button>
                   <select
-                    aria-label={`Size for ${WIDGET_LABELS[slot.id]}`}
+                    aria-label={t('widget.sizeAriaLabel', { label: WIDGET_LABELS[slot.id] })}
                     value={slot.size}
                     onChange={(e) => setSlot(index, { size: e.target.value as WidgetSizePreset })}
                     className="rounded-md border border-border bg-background px-2 py-1 text-sm"
@@ -176,8 +178,8 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                aria-label="New profile name"
-                placeholder="New profile name"
+                aria-label={t('newProfile.ariaLabel')}
+                placeholder={t('newProfile.placeholder')}
                 value={newProfileName}
                 onChange={(e) => setNewProfileName(e.target.value)}
                 className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm"
@@ -187,7 +189,7 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
                 onClick={handleSaveAsNew}
                 className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
               >
-                Save as new profile
+                {t('newProfile.save')}
               </button>
             </div>
 
@@ -198,14 +200,14 @@ export function DashboardLayoutEditor({ open, onClose }: DashboardLayoutEditorPr
                 onClick={close}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
                 onClick={handleSave}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                Save
+                {t('common:actions.save')}
               </button>
             </div>
           </div>

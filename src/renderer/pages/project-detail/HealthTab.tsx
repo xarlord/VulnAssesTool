@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { HealthDashboard } from '@/components/HealthDashboard'
 import { RemediationQueue } from '@/components/RemediationQueue'
 import {
@@ -23,6 +24,8 @@ interface HealthTabProps {
 }
 
 export function HealthTab({ project, onComponentClick, onViewVulnerability }: HealthTabProps) {
+  const { t } = useTranslation('healthTab')
+
   // Calculate health scores for all components
   const componentHealths: ComponentHealth[] = project.components.map((component) => {
     const componentVulns = project.vulnerabilities.filter((v) => v.affectedComponents.includes(component.id))
@@ -56,7 +59,7 @@ export function HealthTab({ project, onComponentClick, onViewVulnerability }: He
 
   return (
     <div className="mx-auto max-w-7xl mt-6 space-y-6">
-      <h2 className="text-lg font-semibold">Component Health Dashboard</h2>
+      <h2 className="text-lg font-semibold">{t('title')}</h2>
 
       {/* Health Dashboard */}
       <HealthDashboard
@@ -67,9 +70,11 @@ export function HealthTab({ project, onComponentClick, onViewVulnerability }: He
 
       {/* Health Score Trend (FR-05.3) */}
       <div className="rounded-lg border border-border bg-card p-6">
-        <h3 className="mb-4 text-lg font-semibold">Health Score Trend</h3>
+        <h3 className="mb-4 text-lg font-semibold">{t('trend.title')}</h3>
         <Suspense
-          fallback={<div className="flex h-64 items-center justify-center text-muted-foreground">Loading chart...</div>}
+          fallback={
+            <div className="flex h-64 items-center justify-center text-muted-foreground">{t('trend.loadingChart')}</div>
+          }
         >
           <HealthTrendChart history={history} />
         </Suspense>
@@ -77,7 +82,7 @@ export function HealthTab({ project, onComponentClick, onViewVulnerability }: He
 
       {/* Remediation Queue */}
       <div>
-        <h3 className="mb-4 text-lg font-semibold">Remediation Queue</h3>
+        <h3 className="mb-4 text-lg font-semibold">{t('remediation.title')}</h3>
         <RemediationQueue
           componentHealths={componentHealthsWithTrends}
           components={project.components}

@@ -1,0 +1,35 @@
+{
+  "title": "Create New Settings Profile",
+  "description": "Create a custom settings profile for different use cases",
+  "fields": {
+    "nameLabel": "Profile Name",
+    "namePlaceholder": "e.g., Development, Production, Security Audit",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Optional description of when to use this profile..."
+  },
+  "copyFrom": {
+    "label": "Copy Settings From",
+    "useCurrentSettings": "Use Current Settings",
+    "defaultSuffix": " (Default)",
+    "hint": "Optionally copy settings from an existing profile. Otherwise, current settings will be used."
+  },
+  "summary": {
+    "title": "Settings Summary:",
+    "theme": "Theme:",
+    "font": "Font:",
+    "fontDefault": "Default",
+    "autoRefresh": "Auto-refresh:",
+    "on": "On",
+    "off": "Off",
+    "cacheTtl": "Cache TTL:",
+    "cacheTtlValue": "{{hours}}h"
+  },
+  "errors": {
+    "nameRequired": "Profile name is required",
+    "nameTooShort": "Profile name must be at least 3 characters",
+    "nameDuplicate": "A profile with this name already exists"
+  },
+  "actions": {
+    "createProfile": "Create Profile"
+  }
+}

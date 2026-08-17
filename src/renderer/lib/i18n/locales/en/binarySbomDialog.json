@@ -1,0 +1,45 @@
+{
+  "title": "Generate SBOM from Binary",
+  "description": {
+    "withProject": "Analyze a binary or image with Syft and import into: {{projectName}}",
+    "noProject": "Generate an SBOM from a compiled artifact or container image"
+  },
+  "warnings": {
+    "noProject": "Please select a project first before generating an SBOM."
+  },
+  "error": {
+    "title": "Generation Failed"
+  },
+  "mode": {
+    "file": "Upload artifact",
+    "path": "Local path",
+    "image": "Container image"
+  },
+  "file": {
+    "label": "Binary or archive",
+    "hint": "Executables, libraries, jars, or archives. Syft detects packages and language binaries."
+  },
+  "path": {
+    "label": "Local file or directory path",
+    "placeholder": "e.g., D:\\\\imx95_projects\\\\...\\\\eCockpit_Release_1.1.3_AAOS_prebuilt_image",
+    "hintBefore": "Scanned in place on the server host (no upload) — use for large local artifacts and prebuilt image trees. An Android image folder (with ",
+    "hintAfter": ") is auto-detected and unpacked (sparse → super → EROFS/ext4) before scanning; on Windows this runs via WSL2. The path must exist on the machine running the backend."
+  },
+  "image": {
+    "label": "Image Reference",
+    "placeholder": "e.g., alpine:3.19, ghcr.io/org/image:v1",
+    "hint": "Pulled directly from the registry by Syft (no Docker daemon required)."
+  },
+  "generateSbom": "Generate SBOM",
+  "generating": "Generating SBOM...",
+  "success": {
+    "title": "SBOM Generated",
+    "foundComponents": "Found {{count}} components",
+    "andVulnerabilities": "and {{count}} vulnerabilities ",
+    "inSource": "in {{source}}",
+    "preview": "Component Preview ({{count}} total)",
+    "more": "... and {{count}} more",
+    "generateAnother": "Generate Another",
+    "addComponents": "Add {{count}} Components to Project"
+  }
+}

@@ -11,6 +11,8 @@
 
 import React, { useState, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Check, X, HelpCircle, Save, AlertCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type {
   SystemConfig,
   ProjectConfig,
@@ -60,38 +62,40 @@ interface StepConfig {
   isComplete: (config: Partial<SystemConfig>) => boolean
 }
 
-const STEPS: StepConfig[] = [
-  {
-    id: 1,
-    title: 'Project Information',
-    description: 'Basic project details and tier selection',
-    isComplete: (config) => !!config.project?.name && !!config.project?.tier,
-  },
-  {
-    id: 2,
-    title: 'Interface Configuration',
-    description: 'Enable or disable network interfaces',
-    isComplete: () => true, // Optional step
-  },
-  {
-    id: 3,
-    title: 'Service Configuration',
-    description: 'Configure external service access',
-    isComplete: () => true, // Optional step
-  },
-  {
-    id: 4,
-    title: 'Feature Flags',
-    description: 'Enable or disable application features',
-    isComplete: () => true, // Optional step
-  },
-  {
-    id: 5,
-    title: 'Review & Save',
-    description: 'Review configuration before saving',
-    isComplete: () => true,
-  },
-]
+function getSteps(t: TFunction): StepConfig[] {
+  return [
+    {
+      id: 1,
+      title: t('wizardSteps.projectInfo.title'),
+      description: t('wizardSteps.projectInfo.description'),
+      isComplete: (config) => !!config.project?.name && !!config.project?.tier,
+    },
+    {
+      id: 2,
+      title: t('wizardSteps.interfaces.title'),
+      description: t('wizardSteps.interfaces.description'),
+      isComplete: () => true, // Optional step
+    },
+    {
+      id: 3,
+      title: t('wizardSteps.services.title'),
+      description: t('wizardSteps.services.description'),
+      isComplete: () => true, // Optional step
+    },
+    {
+      id: 4,
+      title: t('wizardSteps.features.title'),
+      description: t('wizardSteps.features.description'),
+      isComplete: () => true, // Optional step
+    },
+    {
+      id: 5,
+      title: t('wizardSteps.review.title'),
+      description: t('wizardSteps.review.description'),
+      isComplete: () => true,
+    },
+  ]
+}
 
 const DEFAULT_INTERFACES = ['wifi', 'bluetooth', 'ethernet', 'cellular', 'usb', 'can_bus', 'gps']
 
@@ -220,6 +224,7 @@ function Step1ProjectInfo({
   config: Partial<SystemConfig>
   onChange: (updates: Partial<SystemConfig>) => void
 }) {
+  const { t } = useTranslation('configWizard')
   const project = config.project ?? ({} as Partial<ProjectConfig>)
 
   const handleChange = (field: keyof ProjectConfig, value: string) => {
@@ -231,33 +236,29 @@ function Step1ProjectInfo({
 
   return (
     <div className="space-y-6" data-testid="step-1-content">
-      <FormField label="Project Name" required helpText="The name of your project">
+      <FormField label={t('projectInfoStep.nameLabel')} required helpText={t('projectInfoStep.nameHelp')}>
         <input
           type="text"
           value={project.name || ''}
           onChange={(e) => handleChange('name', e.target.value)}
-          placeholder="My Application"
+          placeholder={t('projectInfoStep.namePlaceholder')}
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           data-testid="project-name-input"
         />
       </FormField>
 
-      <FormField label="Version" helpText="Current project version">
+      <FormField label={t('projectInfoStep.versionLabel')} helpText={t('projectInfoStep.versionHelp')}>
         <input
           type="text"
           value={project.version || ''}
           onChange={(e) => handleChange('version', e.target.value)}
-          placeholder="1.0.0"
+          placeholder={t('projectInfoStep.versionPlaceholder')}
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           data-testid="project-version-input"
         />
       </FormField>
 
-      <FormField
-        label="Project Tier"
-        required
-        helpText="Tier affects filter strictness: prototype (lenient), development (balanced), production (strict)"
-      >
+      <FormField label={t('projectInfoStep.tierLabel')} required helpText={t('projectInfoStep.tierHelp')}>
         <div className="grid grid-cols-3 gap-3">
           {(['prototype', 'development', 'production'] as ProjectTier[]).map((tier) => (
             <button
@@ -271,16 +272,16 @@ function Step1ProjectInfo({
             >
               <p className="font-medium capitalize">{tier}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {tier === 'prototype' && 'Lenient filtering'}
-                {tier === 'development' && 'Balanced filtering'}
-                {tier === 'production' && 'Strict filtering'}
+                {tier === 'prototype' && t('projectInfoStep.tierFiltering.prototype')}
+                {tier === 'development' && t('projectInfoStep.tierFiltering.development')}
+                {tier === 'production' && t('projectInfoStep.tierFiltering.production')}
               </p>
             </button>
           ))}
         </div>
       </FormField>
 
-      <FormField label="Attack Surface" helpText="ISO 21434 attack surface classification">
+      <FormField label={t('projectInfoStep.attackSurfaceLabel')} helpText={t('projectInfoStep.attackSurfaceHelp')}>
         <div className="grid grid-cols-3 gap-3">
           {(['low', 'intermediate', 'high'] as AttackSurface[]).map((surface) => (
             <button
@@ -320,6 +321,7 @@ function Step2Interfaces({
   onChange: (updates: Partial<SystemConfig>) => void
   availableInterfaces: string[]
 }) {
+  const { t } = useTranslation('configWizard')
   const interfaces = config.interfaces || {}
 
   const handleToggle = (name: string, enabled: boolean) => {
@@ -350,10 +352,7 @@ function Step2Interfaces({
 
   return (
     <div className="space-y-4" data-testid="step-2-content">
-      <p className="text-sm text-muted-foreground">
-        Configure which network interfaces are enabled in your project. Disabled interfaces will filter vulnerabilities
-        that require those interfaces.
-      </p>
+      <p className="text-sm text-muted-foreground">{t('interfacesStep.description')}</p>
 
       <div className="space-y-3">
         {availableInterfaces.map((name) => {
@@ -373,15 +372,15 @@ function Step2Interfaces({
 
               {iface.enabled !== false && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Exposure:</span>
+                  <span className="text-xs text-muted-foreground">{t('interfacesStep.exposureLabel')}</span>
                   <select
                     value={iface.exposure || 'internal'}
                     onChange={(e) => handleExposureChange(name, e.target.value as ExposureLevel)}
                     className="rounded border border-border bg-background px-2 py-1 text-xs"
                   >
-                    <option value="isolated">Isolated</option>
-                    <option value="internal">Internal</option>
-                    <option value="external">External</option>
+                    <option value="isolated">{t('interfacesStep.exposureOptions.isolated')}</option>
+                    <option value="internal">{t('interfacesStep.exposureOptions.internal')}</option>
+                    <option value="external">{t('interfacesStep.exposureOptions.external')}</option>
                   </select>
                 </div>
               )}
@@ -402,6 +401,7 @@ function Step3Services({
   onChange: (updates: Partial<SystemConfig>) => void
   availableServices: string[]
 }) {
+  const { t } = useTranslation('configWizard')
   const services = config.services || {}
 
   const handleToggle = (name: string, enabled: boolean) => {
@@ -432,9 +432,7 @@ function Step3Services({
 
   return (
     <div className="space-y-4" data-testid="step-3-content">
-      <p className="text-sm text-muted-foreground">
-        Configure which services are available and whether they accept external connections.
-      </p>
+      <p className="text-sm text-muted-foreground">{t('servicesStep.description')}</p>
 
       <div className="space-y-3">
         {availableServices.map((name) => {
@@ -458,7 +456,7 @@ function Step3Services({
                   <ToggleSwitch
                     checked={service.externalAccess || false}
                     onChange={(external) => handleExternalAccess(name, external)}
-                    label="Allow external access"
+                    label={t('servicesStep.allowExternalAccess')}
                   />
                 </div>
               )}
@@ -479,6 +477,7 @@ function Step4Features({
   onChange: (updates: Partial<SystemConfig>) => void
   availableFeatures: string[]
 }) {
+  const { t } = useTranslation('configWizard')
   const features = config.features || {}
 
   const handleToggle = (name: string, enabled: boolean) => {
@@ -496,9 +495,7 @@ function Step4Features({
 
   return (
     <div className="space-y-4" data-testid="step-4-content">
-      <p className="text-sm text-muted-foreground">
-        Enable or disable specific features. Vulnerabilities affecting disabled features may be filtered.
-      </p>
+      <p className="text-sm text-muted-foreground">{t('featuresStep.description')}</p>
 
       <div className="grid grid-cols-2 gap-3">
         {availableFeatures.map((name) => {
@@ -534,6 +531,7 @@ function Step5Review({
   onSave: () => void
   isSaving: boolean
 }) {
+  const { t } = useTranslation('configWizard')
   const enabledInterfaces = Object.entries(config.interfaces || {})
     .filter(([, cfg]) => cfg.enabled !== false)
     .map(([name]) => name)
@@ -566,30 +564,30 @@ function Step5Review({
         <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
           <AlertCircle className="h-5 w-5 text-red-500" />
           <div>
-            <p className="text-sm font-medium text-red-500">Configuration Incomplete</p>
-            <p className="text-xs text-red-500/80">Please complete the required fields before saving.</p>
+            <p className="text-sm font-medium text-red-500">{t('reviewStep.incompleteTitle')}</p>
+            <p className="text-xs text-red-500/80">{t('reviewStep.incompleteMessage')}</p>
           </div>
         </div>
       )}
 
       {/* Project Summary */}
       <div className="rounded-lg border border-border p-4">
-        <h4 className="mb-3 font-medium">Project Information</h4>
+        <h4 className="mb-3 font-medium">{t('reviewStep.projectSummary.title')}</h4>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-muted-foreground">Name:</span>
+            <span className="text-muted-foreground">{t('reviewStep.projectSummary.name')}</span>
             <span className="ml-2 font-medium">{config.project?.name || '-'}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">Version:</span>
+            <span className="text-muted-foreground">{t('reviewStep.projectSummary.version')}</span>
             <span className="ml-2">{config.project?.version || '-'}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">Tier:</span>
+            <span className="text-muted-foreground">{t('reviewStep.projectSummary.tier')}</span>
             <span className="ml-2 capitalize">{config.project?.tier || '-'}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">Attack Surface:</span>
+            <span className="text-muted-foreground">{t('reviewStep.projectSummary.attackSurface')}</span>
             <span className="ml-2 capitalize">{config.cybersecurity?.attackSurface || '-'}</span>
           </div>
         </div>
@@ -597,19 +595,19 @@ function Step5Review({
 
       {/* Interfaces Summary */}
       <div className="rounded-lg border border-border p-4">
-        <h4 className="mb-3 font-medium">Interfaces</h4>
+        <h4 className="mb-3 font-medium">{t('reviewStep.interfacesSummary.title')}</h4>
         <div className="space-y-2 text-sm">
           {enabledInterfaces.length > 0 && (
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-green-500" />
-              <span className="text-muted-foreground">Enabled:</span>
+              <span className="text-muted-foreground">{t('reviewStep.interfacesSummary.enabled')}</span>
               <span>{enabledInterfaces.join(', ')}</span>
             </div>
           )}
           {disabledInterfaces.length > 0 && (
             <div className="flex items-center gap-2">
               <X className="h-4 w-4 text-red-500" />
-              <span className="text-muted-foreground">Disabled:</span>
+              <span className="text-muted-foreground">{t('reviewStep.interfacesSummary.disabled')}</span>
               <span>{disabledInterfaces.join(', ')}</span>
             </div>
           )}
@@ -618,17 +616,17 @@ function Step5Review({
 
       {/* Services Summary */}
       <div className="rounded-lg border border-border p-4">
-        <h4 className="mb-3 font-medium">Services</h4>
+        <h4 className="mb-3 font-medium">{t('reviewStep.servicesSummary.title')}</h4>
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
             <Check className="h-4 w-4 text-green-500" />
-            <span className="text-muted-foreground">Enabled:</span>
-            <span>{enabledServices.length} services</span>
+            <span className="text-muted-foreground">{t('reviewStep.servicesSummary.enabled')}</span>
+            <span>{t('reviewStep.servicesSummary.enabledCount', { count: enabledServices.length })}</span>
           </div>
           {externalServices.length > 0 && (
             <div className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-yellow-500" />
-              <span className="text-muted-foreground">External access:</span>
+              <span className="text-muted-foreground">{t('reviewStep.servicesSummary.externalAccess')}</span>
               <span>{externalServices.join(', ')}</span>
             </div>
           )}
@@ -637,19 +635,19 @@ function Step5Review({
 
       {/* Features Summary */}
       <div className="rounded-lg border border-border p-4">
-        <h4 className="mb-3 font-medium">Features</h4>
+        <h4 className="mb-3 font-medium">{t('reviewStep.featuresSummary.title')}</h4>
         <div className="space-y-2 text-sm">
           {enabledFeatures.length > 0 && (
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-green-500" />
-              <span className="text-muted-foreground">Enabled:</span>
-              <span>{enabledFeatures.length} features</span>
+              <span className="text-muted-foreground">{t('reviewStep.featuresSummary.enabled')}</span>
+              <span>{t('reviewStep.featuresSummary.enabledCount', { count: enabledFeatures.length })}</span>
             </div>
           )}
           {disabledFeatures.length > 0 && (
             <div className="flex items-center gap-2">
               <X className="h-4 w-4 text-red-500" />
-              <span className="text-muted-foreground">Disabled:</span>
+              <span className="text-muted-foreground">{t('reviewStep.featuresSummary.disabled')}</span>
               <span>{disabledFeatures.join(', ')}</span>
             </div>
           )}
@@ -666,12 +664,12 @@ function Step5Review({
         {isSaving ? (
           <>
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            Saving...
+            {t('reviewStep.saving')}
           </>
         ) : (
           <>
             <Save className="h-4 w-4" />
-            Save Configuration
+            {t('reviewStep.saveButton')}
           </>
         )}
       </button>
@@ -693,6 +691,8 @@ export function ConfigWizard({
   availableFeatures = DEFAULT_FEATURES,
   className = '',
 }: ConfigWizardProps) {
+  const { t } = useTranslation('configWizard')
+  const steps = getSteps(t)
   const [currentStep, setCurrentStep] = useState(1)
   const [config, setConfig] = useState<Partial<SystemConfig>>(
     initialConfig || {
@@ -709,7 +709,7 @@ export function ConfigWizard({
   }, [])
 
   const handleNext = () => {
-    if (currentStep < STEPS.length) {
+    if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -724,19 +724,19 @@ export function ConfigWizard({
     onSave(config as SystemConfig)
   }
 
-  const currentStepConfig = STEPS[currentStep - 1]
+  const currentStepConfig = steps[currentStep - 1]
 
   return (
     <div className={`rounded-lg border border-border bg-card p-6 ${className}`} data-testid="config-wizard">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-xl font-semibold">FPF Configuration Wizard</h2>
-        <p className="text-sm text-muted-foreground">Configure the False Positive Filter for your project</p>
+        <h2 className="text-xl font-semibold">{t('header.title')}</h2>
+        <p className="text-sm text-muted-foreground">{t('header.description')}</p>
       </div>
 
       {/* Step Indicator */}
       <div className="mb-8">
-        <StepIndicator steps={STEPS} currentStep={currentStep} config={config} />
+        <StepIndicator steps={steps} currentStep={currentStep} config={config} />
       </div>
 
       {/* Step Content */}
@@ -765,18 +765,22 @@ export function ConfigWizard({
             {currentStep === 1 ? (
               <>
                 <X className="h-4 w-4" />
-                Cancel
+                {t('common:actions.cancel')}
               </>
             ) : (
               <>
                 <ChevronLeft className="h-4 w-4" />
-                Previous
+                {t('navigation.previous')}
               </>
             )}
           </button>
 
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            Step {currentStep} of {STEPS.length}: {currentStepConfig.title}
+            {t('navigation.stepIndicator', {
+              current: currentStep,
+              total: steps.length,
+              title: currentStepConfig.title,
+            })}
           </div>
 
           <button
@@ -784,7 +788,7 @@ export function ConfigWizard({
             className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             data-testid="next-button"
           >
-            Next
+            {t('navigation.next')}
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>

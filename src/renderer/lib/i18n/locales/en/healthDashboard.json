@@ -1,0 +1,38 @@
+{
+  "banners": {
+    "allExcellent": {
+      "title": "All Components Show Excellent Health",
+      "description": "This may indicate that no vulnerabilities were found. If you haven't scanned your components recently, consider running a scan to check for known vulnerabilities in NVD and OSV databases."
+    },
+    "noHistoricalData": {
+      "title": "No Historical Data Available",
+      "description": "Health trend analysis requires historical scan data. Run scans periodically to track component health trends over time."
+    }
+  },
+  "stats": {
+    "averageHealthScore": "Average Health Score",
+    "scoreSuffix": "/100",
+    "totalComponents": "Total Components",
+    "needsAttention": "Needs Attention",
+    "percentOfTotal": "{{percent}}% of total"
+  },
+  "distribution": {
+    "title": "Health Distribution",
+    "loadingChart": "Loading chart..."
+  },
+  "categories": {
+    "title": "Components by Category",
+    "critical": "Critical",
+    "poor": "Poor",
+    "fair": "Fair",
+    "good": "Good",
+    "excellent": "Excellent"
+  },
+  "metrics": {
+    "title": "Health Metrics",
+    "excellent": "Excellent",
+    "good": "Good",
+    "fair": "Fair",
+    "needsWork": "Needs Work"
+  }
+}

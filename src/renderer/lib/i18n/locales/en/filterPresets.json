@@ -1,0 +1,32 @@
+{
+  "trigger": {
+    "ariaLabel": "Filter presets",
+    "label": "Presets"
+  },
+  "header": {
+    "title": "Filter Presets",
+    "saveCurrent": "Save Current"
+  },
+  "saveForm": {
+    "namePlaceholder": "Preset name..."
+  },
+  "list": {
+    "empty": "No saved presets",
+    "filterCount_one": "{{count}} filter",
+    "filterCount_other": "{{count}} filters",
+    "deleteAriaLabel": "Delete preset {{name}}"
+  },
+  "deleteDialog": {
+    "title": "Delete preset",
+    "message": "Delete preset \"{{name}}\"?"
+  },
+  "cvssRange": {
+    "label": "CVSS Score Range"
+  },
+  "multiSelect": {
+    "selectedCount": "{{count}} selected",
+    "all": "All",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All"
+  }
+}

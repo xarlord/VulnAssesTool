@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store/useStore'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ulid } from '@/lib/audit'
@@ -9,6 +10,7 @@ interface CreateProjectDialogProps {
 }
 
 export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps) {
+  const { t } = useTranslation('createProjectDialog')
   const addProject = useStore((s) => s.addProject)
   const projects = useStore((s) => s.projects)
   const [name, setName] = useState('')
@@ -20,18 +22,18 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
 
     // Validation
     if (!name.trim()) {
-      setError('Project name is required')
+      setError(t('errors.nameRequired'))
       return
     }
 
     if (name.trim().length < 3) {
-      setError('Project name must be at least 3 characters')
+      setError(t('errors.nameTooShort'))
       return
     }
 
     const trimmedName = name.trim()
     if (projects.some((p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
-      setError('A project with this name already exists')
+      setError(t('errors.nameDuplicate'))
       return
     }
 
@@ -78,8 +80,8 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
       <DialogContent className="max-w-md">
         {/* Header */}
         <DialogHeader>
-          <DialogTitle>Create New Project</DialogTitle>
-          <DialogDescription>Enter the details for your new vulnerability assessment project</DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         {/* Form */}
@@ -87,7 +89,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
           {/* Name Field */}
           <div className="space-y-2">
             <label htmlFor="project-name" className="text-sm font-medium">
-              Project Name <span className="text-destructive">*</span>
+              {t('form.nameLabel')} <span className="text-destructive">*</span>
             </label>
             <input
               id="project-name"
@@ -97,7 +99,7 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
                 setName(e.target.value)
                 setError('')
               }}
-              placeholder="My Application"
+              placeholder={t('form.namePlaceholder')}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               autoFocus
             />
@@ -106,13 +108,13 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
           {/* Description Field */}
           <div className="space-y-2">
             <label htmlFor="project-description" className="text-sm font-medium">
-              Description
+              {t('form.descriptionLabel')}
             </label>
             <textarea
               id="project-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description of the project..."
+              placeholder={t('form.descriptionPlaceholder')}
               rows={3}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
             />
@@ -128,13 +130,13 @@ export function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps)
               onClick={handleCancel}
               className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Create Project
+              {t('submit')}
             </button>
           </div>
         </form>

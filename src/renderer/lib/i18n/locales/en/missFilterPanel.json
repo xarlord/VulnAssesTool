@@ -1,0 +1,66 @@
+{
+  "config": {
+    "title": "Detection Settings",
+    "enableTitle": "Enable Miss-Filter Detection",
+    "enableDescription": "Automatically detect potentially incorrect filter decisions",
+    "enableAriaLabel": "Enable miss-filter detection",
+    "thresholdTitle": "Low Confidence Threshold",
+    "thresholdDescription": "Flag items with filter confidence below this threshold",
+    "thresholdAriaLabel": "Low confidence threshold percentage",
+    "recentWindowTitle": "Recent CVE Window (days)",
+    "recentWindowDescription": "Flag recently published CVEs for additional review",
+    "recentWindowAriaLabel": "Recent CVE window in days",
+    "flagExploitsTitle": "Flag Known Exploits",
+    "flagExploitsDescription": "Always flag CVEs with known exploits for review",
+    "flagExploitsAriaLabel": "Flag known exploits"
+  },
+  "header": {
+    "title": "Miss-Filter Detection",
+    "subtitle": "Review potentially incorrect filter decisions",
+    "detectedCount": "{{count}} detected",
+    "flaggedCount": "{{count}} flagged"
+  },
+  "stats": {
+    "potentialMissFilters": "Potential Miss-Filters",
+    "knownExploits": "Known Exploits",
+    "recentCves": "Recent CVEs"
+  },
+  "filters": {
+    "all": "All ({{count}})",
+    "flagged": "Flagged ({{count}})",
+    "unflagged": "Unflagged ({{count}})"
+  },
+  "bulk": {
+    "selected_one": "{{count}} item selected",
+    "selected_other": "{{count}} items selected",
+    "clear": "Clear",
+    "flagAll": "Flag All",
+    "restoreAll": "Restore All",
+    "dismissAll": "Dismiss All"
+  },
+  "list": {
+    "selectAll": "Select all ({{count}})",
+    "empty": "No miss-filters detected"
+  },
+  "tags": {
+    "recent": "Recent",
+    "exploit": "Exploit",
+    "flagged": "Flagged"
+  },
+  "item": {
+    "versionPrefix": " v",
+    "originalActionLabel": "Original action: ",
+    "detectionConfidenceLabel": "Detection confidence:"
+  },
+  "actions": {
+    "viewDetails": "View details",
+    "unflag": "Unflag",
+    "flagForReview": "Flag for review",
+    "restoreItem": "Restore item",
+    "dismiss": "Dismiss",
+    "runLlmAnalysis": "Run LLM analysis"
+  },
+  "confidenceBar": {
+    "percent": "{{value}}%"
+  }
+}

@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
   Flag,
@@ -130,6 +131,7 @@ function SeverityBadge({ severity }: { severity: 'critical' | 'high' | 'medium' 
 }
 
 function ConfidenceBar({ confidence }: { confidence: number }) {
+  const { t } = useTranslation('missFilterPanel')
   const getColor = (conf: number) => {
     if (conf >= 80) return 'bg-green-500'
     if (conf >= 60) return 'bg-yellow-500'
@@ -141,7 +143,7 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
       <div className="h-2 w-20 overflow-hidden rounded-full bg-muted">
         <div className={`h-full ${getColor(confidence)}`} style={{ width: `${confidence}%` }} />
       </div>
-      <span className="text-xs text-muted-foreground">{confidence}%</span>
+      <span className="text-xs text-muted-foreground">{t('confidenceBar.percent', { value: confidence })}</span>
     </div>
   )
 }
@@ -177,6 +179,7 @@ function ConfigPanel({
   config?: MissFilterDetectionConfig
   onChange?: (config: MissFilterDetectionConfig) => void
 }) {
+  const { t } = useTranslation('missFilterPanel')
   const [isExpanded, setIsExpanded] = useState(false)
 
   // Use provided config or default
@@ -197,7 +200,7 @@ function ConfigPanel({
       >
         <div className="flex items-center gap-2">
           <Settings className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium">Detection Settings</span>
+          <span className="font-medium">{t('config.title')}</span>
         </div>
         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
       </button>
@@ -206,17 +209,15 @@ function ConfigPanel({
         <div className="space-y-4 border-t border-border p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Enable Miss-Filter Detection</p>
-              <p className="text-xs text-muted-foreground">
-                Automatically detect potentially incorrect filter decisions
-              </p>
+              <p className="text-sm font-medium">{t('config.enableTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('config.enableDescription')}</p>
             </div>
             <label className="flex items-center">
               <input
                 type="checkbox"
                 checked={currentConfig.enabled}
                 onChange={(e) => handleChange({ ...currentConfig, enabled: e.target.checked })}
-                aria-label="Enable miss-filter detection"
+                aria-label={t('config.enableAriaLabel')}
                 className="h-4 w-4 rounded border-border"
               />
             </label>
@@ -224,8 +225,8 @@ function ConfigPanel({
 
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Low Confidence Threshold</p>
-              <p className="text-xs text-muted-foreground">Flag items with filter confidence below this threshold</p>
+              <p className="text-sm font-medium">{t('config.thresholdTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('config.thresholdDescription')}</p>
             </div>
             <input
               type="number"
@@ -238,7 +239,7 @@ function ConfigPanel({
                   lowConfidenceThreshold: parseInt(e.target.value, 10),
                 })
               }
-              aria-label="Low confidence threshold percentage"
+              aria-label={t('config.thresholdAriaLabel')}
               className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
               data-testid="confidence-threshold-input"
             />
@@ -246,8 +247,8 @@ function ConfigPanel({
 
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Recent CVE Window (days)</p>
-              <p className="text-xs text-muted-foreground">Flag recently published CVEs for additional review</p>
+              <p className="text-sm font-medium">{t('config.recentWindowTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('config.recentWindowDescription')}</p>
             </div>
             <input
               type="number"
@@ -260,7 +261,7 @@ function ConfigPanel({
                   recentCveDays: parseInt(e.target.value, 10),
                 })
               }
-              aria-label="Recent CVE window in days"
+              aria-label={t('config.recentWindowAriaLabel')}
               className="w-20 rounded border border-border bg-background px-2 py-1 text-sm"
               data-testid="recent-cve-days-input"
             />
@@ -268,15 +269,15 @@ function ConfigPanel({
 
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Flag Known Exploits</p>
-              <p className="text-xs text-muted-foreground">Always flag CVEs with known exploits for review</p>
+              <p className="text-sm font-medium">{t('config.flagExploitsTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('config.flagExploitsDescription')}</p>
             </div>
             <label className="flex items-center">
               <input
                 type="checkbox"
                 checked={currentConfig.flagKnownExploits}
                 onChange={(e) => handleChange({ ...currentConfig, flagKnownExploits: e.target.checked })}
-                aria-label="Flag known exploits"
+                aria-label={t('config.flagExploitsAriaLabel')}
                 className="h-4 w-4 rounded border-border"
               />
             </label>
@@ -307,6 +308,7 @@ export function MissFilterPanel({
   filterResult,
   className = '',
 }: MissFilterPanelProps) {
+  const { t } = useTranslation('missFilterPanel')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [filterFlagged, setFilterFlagged] = useState<boolean | null>(null)
 
@@ -368,17 +370,17 @@ export function MissFilterPanel({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium">Miss-Filter Detection</h3>
-          <p className="text-sm text-muted-foreground">Review potentially incorrect filter decisions</p>
+          <h3 className="text-lg font-medium">{t('header.title')}</h3>
+          <p className="text-sm text-muted-foreground">{t('header.subtitle')}</p>
         </div>
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-1">
             <AlertTriangle className="h-4 w-4 text-yellow-500" />
-            <span>{stats.total} detected</span>
+            <span>{t('header.detectedCount', { count: stats.total })}</span>
           </div>
           <div className="flex items-center gap-1">
             <Flag className="h-4 w-4 text-blue-500" />
-            <span>{stats.flagged} flagged</span>
+            <span>{t('header.flaggedCount', { count: stats.flagged })}</span>
           </div>
         </div>
       </div>
@@ -390,15 +392,15 @@ export function MissFilterPanel({
       <div className="grid grid-cols-3 gap-4">
         <div className="rounded-lg border border-border bg-card p-3 text-center">
           <p className="text-2xl font-bold text-yellow-500">{stats.total}</p>
-          <p className="text-xs text-muted-foreground">Potential Miss-Filters</p>
+          <p className="text-xs text-muted-foreground">{t('stats.potentialMissFilters')}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3 text-center">
           <p className="text-2xl font-bold text-red-500">{stats.withExploits}</p>
-          <p className="text-xs text-muted-foreground">Known Exploits</p>
+          <p className="text-xs text-muted-foreground">{t('stats.knownExploits')}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3 text-center">
           <p className="text-2xl font-bold text-blue-500">{stats.recent}</p>
-          <p className="text-xs text-muted-foreground">Recent CVEs</p>
+          <p className="text-xs text-muted-foreground">{t('stats.recentCves')}</p>
         </div>
       </div>
 
@@ -414,7 +416,7 @@ export function MissFilterPanel({
           }`}
           data-testid="filter-all"
         >
-          All ({stats.total})
+          {t('filters.all', { count: stats.total })}
         </button>
         <button
           onClick={() => setFilterFlagged(true)}
@@ -425,7 +427,7 @@ export function MissFilterPanel({
           }`}
           data-testid="filter-flagged"
         >
-          Flagged ({stats.flagged})
+          {t('filters.flagged', { count: stats.flagged })}
         </button>
         <button
           onClick={() => setFilterFlagged(false)}
@@ -436,43 +438,41 @@ export function MissFilterPanel({
           }`}
           data-testid="filter-unflagged"
         >
-          Unflagged ({stats.total - stats.flagged})
+          {t('filters.unflagged', { count: stats.total - stats.flagged })}
         </button>
       </div>
 
       {/* Bulk Actions */}
       {selectedItems.size > 0 && (
         <div className="flex items-center justify-between rounded-lg border border-border bg-muted/50 px-4 py-2">
-          <span className="text-sm">
-            {selectedItems.size} item{selectedItems.size !== 1 ? 's' : ''} selected
-          </span>
+          <span className="text-sm">{t('bulk.selected', { count: selectedItems.size })}</span>
           <div className="flex gap-2">
             <button
               onClick={() => setSelectedItems(new Set())}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
-              Clear
+              {t('bulk.clear')}
             </button>
             <button
               onClick={() => handleBatchAction('flag')}
               className="flex items-center gap-1 rounded-md bg-blue-500 px-3 py-1 text-sm font-medium text-white hover:bg-blue-600"
             >
               <Flag className="h-3 w-3" />
-              Flag All
+              {t('bulk.flagAll')}
             </button>
             <button
               onClick={() => handleBatchAction('restore')}
               className="flex items-center gap-1 rounded-md bg-green-500 px-3 py-1 text-sm font-medium text-white hover:bg-green-600"
             >
               <CheckCircle className="h-3 w-3" />
-              Restore All
+              {t('bulk.restoreAll')}
             </button>
             <button
               onClick={() => handleBatchAction('dismiss')}
               className="flex items-center gap-1 rounded-md bg-red-500 px-3 py-1 text-sm font-medium text-white hover:bg-red-600"
             >
               <XCircle className="h-3 w-3" />
-              Dismiss All
+              {t('bulk.dismissAll')}
             </button>
           </div>
         </div>
@@ -489,7 +489,9 @@ export function MissFilterPanel({
               onChange={handleSelectAll}
               className="h-4 w-4 rounded border-border"
             />
-            <span className="text-sm text-muted-foreground">Select all ({filteredItems.length})</span>
+            <span className="text-sm text-muted-foreground">
+              {t('list.selectAll', { count: filteredItems.length })}
+            </span>
           </div>
         )}
         {isLoading ? (
@@ -499,7 +501,7 @@ export function MissFilterPanel({
         ) : filteredItems.length === 0 ? (
           <div className="rounded-lg border border-border bg-muted/30 py-8 text-center">
             <CheckCircle className="mx-auto h-8 w-8 text-green-500" />
-            <p className="mt-2 text-sm text-muted-foreground">No miss-filters detected</p>
+            <p className="mt-2 text-sm text-muted-foreground">{t('list.empty')}</p>
           </div>
         ) : (
           filteredItems.map((item) => (
@@ -524,23 +526,27 @@ export function MissFilterPanel({
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-medium">{item.cveId}</span>
                     <SeverityBadge severity={item.severity} />
-                    {item.isRecent && <Tag color="blue">Recent</Tag>}
-                    {item.hasKnownExploit && <Tag color="red">Exploit</Tag>}
-                    {item.isFlagged && <Tag color="yellow">Flagged</Tag>}
+                    {item.isRecent && <Tag color="blue">{t('tags.recent')}</Tag>}
+                    {item.hasKnownExploit && <Tag color="red">{t('tags.exploit')}</Tag>}
+                    {item.isFlagged && <Tag color="yellow">{t('tags.flagged')}</Tag>}
                   </div>
 
                   <p className="text-sm">
                     <span className="font-medium">{item.componentName}</span>
-                    <span className="text-muted-foreground"> v{item.componentVersion}</span>
+                    <span className="text-muted-foreground">
+                      {t('item.versionPrefix')}
+                      {item.componentVersion}
+                    </span>
                   </p>
 
                   <p className="text-sm text-muted-foreground">{item.detectionReason}</p>
 
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span>
-                      Original action: <span className="font-medium">{item.originalAction}</span>
+                      {t('item.originalActionLabel')}
+                      <span className="font-medium">{item.originalAction}</span>
                     </span>
-                    <span>Detection confidence:</span>
+                    <span>{t('item.detectionConfidenceLabel')}</span>
                     <ConfidenceBar confidence={item.detectionConfidence} />
                   </div>
                 </div>
@@ -551,7 +557,7 @@ export function MissFilterPanel({
                     <button
                       onClick={() => onViewDetails(item.id)}
                       className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title="View details"
+                      title={t('actions.viewDetails')}
                     >
                       <Eye className="h-4 w-4" />
                     </button>
@@ -563,21 +569,21 @@ export function MissFilterPanel({
                         ? 'text-blue-500 hover:bg-blue-500/10'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
-                    title={item.isFlagged ? 'Unflag' : 'Flag for review'}
+                    title={item.isFlagged ? t('actions.unflag') : t('actions.flagForReview')}
                   >
                     <Flag className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => onRestore?.(item.id)}
                     className="rounded p-1.5 text-green-500 hover:bg-green-500/10"
-                    title="Restore item"
+                    title={t('actions.restoreItem')}
                   >
                     <CheckCircle className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => onDismiss?.(item.id)}
                     className="rounded p-1.5 text-red-500 hover:bg-red-500/10"
-                    title="Dismiss"
+                    title={t('actions.dismiss')}
                   >
                     <XCircle className="h-4 w-4" />
                   </button>
@@ -585,7 +591,7 @@ export function MissFilterPanel({
                     onClick={() => onLlmAnalysis?.(item.id)}
                     disabled={llmLoadingIds.includes(item.id)}
                     className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Run LLM analysis"
+                    title={t('actions.runLlmAnalysis')}
                   >
                     <Sparkles className={`h-4 w-4 ${llmLoadingIds.includes(item.id) ? 'animate-pulse' : ''}`} />
                   </button>

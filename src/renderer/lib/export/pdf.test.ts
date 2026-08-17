@@ -6,7 +6,9 @@ import {
   prepareAllProjectsPdf,
   prepareCompliancePdf,
   downloadPdf,
+  addFooter,
 } from './pdf'
+import jsPDF from 'jspdf'
 import type { AuditEvent, Project } from '@@/types'
 
 // Mock jsPDF and autoTable - must be before imports
@@ -293,6 +295,59 @@ describe('PDF Export', () => {
       ).toBe(true)
     })
 
+    it('shows N/A for a critical finding with no CVSS score, instead of throwing on undefined', () => {
+      // vuln.cvssScore is optional; the report must degrade to 'N/A' rather than crash or print
+      // "undefined" for a critical finding scored via a source that doesn't supply CVSS.
+      const project = createMockProject()
+      project.vulnerabilities[0] = { ...project.vulnerabilities[0], cvssScore: undefined }
+      prepareCompliancePdf(project, 'soc2', [])
+      const row = allRows().find((r) => r[0] === 'CVE-2021-23337')
+      expect(row?.[1]).toBe('N/A')
+    })
+
+    it("shows the vulnerability's real patch-availability status when patchInfo is present", () => {
+      // Absent patchInfo already renders 'unknown' via every other test in this block; this pins the
+      // other side of the `?? 'unknown'` fallback — a present status must pass through unchanged.
+      const project = createMockProject()
+      project.vulnerabilities[0] = {
+        ...project.vulnerabilities[0],
+        patchInfo: {
+          fixedVersions: ['4.17.22'],
+          patchLinks: [],
+          remediationAdvice: { priority: 'high', category: 'upgrade', steps: [] },
+          affectedVersionRanges: [],
+          patchAvailability: 'available',
+        },
+      }
+      prepareCompliancePdf(project, 'soc2', [])
+      const row = allRows().find((r) => r[0] === 'CVE-2021-23337')
+      expect(row?.[3]).toBe('available')
+    })
+
+    it('flags a KEV-listed critical finding as Yes rather than the No shown for non-KEV findings', () => {
+      const project = createMockProject()
+      project.vulnerabilities[0] = { ...project.vulnerabilities[0], isKev: true }
+      prepareCompliancePdf(project, 'soc2', [])
+      const row = allRows().find((r) => r[0] === 'CVE-2021-23337')
+      expect(row?.[4]).toBe('Yes')
+    })
+
+    it('shows N/A for an audit event with a missing timestamp (defensive against malformed/legacy audit data)', () => {
+      const events: AuditEvent[] = [
+        {
+          id: 'evt-bad-ts',
+          timestamp: undefined as unknown as Date,
+          sessionId: 'sess-1',
+          actionType: 'SCAN',
+          entityType: 'project',
+          entityId: 'project-1',
+        },
+      ]
+      prepareCompliancePdf(createMockProject(), 'soc2', events)
+      const row = allRows().find((r) => r[1] === 'SCAN')
+      expect(row?.[0]).toBe('N/A')
+    })
+
     it('returns a document and paginates the footer', () => {
       const doc = prepareCompliancePdf(createMockProject(), 'soc2', createAuditEvents())
       expect(doc).toBeDefined()
@@ -428,6 +483,24 @@ describe('PDF Export', () => {
 
       expect(doc).toBeDefined()
       expect(mockAutoTable).toHaveBeenCalled()
+    })
+  })
+
+  describe('addFooter page-size fallbacks', () => {
+    it('falls back to pageSize.getHeight() and a fixed right margin when width/height read as falsy', () => {
+      // Guards the `pageSize.height ? … : pageSize.getHeight()` / `pageSize.width ? … : 196 - 14`
+      // fallbacks: some PageSize shapes report 0/absent width+height and only expose the getters.
+      // Without this test those fallback branches are never exercised (our jsPDF mock always sets
+      // real numbers), so a regression there would go unnoticed.
+      const doc = new jsPDF()
+      const originalPageSize = mockInternal.pageSize
+      mockInternal.pageSize = Object.assign({ width: 0, height: 0 }, { getHeight: () => 297 })
+      try {
+        addFooter(doc, 1, 3)
+        expect(mockText).toHaveBeenCalledWith('Page 1 of 3', 196 - 14, 297 - 10, { align: 'right' })
+      } finally {
+        mockInternal.pageSize = originalPageSize
+      }
     })
   })
 
@@ -613,6 +686,28 @@ describe('PDF Export', () => {
         expect(cellData.cell.styles.textColor).toBe(originalColor)
         expect(cellData.cell.styles.fontStyle).toBe('normal')
       })
+
+      it('should skip vulnerability-count highlighting for non-vulnerability columns', () => {
+        // The highlight is column-and-section-scoped (`index === 4 && section === 'body'`); a name
+        // column cell must never be recolored even if its raw text happens to parse as a number.
+        const project = createMockProject()
+        prepareComponentsPdf(project)
+        const options = getCallOptions(1)
+
+        const originalColor = [0, 0, 0]
+        const cellData = {
+          column: { index: 0 },
+          section: 'body',
+          cell: {
+            raw: 'lodash',
+            styles: { textColor: originalColor, fontStyle: 'normal' },
+          },
+        }
+        options.didParseCell(cellData)
+
+        expect(cellData.cell.styles.textColor).toBe(originalColor)
+        expect(cellData.cell.styles.fontStyle).toBe('normal')
+      })
     })
 
     describe('prepareProjectPdf severity coloring', () => {
@@ -670,6 +765,28 @@ describe('PDF Export', () => {
         options.didParseCell(cellData)
 
         expect(cellData.cell.styles.textColor).toEqual([234, 88, 12])
+      })
+
+      it('should skip severity coloring for non-severity columns in project PDF', () => {
+        // Same column-and-section guard as the vulnerabilities-report table, but this is a distinct
+        // callback instance in prepareProjectPdf — covering the vuln-report one doesn't cover this one.
+        const project = createMockProject()
+        prepareProjectPdf(project)
+        const options = getCallOptions(2)
+
+        const originalColor = [0, 0, 0]
+        const cellData = {
+          column: { index: 0 },
+          section: 'body',
+          cell: {
+            raw: 'CVE-2021-23337',
+            styles: { textColor: originalColor, fontStyle: 'normal' },
+          },
+        }
+        options.didParseCell(cellData)
+
+        expect(cellData.cell.styles.textColor).toBe(originalColor)
+        expect(cellData.cell.styles.fontStyle).toBe('normal')
       })
     })
   })
@@ -840,6 +957,21 @@ describe('PDF Export', () => {
       const createdRow = infoOptions.body.find((row: string[]) => row[0] === 'Created')
       expect(createdRow).toBeDefined()
       expect(createdRow[1]).not.toBe('N/A')
+    })
+
+    it('should show N/A when createdAt is missing entirely (defensive against malformed/legacy project data)', () => {
+      // createdAt is typed as a required Date, but data that survived a JSON round-trip or an old
+      // migration can still arrive without it. formatLocaleDate's `!date` guard exists for exactly
+      // this case, distinct from the "present but unparsable" case covered by the invalid-date test.
+      const project = createMockProject()
+      project.createdAt = undefined as unknown as Date
+
+      prepareProjectPdf(project)
+
+      const infoOptions = mockAutoTable.mock.calls[0][0]
+      const createdRow = infoOptions.body.find((row: string[]) => row[0] === 'Created')
+      expect(createdRow).toBeDefined()
+      expect(createdRow[1]).toBe('N/A')
     })
 
     it('should handle invalid date strings', () => {

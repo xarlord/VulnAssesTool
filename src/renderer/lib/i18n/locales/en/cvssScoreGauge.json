@@ -1,0 +1,8 @@
+{
+  "ariaLabel": "Radar chart of CVSS metrics. Base score {{baseScore}} out of 10, {{severity}} severity.",
+  "outOfTen": "out of 10.0",
+  "subScore": {
+    "impact": "Impact",
+    "exploitability": "Exploitability"
+  }
+}

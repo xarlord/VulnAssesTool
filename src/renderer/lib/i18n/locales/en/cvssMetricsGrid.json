@@ -1,0 +1,17 @@
+{
+  "title": "CVSS Metrics",
+  "toggle": {
+    "show": "Show",
+    "hide": "Hide"
+  },
+  "temporal": {
+    "title": "Temporal Metrics",
+    "exploitCodeMaturity": "Exploit Code Maturity",
+    "remediationLevel": "Remediation Level",
+    "reportConfidence": "Report Confidence"
+  },
+  "metricCard": {
+    "impact": "Impact: ",
+    "example": "Example: "
+  }
+}

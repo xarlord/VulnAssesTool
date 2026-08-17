@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, Code, AlertCircle, TrendingUp } from 'lucide-react'
 import type { RemediationAdvice } from '@@/types'
 
@@ -12,6 +13,8 @@ interface RemediationStepsProps {
  * Displays step-by-step remediation instructions
  */
 export function RemediationSteps({ advice, onCopyCommand }: RemediationStepsProps) {
+  const { t } = useTranslation('remediationSteps')
+
   const getPriorityIcon = () => {
     switch (advice.priority) {
       case 'immediate':
@@ -56,8 +59,8 @@ export function RemediationSteps({ advice, onCopyCommand }: RemediationStepsProp
       {/* Priority Badge */}
       <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${getPriorityColor()}`}>
         {getPriorityIcon()}
-        <span className="font-semibold capitalize">{advice.priority} Priority</span>
-        <span className="mx-1">•</span>
+        <span className="font-semibold capitalize">{t('priority.label', { priority: advice.priority })}</span>
+        <span className="mx-1">{t('priority.separator')}</span>
         <span className="flex items-center gap-1 capitalize text-sm">
           {getCategoryIcon()}
           {advice.category}
@@ -66,7 +69,7 @@ export function RemediationSteps({ advice, onCopyCommand }: RemediationStepsProp
 
       {/* Steps */}
       <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-gray-700">Remediation Steps</h4>
+        <h4 className="text-sm font-semibold text-gray-700">{t('stepsSection.title')}</h4>
         <div className="space-y-3">
           {advice.steps.map((step) => (
             <StepItem key={step.step} step={step} onCopyCommand={onCopyCommand} />
@@ -77,7 +80,7 @@ export function RemediationSteps({ advice, onCopyCommand }: RemediationStepsProp
       {/* Workarounds */}
       {advice.workarounds && advice.workarounds.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-gray-700">Temporary Workarounds</h4>
+          <h4 className="text-sm font-semibold text-gray-700">{t('workarounds.title')}</h4>
           <ul className="space-y-1">
             {advice.workarounds.map((workaround, index) => (
               <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
@@ -92,7 +95,7 @@ export function RemediationSteps({ advice, onCopyCommand }: RemediationStepsProp
       {/* Estimated Effort */}
       {advice.estimatedEffort && (
         <div className="rounded-lg bg-gray-50 px-3 py-2">
-          <span className="text-xs text-gray-500">Estimated Effort: </span>
+          <span className="text-xs text-gray-500">{t('effort.label')}</span>
           <span className="text-sm font-semibold text-gray-700 capitalize">{advice.estimatedEffort}</span>
         </div>
       )}
@@ -111,6 +114,7 @@ interface StepItemProps {
 }
 
 function StepItem({ step, onCopyCommand }: StepItemProps) {
+  const { t } = useTranslation('remediationSteps')
   const [copied, setCopied] = React.useState(false)
   const copyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -149,7 +153,7 @@ function StepItem({ step, onCopyCommand }: StepItemProps) {
               onClick={handleCopy}
               className="absolute right-2 top-2 rounded bg-gray-700 px-2 py-1 text-xs text-gray-300 opacity-0 transition-opacity group-hover:opacity-100"
             >
-              {copied ? 'Copied!' : 'Copy'}
+              {copied ? t('command.copied') : t('command.copy')}
             </button>
           </div>
         )}

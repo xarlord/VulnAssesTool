@@ -4,6 +4,7 @@
  */
 
 import { AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { Recommendation, RiskItem } from '@/lib/analytics'
 
 interface ActionItemsProps {
@@ -13,6 +14,8 @@ interface ActionItemsProps {
 }
 
 export function ActionItems({ recommendations, topRisks, onProjectClick }: ActionItemsProps) {
+  const { t } = useTranslation('actionItems')
+
   const getPriorityConfig = (priority: string) => {
     switch (priority) {
       case 'immediate':
@@ -73,9 +76,9 @@ export function ActionItems({ recommendations, topRisks, onProjectClick }: Actio
   return (
     <div className="bg-card rounded-lg border p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm text-foreground">Action Items</h3>
+        <h3 className="font-semibold text-sm text-foreground">{t('title')}</h3>
         <div className="text-xs text-muted-foreground">
-          {recommendations.length} recommendation{recommendations.length !== 1 ? 's' : ''}
+          {t('recommendationCount', { count: recommendations.length })}
         </div>
       </div>
 
@@ -95,7 +98,7 @@ export function ActionItems({ recommendations, topRisks, onProjectClick }: Actio
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`text-xs font-semibold uppercase ${config.color}`}>{rec.priority}</span>
-                    <span className="text-xs text-muted-foreground">Effort: {rec.effort}</span>
+                    <span className="text-xs text-muted-foreground">{t('effort', { effort: rec.effort })}</span>
                   </div>
                   <div className="text-sm font-medium text-foreground mb-1">{rec.title}</div>
                   <div className="text-xs text-muted-foreground line-clamp-2">{rec.description}</div>
@@ -139,7 +142,7 @@ export function ActionItems({ recommendations, topRisks, onProjectClick }: Actio
       {recommendations.length > 5 && (
         <div className="border-t pt-3 mt-3 text-center">
           <div className="text-xs text-muted-foreground">
-            +{recommendations.length - 5} more recommendation{recommendations.length - 5 !== 1 ? 's' : ''}
+            {t('moreRecommendations', { count: recommendations.length - 5 })}
           </div>
         </div>
       )}

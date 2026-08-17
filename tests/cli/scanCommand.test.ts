@@ -459,6 +459,122 @@ describe('CLI Scan Command', () => {
       expect(mockScanComponent).toHaveBeenCalledWith('test-lib@2.0.0', { preferLocal: true })
     })
 
+    it('merges affectedComponents when the same CVE is found on two different components (dedup-by-id branch)', async () => {
+      // matchVulnerabilitiesForComponents semantics: a vuln affecting N components must be
+      // reported once (listing all N), not counted N times. This exercises the `existing`
+      // merge branch (lines 283-287) that no other test in this file reaches.
+      const compA: Component = {
+        id: 'comp-a',
+        name: 'pkgA',
+        version: '1.0.0',
+        type: 'library',
+        purl: 'pkg:npm/pkgA@1.0.0',
+        licenses: [],
+        vulnerabilities: [],
+      }
+      const compB: Component = {
+        id: 'comp-b',
+        name: 'pkgB',
+        version: '1.0.0',
+        type: 'library',
+        purl: 'pkg:npm/pkgB@1.0.0',
+        licenses: [],
+        vulnerabilities: [],
+      }
+
+      vi.mocked(fs.existsSync).mockReturnValue(true)
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ bomFormat: 'CycloneDX' }))
+
+      const { parseCycloneDX } = await import('../../src/renderer/lib/parsers/cyclonedx.js')
+      vi.mocked(parseCycloneDX).mockReturnValue({
+        components: [compA, compB],
+        vulnerabilities: [],
+        sbomFile: {} as any,
+      })
+
+      const { getHybridScanner } = await import('../../src/renderer/lib/database/hybridScanner.js')
+      vi.mocked(getHybridScanner).mockReturnValue({
+        scanComponent: vi.fn().mockImplementation(() =>
+          Promise.resolve({
+            vulnerabilities: [
+              {
+                id: 'CVE-SHARED',
+                source: 'nvd',
+                severity: 'high',
+                description: 'Shared vuln',
+                references: [],
+                affectedComponents: [],
+              },
+            ],
+            fromCache: 1,
+            fromApi: 0,
+            errors: [],
+          }),
+        ),
+        scanComponents: vi.fn(),
+        getStatistics: vi.fn().mockReturnValue({ totalCves: 1 }),
+      } as any)
+
+      const result = await scanCommand('sbom.cdx.json', {})
+
+      expect(result.vulnerabilities).toHaveLength(1)
+      expect(result.vulnerabilities[0].affectedComponents).toEqual(
+        expect.arrayContaining(['pkg:npm/pkgA@1.0.0', 'pkg:npm/pkgB@1.0.0']),
+      )
+      expect(result.vulnerabilities[0].affectedComponents).toHaveLength(2)
+    })
+
+    it('does not double-list a component when the scanner returns duplicate entries for the same CVE+component (dedup-by-id false branch)', async () => {
+      // Covers the `!affected.includes(componentRef)` false arm: a second occurrence of the
+      // same CVE for a component already recorded must not append a duplicate ref, so
+      // consumers (SARIF/JUnit reporters) never see a component listed twice for one finding.
+      const compA: Component = {
+        id: 'comp-a',
+        name: 'pkgA',
+        version: '1.0.0',
+        type: 'library',
+        purl: 'pkg:npm/pkgA@1.0.0',
+        licenses: [],
+        vulnerabilities: [],
+      }
+
+      vi.mocked(fs.existsSync).mockReturnValue(true)
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ bomFormat: 'CycloneDX' }))
+
+      const { parseCycloneDX } = await import('../../src/renderer/lib/parsers/cyclonedx.js')
+      vi.mocked(parseCycloneDX).mockReturnValue({
+        components: [compA],
+        vulnerabilities: [],
+        sbomFile: {} as any,
+      })
+
+      const dupVuln: Vulnerability = {
+        id: 'CVE-DUP',
+        source: 'nvd',
+        severity: 'high',
+        description: 'Duplicate entries from scanner',
+        references: [],
+        affectedComponents: [],
+      }
+
+      const { getHybridScanner } = await import('../../src/renderer/lib/database/hybridScanner.js')
+      vi.mocked(getHybridScanner).mockReturnValue({
+        scanComponent: vi.fn().mockResolvedValue({
+          vulnerabilities: [dupVuln, { ...dupVuln }],
+          fromCache: 1,
+          fromApi: 0,
+          errors: [],
+        }),
+        scanComponents: vi.fn(),
+        getStatistics: vi.fn().mockReturnValue({ totalCves: 1 }),
+      } as any)
+
+      const result = await scanCommand('sbom.cdx.json', {})
+
+      expect(result.vulnerabilities).toHaveLength(1)
+      expect(result.vulnerabilities[0].affectedComponents).toEqual(['pkg:npm/pkgA@1.0.0'])
+    })
+
     it('filters by minimum severity', async () => {
       const result = filterVulnerabilities(mockVulnerabilities, {
         minSeverity: 'high',

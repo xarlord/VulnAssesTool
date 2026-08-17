@@ -7,6 +7,7 @@
 
 import { useMemo, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Filter } from 'lucide-react'
 import { DependencyGraph } from '@/components/graph/DependencyGraph'
 import { findShortestPath } from '@/components/graph'
@@ -21,6 +22,7 @@ import type { Component } from '@@/types'
 type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low'
 
 export function DependencyGraphPage() {
+  const { t } = useTranslation('dependencyGraphPage')
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const projects = useProjects()
@@ -85,9 +87,9 @@ export function DependencyGraphPage() {
       setHighlightedPath(path)
     } else {
       setHighlightedPath(null)
-      toast.error('No path found between these components')
+      toast.error(t('toast.noPathFound'))
     }
-  }, [components, fromId, toId])
+  }, [components, fromId, toId, t])
 
   const handleClearPath = useCallback(() => {
     setHighlightedPath(null)
@@ -108,13 +110,13 @@ export function DependencyGraphPage() {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
-          <h2 className="text-xl font-semibold">Project not found</h2>
-          <p className="text-muted-foreground mt-2">The project you're looking for doesn't exist.</p>
+          <h2 className="text-xl font-semibold">{t('notFound.title')}</h2>
+          <p className="text-muted-foreground mt-2">{t('notFound.description')}</p>
           <button
             onClick={() => navigate('/dashboard')}
             className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90"
           >
-            Go to Dashboard
+            {t('notFound.action')}
           </button>
         </div>
       </div>
@@ -125,23 +127,23 @@ export function DependencyGraphPage() {
     <div className="flex flex-col h-screen bg-background text-foreground">
       <div className="px-6 pt-6">
         <PageHeader
-          title="Dependency Graph"
+          title={t('title')}
           description={project.name}
           actions={
             <>
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-muted-foreground" />
                 <select
-                  aria-label="Filter by severity"
+                  aria-label={t('filters.severityAriaLabel')}
                   value={severityFilter}
                   onChange={(e) => setSeverityFilter(e.target.value as SeverityFilter)}
                   className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="all">All Severities</option>
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                  <option value="all">{t('filters.allSeverities')}</option>
+                  <option value="critical">{t('filters.critical')}</option>
+                  <option value="high">{t('filters.high')}</option>
+                  <option value="medium">{t('filters.medium')}</option>
+                  <option value="low">{t('filters.low')}</option>
                 </select>
               </div>
 
@@ -153,13 +155,13 @@ export function DependencyGraphPage() {
                     : 'bg-background text-muted-foreground hover:bg-accent'
                 }`}
               >
-                Vulnerable Only
+                {t('filters.vulnerableOnly')}
               </button>
 
               {/* Path highlighting controls (FR-11.2-b) */}
               <div className="flex items-center gap-2">
                 <select
-                  aria-label="Path from"
+                  aria-label={t('path.fromAriaLabel')}
                   value={fromId}
                   onChange={(e) => {
                     setFromId(e.target.value)
@@ -167,7 +169,7 @@ export function DependencyGraphPage() {
                   }}
                   className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="">From…</option>
+                  <option value="">{t('path.fromPlaceholder')}</option>
                   {components.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} {c.version}
@@ -175,7 +177,7 @@ export function DependencyGraphPage() {
                   ))}
                 </select>
                 <select
-                  aria-label="Path to"
+                  aria-label={t('path.toAriaLabel')}
                   value={toId}
                   onChange={(e) => {
                     setToId(e.target.value)
@@ -183,7 +185,7 @@ export function DependencyGraphPage() {
                   }}
                   className="px-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="">To…</option>
+                  <option value="">{t('path.toPlaceholder')}</option>
                   {components.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} {c.version}
@@ -195,14 +197,14 @@ export function DependencyGraphPage() {
                   disabled={!fromId || !toId}
                   className="px-3 py-1.5 text-sm rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  Highlight Path
+                  {t('path.highlight')}
                 </button>
                 <button
                   onClick={handleClearPath}
                   disabled={!highlightedPath}
                   className="px-3 py-1.5 text-sm rounded-md border bg-background text-muted-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  Clear Path
+                  {t('path.clear')}
                 </button>
               </div>
             </>
@@ -213,7 +215,7 @@ export function DependencyGraphPage() {
       {/* Truncation banner (FR-11.1-b): the graph caps at MAX_GRAPH_NODES. */}
       {filteredComponents.length > MAX_GRAPH_NODES && (
         <div className="mx-6 mb-2 rounded-md bg-yellow-500/15 px-3 py-2 text-sm text-yellow-600">
-          Showing first {MAX_GRAPH_NODES} of {filteredComponents.length} components — narrow the filter to see the rest.
+          {t('truncationBanner', { max: MAX_GRAPH_NODES, total: filteredComponents.length })}
         </div>
       )}
 
@@ -236,28 +238,26 @@ export function DependencyGraphPage() {
       <footer className="px-6 py-3 border-t bg-card">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-4">
-            <span>
-              Showing {filteredComponents.length} of {components.length} components
-            </span>
+            <span>{t('footer.componentCount', { shown: filteredComponents.length, total: components.length })}</span>
             <span>•</span>
-            <span>{projectVulnerabilities.length} vulnerabilities</span>
+            <span>{t('footer.vulnerabilityCount', { count: projectVulnerabilities.length })}</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full bg-red-600" />
-              Critical: {counts.critical}
+              {t('footer.critical', { count: counts.critical })}
             </span>
             <span className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full bg-orange-600" />
-              High: {counts.high}
+              {t('footer.high', { count: counts.high })}
             </span>
             <span className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full bg-yellow-600" />
-              Medium: {counts.medium}
+              {t('footer.medium', { count: counts.medium })}
             </span>
             <span className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full bg-green-600" />
-              Low: {counts.low}
+              {t('footer.low', { count: counts.low })}
             </span>
           </div>
         </div>

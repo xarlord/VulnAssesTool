@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Binary, Upload, AlertCircle, CheckCircle, Loader2, Package } from 'lucide-react'
 import { getPlatform } from '@/lib/platform'
 import { useCurrentProject, useStore } from '@/store/useStore'
@@ -20,6 +21,9 @@ import type { SbomFile, Component, Vulnerability } from '@@/types'
 
 type Mode = 'file' | 'path' | 'image'
 type Step = 'idle' | 'generating' | 'success' | 'error'
+
+/** Android image filenames shown in the path hint — identifiers, never translated. */
+const ANDROID_IMAGE_FILES = ['super.img', 'boot.img'] as const
 
 interface ParsedResult {
   components: Component[]
@@ -37,6 +41,7 @@ interface BinarySbomDialogProps {
 }
 
 export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogProps) {
+  const { t } = useTranslation('binarySbomDialog')
   const currentProject = useCurrentProject()
   const updateProject = useStore((s) => s.updateProject)
   const targetProject = projectId ? useStore.getState().projects.find((p) => p.id === projectId) : currentProject
@@ -185,28 +190,26 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Binary className="h-5 w-5" />
-            Generate SBOM from Binary
+            {t('title')}
           </DialogTitle>
           <DialogDescription>
             {targetProject
-              ? `Analyze a binary or image with Syft and import into: ${targetProject.name}`
-              : 'Generate an SBOM from a compiled artifact or container image'}
+              ? t('description.withProject', { projectName: targetProject.name })
+              : t('description.noProject')}
           </DialogDescription>
         </DialogHeader>
 
         {(step === 'idle' || step === 'error') && (
           <div className="space-y-4">
             {!targetProject && (
-              <div className="rounded-md bg-yellow-500/15 p-3 text-sm text-yellow-600">
-                Please select a project first before generating an SBOM.
-              </div>
+              <div className="rounded-md bg-yellow-500/15 p-3 text-sm text-yellow-600">{t('warnings.noProject')}</div>
             )}
 
             {step === 'error' && error && (
               <div className="flex items-start gap-3 rounded-md bg-destructive/15 p-4">
                 <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
                 <div className="flex-1">
-                  <p className="font-medium text-destructive">Generation Failed</p>
+                  <p className="font-medium text-destructive">{t('error.title')}</p>
                   <p className="text-sm text-destructive mt-1">{error}</p>
                 </div>
               </div>
@@ -222,7 +225,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                     : 'border-border bg-background hover:bg-muted'
                 }`}
               >
-                Upload artifact
+                {t('mode.file')}
               </button>
               <button
                 onClick={() => setMode('path')}
@@ -232,7 +235,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                     : 'border-border bg-background hover:bg-muted'
                 }`}
               >
-                Local path
+                {t('mode.path')}
               </button>
               <button
                 onClick={() => setMode('image')}
@@ -242,55 +245,51 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                     : 'border-border bg-background hover:bg-muted'
                 }`}
               >
-                Container image
+                {t('mode.image')}
               </button>
             </div>
 
             {mode === 'file' ? (
               <div>
-                <label className="block text-sm font-medium mb-1">Binary or archive</label>
+                <label className="block text-sm font-medium mb-1">{t('file.label')}</label>
                 <input
                   type="file"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-secondary file:px-2 file:py-1 file:text-sm"
                   disabled={!targetProject}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Executables, libraries, jars, or archives. Syft detects packages and language binaries.
-                </p>
+                <p className="text-xs text-muted-foreground mt-1">{t('file.hint')}</p>
               </div>
             ) : mode === 'path' ? (
               <div>
-                <label className="block text-sm font-medium mb-1">Local file or directory path</label>
+                <label className="block text-sm font-medium mb-1">{t('path.label')}</label>
                 <input
                   type="text"
                   value={localPath}
                   onChange={(e) => setLocalPath(e.target.value)}
-                  placeholder="e.g., D:\\imx95_projects\\...\\eCockpit_Release_1.1.3_AAOS_prebuilt_image"
+                  placeholder={t('path.placeholder')}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   disabled={!targetProject}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Scanned in place on the server host (no upload) — use for large local artifacts and prebuilt image
-                  trees. An Android image folder (with <code>super.img</code>/<code>boot.img</code>) is auto-detected
-                  and unpacked (sparse → super → EROFS/ext4) before scanning; on Windows this runs via WSL2. The path
-                  must exist on the machine running the backend.
+                  {t('path.hintBefore')}
+                  {/* Literal Android image filenames — data, not translatable prose. */}
+                  <code>{ANDROID_IMAGE_FILES[0]}</code>/<code>{ANDROID_IMAGE_FILES[1]}</code>
+                  {t('path.hintAfter')}
                 </p>
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-medium mb-1">Image Reference</label>
+                <label className="block text-sm font-medium mb-1">{t('image.label')}</label>
                 <input
                   type="text"
                   value={imageRef}
                   onChange={(e) => setImageRef(e.target.value)}
-                  placeholder="e.g., alpine:3.19, ghcr.io/org/image:v1"
+                  placeholder={t('image.placeholder')}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   disabled={!targetProject}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Pulled directly from the registry by Syft (no Docker daemon required).
-                </p>
+                <p className="text-xs text-muted-foreground mt-1">{t('image.hint')}</p>
               </div>
             )}
 
@@ -299,7 +298,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                 onClick={handleClose}
                 className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
               >
-                Cancel
+                {t('common:actions.cancel')}
               </button>
               <button
                 onClick={handleGenerate}
@@ -309,7 +308,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Upload className="h-4 w-4" />
-                Generate SBOM
+                {t('generateSbom')}
               </button>
             </div>
           </div>
@@ -318,7 +317,7 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
         {step === 'generating' && (
           <div className="flex flex-col items-center py-8">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="mt-4 text-sm font-medium">Generating SBOM...</p>
+            <p className="mt-4 text-sm font-medium">{t('generating')}</p>
             {progress && <p className="text-sm text-muted-foreground mt-1">{progress.message}</p>}
           </div>
         )}
@@ -328,18 +327,20 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
             <div className="flex items-start gap-3 rounded-md bg-green-500/15 p-4">
               <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
               <div className="flex-1">
-                <p className="font-medium text-green-600">SBOM Generated</p>
+                <p className="font-medium text-green-600">{t('success.title')}</p>
                 <p className="text-sm text-green-600 mt-1">
-                  Found {parsed.components.length} components{' '}
-                  {parsed.vulnerabilities.length > 0 ? `and ${parsed.vulnerabilities.length} vulnerabilities ` : ''}
-                  in {parsed.sourceLabel}
+                  {t('success.foundComponents', { count: parsed.components.length })}{' '}
+                  {parsed.vulnerabilities.length > 0
+                    ? t('success.andVulnerabilities', { count: parsed.vulnerabilities.length })
+                    : ''}
+                  {t('success.inSource', { source: parsed.sourceLabel })}
                 </p>
               </div>
             </div>
 
             {parsed.components.length > 0 && (
               <div className="rounded-md border border-border bg-muted p-4">
-                <p className="text-sm font-medium mb-2">Component Preview ({parsed.components.length} total)</p>
+                <p className="text-sm font-medium mb-2">{t('success.preview', { count: parsed.components.length })}</p>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
                   {parsed.components.slice(0, 10).map((c) => (
                     <div key={c.id} className="flex items-center gap-2 text-sm">
@@ -349,7 +350,9 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                     </div>
                   ))}
                   {parsed.components.length > 10 && (
-                    <p className="text-xs text-muted-foreground">... and {parsed.components.length - 10} more</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('success.more', { count: parsed.components.length - 10 })}
+                    </p>
                   )}
                 </div>
               </div>
@@ -360,14 +363,14 @@ export function BinarySbomDialog({ open, onClose, projectId }: BinarySbomDialogP
                 onClick={resetState}
                 className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80"
               >
-                Generate Another
+                {t('success.generateAnother')}
               </button>
               <button
                 onClick={handleImport}
                 disabled={parsed.components.length === 0}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Add {parsed.components.length} Components to Project
+                {t('success.addComponents', { count: parsed.components.length })}
               </button>
             </div>
           </div>

@@ -1,0 +1,30 @@
+{
+  "dialog": {
+    "title": "Command palette",
+    "description": "Search and run application commands"
+  },
+  "search": {
+    "placeholder": "Search commands...",
+    "ariaLabel": "Search commands",
+    "escBadge": "ESC"
+  },
+  "results": {
+    "ariaLabel": "Command search results",
+    "empty": "No commands found for \"{{query}}\""
+  },
+  "categories": {
+    "navigation": "Navigation",
+    "actions": "Actions",
+    "settings": "Settings",
+    "help": "Help",
+    "view": "View",
+    "edit": "Edit"
+  },
+  "footer": {
+    "arrowKeys": "↑↓",
+    "navigate": "Navigate",
+    "enterKey": "↵",
+    "select": "Select",
+    "escKey": "esc"
+  }
+}

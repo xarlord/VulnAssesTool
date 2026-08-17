@@ -1,0 +1,4 @@
+{
+  "title": "Audit Log",
+  "description": "Compliance record of CREATE, UPDATE, DELETE, SCAN, EXPORT, and SETTINGS_CHANGE events."
+}

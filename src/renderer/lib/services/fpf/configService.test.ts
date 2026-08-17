@@ -336,6 +336,305 @@ features: {}
     })
   })
 
+  describe('normalizeConfig defaults (via loadFromObject)', () => {
+    it('fills in every default when the input is completely empty, since downstream code assumes all SystemConfig fields exist', () => {
+      const config = service.loadFromObject({})
+      expect(config.project.name).toBe('Unknown Project')
+      expect(config.project.version).toBe('0.0.0')
+      expect(config.project.tier).toBe('development')
+      expect(typeof config.project.lastModified).toBe('string')
+      expect(config.cybersecurity.attackSurface).toBe('intermediate')
+      expect(config.cybersecurity.safetyRelated).toBe(false)
+      expect(config.cybersecurity.externalInterfaces).toEqual([])
+      expect(config.cybersecurity.networkSegments).toEqual([])
+      expect(config.interfaces).toEqual({})
+      expect(config.services).toEqual({})
+      expect(config.features).toEqual({})
+      expect(config.suppressionRules).toEqual([])
+      expect(config.filterSettings?.missFilterDetection.lowConfidenceThreshold).toBe(70)
+      expect(config.filterSettings?.audit.retentionDays).toBe(365)
+    })
+
+    it('preserves explicit optional values instead of overwriting them with defaults', () => {
+      const config = service.loadFromObject({
+        project: {
+          name: 'Explicit',
+          version: '3.2.1',
+          tier: 'production',
+          configId: 'cfg-1',
+          lastModified: '2020-05-05T00:00:00.000Z',
+          approvedBy: 'alice',
+        },
+        cybersecurity: {
+          attackSurface: 'high',
+          safetyRelated: true,
+          asilLevel: 'C',
+          externalInterfaces: ['wifi'],
+          networkSegments: [{ name: 'dmz', type: 'dmz', trusted: false }],
+        },
+        interfaces: {},
+        services: {},
+        features: {},
+        filterSettings: {
+          autoFilterConfidenceThreshold: 60,
+          neverAutoFilter: ['critical'],
+          alwaysEscalateToReview: ['critical'],
+          missFilterDetection: {
+            enabled: false,
+            lowConfidenceThreshold: 40,
+            recentCveDays: 10,
+            flagKnownExploits: false,
+          },
+          audit: { logAllDecisions: false, logLlmResponses: false, retentionDays: 30 },
+        },
+        metadata: { formatVersion: '1.0' },
+      })
+      expect(config.project.configId).toBe('cfg-1')
+      expect(config.project.lastModified).toBe('2020-05-05T00:00:00.000Z')
+      expect(config.cybersecurity.externalInterfaces).toEqual(['wifi'])
+      expect(config.cybersecurity.networkSegments).toHaveLength(1)
+      expect(config.filterSettings?.missFilterDetection.lowConfidenceThreshold).toBe(40)
+      expect(config.filterSettings?.audit.retentionDays).toBe(30)
+      expect(config.metadata?.formatVersion).toBe('1.0')
+    })
+  })
+
+  describe('validate - additional branch coverage', () => {
+    it('flags an empty project name even when the project object exists, since a blank name is not a valid identity', () => {
+      const config = { ...validConfig, project: { ...validConfig.project, name: '' } }
+      const result = service.validate(config)
+      expect(result.errors.some((e) => e.path === 'project.name')).toBe(true)
+    })
+
+    it('warns when project version is missing, so teams know to add one for better tracking', () => {
+      const config = { ...validConfig, project: { ...validConfig.project, version: '' } }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'project.version')).toBe(true)
+    })
+
+    it('does not warn about missing approval when a production project already has approvedBy set', () => {
+      const config = { ...validConfig, project: { ...validConfig.project, approvedBy: 'bob' } }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'project.approvedBy')).toBe(false)
+    })
+
+    it('does not require approval for non-production tiers, since that rule is production-specific', () => {
+      const config = {
+        ...validConfig,
+        project: { ...validConfig.project, tier: 'development' as const, approvedBy: undefined },
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'project.approvedBy')).toBe(false)
+    })
+
+    it('warns when a safety-related system has no ASIL level, since ISO 21434 requires a safety classification', () => {
+      const config = {
+        ...validConfig,
+        cybersecurity: { ...validConfig.cybersecurity, safetyRelated: true, asilLevel: undefined },
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'cybersecurity.asilLevel')).toBe(true)
+    })
+
+    it('does not require an ASIL level for systems that are not safety-related', () => {
+      const config = {
+        ...validConfig,
+        cybersecurity: { ...validConfig.cybersecurity, safetyRelated: false, asilLevel: undefined },
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'cybersecurity.asilLevel')).toBe(false)
+    })
+
+    it('warns when an interface confidence score is out of the valid 0-100 range', () => {
+      const config = {
+        ...validConfig,
+        interfaces: { wifi: { ...validConfig.interfaces.wifi, confidence: 150 } },
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'interfaces.wifi.confidence')).toBe(true)
+    })
+
+    it('warns when an enabled service does not specify externalAccess, since that leaves exposure unknown', () => {
+      const config = {
+        ...validConfig,
+        services: {
+          openssl: {
+            enabled: true,
+            externalAccess: undefined as unknown as boolean,
+            confidence: 85,
+          },
+        },
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'services.openssl.externalAccess')).toBe(true)
+    })
+
+    it('warns when a service confidence score is out of the valid 0-100 range', () => {
+      const config = {
+        ...validConfig,
+        services: { openssl: { ...validConfig.services.openssl, confidence: -5 } },
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'services.openssl.confidence')).toBe(true)
+    })
+
+    it('does not warn about missing approval when a suppression rule already has approvedBy set', () => {
+      const config = {
+        ...validConfig,
+        suppressionRules: [
+          {
+            id: 'SUP-001',
+            cpePattern: 'cpe:2.3:a:test:*',
+            reason: 'Reviewed rule',
+            severityLimit: ['low'],
+            approvedBy: 'carol',
+          },
+        ],
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'suppressionRules[0].approvedBy')).toBe(false)
+    })
+
+    it('flags a suppression rule whose expiration date cannot be parsed', () => {
+      const config = {
+        ...validConfig,
+        suppressionRules: [
+          {
+            id: 'SUP-001',
+            cpePattern: 'cpe:2.3:a:test:*',
+            reason: 'Bad date',
+            severityLimit: ['low'],
+            expires: 'not-a-real-date',
+          },
+        ],
+      }
+      const result = service.validate(config)
+      expect(result.errors.some((e) => e.path === 'suppressionRules[0].expires')).toBe(true)
+    })
+
+    it('does not warn about expiration for a suppression rule that expires in the future', () => {
+      const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+      const config = {
+        ...validConfig,
+        suppressionRules: [
+          {
+            id: 'SUP-001',
+            cpePattern: 'cpe:2.3:a:test:*',
+            reason: 'Still active',
+            severityLimit: ['low'],
+            expires: future,
+          },
+        ],
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.message.includes('expired'))).toBe(false)
+    })
+
+    it('flags an out-of-range autoFilterConfidenceThreshold, since it must be a 0-100 percentage', () => {
+      const config = {
+        ...validConfig,
+        filterSettings: {
+          autoFilterConfidenceThreshold: 150,
+          neverAutoFilter: ['critical'],
+          alwaysEscalateToReview: [],
+          missFilterDetection: {
+            enabled: true,
+            lowConfidenceThreshold: 70,
+            recentCveDays: 30,
+            flagKnownExploits: true,
+          },
+          audit: { logAllDecisions: true, logLlmResponses: true, retentionDays: 365 },
+        },
+      }
+      const result = service.validate(config)
+      expect(result.errors.some((e) => e.path === 'filterSettings.autoFilterConfidenceThreshold')).toBe(true)
+    })
+
+    it('does not warn about critical auto-filtering when neverAutoFilter already includes critical', () => {
+      const config = {
+        ...validConfig,
+        filterSettings: {
+          autoFilterConfidenceThreshold: 75,
+          neverAutoFilter: ['critical', 'high'],
+          alwaysEscalateToReview: [],
+          missFilterDetection: {
+            enabled: true,
+            lowConfidenceThreshold: 70,
+            recentCveDays: 30,
+            flagKnownExploits: true,
+          },
+          audit: { logAllDecisions: true, logLlmResponses: true, retentionDays: 365 },
+        },
+      }
+      const result = service.validate(config)
+      expect(result.warnings.some((w) => w.path === 'filterSettings.neverAutoFilter')).toBe(false)
+    })
+  })
+
+  describe('mergeConfigs - nested filterSettings overrides', () => {
+    it('merges missFilterDetection and audit sub-objects from both base and override rather than dropping base values', () => {
+      const base: SystemConfig = {
+        ...validConfig,
+        filterSettings: {
+          autoFilterConfidenceThreshold: 75,
+          neverAutoFilter: ['critical'],
+          alwaysEscalateToReview: ['critical'],
+          missFilterDetection: {
+            enabled: true,
+            lowConfidenceThreshold: 70,
+            recentCveDays: 30,
+            flagKnownExploits: true,
+          },
+          audit: { logAllDecisions: true, logLlmResponses: true, retentionDays: 365 },
+        },
+      }
+      const override: Partial<SystemConfig> = {
+        filterSettings: {
+          autoFilterConfidenceThreshold: 75,
+          neverAutoFilter: ['critical'],
+          alwaysEscalateToReview: ['critical'],
+          missFilterDetection: {
+            enabled: true,
+            lowConfidenceThreshold: 50,
+            recentCveDays: 30,
+            flagKnownExploits: true,
+          },
+          audit: { logAllDecisions: true, logLlmResponses: true, retentionDays: 90 },
+        },
+      }
+      const merged = service.mergeConfigs(base, override)
+      // Overridden field wins...
+      expect(merged.filterSettings?.missFilterDetection.lowConfidenceThreshold).toBe(50)
+      // ...but fields the override didn't touch still come from base, proving a deep (not shallow) merge.
+      expect(merged.filterSettings?.missFilterDetection.recentCveDays).toBe(30)
+      expect(merged.filterSettings?.audit.retentionDays).toBe(90)
+    })
+
+    it('defaults suppressionRules to an empty list when neither base nor override defines any', () => {
+      const base: SystemConfig = { ...validConfig, suppressionRules: undefined }
+      const merged = service.mergeConfigs(base, {})
+      expect(merged.suppressionRules).toEqual([])
+    })
+  })
+
+  describe('hasExternalAccess - additional branch coverage', () => {
+    it('returns true when a service is both enabled and externalAccess is explicitly true', () => {
+      const config = {
+        ...validConfig,
+        services: { api: { enabled: true, externalAccess: true, confidence: 90 } },
+      }
+      expect(service.hasExternalAccess(config, 'api')).toBe(true)
+    })
+
+    it('returns false when the service exists but is disabled, even if externalAccess is true', () => {
+      const config = {
+        ...validConfig,
+        services: { api: { enabled: false, externalAccess: true, confidence: 90 } },
+      }
+      expect(service.hasExternalAccess(config, 'api')).toBe(false)
+    })
+  })
+
   describe('getActiveSuppressionRules', () => {
     it('should filter out expired rules', () => {
       const config: SystemConfig = {
@@ -375,6 +674,31 @@ features: {}
       }
       const active = service.getActiveSuppressionRules(config)
       expect(active).toHaveLength(1)
+    })
+
+    it('keeps a rule whose expiration date is still in the future, since it has not lapsed yet', () => {
+      const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      const config: SystemConfig = {
+        ...validConfig,
+        suppressionRules: [
+          {
+            id: 'SUP-001',
+            cpePattern: 'cpe:2.3:a:test:*',
+            reason: 'Future expiration',
+            severityLimit: ['low'],
+            expires: future,
+          },
+        ],
+      }
+      const active = service.getActiveSuppressionRules(config)
+      expect(active).toHaveLength(1)
+      expect(active[0].id).toBe('SUP-001')
+    })
+
+    it('returns an empty list rather than throwing when suppressionRules is undefined', () => {
+      const config: SystemConfig = { ...validConfig, suppressionRules: undefined }
+      const active = service.getActiveSuppressionRules(config)
+      expect(active).toEqual([])
     })
   })
 })

@@ -1,0 +1,54 @@
+{
+  "title": "Report Preview",
+  "noData": "No data available for report preview",
+  "stats": {
+    "total": "{{count}} total",
+    "critical": "{{count}} critical",
+    "high": "{{count}} high"
+  },
+  "tabs": {
+    "preview": "Preview",
+    "options": "Options"
+  },
+  "previewFrameTitle": "Report Preview",
+  "titleField": {
+    "label": "Report Title",
+    "placeholder": "Enter report title"
+  },
+  "themeField": {
+    "label": "Theme",
+    "placeholder": "Select theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "toggles": {
+    "executiveSummary": {
+      "label": "Executive Summary",
+      "description": "Include risk score and key findings"
+    },
+    "charts": {
+      "label": "Charts & Visualizations",
+      "description": "Include severity distribution chart"
+    },
+    "recommendations": {
+      "label": "Recommendations",
+      "description": "Include remediation recommendations"
+    }
+  },
+  "companyName": {
+    "label": "Company Name (optional)",
+    "placeholder": "Enter company name for footer"
+  },
+  "companyLogo": {
+    "label": "Company Logo (optional)",
+    "alt": "Company logo",
+    "removeAriaLabel": "Remove logo",
+    "uploadLabel": "Upload Logo",
+    "helpText": "Upload a company logo to include in the report header.",
+    "supportedFormats": "Supported formats: PNG, JPG, SVG. Max size: 2MB"
+  },
+  "actions": {
+    "html": "HTML",
+    "downloadPdf": "Download PDF"
+  }
+}

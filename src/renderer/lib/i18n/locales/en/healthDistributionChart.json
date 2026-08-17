@@ -1,0 +1,12 @@
+{
+  "empty": "No health data available",
+  "ariaLabel": "Component health distribution donut chart. {{list}}.",
+  "itemFormat": "{{name}}: {{value}}",
+  "categories": {
+    "excellent": "Excellent",
+    "good": "Good",
+    "fair": "Fair",
+    "poor": "Poor",
+    "critical": "Critical"
+  }
+}

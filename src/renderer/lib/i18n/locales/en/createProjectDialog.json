@@ -1,0 +1,16 @@
+{
+  "title": "Create New Project",
+  "description": "Enter the details for your new vulnerability assessment project",
+  "form": {
+    "nameLabel": "Project Name",
+    "namePlaceholder": "My Application",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Optional description of the project..."
+  },
+  "errors": {
+    "nameRequired": "Project name is required",
+    "nameTooShort": "Project name must be at least 3 characters",
+    "nameDuplicate": "A project with this name already exists"
+  },
+  "submit": "Create Project"
+}

@@ -1,0 +1,146 @@
+{
+  "heading": "Vulnerabilities",
+  "header": {
+    "title": "Vulnerabilities ({{count}})"
+  },
+  "toolbar": {
+    "advancedFilters": "Advanced Filters",
+    "hideNameOnlyMatches": {
+      "title": "Hide low-confidence name-only matches on unversioned components (KEV / high-risk findings are always shown)",
+      "ariaLabel": "Hide low-confidence name-only matches",
+      "label": "Hide low-confidence"
+    },
+    "search": {
+      "placeholder": "Search by CVE ID or keyword...",
+      "ariaLabel": "Search vulnerabilities"
+    },
+    "sort": {
+      "ariaLabel": "Sort by",
+      "severity": "Sort: Severity",
+      "cvss": "Sort: CVSS Score",
+      "date": "Sort: Publication Date"
+    },
+    "severityFilter": {
+      "ariaLabel": "Filter by severity",
+      "all": "All Severities",
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    }
+  },
+  "advancedPanel": {
+    "source": {
+      "label": "Source",
+      "nvd": "NVD",
+      "osv": "OSV",
+      "both": "Both"
+    },
+    "referenceTags": {
+      "label": "Reference Tags",
+      "exploit": "Exploit",
+      "patch": "Patch Available",
+      "vendorAdvisory": "Vendor Advisory",
+      "thirdPartyAdvisory": "Third Party Advisory",
+      "mitigation": "Mitigation",
+      "releaseNotes": "Release Notes"
+    },
+    "patchAvailability": {
+      "label": "Patch Availability",
+      "all": "All",
+      "available": "Has Patch",
+      "unavailable": "No Patch"
+    },
+    "exploitStatus": {
+      "label": "Exploit Status",
+      "all": "All",
+      "exploited": "Exploited (KEV)",
+      "notExploited": "Not Exploited"
+    },
+    "active": "Advanced filters active",
+    "clear": "Clear Advanced Filters"
+  },
+  "bulkActions": {
+    "selectedCount": "{{count}} selected",
+    "clear": "Clear",
+    "exportSelected": "Export Selected ({{count}})"
+  },
+  "noise": {
+    "gapComponentsCount_one": "{{count}} component with coverage gaps",
+    "gapComponentsCount_other": "{{count}} components with coverage gaps",
+    "hiddenCount_one": "have {{count}} low-confidence (name-only) match hidden.",
+    "hiddenCount_other": "have {{count}} low-confidence (name-only) matches hidden.",
+    "reveal": "Reveal",
+    "keptHighRiskCount_one": "{{count}} high-risk finding kept visible despite low match confidence (KEV / high EPSS / critical or high severity).",
+    "keptHighRiskCount_other": "{{count}} high-risk findings kept visible despite low match confidence (KEV / high EPSS / critical or high severity)."
+  },
+  "empty": {
+    "title": "No vulnerabilities found",
+    "subtitle": "Run a vulnerability scan to check for security issues"
+  },
+  "group": {
+    "label": {
+      "allByCvss": "All vulnerabilities (highest CVSS first)",
+      "allByDate": "All vulnerabilities (newest first)",
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "count_one": "{{count}} vulnerability",
+    "count_other": "{{count}} vulnerabilities"
+  },
+  "noResults": {
+    "title": "No vulnerabilities match the current filters",
+    "subtitle": "Try adjusting your filter settings",
+    "clearAll": "Clear all filters"
+  },
+  "row": {
+    "selectAriaLabel": "Select {{id}}",
+    "collapseDetails": "Collapse details",
+    "expandDetails": "Expand details",
+    "badges": {
+      "exploit": "Exploit",
+      "patch": "Patch",
+      "mitigation": "Mitigation"
+    },
+    "akaPrefix": "(aka: ",
+    "akaSuffix": ")",
+    "cvss": "CVSS: {{score}}",
+    "fromPrefix": "From: ",
+    "affectedComponents_one": "{{count}} component",
+    "affectedComponents_other": "{{count}} components",
+    "referenceCount_one": "{{count}} ref",
+    "referenceCount_other": "{{count}} refs",
+    "copyAriaLabel": "Copy {{id}} to clipboard",
+    "copy": "Copy",
+    "copied": "Copied",
+    "viewDetails": "View Details"
+  },
+  "details": {
+    "cwe": "CWE:",
+    "references": "References:",
+    "moreReferences": "+{{count}} more references"
+  },
+  "toast": {
+    "presetSaved": {
+      "title": "Preset Saved",
+      "message": "Filter preset \"{{name}}\" has been saved."
+    },
+    "presetLoaded": {
+      "title": "Preset Loaded",
+      "message": "Filter preset \"{{name}}\" has been applied."
+    },
+    "presetDeleted": {
+      "title": "Preset Deleted",
+      "message": "Filter preset has been deleted."
+    },
+    "exportComplete": {
+      "title": "Export Complete",
+      "message_one": "Exported {{count}} selected vulnerability to CSV.",
+      "message_other": "Exported {{count}} selected vulnerabilities to CSV."
+    },
+    "copied": "Copied {{id}} to clipboard",
+    "copyFailed": "Failed to copy to clipboard"
+  }
+}

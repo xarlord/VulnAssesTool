@@ -1,4 +1,5 @@
 import { Palette } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '@/store/useStore'
 
 /**
@@ -7,18 +8,19 @@ import { useStore } from '@/store/useStore'
  * Settings orchestrator.
  */
 export function AppearanceSection() {
+  const { t } = useTranslation('appearanceSection')
   const { settings, updateSettings } = useStore()
 
   return (
     <div id="appearance" className="rounded-lg border border-border bg-card scroll-mt-6">
       <div className="flex items-center gap-3 border-b border-border p-4">
         <Palette className="h-5 w-5 text-muted-foreground" />
-        <h2 className="font-semibold">Appearance</h2>
+        <h2 className="font-semibold">{t('title')}</h2>
       </div>
       <div className="p-4 space-y-6">
         {/* Theme */}
         <div>
-          <label className="mb-3 block text-sm font-medium">Theme</label>
+          <label className="mb-3 block text-sm font-medium">{t('theme.label')}</label>
           <div className="grid grid-cols-3 gap-3">
             {(['light', 'dark', 'system'] as const).map((theme) => (
               <button
@@ -43,14 +45,14 @@ export function AppearanceSection() {
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             {settings.theme === 'system'
-              ? 'Follows your system theme preference'
-              : `Always use ${settings.theme} theme`}
+              ? t('theme.note.followsSystem')
+              : t('theme.note.alwaysUse', { theme: settings.theme })}
           </p>
         </div>
 
         {/* Font Size */}
         <div>
-          <label className="mb-3 block text-sm font-medium">Font Size</label>
+          <label className="mb-3 block text-sm font-medium">{t('fontSize.label')}</label>
           <div className="grid grid-cols-3 gap-3">
             {(['small', 'default', 'large'] as const).map((size) => (
               <button
@@ -61,13 +63,13 @@ export function AppearanceSection() {
                 }`}
               >
                 <span className={`block ${size === 'small' ? 'text-xs' : size === 'large' ? 'text-lg' : 'text-sm'}`}>
-                  Aa
+                  {t('fontSize.preview')}
                 </span>
                 <span className="text-xs capitalize">{size}</span>
               </button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">Adjust the text size throughout the application</p>
+          <p className="mt-2 text-xs text-muted-foreground">{t('fontSize.note')}</p>
         </div>
       </div>
     </div>

@@ -8,6 +8,7 @@
  */
 
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +32,8 @@ export function KevBadge({
   compact = false,
   className,
 }: KevBadgeProps): React.ReactElement | null {
+  const { t } = useTranslation('kevBadge')
+
   if (!isKev) {
     return null
   }
@@ -45,7 +48,7 @@ export function KevBadge({
           'cursor-help',
           className,
         )}
-        title="Actively Exploited (CISA KEV)"
+        title={t('compact.title')}
       >
         <AlertTriangle className="w-3 h-3" />
       </span>
@@ -62,12 +65,10 @@ export function KevBadge({
         'border border-red-300 dark:border-red-700',
         className,
       )}
-      title={
-        knownRansomwareUse ? 'Actively exploited and used in ransomware campaigns' : 'Actively exploited (CISA KEV)'
-      }
+      title={knownRansomwareUse ? t('title.ransomware') : t('title.exploited')}
     >
       <AlertTriangle className="w-3 h-3" />
-      {knownRansomwareUse ? 'Ransomware' : 'Exploited'}
+      {knownRansomwareUse ? t('label.ransomware') : t('label.exploited')}
     </span>
   )
 }
@@ -81,6 +82,8 @@ export function KevBadgeWithTooltip({
   compact = false,
   className,
 }: KevBadgeProps): React.ReactElement | null {
+  const { t } = useTranslation('kevBadge')
+
   if (!isKev) {
     return null
   }
@@ -101,12 +104,8 @@ export function KevBadgeWithTooltip({
           'pointer-events-none',
         )}
       >
-        <div className="font-semibold mb-1">CISA Known Exploited Vulnerability</div>
-        <div className="text-gray-300">
-          {knownRansomwareUse
-            ? 'This vulnerability is actively exploited in ransomware campaigns.'
-            : 'This vulnerability has been actively exploited in the wild.'}
-        </div>
+        <div className="font-semibold mb-1">{t('tooltip.heading')}</div>
+        <div className="text-gray-300">{knownRansomwareUse ? t('tooltip.ransomware') : t('tooltip.exploited')}</div>
         {/* Arrow */}
         <div
           className={cn('absolute top-full left-1/2 -translate-x-1/2', 'border-4 border-transparent border-t-gray-900')}
