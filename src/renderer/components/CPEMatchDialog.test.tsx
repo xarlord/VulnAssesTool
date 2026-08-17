@@ -245,6 +245,11 @@ describe('CPEMatchDialog', () => {
   })
 
   describe('Confidence Color Coding', () => {
+    // These pin the confidence HUE tier (green/yellow/red), which is the user-facing contract.
+    // The shade is -700, not -500, because these badges render white text: measured, white on
+    // bg-green-500 is 2.28:1, bg-yellow-500 1.92:1 and bg-red-500 3.76:1 — all below WCAG AA's
+    // 4.5:1 — while -700 clears it (5.02:1 / 4.92:1 / 6.47:1). Keep the hue, keep the shade
+    // dark enough for white text.
     it('should show green badge for high confidence (>80%)', () => {
       const component = createMockComponent({
         suggestedCPEs: [createMockCPEResult({ confidence: 95 })],
@@ -253,7 +258,7 @@ describe('CPEMatchDialog', () => {
       renderDialog(true, [component])
 
       const badge = screen.getByText('95%')
-      expect(badge.className).toContain('bg-green-500')
+      expect(badge.className).toContain('bg-green-700')
     })
 
     it('should show yellow badge for medium confidence (60-80%)', () => {
@@ -264,7 +269,7 @@ describe('CPEMatchDialog', () => {
       renderDialog(true, [component])
 
       const badge = screen.getByText('70%')
-      expect(badge.className).toContain('bg-yellow-500')
+      expect(badge.className).toContain('bg-yellow-700')
     })
 
     it('should show red badge for low confidence (<60%)', () => {
@@ -275,7 +280,7 @@ describe('CPEMatchDialog', () => {
       renderDialog(true, [component])
 
       const badge = screen.getByText('45%')
-      expect(badge.className).toContain('bg-red-500')
+      expect(badge.className).toContain('bg-red-700')
     })
   })
 

@@ -177,6 +177,106 @@ test.describe('Accessibility — axe-core (WCAG 2.1 AA)', () => {
     expect(blocking, `Critical/serious a11y violations in the NVD CVE modal:\n${summarize(blocking)}`).toEqual([])
   })
 
+  /**
+   * The CORE_PAGES scan of /executive is not enough on its own: with no projects the dashboard
+   * renders its "No Data Available" empty state (ExecutiveDashboard.tsx:234-238) and every
+   * widget is lazy-loaded, so RiskGauge / ComplianceStatus / TeamProductivity /
+   * VulnerabilityTrendChart / ActionItems were never in an axe snapshot at all. Those widgets
+   * hand-rolled raw palette pairs that fail AA (text-X-600 on bg-X-100 measures 2.74-4.24:1,
+   * and a dark:text-X-400 variant over a light bg-X-100 measures as low as 1.55:1), which is
+   * exactly the class of defect this gate exists to catch. Seeding a real project makes the
+   * widgets render so they are actually scanned.
+   */
+  test('executive dashboard with real data has no critical or serious accessibility violations', async ({
+    page,
+  }, testInfo) => {
+    // A real scan against the local NVD database can take up to ~90s.
+    test.setTimeout(150_000)
+
+    await createProjectWithMultipleVulnerabilities(page, `A11y Exec Test ${Date.now()}`)
+
+    await page.evaluate(() => {
+      const nav = (window as unknown as Record<string, unknown>).__navigate
+      if (typeof nav === 'function') nav('/executive')
+    })
+
+    // Wait for the populated dashboard, not the empty state: the Executive Summary panel only
+    // renders when metrics exist, and the widgets are lazy chunks that resolve after it.
+    await expect(page.getByRole('heading', { name: 'Executive Summary' })).toBeVisible({ timeout: 30000 })
+    await expect(page.getByRole('heading', { name: 'Overall Risk Level' })).toBeVisible({ timeout: 30000 })
+    await page.waitForTimeout(1000)
+
+    const violations = await analyzePage(page)
+    await testInfo.attach('axe-executive-populated.json', {
+      body: JSON.stringify(violations, null, 2),
+      contentType: 'application/json',
+    })
+
+    const blocking = violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
+    expect(blocking, `Critical/serious a11y violations on a populated /executive:\n${summarize(blocking)}`).toEqual([])
+
+    /**
+     * axe alone is NOT sufficient for this class of defect — measured: it reported zero
+     * violations on this very page while `text-amber-400` on `bg-yellow-100` was rendering at
+     * 1.55:1 and `text-orange-600` on `bg-orange-100` at 3.11:1. So every element carrying a
+     * raw palette text class is measured directly against its own effective background, using
+     * WCAG's two thresholds: 3:1 for large text (>=24px, or >=18.66px when bold) and 4.5:1
+     * otherwise. Elements with no text are skipped — an icon's contrast is SC 1.4.11
+     * (non-text), a different criterion from the 1.4.3 one this asserts.
+     */
+    const lowContrast = await page.evaluate(() => {
+      const luminance = (color: string): number | null => {
+        const match = color.match(/rgba?\(([^)]+)\)/)
+        if (!match) return null
+        const [r, g, b] = match[1].split(',').map((part) => Number.parseFloat(part.trim()))
+        const channel = (value: number): number => {
+          const s = value / 255
+          return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+      }
+      // Walk up for the first painted background: a transparent element shows its ancestor's.
+      const effectiveBackground = (element: Element): string => {
+        let current: Element | null = element
+        while (current) {
+          const bg = getComputedStyle(current).backgroundColor
+          if (bg && !bg.includes('rgba(0, 0, 0, 0)') && bg !== 'transparent') return bg
+          current = current.parentElement
+        }
+        return 'rgb(255, 255, 255)'
+      }
+      const failures: string[] = []
+      for (const element of Array.from(document.querySelectorAll('*'))) {
+        const className = typeof element.className === 'string' ? element.className : ''
+        if (!/(text)-(red|orange|amber|yellow|green|blue|gray)-\d{2,3}/.test(className)) continue
+        const ownText = Array.from(element.childNodes)
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => node.textContent ?? '')
+          .join('')
+          .trim()
+        if (!ownText) continue
+        const styles = getComputedStyle(element)
+        const foreground = luminance(styles.color)
+        const background = luminance(effectiveBackground(element))
+        if (foreground === null || background === null) continue
+        const [lighter, darker] = foreground >= background ? [foreground, background] : [background, foreground]
+        const ratio = (lighter + 0.05) / (darker + 0.05)
+        const fontSize = Number.parseFloat(styles.fontSize)
+        const weight = Number.parseInt(styles.fontWeight, 10) || 400
+        const isLarge = fontSize >= 24 || (fontSize >= 18.66 && weight >= 700)
+        const required = isLarge ? 3 : 4.5
+        if (ratio < required) {
+          failures.push(
+            `"${ownText.slice(0, 30)}" ${ratio.toFixed(2)}:1 (needs ${required}:1, ${fontSize}px/${weight}) [${className.slice(0, 60)}]`,
+          )
+        }
+      }
+      return failures
+    })
+
+    expect(lowContrast, `Raw-palette text below its WCAG AA threshold:\n${lowContrast.join('\n')}`).toEqual([])
+  })
+
   // ProjectDetail and the dependency graph are dynamic (/project/:id[...]) routes,
   // so — unlike CORE_PAGES — they need a real, meaningfully-populated project
   // rather than a static path. Seeded once via a real scan so the page renders its

@@ -80,12 +80,12 @@ export function NotificationCenter() {
       case 'error':
         return 'text-destructive bg-destructive/10'
       case 'warning':
-        return 'text-yellow-600 bg-yellow-100'
+        return 'text-yellow-800 bg-yellow-100'
       case 'success':
-        return 'text-green-600 bg-green-100'
+        return 'text-green-800 bg-green-100'
       case 'info':
       default:
-        return 'text-blue-600 bg-blue-100'
+        return 'text-blue-700 bg-blue-100'
     }
   }
 

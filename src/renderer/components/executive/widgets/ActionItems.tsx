@@ -6,6 +6,17 @@
 import { AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Recommendation, RiskItem } from '@/lib/analytics'
+import { getSeverityClass, getSeverityTextClass, type Severity } from '@/lib/severity'
+
+/**
+ * The Severity union is lowercase, so normalize (falling back to 'none' for unrecognized or
+ * missing values) before looking up a token class — same approach as Search.tsx:420.
+ */
+function normalizeSeverity(severity?: string): Severity {
+  const s = severity?.toLowerCase()
+  if (s === 'critical' || s === 'high' || s === 'medium' || s === 'low' || s === 'none') return s
+  return 'none'
+}
 
 interface ActionItemsProps {
   recommendations: Recommendation[]
@@ -16,33 +27,42 @@ interface ActionItemsProps {
 export function ActionItems({ recommendations, topRisks, onProjectClick }: ActionItemsProps) {
   const { t } = useTranslation('actionItems')
 
+  // These are priority/severity scales, NOT the Severity union, so they can't use lib/severity's
+  // token classes: `immediate` has no severity equivalent and `low` is deliberately blue here.
+  // The shades are therefore chosen to clear WCAG AA against the bg-*-100 card they render on
+  // (both sides hardcoded, so the ratio is the same in either theme). Measured: the previous
+  // text-red-600 was 3.95:1, text-orange-600 3.11:1, text-green-600 3.00:1, and
+  // `text-amber-700 dark:text-amber-400` was 1.55:1 in dark mode — that last one had a dark TEXT
+  // variant with no matching dark BACKGROUND, so amber-400 landed on light bg-yellow-100. Do not
+  // "restore" a -600 shade or re-add a bare dark: text variant; the a11y contrast sweep on a
+  // populated /executive measures these directly and will fail.
   const getPriorityConfig = (priority: string) => {
     switch (priority) {
       case 'immediate':
         return {
           icon: AlertTriangle,
-          color: 'text-red-600',
+          color: 'text-red-700',
           bgColor: 'bg-red-100',
           borderColor: 'border-red-200',
         }
       case 'high':
         return {
           icon: AlertCircle,
-          color: 'text-orange-600',
+          color: 'text-orange-800',
           bgColor: 'bg-orange-100',
           borderColor: 'border-orange-200',
         }
       case 'medium':
         return {
           icon: Info,
-          color: 'text-amber-700 dark:text-amber-400',
+          color: 'text-amber-800',
           bgColor: 'bg-yellow-100',
           borderColor: 'border-yellow-200',
         }
       case 'low':
         return {
           icon: CheckCircle2,
-          color: 'text-blue-600',
+          color: 'text-blue-700',
           bgColor: 'bg-blue-100',
           borderColor: 'border-blue-200',
         }
@@ -56,19 +76,15 @@ export function ActionItems({ recommendations, topRisks, onProjectClick }: Actio
     }
   }
 
+  // Unlike getPriorityConfig above, this IS the Severity union, so it uses lib/severity's tokens.
+  // It has to: its two consumers render on DIFFERENT surfaces. `badgeClass` fills the small icon
+  // box with an AA-verified fg/bg pair, while `textClass` colors the risk score sitting directly
+  // on the theme-aware `bg-muted` row. A single hardcoded shade cannot satisfy both — darkening
+  // the text for the light icon box drove the score to 2.21:1 on the dark row, which is what the
+  // /executive contrast sweep caught. The tokens resolve per theme, so each surface stays AA.
   const getSeverityConfig = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return { color: 'text-red-600', bgColor: 'bg-red-100' }
-      case 'high':
-        return { color: 'text-orange-600', bgColor: 'bg-orange-100' }
-      case 'medium':
-        return { color: 'text-amber-700 dark:text-amber-400', bgColor: 'bg-yellow-100' }
-      case 'low':
-        return { color: 'text-green-600', bgColor: 'bg-green-100' }
-      default:
-        return { color: 'text-gray-600', bgColor: 'bg-gray-100' }
-    }
+    const normalized = normalizeSeverity(severity)
+    return { badgeClass: getSeverityClass(normalized), textClass: getSeverityTextClass(normalized) }
   }
 
   const topRecommendations = recommendations.slice(0, 5)
@@ -120,8 +136,8 @@ export function ActionItems({ recommendations, topRisks, onProjectClick }: Actio
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <div className={`p-1 rounded ${config.bgColor}`}>
-                    <AlertTriangle className={`w-3 h-3 ${config.color}`} />
+                  <div className={`p-1 rounded ${config.badgeClass}`}>
+                    <AlertTriangle className="w-3 h-3" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-foreground truncate">{risk.projectName}</div>
@@ -129,7 +145,7 @@ export function ActionItems({ recommendations, topRisks, onProjectClick }: Actio
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold ${config.color}`}>{risk.risk}</span>
+                  <span className={`text-xs font-semibold ${config.textClass}`}>{risk.risk}</span>
                   <ArrowRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 </div>
               </div>
