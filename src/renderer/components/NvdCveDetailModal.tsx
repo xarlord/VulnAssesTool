@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { toast } from './Toaster'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { getSeverityClass, getSeverityTextClass, type Severity } from '@/lib/severity'
 
 // Types matching the database types
 interface CpeMatchFull {
@@ -100,21 +101,13 @@ const REFERENCE_TAG_COLORS: Record<string, { bg: string; text: string; border: s
   default: { bg: 'bg-muted', text: 'text-muted-foreground', border: 'border-border' },
 }
 
-const SEVERITY_COLORS = {
-  CRITICAL: 'text-red-600',
-  HIGH: 'text-orange-700 dark:text-orange-400',
-  MEDIUM: 'text-amber-700 dark:text-amber-400',
-  LOW: 'text-green-600',
-  NONE: 'text-muted-foreground',
-}
-
-const SEVERITY_BG_COLORS = {
-  CRITICAL: 'bg-red-100',
-  HIGH: 'bg-orange-100',
-  MEDIUM: 'bg-yellow-100',
-  LOW: 'bg-green-100',
-  NONE: 'bg-muted',
-}
+// Severity colors come from lib/severity's token classes, never from raw palette strings.
+// This file previously hand-rolled `text-red-600` / `bg-red-100` maps — precisely the
+// anti-pattern getSeverityClass' docs call out and severity.test.ts pins ("never a raw
+// dual-mode palette string"). Those maps failed WCAG AA in both themes: CRITICAL was 3.95:1,
+// LOW was 3.00:1 in light mode, and HIGH/MEDIUM were worst of all at ~1.98:1 because they had
+// dark TEXT variants with no matching dark BACKGROUND. The token classes resolve to AA-verified
+// fg/bg pairs per theme, so the guarantee lives in one tested place.
 
 // Parse CPE URI to extract readable info
 const parseCpe = (cpeUri: string): { vendor: string; product: string; version: string } => {
@@ -331,15 +324,20 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
     }
   }
 
-  const getSeverityColor = (severity: string) => {
-    const s = severity?.toUpperCase() as keyof typeof SEVERITY_COLORS
-    return SEVERITY_COLORS[s] || SEVERITY_COLORS.LOW
+  // The Severity union is lowercase, so normalize (falling back to 'none' for
+  // unrecognized/missing values) before looking up the token class — same approach as
+  // Search.tsx:420, which feeds these same NVD-sourced uppercase severity strings.
+  const normalizeSeverity = (severity?: string): Severity => {
+    const s = severity?.toLowerCase()
+    if (s === 'critical' || s === 'high' || s === 'medium' || s === 'low' || s === 'none') return s
+    return 'none'
   }
 
-  const getSeverityBgColor = (severity: string) => {
-    const s = severity?.toUpperCase() as keyof typeof SEVERITY_BG_COLORS
-    return SEVERITY_BG_COLORS[s] || SEVERITY_BG_COLORS.LOW
-  }
+  /** Filled pill: token-backed background + its paired foreground. */
+  const getSeverityColor = (severity: string) => getSeverityClass(normalizeSeverity(severity))
+
+  /** Text-only severity color, for a colored score/label with no background. */
+  const getSeverityTextOnly = (severity: string) => getSeverityTextClass(normalizeSeverity(severity))
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -388,14 +386,12 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                     )}
                   </button>
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${getSeverityBgColor(cve.severity)} ${getSeverityColor(cve.severity)}`}
+                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${getSeverityColor(cve.severity)}`}
                   >
                     {cve.severity.toUpperCase()}
                   </span>
                   {cve.cvssScore !== undefined && cve.cvssScore > 0 && (
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-bold ${getSeverityBgColor(cve.severity)} ${getSeverityColor(cve.severity)}`}
-                    >
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${getSeverityColor(cve.severity)}`}>
                       {t('header.cvssBadge', { score: cve.cvssScore.toFixed(1) })}
                     </span>
                   )}
@@ -544,13 +540,13 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                       {t('cvss.multiTable.versionPrefix', { version: metric.version })}
                                     </td>
                                     <td className="p-2 border border-border text-center">
-                                      <span className={`text-lg font-bold ${getSeverityColor(metric.severity)}`}>
+                                      <span className={`text-lg font-bold ${getSeverityTextOnly(metric.severity)}`}>
                                         {metric.score.toFixed(1)}
                                       </span>
                                     </td>
                                     <td className="p-2 border border-border">
                                       <span
-                                        className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityBgColor(metric.severity)} ${getSeverityColor(metric.severity)}`}
+                                        className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityColor(metric.severity)}`}
                                       >
                                         {metric.severity}
                                       </span>
@@ -571,12 +567,12 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                               {t('cvss.v31.heading')}
                             </span>
                             <span
-                              className={`text-2xl font-bold ${getSeverityColor(cve.cvssV31Severity || cve.severity)}`}
+                              className={`text-2xl font-bold ${getSeverityTextOnly(cve.cvssV31Severity || cve.severity)}`}
                             >
                               {cve.cvssV31Score.toFixed(1)}
                             </span>
                             <span
-                              className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityBgColor(cve.cvssV31Severity || cve.severity)} ${getSeverityColor(cve.cvssV31Severity || cve.severity)}`}
+                              className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityColor(cve.cvssV31Severity || cve.severity)}`}
                             >
                               {cve.cvssV31Severity || cve.severity}
                             </span>
@@ -630,12 +626,12 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                               {t('cvss.v30.heading')}
                             </span>
                             <span
-                              className={`text-2xl font-bold ${getSeverityColor(cve.cvssV30Severity || cve.severity)}`}
+                              className={`text-2xl font-bold ${getSeverityTextOnly(cve.cvssV30Severity || cve.severity)}`}
                             >
                               {cve.cvssV30Score.toFixed(1)}
                             </span>
                             <span
-                              className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityBgColor(cve.cvssV30Severity || cve.severity)} ${getSeverityColor(cve.cvssV30Severity || cve.severity)}`}
+                              className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityColor(cve.cvssV30Severity || cve.severity)}`}
                             >
                               {cve.cvssV30Severity || cve.severity}
                             </span>
@@ -689,12 +685,12 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                               {t('cvss.v2.heading')}
                             </span>
                             <span
-                              className={`text-2xl font-bold ${getSeverityColor(cve.cvssV2Severity || cve.severity)}`}
+                              className={`text-2xl font-bold ${getSeverityTextOnly(cve.cvssV2Severity || cve.severity)}`}
                             >
                               {cve.cvssV2Score.toFixed(1)}
                             </span>
                             <span
-                              className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityBgColor(cve.cvssV2Severity || cve.severity)} ${getSeverityColor(cve.cvssV2Severity || cve.severity)}`}
+                              className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getSeverityColor(cve.cvssV2Severity || cve.severity)}`}
                             >
                               {cve.cvssV2Severity || cve.severity}
                             </span>
