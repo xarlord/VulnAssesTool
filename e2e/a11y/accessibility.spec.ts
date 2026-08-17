@@ -78,6 +78,79 @@ test.describe('Accessibility — axe-core (WCAG 2.1 AA)', () => {
     })
   }
 
+  /**
+   * WCAG AA contrast, measured from composited colors rather than via axe.
+   *
+   * axe cannot judge the NVD CVE modal: its surface uses a background gradient, so
+   * `color-contrast` returns 21 nodes as *incomplete* ("background color could not be
+   * determined due to a background gradient") instead of as violations — including the very
+   * element that was broken. An axe assertion here would be a gate that can never fail, so
+   * the ratio is computed directly from `getComputedStyle` instead.
+   */
+  function relativeLuminance(color: string): number {
+    const match = color.match(/rgba?\(([^)]+)\)/)
+    if (!match) throw new Error(`Unparseable computed color: ${color}`)
+    const [r, g, b] = match[1].split(',').map((part) => Number.parseFloat(part.trim()))
+    const channel = (value: number): number => {
+      const s = value / 255
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+  }
+
+  function contrastRatio(foreground: string, background: string): number {
+    const a = relativeLuminance(foreground)
+    const b = relativeLuminance(background)
+    const [lighter, darker] = a >= b ? [a, b] : [b, a]
+    return (lighter + 0.05) / (darker + 0.05)
+  }
+
+  // The CPE configuration cards in the NVD CVE modal paired hardcoded light-mode surfaces
+  // (bg-red-50 / bg-green-50) with theme-aware text tokens (text-foreground /
+  // text-muted-foreground). In dark mode — the default theme — that rendered the product
+  // name near-white on near-white: measured 1.04:1 where WCAG AA requires 4.5:1, making the
+  // affected package name effectively invisible. This asserts the composited ratio so the
+  // pairing cannot regress; the modal is unreachable from CORE_PAGES (it needs a search
+  // result click), which is why no existing scan caught it.
+  test('NVD CVE modal CPE cards meet WCAG AA contrast in dark mode', async ({ page }) => {
+    await page.goto('/search', { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('#root:not(:empty)', { timeout: 15000 }).catch(() => {})
+    await page.click('button:has-text("NVD Database")')
+
+    // CVE-2024-3094 is seeded with exactly 2 vulnerable CPE matches (scripts/seed-test-db.js),
+    // so the "Affected Software" cards genuinely render. A full id is used because a bare
+    // year prefix relies on description cross-references the seed fixture lacks.
+    await page.fill('input[placeholder*="CVE ID"]', 'CVE-2024-3094')
+    await page.locator('[data-testid="nvd-result"]').first().click()
+    await expect(page.getByRole('heading', { name: 'Affected Software (2 configurations)' })).toBeVisible({
+      timeout: 15000,
+    })
+
+    const theme = await page.evaluate(() => document.documentElement.className)
+    expect(theme, 'this test is specifically about the dark theme').toContain('dark')
+
+    const measured = await page.evaluate(() => {
+      const product = Array.from(document.querySelectorAll('span.font-bold')).find(
+        (span) => (span.textContent ?? '').trim() === 'xz',
+      )
+      if (!product) return null
+      const card = product.closest('div.rounded-lg')
+      return {
+        color: getComputedStyle(product).color,
+        background: card ? getComputedStyle(card).backgroundColor : '',
+      }
+    })
+
+    expect(measured, 'the affected-product name should render inside a CPE card').not.toBeNull()
+    if (!measured) throw new Error('CPE product name not found')
+
+    const ratio = contrastRatio(measured.color, measured.background)
+    expect(
+      ratio,
+      `CPE product name contrast was ${ratio.toFixed(2)}:1 (color ${measured.color} on ${measured.background}); WCAG AA requires >= 4.5:1`,
+    ).toBeGreaterThanOrEqual(4.5)
+  })
+
   // ProjectDetail and the dependency graph are dynamic (/project/:id[...]) routes,
   // so — unlike CORE_PAGES — they need a real, meaningfully-populated project
   // rather than a static path. Seeded once via a real scan so the page renders its

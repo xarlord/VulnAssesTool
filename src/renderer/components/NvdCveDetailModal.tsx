@@ -776,7 +776,15 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                             match.versionEndIncluding ||
                             match.versionEndExcluding
                           return (
-                            <div key={match.id} className="rounded-lg border-2 border-red-200 bg-red-50 p-4">
+                            // The surface needs a dark variant because the content below uses
+                            // theme-aware tokens (text-foreground / text-muted-foreground). With a
+                            // light-only bg-red-50, dark mode put near-white text on near-white
+                            // (1.05:1). Opaque dark:bg-red-950 rather than an alpha tint so the
+                            // composited contrast is measurable, not blended with whatever is behind.
+                            <div
+                              key={match.id}
+                              className="rounded-lg border-2 border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950"
+                            >
                               <div className="flex items-start gap-3">
                                 <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
                                 <div className="flex-1 min-w-0">
@@ -802,7 +810,7 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                     <span className="text-xs font-semibold text-muted-foreground uppercase">
                                       {t('cpe.affectedVersionsLabel')}
                                     </span>
-                                    <span className="text-sm text-red-700 font-medium">
+                                    <span className="text-sm text-red-700 font-medium dark:text-red-300">
                                       {hasVersionRange
                                         ? formatVersionRange(match, t)
                                         : t('cpe.versionFallback', { version: parsed.version })}
@@ -858,9 +866,11 @@ export function NvdCveDetailModal({ cveId, open, onClose }: NvdCveDetailModalPro
                                 return (
                                   <div
                                     key={match.id}
-                                    className="rounded border border-green-200 bg-green-50 p-2 text-sm"
+                                    className="rounded border border-green-200 bg-green-50 p-2 text-sm dark:border-green-800 dark:bg-green-950"
                                   >
-                                    <span className="font-medium text-green-700">{parsed.product}</span>
+                                    <span className="font-medium text-green-700 dark:text-green-300">
+                                      {parsed.product}
+                                    </span>
                                     <span className="text-muted-foreground">
                                       {' '}
                                       {t('cpe.notAffectedSuffix', { version: parsed.version })}
