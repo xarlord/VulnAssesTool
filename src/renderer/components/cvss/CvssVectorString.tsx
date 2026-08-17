@@ -76,7 +76,7 @@ export function CvssVectorString({ breakdown, showLegend = true, showSubScores =
               {t('subScores.impactTitle')}
             </div>
             <div className="text-2xl font-bold text-blue-800">{breakdown.scores.impactSubScore}</div>
-            <div className="text-xs text-blue-500 mt-1">{t('subScores.impactDescription')}</div>
+            <div className="text-xs text-blue-700 mt-1">{t('subScores.impactDescription')}</div>
           </div>
           <div className="text-center p-3 rounded-lg bg-purple-50 border border-purple-200">
             <div className="text-xs text-purple-600 font-medium uppercase tracking-wide mb-1">

@@ -42,20 +42,20 @@ function getConfidenceColor(confidence: number): { bg: string; text: string; bad
     return {
       bg: 'bg-green-100',
       text: 'text-green-700',
-      badge: 'bg-green-500 text-white',
+      badge: 'bg-green-700 text-white',
     }
   }
   if (confidence >= 60) {
     return {
       bg: 'bg-yellow-100',
       text: 'text-yellow-700',
-      badge: 'bg-yellow-500 text-white',
+      badge: 'bg-yellow-700 text-white',
     }
   }
   return {
     bg: 'bg-red-100',
     text: 'text-red-700',
-    badge: 'bg-red-500 text-white',
+    badge: 'bg-red-700 text-white',
   }
 }
 
