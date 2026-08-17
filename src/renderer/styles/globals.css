@@ -84,8 +84,13 @@
     --severity-low-foreground: 144 61% 8%;
     --severity-none: 220 9% 60%;
     --severity-none-foreground: 222 47% 8%;
-    /* Text-only severity colors — bright hues read AA on the dark page */
-    --severity-critical-text: 0 72% 51%;
+    /* Text-only severity colors — bright hues read AA on the dark page.
+       critical was 51% lightness, which measured only 3.86:1 against the dark page
+       (hsl(0,72%,51%) = #dc2828 on #0e1320) and so failed AA's 4.5:1 despite the note
+       above; high/medium/low already clear it (7.4:1, ~9:1, ~10.7:1). Raised to 63%
+       lightness only — same hue and saturation, so the severity identity is unchanged —
+       which measures 5.35:1. */
+    --severity-critical-text: 0 72% 63%;
     --severity-high-text: 25 95% 58%;
     --severity-medium-text: 45 93% 58%;
     --severity-low-text: 142 69% 58%;

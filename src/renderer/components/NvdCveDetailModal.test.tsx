@@ -816,17 +816,22 @@ describe('NvdCveDetailModal', () => {
   })
 
   describe('Severity Fallback Handling', () => {
-    it('should fall back to LOW styling for an unrecognized severity value instead of breaking', async () => {
+    it('should fall back to the neutral NONE token for an unrecognized severity value instead of breaking', async () => {
       const data = { ...mockCveData, severity: 'UNKNOWN' }
       vi.mocked(getPlatform().database.getCveFull).mockResolvedValue({ success: true, cve: data })
 
       renderModal(true)
 
-      // A severity value outside the known set must degrade gracefully to the
-      // least-alarming color rather than rendering an undefined CSS class.
+      // A severity outside the known set must still degrade gracefully rather than render an
+      // undefined CSS class. It now resolves to the neutral `severity-none` token rather than
+      // LOW's green: 'none' is the least-alarming choice and honestly represents "unknown",
+      // and it matches how Search.tsx normalizes these same NVD-sourced strings. The second
+      // assertion is the point of the change — the old raw `text-green-600`/`bg-green-100`
+      // pair measured 3.00:1 in light mode, so no raw palette class may come back here; only
+      // the token, which globals.css keeps WCAG-AA in both themes (see severity.test.ts).
       const badge = await screen.findByText('UNKNOWN')
-      expect(badge.className).toContain('text-green-600')
-      expect(badge.className).toContain('bg-green-100')
+      expect(badge.className).toContain('severity-none')
+      expect(badge.className).not.toMatch(/(text|bg)-(red|orange|amber|yellow|green)-\d{2,3}/)
     })
 
     it('should fall back to the overall CVE severity when a per-version severity is missing', async () => {

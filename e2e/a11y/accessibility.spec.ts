@@ -151,6 +151,32 @@ test.describe('Accessibility — axe-core (WCAG 2.1 AA)', () => {
     ).toBeGreaterThanOrEqual(4.5)
   })
 
+  // Severity pills inside the NVD CVE modal DO have solid backgrounds, so — unlike the
+  // gradient-backed body text, which axe can only report as `incomplete` — axe can compute
+  // their contrast and this is a gate that can genuinely fail. It caught 5 real violations:
+  // the `--severity-critical-text` token at 3.86:1, and `bg-red-100 text-red-600` pills at
+  // 3.95:1. The modal is unreachable from CORE_PAGES (it needs a search-result click) and
+  // /search is scanned WITHOUT searching, so no result badge is ever in an existing scan.
+  test('NVD CVE modal has no critical or serious accessibility violations', async ({ page }, testInfo) => {
+    await page.goto('/search', { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('#root:not(:empty)', { timeout: 15000 }).catch(() => {})
+    await page.click('button:has-text("NVD Database")')
+    await page.fill('input[placeholder*="CVE ID"]', 'CVE-2024-3094')
+    await page.locator('[data-testid="nvd-result"]').first().click()
+    await expect(page.getByRole('heading', { name: 'Affected Software (2 configurations)' })).toBeVisible({
+      timeout: 15000,
+    })
+
+    const violations = await analyzePage(page)
+    await testInfo.attach('axe-nvd-cve-modal.json', {
+      body: JSON.stringify(violations, null, 2),
+      contentType: 'application/json',
+    })
+
+    const blocking = violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
+    expect(blocking, `Critical/serious a11y violations in the NVD CVE modal:\n${summarize(blocking)}`).toEqual([])
+  })
+
   // ProjectDetail and the dependency graph are dynamic (/project/:id[...]) routes,
   // so — unlike CORE_PAGES — they need a real, meaningfully-populated project
   // rather than a static path. Seeded once via a real scan so the page renders its
