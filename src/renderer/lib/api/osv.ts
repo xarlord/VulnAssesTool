@@ -233,8 +233,22 @@ async function convertOsvVulnerabilityToVulnerability(
  * @param nvdApiKey - Optional NVD API key for CVE enrichment
  * @returns Array of vulnerabilities
  */
+/**
+ * Resolve an OSV endpoint into an absolute URL.
+ *
+ * `OSV_API_BASE_URL` is the RELATIVE proxy path `/api/osv` whenever the app is served over
+ * http/https (src/shared/constants.ts), and `new URL()` rejects a bare relative path with
+ * `TypeError: Invalid URL` — which silently broke every OSV lookup in the web app. Passing the
+ * page origin as the base fixes the relative case; an absolute base is unaffected, because
+ * `new URL()` ignores the base when the input is already absolute.
+ */
+function osvUrl(path: string): URL {
+  const origin = typeof window !== 'undefined' && window.location ? window.location.origin : undefined
+  return new URL(path, origin)
+}
+
 export async function queryByPurl(purl: string, nvdApiKey?: string): Promise<Vulnerability[]> {
-  const url = new URL(`${OSV_API_BASE_URL}/query`)
+  const url = osvUrl(`${OSV_API_BASE_URL}/query`)
   const requestBody = {
     package: {
       purl,
@@ -275,7 +289,7 @@ export async function queryByPurl(purl: string, nvdApiKey?: string): Promise<Vul
  * @returns The vulnerability or null if not found
  */
 export async function getVulnerabilityById(vulnId: string, nvdApiKey?: string): Promise<Vulnerability | null> {
-  const url = new URL(`${OSV_API_BASE_URL}/vulns/${vulnId}`)
+  const url = osvUrl(`${OSV_API_BASE_URL}/vulns/${vulnId}`)
 
   try {
     const response = await fetch(url.toString(), { headers: buildOsvHeaders() })

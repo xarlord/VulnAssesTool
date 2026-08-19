@@ -93,10 +93,13 @@ export function ProjectDetail() {
   // (vulnerabilities/components are stripped from localStorage by partialize)
   React.useEffect(() => {
     if (!projectId) return
+    // Deliberately NOT gated on `project.lastScanAt`: components exist as soon as an SBOM is
+    // uploaded, before any scan has run. Requiring lastScanAt meant an uploaded-but-never-scanned
+    // project never got its stripped arrays back after a reload, so it showed 0 components and
+    // "Scan for Vulnerabilities" stayed disabled — unscannable forever, with no escape from the UI.
     const needsHydration =
       project &&
       project.id === projectId &&
-      project.lastScanAt &&
       (!project.vulnerabilities || project.vulnerabilities.length === 0) &&
       (!project.components || project.components.length === 0)
     if (needsHydration) {

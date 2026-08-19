@@ -8,6 +8,7 @@
  */
 
 import type { Vulnerability } from '@@/types'
+import type { KevEntry } from '@@/types/ipc'
 import { getPlatform } from '@/lib/platform'
 import { calculateRiskScore, type Severity } from '../riskScore'
 
@@ -114,22 +115,40 @@ export async function enrichVulnerabilities(
     }
   }
 
-  // Batch check KEV status (we need to check each individually, but can parallelize)
+  // Batch KEV in ONE request. This used to call checkKev + getKevDetails per CVE inside the
+  // Promise.all below, so a 132-CVE scan fired ~264 concurrent requests, blew the server rate
+  // limit (300/min) and logged "Too many requests" for most CVEs — KEV flags silently missing.
+  const kevResults: Map<string, { isKev: boolean; entry: KevEntry | null }> = new Map()
+  if (opts.includeKev) {
+    const needKev = vulnerabilities.filter((v) => !v.isKev).map((v) => v.id)
+    if (needKev.length > 0) {
+      opts.onProgress?.(`Checking KEV status for ${needKev.length} vulnerabilities...`)
+      try {
+        const response = await getPlatform().intelligence.checkKevBatch(needKev)
+        if (response.success) {
+          for (const [cveId, result] of Object.entries(response.results)) {
+            kevResults.set(cveId, result)
+          }
+        }
+      } catch (error) {
+        console.error('[Intelligence] Failed to batch check KEV status:', error)
+      }
+    }
+  }
+  // Batch check KEV status — now served from the single batched response above
   opts.onProgress?.(`Checking KEV status for ${vulnerabilities.length} vulnerabilities...`)
   const enriched: Vulnerability[] = await Promise.all(
     vulnerabilities.map(async (vuln) => {
       const result = { ...vuln }
 
       try {
-        // Get KEV status
+        // Use the pre-fetched KEV result (one batched request for the whole set)
         if (opts.includeKev && !vuln.isKev) {
-          const kevResponse = await getPlatform().intelligence.checkKev(vuln.id)
-          if (kevResponse.success && kevResponse.isKev) {
+          const kev = kevResults.get(vuln.id)
+          if (kev?.isKev) {
             result.isKev = true
-            // Get full KEV details
-            const detailsResponse = await getPlatform().intelligence.getKevDetails(vuln.id)
-            if (detailsResponse.success && detailsResponse.entry) {
-              result.kevDetails = detailsResponse.entry
+            if (kev.entry) {
+              result.kevDetails = kev.entry
             }
           }
         }

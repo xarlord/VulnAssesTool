@@ -121,6 +121,38 @@ describe('POST /api/intelligence/kev/check', () => {
   })
 })
 
+describe('POST /api/intelligence/kev/checks (batched)', () => {
+  // Exists because the per-CVE check+details pair made enrichment fire ~2 requests per CVE, so a
+  // 132-CVE scan tripped the 300/min rate limiter and KEV flags went silently missing. This must
+  // answer BOTH questions for MANY ids in ONE request, so callers never need a second round trip.
+  it('returns isKev and the full entry for every requested CVE in one request', async () => {
+    insertKevEntry('CVE-2024-9001', true)
+    const res = await request(app)
+      .post('/api/intelligence/kev/checks')
+      .send({ cveIds: ['CVE-2024-9001', 'CVE-0000-0000'] })
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.results['CVE-2024-9001'].isKev).toBe(true)
+    expect(res.body.results['CVE-2024-9001'].entry).not.toBeNull()
+    expect(res.body.results['CVE-2024-9001'].entry.cveId).toBe('CVE-2024-9001')
+    expect(res.body.results['CVE-0000-0000']).toEqual({ isKev: false, entry: null })
+  })
+
+  it('answers an empty batch without error', async () => {
+    const res = await request(app).post('/api/intelligence/kev/checks').send({ cveIds: [] })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true, results: {} })
+  })
+
+  // Same graceful-degradation contract as the rest of this router: never throw, encode failure
+  // in the body, so a malformed client payload cannot break a whole scan.
+  it('degrades gracefully (success:false) when cveIds is not an array', async () => {
+    const res = await request(app).post('/api/intelligence/kev/checks').send({ cveIds: 'nope' })
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(false)
+    expect(res.body.results).toEqual({})
+  })
+})
 describe('POST /api/intelligence/kev/details', () => {
   // Pins the full-entry lookup used by the vulnerability detail modal: found vs. not-found must
   // be distinguishable (entry object vs. entry:null), both under success:true.

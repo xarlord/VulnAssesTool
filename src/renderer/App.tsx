@@ -131,6 +131,14 @@ export function App() {
     document.documentElement.style.fontSize = fontSizes[settings.fontSize]
   }, [settings.fontSize])
 
+  // Pull the server list of projects once on boot. The store persists projects to localStorage
+  // and mirrors writes to the server, but nothing ever read the list back, so a fresh browser or
+  // cleared site data showed an empty app while the server still held every project. Summary mode
+  // keeps this cheap (kilobytes, not the 18 MB the full list weighs); each project fetches its own
+  // scan data when opened. Fire-and-forget: a failure here must not block rendering.
+  React.useEffect(() => {
+    void useStore.getState().hydrateProjectsFromServer()
+  }, [])
   // Automatic vulnerability-refresh scheduler (FR-03.6). Started once on mount; it reads live
   // store state on every tick (via getState) so it reacts to settings/project changes without
   // re-arming the interval on each render.

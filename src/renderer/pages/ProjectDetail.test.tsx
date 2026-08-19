@@ -3885,4 +3885,91 @@ describe('ProjectDetail', () => {
       expect(screen.queryByText('CVE-P2')).not.toBeInTheDocument()
     })
   })
+
+  describe('server hydration of stripped scan data', () => {
+    // The store's `partialize` strips components/vulnerabilities out of localStorage, so after a
+    // reload the only copy lives on the server. Observed in the running app: upload an SBOM,
+    // reload, and the project showed 0 components with "Scan for Vulnerabilities" permanently
+    // DISABLED — because hydration was gated on `project.lastScanAt`, which stays null until a
+    // scan has run. That leaves an uploaded-but-never-scanned project unscannable forever, a dead
+    // end with no UI escape. Components can exist with no scan, so the gate must not require one.
+    it('hydrates a project whose SBOM was uploaded but never scanned (no lastScanAt)', async () => {
+      const mockHydrate = vi.fn().mockResolvedValue(null)
+      mockUseParams.mockReturnValue({ projectId: 'stripped-project' })
+      mockUseStore.mockReturnValue({
+        projects: [
+          createMockProject({ id: 'stripped-project', lastScanAt: undefined, components: [], vulnerabilities: [] }),
+        ],
+        currentProject: null,
+        updateProject: mockUpdateProject,
+        deleteProject: mockDeleteProject,
+        setCurrentProject: mockSetCurrentProject,
+        addProject: vi.fn(),
+        hydrateProjectFromServer: mockHydrate,
+        refreshingProjectIds: new Set(),
+        setRefreshingProject: vi.fn(),
+        settings: {
+          theme: 'system',
+          fontSize: 'default',
+          dataRetentionDays: 30,
+          autoRefresh: false,
+          autoRefreshInterval: 24,
+          vulnDataCacheTTL: 1,
+        },
+        updateSettings: vi.fn(),
+      } as any)
+
+      render(
+        <MemoryRouter>
+          <ProjectDetail />
+        </MemoryRouter>,
+      )
+
+      await waitFor(() => {
+        expect(mockHydrate).toHaveBeenCalledWith('stripped-project')
+      })
+    })
+
+    it('still hydrates a previously scanned project whose arrays were stripped', async () => {
+      const mockHydrate = vi.fn().mockResolvedValue(null)
+      mockUseParams.mockReturnValue({ projectId: 'scanned-project' })
+      mockUseStore.mockReturnValue({
+        projects: [
+          createMockProject({
+            id: 'scanned-project',
+            lastScanAt: new Date('2024-01-03'),
+            components: [],
+            vulnerabilities: [],
+          }),
+        ],
+        currentProject: null,
+        updateProject: mockUpdateProject,
+        deleteProject: mockDeleteProject,
+        setCurrentProject: mockSetCurrentProject,
+        addProject: vi.fn(),
+        hydrateProjectFromServer: mockHydrate,
+        refreshingProjectIds: new Set(),
+        setRefreshingProject: vi.fn(),
+        settings: {
+          theme: 'system',
+          fontSize: 'default',
+          dataRetentionDays: 30,
+          autoRefresh: false,
+          autoRefreshInterval: 24,
+          vulnDataCacheTTL: 1,
+        },
+        updateSettings: vi.fn(),
+      } as any)
+
+      render(
+        <MemoryRouter>
+          <ProjectDetail />
+        </MemoryRouter>,
+      )
+
+      await waitFor(() => {
+        expect(mockHydrate).toHaveBeenCalledWith('scanned-project')
+      })
+    })
+  })
 })
