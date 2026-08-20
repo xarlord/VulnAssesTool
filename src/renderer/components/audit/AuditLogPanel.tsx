@@ -143,7 +143,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
         <div className="flex items-center gap-2">
           <Activity className="w-5 h-5 text-blue-600" />
           <h2 className="text-lg font-semibold">{t('header.title')}</h2>
-          <span className="text-sm text-gray-500">{t('header.eventCount', { count: totalCount })}</span>
+          <span className="text-sm text-muted-foreground">{t('header.eventCount', { count: totalCount })}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -326,7 +326,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
           <tbody>
             {events.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                   {t('table.noEvents')}
                 </td>
               </tr>
@@ -335,7 +335,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                 <tr key={event.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-900">
                   <td className="px-4 py-2 text-sm">
                     <div>{new Date(event.timestamp).toLocaleString()}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
                     </div>
                   </td>
@@ -346,10 +346,10 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
                   </td>
                   <td className="px-4 py-2 text-sm">
                     <div className="font-medium capitalize">{event.entityType}</div>
-                    <div className="text-xs text-gray-500 font-mono">{event.entityId.substring(0, 12)}...</div>
+                    <div className="text-xs text-muted-foreground font-mono">{event.entityId.substring(0, 12)}...</div>
                   </td>
                   <td className="px-4 py-2 text-sm max-w-md truncate">{event.metadata?.description || '-'}</td>
-                  <td className="px-4 py-2 text-sm font-mono text-xs text-gray-500">
+                  <td className="px-4 py-2 text-sm font-mono text-xs text-muted-foreground">
                     {event.sessionId.substring(0, 8)}...
                   </td>
                 </tr>
@@ -362,7 +362,7 @@ export function AuditLogPanel({ className, entityId, entityType }: AuditLogPanel
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-muted-foreground">
             {t('pagination.showing', {
               start: (currentPage - 1) * pageSize + 1,
               end: Math.min(currentPage * pageSize, totalCount),
