@@ -54,7 +54,8 @@ const SBOM_WITH_VULNS = path.join(import.meta.dirname, '..', 'fixtures', 'sbom-w
  * Create a project, upload the log4j/express SBOM fixture, and run a real scan against the
  * seeded offline NVD DB. Every vulnerability that reaches the UI is already KEV/risk-enriched
  * (useProjectScan.ts:119 awaits enrichVulnerabilities before writing project state), so no
- * extra wait is needed beyond the "Vulnerabilities (4)" heading.
+ * extra wait is needed beyond the vulnerability-count heading (asserted as a floor, since live
+ * OSV advisories can push the count above the 4 NVD matches).
  */
 async function scanLog4jProject(page: Page, projectName: string): Promise<void> {
   await createTestProject(page, projectName)
@@ -65,9 +66,22 @@ async function scanLog4jProject(page: Page, projectName: string): Promise<void> 
   await scanButton.click()
 
   await navigateToVulnerabilitiesTab(page)
-  await expect(page.locator('#main-content').getByRole('heading', { name: 'Vulnerabilities (4)' })).toBeVisible({
-    timeout: 120_000,
-  })
+  // A FLOOR, not an exact count, and polled. OSV is queried live alongside the local NVD
+  // mirror, so osv.dev can add advisories for these packages at any time; waiting on an exact
+  // (4) never matched once OSV started resolving, and all ten tests in this file burned their
+  // full timeout here. The count also climbs as the scan resolves each component, so a single
+  // read would race it. >= 4 still proves every NVD-known match landed before the assertions.
+  const vulnHeading = page.locator('#main-content').getByRole('heading', { name: /^Vulnerabilities [(][0-9]+[)]$/ })
+  await expect(vulnHeading).toBeVisible({ timeout: 120_000 })
+  await expect
+    .poll(
+      async () => {
+        const countText = (await vulnHeading.textContent()) ?? ''
+        return Number(/[(]([0-9]+)[)]/.exec(countText)?.[1] ?? '0')
+      },
+      { timeout: 120_000 },
+    )
+    .toBeGreaterThanOrEqual(4)
 }
 
 /**
