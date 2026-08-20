@@ -1771,6 +1771,70 @@ describe('searchCVEsByText with FTS5', () => {
   it('returns empty for a punctuation-only query rather than erroring', () => {
     expect(instance.searchCVEsByText('---')).toEqual([])
   })
+
+  it('routes free text through the FTS index instead of a full scan of cves (NFR-02.5)', () => {
+    // WHY this has to assert the QUERY PLAN and not the results: searchCVEsByText has three
+    // tiers, and tier 2 (FTS MATCH) and tier 3 (LIKE %term% over cves) return the SAME rows
+    // for these fixtures. Every other test in this describe therefore passes whether or not
+    // the FTS index is used, so a silent fall-through to the LIKE tier — a dropped cves_fts
+    // table, a migration that stops creating it, an FTS syntax error swallowed by the catch in
+    // nvdDb.ts:886 — is completely invisible to them. That fall-through is the exact regression
+    // NFR-02.5 exists to prevent: the LIKE tier is a full table scan whose cost grows with row
+    // count, while an FTS lookup stays flat, which is what makes a 10GB database usable at all.
+    const rawDb = asAccess(instance).db as InstanceType<typeof Database>
+    const calls: Array<{ sql: string; args: unknown[] }> = []
+    // The spy must forward get/run too, not just all: searchCVEsByText calls isFTSAvailable,
+    // which probes sqlite_master with .get(), and a spy that only exposes .all() makes the
+    // production code throw instead of exercising the path under test.
+    type Stmt = {
+      all: (...p: unknown[]) => unknown[]
+      get: (...p: unknown[]) => unknown
+      run: (...p: unknown[]) => unknown
+    }
+    const capturable = rawDb as unknown as { prepare: (sql: string) => Stmt }
+    const originalPrepare = capturable.prepare.bind(capturable)
+    vi.spyOn(capturable, 'prepare').mockImplementation((sql: string) => {
+      const stmt = originalPrepare(sql)
+      return {
+        all: (...args: unknown[]) => {
+          calls.push({ sql, args })
+          return stmt.all(...args)
+        },
+        get: (...args: unknown[]) => stmt.get(...args),
+        run: (...args: unknown[]) => stmt.run(...args),
+      }
+    })
+
+    instance.searchCVEsByText('log4j')
+    vi.restoreAllMocks()
+
+    // Plan the statement the code actually issued, rather than a hand-copied copy of it, so the
+    // assertion cannot drift away from production SQL.
+    const ftsCall = calls.find((c) => c.sql.includes('cves_fts') && c.sql.includes('MATCH'))
+    expect(ftsCall, 'searchCVEsByText issued no FTS MATCH query — it fell through to the LIKE scan tier').toBeDefined()
+    if (!ftsCall) throw new Error('no FTS query captured')
+
+    const details = (
+      rawDb.prepare('EXPLAIN QUERY PLAN ' + ftsCall.sql).all(...ftsCall.args) as Array<{
+        detail: string
+      }>
+    ).map((r) => r.detail)
+
+    // SQLite words an FTS5 lookup as "SCAN cves_fts VIRTUAL TABLE INDEX 0:M2" — the token SCAN
+    // appears in a fully index-backed plan. So the sibling NFR-02.5 tests' blanket
+    // word-boundary SCAN rule is WRONG here and would fail on a correct plan. Assert that the
+    // virtual-table index is used, and separately that no REAL table is scanned end-to-end.
+    expect(details.some((d) => /VIRTUAL TABLE INDEX/i.test(d))).toBe(true)
+    // Plain string logic rather than a regex: a real-table scan is a step that STARTS with
+    // "SCAN", is not a virtual-table step, and names one of the two big tables.
+    const scansRealTable = details.some((d) => {
+      const step = d.toUpperCase()
+      if (!step.startsWith('SCAN ')) return false
+      if (step.includes('VIRTUAL TABLE')) return false
+      return step.includes('CVES') || step.includes('CPE_MATCHES')
+    })
+    expect(scansRealTable, 'plan scanned a real table: ' + details.join(' | ')).toBe(false)
+  })
 })
 
 // ===========================================================================

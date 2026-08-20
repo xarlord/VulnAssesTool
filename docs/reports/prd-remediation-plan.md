@@ -29,25 +29,25 @@ All 59 items were re-audited against the current code (branch off master, includ
 - **DONE at HEAD: ~44** (every FR/NFR/SR not listed in the gap table below)
 - **Genuinely remaining: 15** (4 OPEN, 11 PARTIAL) — the ONLY actionable work:
 
-| ID                  | real status    | remaining work                                                                                                                                             | kind       | effort            |
-| ------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------- |
-| ~~FR-03.6~~         | DONE (c5094d3) | shipped: autoRefreshScheduler.ts (interval + battery guard + new-critical toast), Settings interval select + battery toggle, pauseOnBattery setting, tests | product    | L                 |
-| ~~FR-04.3~~         | DONE (fcf24b8) | shipped: temporal E/RL/RC parsed in cvss/parser.ts + TemporalMetrics block in CvssMetricsGrid.tsx + tests                                                  | product    | M                 |
-| NFR-08.4            | PARTIAL        | BDD suite doesn't run: fix `test:bdd` script (points at nonexistent file), ESM/tsx loader for cucumber.mjs, wire into CI                                   | test infra | M                 |
-| NFR-07.1 / NFR-08.1 | PARTIAL        | coverage floors 84/75/87/85 → climb to PRD's 95%                                                                                                           | test       | L (multi-session) |
-| FR-02.3 (c)         | PARTIAL        | unit tests for handleRemoveSbom cascade (ProjectDetail.tsx:150)                                                                                            | test       | S                 |
-| FR-01.1             | PARTIAL        | 1,000-concurrent-project capacity perf test                                                                                                                | test       | S                 |
-| FR-10.1             | PARTIAL        | e2e: system-theme via emulateMedia; font-size reload persistence                                                                                           | test       | S                 |
-| NFR-01.1            | OPEN           | startup <3s test against a production build (time-to-content-marker)                                                                                       | test       | S                 |
-| NFR-01.3            | PARTIAL        | realistic-latency scan companion test (<60s API budget)                                                                                                    | test       | S                 |
-| NFR-01.4            | OPEN           | 100-project dashboard render <2s test                                                                                                                      | test       | S                 |
-| NFR-01.6            | OPEN           | 100ms interaction-latency test (median of N: Ctrl+K, sidebar toggle)                                                                                       | test       | S                 |
-| NFR-02.2            | OPEN           | 50,000-item VirtualList test                                                                                                                               | test       | S                 |
-| NFR-02.3            | PARTIAL        | 1,000,000-row query-correctness test (searchCVEsByText et al.)                                                                                             | test       | M                 |
-| NFR-02.5            | PARTIAL        | EXPLAIN-plan (no full-scan) assertions for searchCVEsByCPE/searchCVEsByProduct                                                                             | test       | S                 |
-| NFR-04.5            | PARTIAL        | add ProjectDetail (+ VEX/graph) routes to a11y CORE_PAGES                                                                                                  | test       | S                 |
+| ID                  | real status    | remaining work                                                                                                                                                  | kind    | effort |
+| ------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ |
+| ~~FR-03.6~~         | DONE (c5094d3) | shipped: autoRefreshScheduler.ts (interval + battery guard + new-critical toast), Settings interval select + battery toggle, pauseOnBattery setting, tests      | product | L      |
+| ~~FR-04.3~~         | DONE (fcf24b8) | shipped: temporal E/RL/RC parsed in cvss/parser.ts + TemporalMetrics block in CvssMetricsGrid.tsx + tests                                                       | product | M      |
+| NFR-08.4            | PARTIAL        | STALE TEXT: the BDD suite RUNS in CI and is green (82 scenarios / 392 steps). Remaining scope is scenario breadth (@wip/@ui excluded), not a broken script      | test    | M      |
+| NFR-07.1 / NFR-08.1 | PARTIAL        | STALE TEXT: coverage is now 95.24 stmts / 89.70 branch / 94.16 func / 96.06 lines (floors 94/88/93/95). Only branches and functions are still under the PRD 95% | test    | M      |
+| FR-02.3 (c)         | PARTIAL        | unit tests for handleRemoveSbom cascade (ProjectDetail.tsx:150)                                                                                                 | test    | S      |
+| FR-01.1             | PARTIAL        | 1,000-concurrent-project capacity perf test                                                                                                                     | test    | S      |
+| FR-10.1             | PARTIAL        | e2e: system-theme via emulateMedia; font-size reload persistence                                                                                                | test    | S      |
+| NFR-01.1            | OPEN           | startup <3s test against a production build (time-to-content-marker)                                                                                            | test    | S      |
+| NFR-01.3            | PARTIAL        | realistic-latency scan companion test (<60s API budget)                                                                                                         | test    | S      |
+| NFR-01.4            | OPEN           | 100-project dashboard render <2s test                                                                                                                           | test    | S      |
+| NFR-01.6            | OPEN           | 100ms interaction-latency test (median of N: Ctrl+K, sidebar toggle)                                                                                            | test    | S      |
+| NFR-02.2            | OPEN           | 50,000-item VirtualList test                                                                                                                                    | test    | S      |
+| NFR-02.3            | PARTIAL        | 1,000,000-row query-correctness test (searchCVEsByText et al.)                                                                                                  | test    | M      |
+| NFR-02.5            | DONE           | EXPLAIN-plan assertions for all three search methods; the searchCVEsByText FTS case was the only one missing and is added                                       | test    | S      |
+| NFR-04.5            | DONE           | a11y gate now scans /audit + /project/:id/fpf (PR #34); ProjectDetail+graph were already covered and there is no VEX route — the original description was wrong | test    | S      |
 
-Only **FR-03.6** and **FR-04.3** were product-code features — **both are now shipped** (c5094d3, fcf24b8). The remaining 13 items are test/coverage/infra hardening. Everything else in this document is DONE — ignore the stale per-item labels that follow.
+Only **FR-03.6** and **FR-04.3** were product-code features — **both are now shipped** (c5094d3, fcf24b8). The remaining items are test/coverage/infra hardening (NFR-04.5 and NFR-02.5 are now DONE; several other rows below were verified STALE rather than open — re-check each against HEAD before working it). Everything else in this document is DONE — ignore the stale per-item labels that follow.
 
 ## Execution sequence (waves — each wave is PR-sized; eslint + build:all + vitest green, then targeted e2e, after each)
 
