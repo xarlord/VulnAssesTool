@@ -135,8 +135,6 @@ export async function enrichVulnerabilities(
       }
     }
   }
-  // Batch check KEV status — now served from the single batched response above
-  opts.onProgress?.(`Checking KEV status for ${vulnerabilities.length} vulnerabilities...`)
   const enriched: Vulnerability[] = await Promise.all(
     vulnerabilities.map(async (vuln) => {
       const result = { ...vuln }

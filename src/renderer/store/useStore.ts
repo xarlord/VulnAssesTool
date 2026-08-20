@@ -367,10 +367,21 @@ export const useStore = create<AppState>()(
             set((state) => ({ projects: [...state.projects, introduced] }))
             return introduced
           }
+          // Hydration restores the arrays `partialize` strips from localStorage; it must never DELETE
+          // newer local data. Plain `?? existing` / `|| existing` does not protect against that: an
+          // empty array is truthy, so an empty server copy overwrote the local one. ProjectDetail now
+          // hydrates uploaded-but-never-scanned projects too, so the response can land after the user
+          // imported an SBOM — which silently wiped the import and re-disabled scanning.
+          const preferNonEmpty = <T>(fromServer: T[] | undefined, local: T[]): T[] =>
+            fromServer && fromServer.length > 0 ? fromServer : local
+
           const merged: Project = {
             ...existing,
-            vulnerabilities: (data.vulnerabilities as Project['vulnerabilities']) || existing.vulnerabilities,
-            components: (data.components as Project['components']) || existing.components,
+            vulnerabilities: preferNonEmpty(
+              data.vulnerabilities as Project['vulnerabilities'] | undefined,
+              existing.vulnerabilities,
+            ),
+            components: preferNonEmpty(data.components as Project['components'] | undefined, existing.components),
             dependencyGraph: (data.dependencyGraph as Project['dependencyGraph']) || existing.dependencyGraph,
             lastScanAt: data.lastScanAt ? new Date(data.lastScanAt) : existing.lastScanAt,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : existing.updatedAt,

@@ -3,6 +3,7 @@ import { queryByPurls } from './osv'
 import { VULN_SEARCH_CPE_LIMIT, VULN_SEARCH_NAME_LIMIT, OSV_CACHE_TTL_HOURS } from '@@/constants'
 import { getPlatform } from '@/lib/platform'
 import { getVulnCache } from '@/lib/cache'
+import { formatVulnerabilityId } from '@/lib/utils/vulnIdFormat'
 
 export interface ScanProgressEvent {
   phase: 'nvd-cpe' | 'nvd-name' | 'osv' | 'dedup' | 'done'
@@ -301,17 +302,23 @@ export async function matchVulnerabilitiesForComponent(
   // UI/CLI can de-emphasize name-only matches on unversioned components. First tier to find a CVE
   // wins (tiers run in descending precision), matching the seenIds dedup — but when a later source
   // reports the same CVE, its source attribution/aliases are merged into the kept entry.
+  // Dedup on the CANONICAL id, not the raw one. OSV keys advisories by GHSA id and carries the
+  // CVE as an alias, so raw-id keying let the NVD and OSV copies of one vulnerability through as
+  // two entries. formatVulnerabilityId is the same resolver the UI labels rows with, so keying on
+  // it keeps storage and display agreeing; disagreeing meant two rows showing the identical CVE
+  // and every severity total counting it twice.
   const pushMatches = (vulns: Vulnerability[], confidence: MatchConfidence): void => {
     for (const vuln of vulns) {
-      if (!seenIds.has(vuln.id)) {
+      const key = formatVulnerabilityId(vuln).primaryId
+      if (!seenIds.has(key)) {
         vulnerabilities.push({
           ...vuln,
           affectedComponents: [component.id],
           matchQuality: { [component.id]: confidence },
         })
-        seenIds.add(vuln.id)
+        seenIds.add(key)
       } else {
-        const existing = vulnerabilities.find((v) => v.id === vuln.id)
+        const existing = vulnerabilities.find((v) => formatVulnerabilityId(v).primaryId === key)
         if (existing) mergeSourceAttribution(existing, vuln)
       }
     }
@@ -424,13 +431,19 @@ export async function matchVulnerabilitiesForComponents(
   // matchQuality is keyed by component id and MERGED (never overwritten) so a CVE shared across
   // several components keeps each component's own confidence. When the same CVE is re-reported by a
   // different source (e.g. OSV after a local NVD hit), its source attribution/aliases are unioned in.
+  // Dedup on the CANONICAL id, not the raw one. OSV keys advisories by GHSA id and carries the
+  // CVE as an alias, so raw-id keying let the NVD and OSV copies of one vulnerability through as
+  // two entries. formatVulnerabilityId is the same resolver the UI labels rows with, so keying on
+  // it keeps storage and display agreeing; disagreeing meant two rows showing the identical CVE
+  // and every severity total counting it twice.
   const recordMatch = (vulns: Vulnerability[], componentId: string, confidence: MatchConfidence): void => {
     for (const vuln of vulns) {
-      const isNew = !vulnerabilityMap.has(vuln.id)
+      const key = formatVulnerabilityId(vuln).primaryId
+      const isNew = !vulnerabilityMap.has(key)
       if (isNew) {
-        vulnerabilityMap.set(vuln.id, { ...vuln, affectedComponents: [], matchQuality: {} })
+        vulnerabilityMap.set(key, { ...vuln, affectedComponents: [], matchQuality: {} })
       }
-      const entry = vulnerabilityMap.get(vuln.id)
+      const entry = vulnerabilityMap.get(key)
       if (entry) {
         if (!entry.affectedComponents.includes(componentId)) entry.affectedComponents.push(componentId)
         entry.matchQuality = { ...entry.matchQuality, [componentId]: confidence }

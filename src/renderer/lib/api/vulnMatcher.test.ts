@@ -317,6 +317,49 @@ describe('matchVulnerabilitiesForComponents', () => {
     expect(result.get('comp-2')).toHaveLength(1)
   })
 
+  it('merges an OSV advisory with the NVD record for the same CVE instead of listing it twice', async () => {
+    // OSV keys advisories by GHSA id and carries the CVE as an alias, so keying dedup on the raw
+    // vuln.id let both copies of ONE vulnerability through. The UI labels rows with
+    // formatVulnerabilityId, which resolves the GHSA to its CVE alias, so the user saw the same
+    // CVE listed twice and every severity total counted it twice. This stayed invisible while the
+    // OSV client threw Invalid URL on every call and the whole source was silently dead.
+    const nvdVuln: Vulnerability = {
+      id: 'CVE-2021-44228',
+      source: 'nvd',
+      severity: 'critical',
+      cvssScore: 10,
+      description: 'Log4Shell, from the local NVD mirror',
+      references: [],
+      affectedComponents: [],
+    }
+    const osvSameVuln: Vulnerability = {
+      id: 'GHSA-jfh8-c2jp-5v3q',
+      source: 'osv',
+      severity: 'critical',
+      cvssScore: 10,
+      description: 'Log4Shell, from OSV',
+      references: [],
+      affectedComponents: [],
+      aliases: ['CVE-2021-44228'],
+    }
+
+    vi.mocked(mockDatabaseSearch()).mockResolvedValue({
+      success: true,
+      results: [createMockCveResult(nvdVuln)],
+      totalResults: 1,
+    })
+    vi.mocked(queryByPurls).mockResolvedValue(new Map([['pkg:npm/lodash@4.17.21', [osvSameVuln]]]))
+
+    const result = await matchVulnerabilitiesForComponents([mockComponents[0]])
+
+    const matched = result.get('comp-1') ?? []
+    expect(matched).toHaveLength(1)
+    expect(matched[0].id).toBe('CVE-2021-44228')
+    // Attribution must record that both sources reported it — collapsing the row must not lose
+    // the fact that OSV corroborated the finding.
+    expect(matched[0].sources).toEqual(expect.arrayContaining(['nvd', 'osv']))
+  })
+
   it('should handle errors gracefully', async () => {
     vi.mocked(mockDatabaseSearch()).mockRejectedValue(new Error('Database error'))
     vi.mocked(queryByPurls).mockRejectedValue(new Error('API error'))

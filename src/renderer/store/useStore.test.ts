@@ -1652,6 +1652,40 @@ describe('useStore', () => {
         expect(result.current.currentProject).toEqual(otherProject)
       })
 
+      it('does not erase locally-uploaded components when the server copy is still empty', async () => {
+        // Guards a real regression path. ProjectDetail hydrates whenever the local arrays are empty,
+        // which now includes an uploaded-but-never-scanned project. The request is async, so the
+        // response can land AFTER the user has imported an SBOM. The server copy is empty at that
+        // point, and `[] || existing` keeps the empty array because [] is truthy in JS — so the
+        // import was silently wiped and "Scan for Vulnerabilities" went back to disabled.
+        // Hydration exists to restore stripped data, never to delete newer local data.
+        const uploadedComponent = createMockComponent('component-just-uploaded')
+        const project = createMockProject({
+          id: 'project-mid-upload',
+          components: [uploadedComponent],
+          vulnerabilities: [],
+        })
+
+        vi.mocked(loadProjectFromServer).mockResolvedValue({
+          id: project.id,
+          name: project.name,
+          components: [],
+          vulnerabilities: [],
+        } as unknown as ServerProjectData)
+
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(project)
+        })
+
+        const hydrated = await act(async () => {
+          return await result.current.hydrateProjectFromServer(project.id)
+        })
+
+        expect(hydrated?.components).toEqual([uploadedComponent])
+        expect(result.current.projects[0].components).toEqual([uploadedComponent])
+      })
+
       it('recovers and returns null when the server request throws, without corrupting the already-known project', async () => {
         const mockProject = createMockProject()
         vi.mocked(loadProjectFromServer).mockRejectedValue(new Error('network unreachable'))
