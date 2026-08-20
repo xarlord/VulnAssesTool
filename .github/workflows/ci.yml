@@ -133,7 +133,15 @@ jobs:
   e2e-tests:
     name: E2E Tests (${{ matrix.project }})
     runs-on: ubuntu-latest
-    needs: build
+    # Deliberately NO `needs:`. This job consumes NO artifact from `build` — it builds its own
+    # bundle via `npm run e2e:prepare` — so `needs: build` was pure sequencing behind
+    # `test -> build -> e2e-tests`. The cost of that chain is that ANY failure upstream SKIPS all
+    # four E2E jobs instead of failing them, and a skipped job reads as "not red" while the most
+    # valuable signal in the pipeline is simply missing. That happened on PR #31: one ubuntu
+    # segfault (exit 139, which passed on re-run from the identical commit) skipped the E2E jobs
+    # that had just caught 13 real test failures. Running independently also cuts wall-clock,
+    # since E2E no longer waits on three build matrix legs it does not use.
+    # Tradeoff accepted: a PR with failing unit tests now also spends E2E minutes.
     strategy:
       # Run each Playwright project as its own job: the full suite in a single run
       # exceeds playwright.config's 30-min globalTimeout, so it was failing on timeout
