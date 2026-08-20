@@ -25,7 +25,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
 
   function renderDiff(): React.ReactNode {
     if (!hasStateChanges) {
-      return <div className="text-sm text-gray-500 italic">{t('noStateChangeData')}</div>
+      return <div className="text-sm text-muted-foreground italic">{t('noStateChangeData')}</div>
     }
 
     return (
@@ -34,7 +34,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
         <div>
           <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
             {event.actionType === 'CREATE' ? (
-              <span className="text-gray-500">{t('creationNA')}</span>
+              <span className="text-muted-foreground">{t('creationNA')}</span>
             ) : (
               <>{t('before')}</>
             )}
@@ -44,7 +44,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
               {formatJson(event.previousState)}
             </pre>
           ) : (
-            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded p-3 text-xs text-gray-500">
+            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded p-3 text-xs text-muted-foreground">
               {t('noPreviousState')}
             </div>
           )}
@@ -54,7 +54,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
         <div>
           <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
             {event.actionType === 'DELETE' ? (
-              <span className="text-gray-500">{t('deletionNA')}</span>
+              <span className="text-muted-foreground">{t('deletionNA')}</span>
             ) : (
               <>{t('after')}</>
             )}
@@ -64,7 +64,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
               {formatJson(event.newState)}
             </pre>
           ) : (
-            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded p-3 text-xs text-gray-500">
+            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded p-3 text-xs text-muted-foreground">
               {t('noNewState')}
             </div>
           )}
@@ -91,7 +91,7 @@ export function EventDiffViewer({ event, className }: EventDiffViewerProps) {
       {showFullState ? (
         <div className="space-y-4">{renderDiff()}</div>
       ) : (
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-muted-foreground">
           {hasStateChanges ? (
             <span className="italic">{t('stateChangesAvailable')}</span>
           ) : (

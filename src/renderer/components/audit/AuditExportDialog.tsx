@@ -126,7 +126,9 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-gray-500">{formatOptions.find((f) => f.value === format)?.description}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {formatOptions.find((f) => f.value === format)?.description}
+            </p>
           </div>
 
           {/* Date Range */}
@@ -166,7 +168,7 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
                 <Label htmlFor="include-full-state" className="text-sm font-medium cursor-pointer">
                   {t('options.includeFullState.label')}
                 </Label>
-                <p className="text-xs text-gray-500">{t('options.includeFullState.description')}</p>
+                <p className="text-xs text-muted-foreground">{t('options.includeFullState.description')}</p>
               </div>
             </div>
 
@@ -180,7 +182,7 @@ export function AuditExportDialog({ open, onOpenChange }: AuditExportDialogProps
                 <Label htmlFor="anonymize" className="text-sm font-medium cursor-pointer">
                   {t('options.anonymize.label')}
                 </Label>
-                <p className="text-xs text-gray-500">{t('options.anonymize.description')}</p>
+                <p className="text-xs text-muted-foreground">{t('options.anonymize.description')}</p>
               </div>
             </div>
           </div>

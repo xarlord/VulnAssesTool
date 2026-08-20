@@ -26,6 +26,7 @@ const CORE_PAGES: Array<{ name: string; path: string }> = [
   { name: 'search', path: '/search' },
   { name: 'settings', path: '/settings' },
   { name: 'executive', path: '/executive' },
+  { name: 'audit', path: '/audit' },
 ]
 
 /**
@@ -305,6 +306,30 @@ test.describe('Accessibility — axe-core (WCAG 2.1 AA)', () => {
     expect(
       detailBlocking,
       `Critical/serious a11y violations on /project/${projectId}:\n${summarize(detailBlocking)}`,
+    ).toEqual([])
+
+    // --- False Positive Filter (/project/:id/fpf) ---
+    // A real route (App.tsx:174) that no a11y test reached. Scanned here rather than in
+    // CORE_PAGES because, like the two above, it needs a populated project id.
+    await page.evaluate((path) => {
+      const nav = (window as unknown as Record<string, unknown>).__navigate
+      if (typeof nav === 'function') nav(path)
+    }, `/project/${projectId}/fpf`)
+    await expect(page.getByRole('heading', { level: 1, name: 'False Positive Filter' })).toBeVisible({
+      timeout: 15000,
+    })
+    await freezeAnimations(page)
+
+    const fpfViolations = await analyzePage(page)
+    await testInfo.attach('axe-false-positive-filter.json', {
+      body: JSON.stringify(fpfViolations, null, 2),
+      contentType: 'application/json',
+    })
+    const fpfBlocking = fpfViolations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
+    expect(
+      fpfBlocking,
+      `Critical/serious a11y violations on /project/${projectId}/fpf:
+${summarize(fpfBlocking)}`,
     ).toEqual([])
 
     // --- Dependency graph (/project/:id/graph) ---
