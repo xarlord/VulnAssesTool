@@ -5,6 +5,7 @@ import { broadcast } from '../websocket.js'
 import { sanitizeErrorMessage } from '../database/ipcRequestValidator.js'
 import type { EpssScore } from '../services/intelligence/EpssService.js'
 import type {
+  CheckKevBatchResponse,
   CheckKevResponse,
   GetKevDetailsResponse,
   GetKevStatsResponse,
@@ -68,6 +69,34 @@ router.post('/kev/details', async (req, res) => {
     res.json(response)
   } catch (error) {
     res.json({ success: false, entry: null, error: sanitizeErrorMessage(error) })
+  }
+})
+
+/**
+ * POST /kev/checks — batched sibling of /kev/check + /kev/details, mirroring /epss/scores.
+ *
+ * Enrichment needs KEV status for every CVE in a scan. One CVE at a time meant TWO requests
+ * each, so a 132-CVE project fired ~264 calls within seconds and tripped the 300/min rate
+ * limiter — the app throttled itself and KEV flags went silently missing. Both lookups are
+ * local synchronous SQLite reads, so answering a whole batch in one request is cheap.
+ */
+router.post('/kev/checks', async (req, res) => {
+  try {
+    const cveIds = readCveIds(req.body)
+    if (cveIds === null) {
+      res.json({ success: false, results: {}, error: 'cveIds is required and must be an array of strings' })
+      return
+    }
+    const kevService = getKevService()
+    const results: CheckKevBatchResponse['results'] = {}
+    for (const cveId of cveIds) {
+      const entry = kevService.getKevDetails(cveId)
+      results[cveId] = { isKev: kevService.isKev(cveId), entry }
+    }
+    const response: CheckKevBatchResponse = { success: true, results }
+    res.json(response)
+  } catch (error) {
+    res.json({ success: false, results: {}, error: sanitizeErrorMessage(error) })
   }
 })
 

@@ -151,3 +151,56 @@ describe('NFR-02.1 scale — 1,000+ projects', () => {
     expect(ids.has('scale-999')).toBe(true)
   }, 60000)
 })
+
+describe('GET /api/projects?summary=1', () => {
+  // The client needs the project LIST on boot so server-side projects are visible at all, but
+  // the full list embeds every vulnerability and component: measured 18 MB across 40 real
+  // projects, which is far too heavy to fetch on every page load. Summary mode returns the same
+  // rows with the heavy arrays replaced by counts, so boot costs kilobytes and the detail view
+  // still hydrates the full payload per project on demand.
+  it('omits heavy arrays and reports counts instead', async () => {
+    await request(app)
+      .post('/api/projects')
+      .send({
+        id: 'summary-proj',
+        name: 'Summary',
+        components: [
+          { id: 'c1', name: 'lodash' },
+          { id: 'c2', name: 'axios' },
+        ],
+        vulnerabilities: [{ id: 'CVE-1' }, { id: 'CVE-2' }, { id: 'CVE-3' }],
+      })
+      .expect(200)
+
+    const res = await request(app).get('/api/projects').query({ summary: '1' })
+    expect(res.status).toBe(200)
+    const row = res.body.data.find((p: { id: string }) => p.id === 'summary-proj')
+    expect(row).toBeDefined()
+    expect(row.name).toBe('Summary')
+    expect(row.vulnerabilities).toBeUndefined()
+    expect(row.components).toBeUndefined()
+    expect(row.componentCount).toBe(2)
+    expect(row.vulnerabilityCount).toBe(3)
+  })
+
+  it('still returns the full payload without the flag', async () => {
+    await request(app)
+      .post('/api/projects')
+      .send({
+        id: 'full-proj',
+        name: 'Full',
+        components: [
+          { id: 'c1', name: 'lodash' },
+          { id: 'c2', name: 'axios' },
+        ],
+        vulnerabilities: [{ id: 'CVE-1' }, { id: 'CVE-2' }, { id: 'CVE-3' }],
+      })
+      .expect(200)
+
+    const res = await request(app).get('/api/projects')
+    const row = res.body.data.find((p: { id: string }) => p.id === 'full-proj')
+    expect(row.vulnerabilities).toHaveLength(3)
+    expect(row.components).toHaveLength(2)
+    expect(row.componentCount).toBeUndefined()
+  })
+})

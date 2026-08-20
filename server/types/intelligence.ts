@@ -101,6 +101,16 @@ export interface GetKevDetailsResponse {
 /**
  * Get KEV catalog stats response
  */
+/**
+ * Batched KEV lookup response. One request answers both "is it listed" and "give me the entry"
+ * for many CVEs, replacing the per-CVE check+details pair that tripped the API rate limiter on
+ * any decent-sized scan. Ids absent from `results` were not in the catalog.
+ */
+export interface CheckKevBatchResponse {
+  success: boolean
+  results: Record<string, { isKev: boolean; entry: KevEntry | null }>
+  error?: string
+}
 export interface GetKevStatsResponse {
   success: boolean
   stats: KevCatalogStats

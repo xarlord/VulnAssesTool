@@ -422,4 +422,50 @@ describe('enrichVulnerabilities', () => {
       expect(filtered[0].id).toBe('exactly-50')
     })
   })
+  describe('KEV batching (rate-limit regression)', () => {
+    // Enrichment used to call checkKev + getKevDetails PER CVE inside a Promise.all, so a real
+    // scan (132 CVEs observed live) fired ~264 concurrent requests, exceeded the API rate limit
+    // of 300/min and logged "Too many requests" for most of them — KEV flags silently missing
+    // from the results. The whole set must therefore cost ONE batched request, and the per-CVE
+    // endpoints must not be used for bulk enrichment at all.
+    const makeVuln = (id: string): Vulnerability =>
+      ({
+        id,
+        source: 'nvd',
+        severity: 'high',
+        description: 'v',
+        references: [],
+        affectedComponents: [],
+      }) as Vulnerability
+
+    it('issues exactly one batched KEV request for many vulnerabilities', async () => {
+      const vulns = Array.from({ length: 25 }, (_, i) => makeVuln(`CVE-2024-${1000 + i}`))
+      vi.mocked(getPlatform().intelligence.checkKevBatch).mockResolvedValue({
+        success: true,
+        results: {
+          'CVE-2024-1000': { isKev: true, entry: { cveId: 'CVE-2024-1000' } as never },
+        },
+      })
+      vi.mocked(getPlatform().intelligence.getEpssScores).mockResolvedValue({ success: true, scores: {} })
+
+      const results = await enrichVulnerabilities(vulns)
+
+      expect(getPlatform().intelligence.checkKevBatch).toHaveBeenCalledTimes(1)
+      expect(getPlatform().intelligence.checkKevBatch).toHaveBeenCalledWith(vulns.map((v) => v.id))
+      expect(getPlatform().intelligence.checkKev).not.toHaveBeenCalled()
+      expect(getPlatform().intelligence.getKevDetails).not.toHaveBeenCalled()
+      expect(results[0].isKev).toBe(true)
+      expect(results[0].kevDetails).toEqual({ cveId: 'CVE-2024-1000' })
+      expect(results[1].isKev).toBeFalsy()
+    })
+
+    it('does not call KEV at all when every vulnerability is already flagged', async () => {
+      const vulns = [{ ...makeVuln('CVE-2024-2000'), isKev: true }]
+      vi.mocked(getPlatform().intelligence.getEpssScores).mockResolvedValue({ success: true, scores: {} })
+
+      await enrichVulnerabilities(vulns)
+
+      expect(getPlatform().intelligence.checkKevBatch).not.toHaveBeenCalled()
+    })
+  })
 })

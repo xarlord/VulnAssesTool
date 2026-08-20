@@ -105,6 +105,8 @@ function createMockPlatform(): PlatformAPI {
 
     intelligence: {
       checkKev: vi.fn(() => Promise.resolve({ success: true, isKev: false })),
+
+      checkKevBatch: vi.fn(async () => ({ success: true, results: {} })),
       getKevDetails: vi.fn(() => Promise.resolve({ success: false, error: 'Not found' })),
       getKevStats: vi.fn(() => Promise.resolve({ success: true, stats: {} })),
       syncKev: vi.fn(() => Promise.resolve({ success: true, result: null })),

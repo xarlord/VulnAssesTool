@@ -49,6 +49,7 @@ import type {
   BackupInfo,
   BackupConfig,
   BackupStats,
+  CheckKevBatchResponse,
   CheckKevResponse,
   GetKevDetailsResponse,
   GetKevStatsResponse,
@@ -173,6 +174,7 @@ function createServerBackup(): BackupAPI {
 function createServerIntelligence(): IntelligenceAPI {
   return {
     checkKev: (cveId) => apiPost<CheckKevResponse>('/intelligence/kev/check', { cveId }),
+    checkKevBatch: (cveIds) => apiPost<CheckKevBatchResponse>('/intelligence/kev/checks', { cveIds }),
     getKevDetails: (cveId) => apiPost<GetKevDetailsResponse>('/intelligence/kev/details', { cveId }),
     getKevStats: () => apiGet<GetKevStatsResponse>('/intelligence/kev/stats'),
     syncKev: () =>

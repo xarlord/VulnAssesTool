@@ -17,6 +17,7 @@ vi.mock('@/lib/refresh', () => ({
 vi.mock('@/lib/api/projectPersistence', () => ({
   saveProjectToServer: vi.fn().mockResolvedValue(undefined),
   loadProjectFromServer: vi.fn().mockResolvedValue(null),
+  loadProjectSummariesFromServer: vi.fn().mockResolvedValue([]),
   deleteProjectFromServer: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -34,7 +35,12 @@ vi.mock('@/lib/settings', () => ({
 }))
 
 import { refreshVulnerabilityData as refreshData } from '@/lib/refresh'
-import { deleteProjectFromServer, loadProjectFromServer, saveProjectToServer } from '@/lib/api/projectPersistence'
+import {
+  deleteProjectFromServer,
+  loadProjectFromServer,
+  loadProjectSummariesFromServer,
+  saveProjectToServer,
+} from '@/lib/api/projectPersistence'
 import {
   createProfile,
   updateProfile,
@@ -1515,7 +1521,12 @@ describe('useStore', () => {
         expect(result.current.projects[0]).toEqual(mockProject)
       })
 
-      it('returns null without mutating state when the hydrated project is not tracked locally', async () => {
+      // This deliberately REPLACES an earlier contract that required a server-only project to be
+      // ignored (return null, leave `projects` empty). That behaviour made the app unusable from a
+      // clean profile: the server held 40 projects that the UI could never show, and opening a
+      // valid /project/<id> link rendered "Project Not Found" without even issuing a request.
+      // Introducing the project is now the point of hydration, so this asserts the opposite.
+      it('introduces a project that exists on the server but is not tracked locally', async () => {
         vi.mocked(loadProjectFromServer).mockResolvedValue({
           id: 'server-only-project',
           name: 'Server Only',
@@ -1529,8 +1540,11 @@ describe('useStore', () => {
           return await result.current.hydrateProjectFromServer('server-only-project')
         })
 
-        expect(hydrated).toBeNull()
-        expect(result.current.projects).toEqual([])
+        expect(hydrated).not.toBeNull()
+        expect(hydrated?.id).toBe('server-only-project')
+        expect(hydrated?.name).toBe('Server Only')
+        expect(result.current.projects).toHaveLength(1)
+        expect(result.current.projects[0].id).toBe('server-only-project')
       })
 
       it('merges freshly loaded scan data into the matching project and mirrors it onto the active currentProject', async () => {
@@ -1636,6 +1650,40 @@ describe('useStore', () => {
 
         // currentProject was a different project — hydrating project-keep must not touch it.
         expect(result.current.currentProject).toEqual(otherProject)
+      })
+
+      it('does not erase locally-uploaded components when the server copy is still empty', async () => {
+        // Guards a real regression path. ProjectDetail hydrates whenever the local arrays are empty,
+        // which now includes an uploaded-but-never-scanned project. The request is async, so the
+        // response can land AFTER the user has imported an SBOM. The server copy is empty at that
+        // point, and `[] || existing` keeps the empty array because [] is truthy in JS — so the
+        // import was silently wiped and "Scan for Vulnerabilities" went back to disabled.
+        // Hydration exists to restore stripped data, never to delete newer local data.
+        const uploadedComponent = createMockComponent('component-just-uploaded')
+        const project = createMockProject({
+          id: 'project-mid-upload',
+          components: [uploadedComponent],
+          vulnerabilities: [],
+        })
+
+        vi.mocked(loadProjectFromServer).mockResolvedValue({
+          id: project.id,
+          name: project.name,
+          components: [],
+          vulnerabilities: [],
+        } as unknown as ServerProjectData)
+
+        const { result } = renderHook(() => useStore())
+        act(() => {
+          result.current.addProject(project)
+        })
+
+        const hydrated = await act(async () => {
+          return await result.current.hydrateProjectFromServer(project.id)
+        })
+
+        expect(hydrated?.components).toEqual([uploadedComponent])
+        expect(result.current.projects[0].components).toEqual([uploadedComponent])
       })
 
       it('recovers and returns null when the server request throws, without corrupting the already-known project', async () => {
@@ -2588,6 +2636,67 @@ describe('useStore', () => {
 
       const recovered = useStore.getState().dashboardLayoutProfiles.find((p) => p.name === 'Recovered')
       expect(recovered?.widgets.map((w) => w.id)).toEqual(DEFAULT_DASHBOARD_LAYOUT.map((w) => w.id))
+    })
+  })
+
+  describe('hydrateProjectsFromServer', () => {
+    // Without this the app was localStorage-only: the server held every project (40 observed live)
+    // and a fresh browser showed an empty dashboard. Boot must merge the server list in, while
+    // never clobbering a project the local store is already tracking.
+    it('appends server-only projects and reports how many were introduced', async () => {
+      vi.mocked(loadProjectSummariesFromServer).mockResolvedValue([
+        { id: 'srv-1', name: 'Server One' },
+        { id: 'srv-2', name: 'Server Two' },
+      ] as never)
+
+      const { result } = renderHook(() => useStore())
+
+      const added = await act(async () => {
+        return await result.current.hydrateProjectsFromServer()
+      })
+
+      expect(added).toBe(2)
+      expect(result.current.projects.map((p) => p.id)).toEqual(['srv-1', 'srv-2'])
+      // Heavy arrays stay empty here: they are fetched per project on demand, which is what keeps
+      // boot cheap instead of pulling the full 18 MB list.
+      expect(result.current.projects[0].vulnerabilities).toEqual([])
+      expect(result.current.projects[0].components).toEqual([])
+    })
+
+    it('does not duplicate or overwrite a project the store already tracks', async () => {
+      const { result } = renderHook(() => useStore())
+      await act(async () => {
+        result.current.addProject({
+          id: 'srv-1',
+          name: 'Local Name',
+          description: '',
+          components: [],
+          vulnerabilities: [],
+          sbomFiles: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as never)
+      })
+      vi.mocked(loadProjectSummariesFromServer).mockResolvedValue([{ id: 'srv-1', name: 'Server Name' }] as never)
+
+      const added = await act(async () => {
+        return await result.current.hydrateProjectsFromServer()
+      })
+
+      expect(added).toBe(0)
+      expect(result.current.projects).toHaveLength(1)
+      expect(result.current.projects[0].name).toBe('Local Name')
+    })
+
+    it('returns 0 and keeps existing state when the server list cannot be read', async () => {
+      vi.mocked(loadProjectSummariesFromServer).mockRejectedValue(new Error('offline'))
+      const { result } = renderHook(() => useStore())
+
+      const added = await act(async () => {
+        return await result.current.hydrateProjectsFromServer()
+      })
+
+      expect(added).toBe(0)
     })
   })
 })

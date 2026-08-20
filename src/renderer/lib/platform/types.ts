@@ -9,6 +9,7 @@ import type {
   BulkDownloadProgress,
   BulkDownloadResult,
   CacheStats,
+  CheckKevBatchResponse,
   CheckKevResponse,
   CheckRuntimeResponse,
   ConfigUpdateResponse,
@@ -159,6 +160,12 @@ export interface BackupAPI {
 
 export interface IntelligenceAPI {
   checkKev(cveId: string): Promise<CheckKevResponse>
+  /**
+   * Batched KEV lookup: isKev AND the full entry for many CVEs in ONE request. Prefer this
+   * over looping checkKev+getKevDetails — that pattern fired two requests per CVE and tripped
+   * the server rate limiter on real scans, silently dropping KEV flags.
+   */
+  checkKevBatch(cveIds: string[]): Promise<CheckKevBatchResponse>
   getKevDetails(cveId: string): Promise<GetKevDetailsResponse>
   getKevStats(): Promise<GetKevStatsResponse>
   syncKev(): Promise<{ success: boolean; result: KevSyncResult | null; error?: string }>
@@ -252,6 +259,7 @@ export type {
   BulkDownloadProgress,
   BulkDownloadResult,
   CacheStats,
+  CheckKevBatchResponse,
   CheckKevResponse,
   CheckRuntimeResponse,
   ConfigUpdateResponse,

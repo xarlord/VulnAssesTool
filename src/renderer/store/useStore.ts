@@ -14,7 +14,12 @@ import {
   exportSettingsToFile,
   importSettingsFromFile,
 } from '@/lib/settings'
-import { saveProjectToServer, loadProjectFromServer, deleteProjectFromServer } from '@/lib/api/projectPersistence'
+import {
+  saveProjectToServer,
+  loadProjectFromServer,
+  deleteProjectFromServer,
+  loadProjectSummariesFromServer,
+} from '@/lib/api/projectPersistence'
 import {
   createDefaultDashboardProfile,
   DEFAULT_DASHBOARD_LAYOUT_PROFILE_ID,
@@ -55,6 +60,7 @@ interface AppState {
   deleteProject: (id: string) => void
   setCurrentProject: (project: Project | null) => void
   hydrateProjectFromServer: (projectId: string) => Promise<Project | null>
+  hydrateProjectsFromServer: () => Promise<number>
   refreshVulnerabilityData: (projectId: string) => Promise<void>
 
   // UI State
@@ -294,16 +300,88 @@ export const useStore = create<AppState>()(
         })
       },
       setCurrentProject: (project) => set({ currentProject: project }),
+      /**
+       * Merge the SERVER list of projects into the store so server-side projects are visible.
+       *
+       * The store is localStorage-first, so a fresh browser (or cleared site data) showed nothing
+       * while the server still held every project: 40 unreachable projects observed live. Local
+       * entries win on conflict so nothing in flight is clobbered; server-only rows are appended
+       * with empty arrays and filled in by hydrateProjectFromServer when opened. Returns the count
+       * of newly introduced projects.
+       */
+      hydrateProjectsFromServer: async (): Promise<number> => {
+        try {
+          const summaries = await loadProjectSummariesFromServer()
+          const known = new Set(get().projects.map((p) => p.id))
+          const additions = summaries
+            .filter((summary) => !known.has(summary.id))
+            .map(
+              (summary) =>
+                ({
+                  id: summary.id,
+                  name: summary.name || summary.id,
+                  description: summary.description || '',
+                  components: [],
+                  vulnerabilities: [],
+                  sbomFiles: [],
+                  statistics: summary.statistics,
+                  allowedLicenses: summary.allowedLicenses,
+                  lastScanAt: summary.lastScanAt ? new Date(summary.lastScanAt) : undefined,
+                  createdAt: summary.createdAt ? new Date(summary.createdAt) : new Date(),
+                  updatedAt: summary.updatedAt ? new Date(summary.updatedAt) : new Date(),
+                }) as unknown as Project,
+            )
+          if (additions.length > 0) {
+            set((state) => ({ projects: [...state.projects, ...additions] }))
+          }
+          return additions.length
+        } catch (err) {
+          console.error('[Store] Failed to hydrate project list from server:', err)
+          return 0
+        }
+      },
       hydrateProjectFromServer: async (projectId: string): Promise<Project | null> => {
         try {
           const data = await loadProjectFromServer(projectId)
           if (!data) return null
           const existing = get().projects.find((p) => p.id === projectId)
-          if (!existing) return null
+          if (!existing) {
+            // Introduce a project the local store has never seen. This used to return null, so a
+            // valid /project/<id> URL opened in a fresh browser rendered "Project Not Found" even
+            // though the server had it, making project links unshareable and every server-side
+            // project unreachable from a clean profile.
+            const introduced = {
+              id: projectId,
+              name: (data.name as string) || projectId,
+              description: (data.description as string) || '',
+              components: (data.components as Project['components']) || [],
+              vulnerabilities: (data.vulnerabilities as Project['vulnerabilities']) || [],
+              dependencyGraph: data.dependencyGraph as Project['dependencyGraph'],
+              sbomFiles: [],
+              statistics: data.statistics,
+              allowedLicenses: (data.allowedLicenses as string[]) || undefined,
+              lastScanAt: data.lastScanAt ? new Date(data.lastScanAt) : undefined,
+              createdAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
+              updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
+            } as unknown as Project
+            set((state) => ({ projects: [...state.projects, introduced] }))
+            return introduced
+          }
+          // Hydration restores the arrays `partialize` strips from localStorage; it must never DELETE
+          // newer local data. Plain `?? existing` / `|| existing` does not protect against that: an
+          // empty array is truthy, so an empty server copy overwrote the local one. ProjectDetail now
+          // hydrates uploaded-but-never-scanned projects too, so the response can land after the user
+          // imported an SBOM — which silently wiped the import and re-disabled scanning.
+          const preferNonEmpty = <T>(fromServer: T[] | undefined, local: T[]): T[] =>
+            fromServer && fromServer.length > 0 ? fromServer : local
+
           const merged: Project = {
             ...existing,
-            vulnerabilities: (data.vulnerabilities as Project['vulnerabilities']) || existing.vulnerabilities,
-            components: (data.components as Project['components']) || existing.components,
+            vulnerabilities: preferNonEmpty(
+              data.vulnerabilities as Project['vulnerabilities'] | undefined,
+              existing.vulnerabilities,
+            ),
+            components: preferNonEmpty(data.components as Project['components'] | undefined, existing.components),
             dependencyGraph: (data.dependencyGraph as Project['dependencyGraph']) || existing.dependencyGraph,
             lastScanAt: data.lastScanAt ? new Date(data.lastScanAt) : existing.lastScanAt,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : existing.updatedAt,
