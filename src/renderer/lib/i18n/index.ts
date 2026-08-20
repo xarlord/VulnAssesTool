@@ -12,8 +12,13 @@ import { initReactI18next } from 'react-i18next'
  *   via `import.meta.glob` (eager, so it is bundled synchronously). Adding a slice is therefore
  *   just "drop a JSON file" — no edit here, no <I18nextProvider>, and no shared-file merge
  *   conflict when several components are migrated in parallel.
- * - Resources are bundled and `initImmediate: false`, so init is synchronous and `t()` returns
- *   real strings the moment this module is imported (tests get English by importing it in setup).
+ * - Resources are BUNDLED, which is what makes init synchronous: `t()` returns real strings the
+ *   moment this module is imported (tests get English by importing it in setup). This used to
+ *   also pass `initImmediate: false` and `returnNull: false`, but NEITHER option exists in
+ *   i18next 26 — both were silently ignored, and they were the app tsconfig's only type error.
+ *   Verified the synchronous guarantee survives without them: after init() with inline
+ *   resources, `isInitialized` is already true and `t()` resolves on the very next line.
+ *   Do not re-add them to "restore" sync init; bundled resources are what provide it.
  * - English-only for now. A new locale = add `locales/<lang>/*.json` and register it below.
  */
 const modules = import.meta.glob('./locales/en/*.json', { eager: true }) as Record<
@@ -42,8 +47,6 @@ if (!i18n.isInitialized) {
     defaultNS,
     resources,
     interpolation: { escapeValue: false }, // React already escapes output
-    returnNull: false, // a missing key yields the key string, never null
-    initImmediate: false, // synchronous init: t() works at import time
     react: { useSuspense: false }, // resources are bundled/sync — never suspend on render
   })
 }

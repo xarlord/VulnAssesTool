@@ -60,6 +60,14 @@ jobs:
       - name: Run linter
         run: npm run lint
 
+      # Type-checks all three referenced projects (app, node, server). Nothing in CI checked
+      # tsconfig.app.json before: build:all runs Vite (which does NOT type-check) plus tsc on
+      # the server config only, and `type-check` was bare `tsc --noEmit` against a solution-style
+      # root tsconfig ("files": []), so it exited 0 without checking a single file. Two real
+      # errors had accumulated behind that. `--build` is what makes references get checked.
+      - name: Type-check
+        run: npm run type-check
+
       - name: Run unit tests
         run: npm run test:coverage
 
