@@ -59,32 +59,11 @@ export default defineConfig({
       },
     },
   },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/renderer/tests/setup.ts'],
-    exclude: ['**/e2e/**', '**/dist/**', '**/node_modules/**'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'src/renderer/tests/',
-        '**/*.test.{ts,tsx}',
-        '**/*.spec.{ts,tsx}',
-        '**/types/',
-        '**/*.d.ts',
-        'server/',
-        'dist/',
-        '**/e2e/**',
-      ],
-      all: true,
-      thresholds: {
-        statements: 100,
-        branches: 100,
-        functions: 100,
-        lines: 100,
-      },
-    },
-  },
+  // No `test` block here on purpose. Vitest resolves vitest.config.ts ahead of vite.config.ts,
+  // so the block that used to sit here was dead — provably: it declared 100% coverage
+  // thresholds, which CI's `npm run test:coverage` would fail instantly, and it pointed at a
+  // different setupFiles path than the live config. It was also the only reason this file
+  // needed `defineConfig` from vitest/config, and it was one of the two type errors that the
+  // vacuous `type-check` script (bare `tsc --noEmit` on a solution-style tsconfig) never caught.
+  // Test configuration belongs in vitest.config.ts.
 })
