@@ -1,0 +1,68 @@
+name: Performance budgets
+
+# Runs the two performance suites that ci.yml deliberately does NOT run.
+#
+# Why they are absent from ci.yml: e2e/perf/performance.spec.ts documents the reason — the `perf`
+# Playwright project is kept out of the required e2e matrix "so a noisy CI runner can't flake the
+# required gate", and tests/perf/** is excluded from the main vitest run (vitest.config.ts) for the
+# same reason. That reasoning is sound and this workflow does not overturn it.
+#
+# But the consequence was that NFR-01.1 / 01.3 / 01.4 / 01.6 / 02.3 and FR-01.1 all had real tests
+# that NOTHING ever executed — the same shape of gap as the `type-check` script that could never
+# fail. A regression duly went unnoticed: boot-time project hydration made the 100-project dashboard
+# test non-hermetic, and it sat red until someone ran the suite by hand.
+#
+# So: scheduled and manually dispatchable, never on pull_request. It cannot flake a required check
+# because it is not one — it reports a nightly signal instead. Budgets already carry deliberate
+# headroom above the PRD targets (documented per test), so a failure here should mean a real
+# regression rather than runner noise.
+on:
+  schedule:
+    # 03:00 UTC daily — off-peak for shared runners, which keeps the numbers meaningful.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf-budgets:
+    name: Performance budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # tests/perf/** is excluded from the default vitest run, so this needs its own invocation
+      # (tests/perf/vitest.perf.config.ts). Covers NFR-01.3, NFR-02.3 and FR-01.1.
+      - name: Run vitest performance suite
+        run: npm run test:perf
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Covers NFR-01.1, NFR-01.4 and NFR-01.6 against the built app served by the Playwright
+      # webServer — not the Vite dev server, which would make the numbers meaningless.
+      - name: Run Playwright performance project
+        run: npm run test:e2e:perf
+
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

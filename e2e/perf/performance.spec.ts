@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { clearServerProjects } from '../test-helper'
 
 /**
  * User-facing performance budgets (NFR-01.1 / NFR-01.4 / NFR-01.6), run against the
@@ -8,7 +9,9 @@ import type { Page } from '@playwright/test'
  *
  * Deliberately its own Playwright project (see playwright.config.ts's `perf` entry)
  * and NOT part of the CI e2e matrix (.github/workflows/ci.yml's `project:` list),
- * so a noisy CI runner can't flake the required gate. Run manually via:
+ * so a noisy CI runner can't flake the required gate. It is no longer never-run, though:
+ * .github/workflows/perf.yml executes it nightly and on demand, where a failure reports a
+ * signal instead of blocking a PR. Run locally via:
  *   npm run test:e2e:perf
  *
  * Thresholds are intentionally set with headroom above the PRD targets (documented
@@ -70,6 +73,14 @@ function buildSyntheticProjects(count: number): unknown[] {
 async function seedProjects(page: Page, count: number): Promise<void> {
   // localStorage requires a same-origin document to already be loaded.
   await page.goto('/', { waitUntil: 'domcontentloaded' })
+
+  // Seeding localStorage is no longer enough to control what the dashboard shows: App.tsx
+  // hydrates the project list from GET /api/projects on boot, so any project left on the
+  // server by another spec is merged in and the "Recent Projects (N)" count exceeds `count`.
+  // That is correct product behaviour (server-side projects are meant to be visible) but it
+  // makes an exact-count budget test non-hermetic. Clearing the server first is what the
+  // shared resetAppState does for every other project.
+  await clearServerProjects(page)
   await page.evaluate((projects) => {
     // Matches zustand persist's on-disk format (name: 'vuln-assess-storage', no
     // `version` option configured => default version 0). Only `projects` is set;
