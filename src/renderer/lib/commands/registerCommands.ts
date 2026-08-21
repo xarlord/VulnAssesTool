@@ -177,7 +177,7 @@ function createHelpCommands(): Command[] {
       category: 'help',
       icon: 'BookOpen',
       action: () => {
-        window.open('https://github.com/yourusername/vuln-asses-tool#readme', '_blank')
+        window.open('https://github.com/xarlord/VulnAssesTool#readme', '_blank')
       },
       keywords: ['docs', 'readme', 'guide'],
       priority: 20,
@@ -188,7 +188,7 @@ function createHelpCommands(): Command[] {
       category: 'help',
       icon: 'Bug',
       action: () => {
-        window.open('https://github.com/yourusername/vuln-asses-tool/issues', '_blank')
+        window.open('https://github.com/xarlord/VulnAssesTool/issues', '_blank')
       },
       keywords: ['bug', 'problem', 'feedback'],
       priority: 30,

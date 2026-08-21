@@ -82,19 +82,27 @@ export default defineConfig({
         'src/renderer/lib/audit/types.ts',
         'src/renderer/lib/cache/index.ts',
       ],
-      // Anti-regression floors, set below measured full-suite coverage with margin. Ratcheted
-      // 2026-08-13 after coverage batches 1-3 (~33 files, ~795 intent tests on the highest
-      // uncovered-branch files). Clean full-suite measurement (208 files, 0 fail):
-      // stmts 95.18 / branch 89.74 / funcs 94.14 / lines 96.02 — statements and lines now clear
-      // the PRD's 95% target (NFR-07.1/08.1). Branch sits at ~90%: the remaining uncovered
-      // branches are largely unreachable defensive guards (SSR/null checks, closed-union default
-      // arms), so forcing them higher would mean contrived, intent-free tests. Floors ~1-1.7
-      // below measured; ratchet up as real gaps close, never down.
+      // Anti-regression floors. Ratchet up as real gaps close, never down.
+      //
+      // Ratcheted 2026-08-21. Measured clean (210 files, 0 fail):
+      // stmts 95.37 / branch 89.73 / funcs 94.65 / lines 96.21. Statements and lines clear the
+      // PRD's 95% (NFR-07.1/08.1); functions and branches do not yet.
+      //
+      // Margins are tighter than the previous 1-1.7 because measurement is now reproducible: the
+      // threads pool used to crash or flake often enough that a run's numbers were partly luck
+      // (and a failed run emits no report at all). Each floor below sits under the MINIMUM
+      // observed across every full run taken on 2026-08-21 —
+      // stmts 95.24/95.25/95.37 · branch 89.68/89.71/89.73 · funcs 94.13/94.13/94.65 ·
+      // lines 96.06/96.08/96.21 — so these are evidence-based, not guesses.
+      //
+      // Functions need ~12 more covered to reach 95%. Branches need ~575, which is the real
+      // grind: most of what is left are unreachable defensive guards (SSR/null checks,
+      // closed-union default arms), and forcing those means contrived, intent-free tests.
       thresholds: {
-        statements: 94,
-        branches: 88,
-        functions: 93,
-        lines: 95,
+        statements: 95,
+        branches: 89,
+        functions: 94,
+        lines: 96,
       },
     },
 
