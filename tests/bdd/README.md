@@ -12,7 +12,7 @@ tests/bdd/
 ├── features/              # Feature files (.feature)
 │   ├── analytics/
 │   ├── audit/
-│   ├── database/          # @wip — see "Excluded scenarios" below
+│   ├── database/          # nvd-database runs; hybrid-scanner + update-scheduler are @wip
 │   ├── export/
 │   ├── parsers/
 │   ├── sbom-generator/
@@ -54,14 +54,25 @@ name exists.
 
 The default gate (`npm run test:bdd`) excludes:
 
-- **`tests/bdd/features/database/*.feature`** (`nvd-database.feature`, `hybrid-scanner.feature`,
-  `update-scheduler.feature`) — tagged `@wip` at the Feature level. No step definitions exist for
-  these, and the modules they describe don't match the current codebase: `hybridScanner.ts` is a
-  stub (always returns empty results), there's no raw CRUD/transaction `nvdDb.ts` module (only
-  `nvdDbFts.ts`, a different FTS/IPC-wrapper API), and `autoRefreshScheduler.ts` is an
-  interval-check loop, not the cron-style daily/weekly/monthly scheduler with timezone support
-  the scenarios describe. Writing real step defs against these would either test a stub
-  (vacuous) or invent behavior the app doesn't have.
+- **`hybrid-scanner.feature`** (15 scenarios) — `@wip` at the Feature level.
+  `src/renderer/lib/database/hybridScanner.ts` is still a declared stub: `scanComponent` returns
+  an empty result, `scanComponents` returns `[]`, `getStatistics` returns `{ totalCves: 0 }`.
+  Step defs against it would assert the stub's return values, which is vacuous.
+- **`update-scheduler.feature`** (10 scenarios) — `@wip` at the Feature level.
+  `src/renderer/lib/refresh/autoRefreshScheduler.ts` exports one thing,
+  `startAutoRefreshScheduler`, a 5-minute interval check (`AUTO_REFRESH_CHECK_INTERVAL_MS`). The
+  scenarios describe a cron-style daily/weekly/monthly scheduler with pause/resume,
+  missed-schedule recovery and timezone handling — none of which exists.
+- **9 of 26 scenarios in `nvd-database.feature`** — `@wip` individually, with the reason above
+  each in the feature file. The other 17 run for real against `server/database/nvdDb.ts`.
+  (This feature was `@wip` wholesale until 2026-08-21 on the grounds that no CRUD/transaction
+  `nvdDb.ts` module existed. That was wrong: only the _renderer_ lacks one. `server/database/nvdDb.ts`
+  is a 1,241-line better-sqlite3 module with the initialize/upsert/insert/search/metadata/close API
+  the scenarios describe, and the step defs now drive it against a throwaway database under the OS
+  temp directory.) The 9 that remain excluded need APIs the module does not have: filtered list
+  queries by severity / CVSS range / date range (`DatabaseQueryOptions` and
+  `SeverityDateSearchOptions` are declared in `server/database/types.ts` but have no consumer),
+  caller-visible begin/commit/rollback, and a clear-all-data call.
 - **10 scenarios in `sbom-generator.feature`** — tagged `@wip` individually (see the comment
   above each in the feature file). They're UI-only concerns with no non-UI equivalent to drive
   (dialog open/close, inline preview edit/remove, progress indicators, template download, column
@@ -131,8 +142,9 @@ state leakage before it was caught).
   default gate since there's no server running.
 - `@wip` — known-excluded scenario/feature; see "Excluded scenarios" above. Always pair with a
   comment explaining why.
-- `@audit`, `@export`, `@analytics`, `@parser`, `@sbom-generator` — scope the matching
-  Before/After reset hooks in each step-definition file to that feature.
+- `@audit`, `@export`, `@analytics`, `@parser`, `@sbom-generator`, `@database` — scope the matching
+  Before/After reset hooks in each step-definition file to that feature. `@database`'s hooks also
+  create and delete the per-scenario temp directory the real SQLite file lives in.
 
 ## World Context
 
