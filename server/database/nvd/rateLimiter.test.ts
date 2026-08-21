@@ -212,11 +212,18 @@ describe('RateLimiter', () => {
     })
 
     it('should use exponential backoff for retries', async () => {
+      // 100ms base, not 10ms. execute() waits initialRetryDelay * 2^attempt, so the property
+      // under test is gap2 ~= 2 * gap1. At a 10ms base that 10ms difference is smaller than
+      // ordinary scheduler jitter on a loaded machine, so the assertion had been weakened to
+      // `gap2 + 5 >= gap1` — which a *constant* delay would also have satisfied, and which
+      // flaked anyway (gap1 27ms vs gap2 21ms). At 100ms the signal clears the noise and the
+      // assertion below can state the real relationship.
+      const initialRetryDelay = 100
       const limiter = new RateLimiter({
         requestsPerWindow: 5,
         windowMs: 1000,
         maxRetries: 2,
-        initialRetryDelay: 10,
+        initialRetryDelay,
       })
 
       const timestamps: number[] = []
@@ -231,7 +238,8 @@ describe('RateLimiter', () => {
       if (timestamps.length >= 3) {
         const gap1 = timestamps[1] - timestamps[0]
         const gap2 = timestamps[2] - timestamps[1]
-        expect(gap2 + 5).toBeGreaterThanOrEqual(gap1)
+        expect(gap1).toBeGreaterThanOrEqual(initialRetryDelay * 0.9)
+        expect(gap2).toBeGreaterThanOrEqual(gap1 * 1.5)
       }
     })
 

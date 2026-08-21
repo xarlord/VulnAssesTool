@@ -126,11 +126,25 @@ export default defineConfig({
     // Isolate tests
     isolate: true,
 
-    // Pool - use threads (Vitest 4.x)
-    pool: 'threads',
-    singleThread: false,
-    minThreads: 1,
-    maxThreads: 4,
+    // Pool - forks (child processes), not threads.
+    //
+    // The intermittent SIGSEGV (exit 139) that ci.yml blames on the macOS runner is not a runner
+    // problem: it is better-sqlite3, a native N-API addon, being finalized during *worker-thread*
+    // teardown. That is why it also shows up on ubuntu CI and on Windows locally. Child processes
+    // tear down as processes, where the addon's handles are safe.
+    //
+    // Measured on Windows, 209 files / 6,163 tests, this branch:
+    //   threads - 4 runs: 1 SIGSEGV, 2 runs with a failing file, 1 clean (172-238s)
+    //   forks   - 3 runs: 3 clean, coverage report produced every time  (181-227s)
+    // Forks is not the slower pool here, so there is no speed argument for keeping threads.
+    //
+    // If CI disagrees, this is a one-line revert. If it holds, macOS can go back in the ci.yml
+    // matrix (dropped there for this same crash) - worth a follow-up run to confirm.
+    //
+    // NOTE: the previous `singleThread: false` / `minThreads: 1` / `maxThreads: 4` keys were
+    // removed, not translated. They are not Vitest 4 options (it uses `maxWorkers`), so they were
+    // silently ignored and the 4-worker cap they read as never actually applied.
+    pool: 'forks',
 
     // Watch mode
     watch: false,
