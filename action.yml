@@ -1,0 +1,92 @@
+name: 'VulnAssesTool SBOM Scan'
+description: 'Scan a CycloneDX or SPDX SBOM against a local NVD database and fail the build on findings.'
+author: 'VulnAssesTool'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  sbom:
+    description: 'Path to the CycloneDX or SPDX SBOM to scan.'
+    required: true
+  database:
+    description: >-
+      Path to an nvd-data.db. Required: the CLI deliberately cannot download NVD data itself
+      (`vulnshield db sync` fails rather than pretending), so the database has to be produced by
+      the VulnAssesTool server and brought into the job — restored from actions/cache, pulled
+      from a release asset, or committed to a data repo. See docs/CI_INTEGRATION.md.
+    required: true
+  format:
+    description: 'Output format: console, json, sarif, or junit. Use sarif to feed github/codeql-action/upload-sarif.'
+    required: false
+    default: 'sarif'
+  output:
+    description: 'Write the report to this file instead of stdout.'
+    required: false
+    default: 'vulnshield-results.sarif'
+  fail-on:
+    description: 'Severity at which the step exits 1: critical, high, medium, low, or none.'
+    required: false
+    default: 'high'
+  severity:
+    description: 'Minimum severity to include in the report.'
+    required: false
+    default: 'low'
+  check-kev:
+    description: 'Report only CISA Known Exploited Vulnerabilities.'
+    required: false
+    default: 'false'
+  min-epss:
+    description: 'Report only vulnerabilities with an EPSS score at or above this value (0-1).'
+    required: false
+    default: ''
+  vex:
+    description: 'CycloneDX VEX document whose not_affected/resolved findings should be suppressed.'
+    required: false
+    default: ''
+
+outputs:
+  report:
+    description: 'Path to the generated report.'
+    value: ${{ inputs.output }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Build the vulnshield CLI
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --ignore-scripts
+        npm run build:cli
+
+    - name: Scan the SBOM
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        args=(
+          "${{ github.action_path }}/dist/cli/index.js"
+          scan
+          "${{ inputs.sbom }}"
+          --db "${{ inputs.database }}"
+          --format "${{ inputs.format }}"
+          --output "${{ inputs.output }}"
+          --fail-on "${{ inputs.fail-on }}"
+          --severity "${{ inputs.severity }}"
+        )
+
+        [ "${{ inputs.check-kev }}" = "true" ] && args+=(--check-kev)
+        [ -n "${{ inputs.min-epss }}" ] && args+=(--min-epss "${{ inputs.min-epss }}")
+        [ -n "${{ inputs.vex }}" ] && args+=(--vex "${{ inputs.vex }}")
+
+        # Exit codes: 0 clean, 1 findings at/above --fail-on, 2 error, 3 invalid input.
+        # Only 1 is a "the scan worked and found things" result, so it is the only one worth
+        # distinguishing here; 2 and 3 propagate as-is so a broken setup is not read as a pass.
+        node "${args[@]}"
