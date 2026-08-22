@@ -646,19 +646,37 @@ Re-verified against the code on 2026-08-22. All of v2.1 is done, plus two v3.0 r
 
 ### Planned (v2.5)
 
-- Additional notification types (the service and its info/success/warning/error types exist;
-  this row has never said which further types are wanted)
-- Scheduled reports
-- Enhanced PDF reports with charts — reports render today, but `lib/export/pdf.ts` draws no
-  charts
-- Web Workers for large dataset processing
-- Plugin system for custom vulnerability providers
+Every row now has a written requirement behind it — see
+[Planned Functional Requirements](PRD.md#planned-functional-requirements). Before 2026-08-22 these
+were one-line bullets with nothing to build against; the "additional notification types" row, for
+instance, had never said which types were wanted. FR-27 now names them.
+
+| Row                                       | Requirement |
+| ----------------------------------------- | ----------- |
+| Notification types and delivery           | FR-27       |
+| Scheduled reports                         | FR-25       |
+| Charts in exported PDF reports            | FR-26       |
+| Off-main-thread processing (Web Workers)  | NFR-09      |
+| Plugin system for custom providers        | FR-31       |
+| Container registry scanning (ECR/ACR/GCR) | FR-29       |
+| Multi-provider scanning (Snyk, OSS Index) | FR-28       |
+| Custom vulnerability rules engine         | FR-30       |
 
 ### Planned (v3.0)
 
-- AI-powered vulnerability prioritization
-- Team collaboration features
-- Cloud sync for settings
+| Row                                     | Requirement                  |
+| --------------------------------------- | ---------------------------- |
+| Third-party integration API             | FR-32                        |
+| Issue tracker integration               | FR-33                        |
+| Authentication and identity (OIDC/SAML) | FR-34                        |
+| Role-based access control               | FR-35                        |
+| Team collaboration features             | FR-36                        |
+| Cloud sync for settings (self-hosted)   | FR-37                        |
+| Compliance report templates             | FR-38                        |
+| AI-powered vulnerability prioritization | **not specified** — excluded |
+
+AI-related work is deliberately unspecified and out of scope; see the exclusion notes in
+[PRD.md](PRD.md).
 
 ## Contributing
 
@@ -675,8 +693,8 @@ For issues, questions, or suggestions, please open an issue on GitHub repository
 ---
 
 **Version:** 2.0.0
-**Last Updated:** 2026-08-07
+**Last Updated:** 2026-08-22
 **Status:** Production Ready
 **Accessibility Score:** 92/100 _(Lighthouse audit, March 2026)_
-**Test Coverage:** ~85% _(CI floors: 84% stmts / 75% branch / 87% funcs / 85% lines)_
+**Test Coverage:** 95.61% stmts / 89.90% branch / 95.31% funcs / 96.44% lines _(CI floors: 95 / 89 / 95 / 96)_
 **Bundle Size:** ~570KB (gzip) _(as of March 2026)_

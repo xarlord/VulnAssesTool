@@ -1,5 +1,18 @@
 # PRD Remediation Plan — all open requirements
 
+> **Scope note added 2026-08-22.** This plan tracks the **original 59 requirements** (FR-01 …
+> FR-11, NFR, SR, CR). It does not cover the requirements added on 2026-08-22 by
+> [requirements-gap-analysis-2026-08-22.md](requirements-gap-analysis-2026-08-22.md), because
+> those describe work that was **already shipped** — FR-12 … FR-24, SR-01.2, SR-04 and CR-04 are
+> retro-specifications of existing code, traced in
+> [spec-traceability-matrix.md](spec-traceability-matrix.md), and there is nothing to remediate.
+>
+> Planned requirements **FR-25 … FR-38 and NFR-09** are likewise out of scope here: they are not
+> defects or gaps against a shipped feature, they are unbuilt product. They live in `PRD.md`
+> under Planned Functional Requirements.
+>
+> The requirement count in this document is therefore 59, not the 76 now traced in the matrix.
+
 > **CURRENT STATUS (2026-08-07) — read this first.** ~46 of 59 requirements are DONE. Both
 > remaining product features (FR-03.6 auto-refresh, FR-04.3 CVSS temporal metrics) shipped. The
 > **only** remaining work is 13 test/coverage/infra items — see
