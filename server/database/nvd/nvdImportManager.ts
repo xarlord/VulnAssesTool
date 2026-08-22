@@ -333,7 +333,25 @@ export class NvdImportManager {
    */
   private updateProgress(updates: Partial<NvdImportProgress>): void {
     Object.assign(this.progress, updates)
-    this.onProgress?.({ ...this.progress })
+    this.onProgress?.(this.snapshotProgress())
+  }
+
+  /**
+   * Copy of the current progress that shares no mutable state with this instance.
+   *
+   * A plain `{ ...this.progress }` was not enough: every field except phase/currentYear/error is
+   * a nested object, so the spread handed the caller live references to the counters this class
+   * keeps writing to. A consumer that adjusted one — or simply held the object and read it later
+   * expecting a snapshot — was reading (or corrupting) internal state.
+   */
+  private snapshotProgress(): NvdImportProgress {
+    return {
+      ...this.progress,
+      years: { ...this.progress.years },
+      download: { ...this.progress.download },
+      parse: { ...this.progress.parse },
+      import: { ...this.progress.import },
+    }
   }
 
   /**
@@ -348,7 +366,7 @@ export class NvdImportManager {
    * Get current progress
    */
   getProgress(): NvdImportProgress {
-    return { ...this.progress }
+    return this.snapshotProgress()
   }
 }
 

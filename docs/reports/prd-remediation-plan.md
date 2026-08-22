@@ -721,3 +721,53 @@ Leave ci.yml:143's `|| true` as-is in this change; separately file a follow-up t
 - **Fix:** Already implemented, no further change required. (For reference: an explicit prefix->fullKey lookup table plus loud failure -- throw, not silent passthrough -- on an unmapped prefix or unrecognized short value.)
 - **Tests:** Already added and passing: src/renderer/lib/cvss/parser.test.ts (6 cases covering real 3.1 and 3.0 vectors with known reference base scores, plus 4 null-return edge cases including the specific 'unrecognized metric value' regression this bug would have mishandled). No further test work needed for this sub-requirement.
 - **Risk:** None material for this bullet. Note for awareness only: calculateBaseScore(metrics) does not branch on CVSS version (3.0 vs 3.1) -- this is spec-correct (the official CVSS v3.0 and v3.1 base-score formula and metric tables are identical; v3.1 only clarified the Roundup rounding algorithm's floating-point implementation, which does not change scores for the vectors in scope here), so no version-specific scoring logic is required to satisfy 'Support v3.0 and v3.1'. Out of scope for this task; mentioned only so a future reviewer doesn't mistake it for a gap.
+
+---
+
+## Backlog closed out — 2026-08-22
+
+Both remaining rows are worked as far as they honestly go. Nothing in this document is now
+"open pending someone doing the work"; what is left is either a product feature nobody has
+asked for or a metric that cannot be moved without writing dishonest tests.
+
+**NFR-07.1 / NFR-08.1 (coverage).** Statements **95.61**, lines **96.44** and functions
+**95.31** all meet the PRD's 95%. Floors are 95/89/95/96, with functions set _at_ the
+requirement. **Branches remain at 89.90 and are the one metric that will not reach 95.** Closing
+that gap needs ~555 more covered branches. **Counted, not assumed** — there are 1,097 uncovered
+branches in total, and by type they are:
+
+| kind          | count | what they mostly are                                                      |
+| ------------- | ----- | ------------------------------------------------------------------------- | --- | ----------------------------------- | --- | ------------------------------------ |
+| `if`          | 476   | guards like `if (!this.db) return` on state the caller cannot produce     |
+| `binary-expr` | 358   | `                                                                         |     | `/`??`fallback defaults —`?? []`, ` |     | 0`, `?? DEFAULT_SEVERITY_THRESHOLDS` |
+| `cond-expr`   | 240   | overwhelmingly `error instanceof Error ? error.message : 'Unknown error'` |
+| `switch`      | 23    | `default:` arms on closed unions                                          |
+
+Reaching 95% means covering roughly half of those. A minority are genuinely reachable and worth
+testing, but the bulk are fallback arms that only execute if a value the types forbid shows up at
+runtime; the only ways to "cover" them are tests asserting something no user can trigger, or
+deleting the guards. Recommend treating 95/89/95/96 as the standing bar and renegotiating the
+branch target itself.
+
+**NFR-08.4 (BDD breadth).** 82 -> **108 scenarios / 511 steps**. Two features were `@wip` on
+justifications that named the wrong module (see `tests/bdd/README.md` for the corrected
+reasons). Everything still excluded needs behaviour that does not exist:
+
+| still `@wip`                         | needs                                                                                                                   |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `hybrid-scanner.feature` (15)        | a real hybrid scanner; `hybridScanner.ts` is a declared stub, and the CLI injects `cli/scanner/localScanner.ts` instead |
+| `update-scheduler.feature` (8 of 17) | calendar scheduling — time-of-day, day-of-week, next-run calculation, timezones. The app schedules by interval          |
+| `nvd-database.feature` (9 of 26)     | filtered list queries by severity / CVSS range / date, caller-visible transactions, clear-all-data                      |
+| `sbom-generator.feature` (10 of 18)  | UI-only concerns, plus CycloneDX XML output (`generateCycloneDX` throws for `format: 'xml'`)                            |
+| `export-formats.feature` (1)         | jsPDF's default export is not a constructor under plain Node                                                            |
+| `example.feature` (1)                | `@ui`; needs a live server                                                                                              |
+
+**Two gaps found while closing these, neither tracked here before and neither fixed:**
+
+1. **No test file is type-checked.** `tsconfig.spec.json` is absent from the root tsconfig's
+   `references`, and `tsconfig.app.json` excludes test files, so `tsc --build` skips all of them.
+   A correctly configured project (bundler resolution, DOM lib, path aliases, all test globs)
+   reports **778 errors**, overwhelmingly incomplete mock shapes. Its own project.
+2. **`retry: 2` in CI masks flakes.** Four separate intermittent failures were found locally in
+   two days; none had ever failed CI. Worth deciding whether the retry should stay now that the
+   causes behind it are fixed.

@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import Database from 'better-sqlite3'
-import { importNvdData, getAvailableNvdYears } from './nvdImportManager.js'
+import { importNvdData, getAvailableNvdYears, NvdImportManager } from './nvdImportManager.js'
 import type { NvdApiV2Client, NvdCveV2, NvdFetchResult, NvdDateRangeFetchOptions } from './nvdApiV2Client.js'
 import { runMigrations } from '../migrations/v2SchemaMigration.js'
 
@@ -163,5 +163,103 @@ describe('getAvailableNvdYears', () => {
   it('returns an inclusive ascending year range', () => {
     const years = getAvailableNvdYears(2020, 2024)
     expect(years).toEqual([2020, 2021, 2022, 2023, 2024])
+  })
+})
+
+/**
+ * NvdImportManager's cancellation and progress surface.
+ *
+ * These four entry points had no test. Cancellation is the one that matters: a full-year
+ * import is a long-running network job, and the class supports two independent ways to stop
+ * it — an AbortSignal handed in by the caller, and cancel() on the instance. Both have to
+ * reach the API client, or a user who navigates away leaves an import running against the
+ * NVD rate limit.
+ */
+describe('NvdImportManager cancellation and progress', () => {
+  it('cancel() aborts the run and tells the API client to drop in-flight requests', () => {
+    const client = makeFakeClient(async () => ({ cves: [], totalResults: 0 }))
+    const manager = new NvdImportManager({ years: [2024], db: null, apiClient: client })
+
+    manager.cancel()
+
+    expect(client.cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('honours a caller-supplied AbortSignal that is already aborted at construction', async () => {
+    // The signal can fire before the manager exists (a component unmounting during setup),
+    // so the constructor checks `aborted` as well as subscribing.
+    const controller = new AbortController()
+    controller.abort()
+    const client = makeFakeClient(async () => ({ cves: [makeCve('CVE-2024-0001')], totalResults: 1 }))
+    const db = createTestDatabase()
+
+    try {
+      const manager = new NvdImportManager({
+        years: [2024],
+        db,
+        apiClient: client,
+        signal: controller.signal,
+      })
+      const result = await manager.start()
+
+      expect(result.importedCVEs).toBe(0)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('composes a caller-supplied AbortSignal that fires after construction', async () => {
+    const controller = new AbortController()
+    const client = makeFakeClient(async () => ({ cves: [makeCve('CVE-2024-0002')], totalResults: 1 }))
+    const db = createTestDatabase()
+
+    try {
+      const manager = new NvdImportManager({
+        years: [2024],
+        db,
+        apiClient: client,
+        signal: controller.signal,
+      })
+
+      controller.abort()
+      const result = await manager.start()
+
+      expect(result.importedCVEs).toBe(0)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('forwards download progress from the API client to the caller', async () => {
+    const progressPhases: string[] = []
+    const client = makeFakeClient(async (options) => {
+      options.onProgress?.({ percentage: 42 } as Parameters<NonNullable<typeof options.onProgress>>[0])
+      return { cves: [], totalResults: 0 }
+    })
+    const db = createTestDatabase()
+
+    try {
+      const manager = new NvdImportManager({
+        years: [2024],
+        db,
+        apiClient: client,
+        onProgress: (p) => progressPhases.push(p.phase),
+      })
+      await manager.start()
+
+      expect(progressPhases).toContain('downloading')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('getProgress() hands back a copy, so a caller cannot mutate internal state', () => {
+    const client = makeFakeClient(async () => ({ cves: [], totalResults: 0 }))
+    const manager = new NvdImportManager({ years: [2024, 2025], db: null, apiClient: client })
+
+    const snapshot = manager.getProgress()
+    snapshot.years.total = 999
+
+    expect(manager.getProgress().years.total).toBe(2)
   })
 })

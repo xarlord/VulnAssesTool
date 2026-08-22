@@ -347,3 +347,107 @@ describe('Singleton functions', () => {
     expect(instance1).not.toBe(instance2)
   })
 })
+
+/**
+ * The five entry points below had no test at all.
+ *
+ * They are the cache's invalidation and observability surface, and a cache that fails to
+ * forget is worse than no cache: `invalidateCPE` is what runs after a CPE data update, so
+ * if it drops nothing the app keeps serving pre-update match results indefinitely. The
+ * delegating CVESearchCache wrappers matter for the same reason — they are the only way a
+ * caller reaches the underlying QueryCache, so a wrapper pointed at the wrong prefix would
+ * silently no-op.
+ */
+describe('QueryCache.delete', () => {
+  let cache: QueryCache<string>
+
+  beforeEach(() => {
+    cache = new QueryCache<string>({ maxSize: 10, ttlMs: 60000, enableStats: true })
+  })
+
+  it('removes the entry and reports that it existed', () => {
+    cache.set('gone', 'value')
+
+    expect(cache.delete('gone')).toBe(true)
+    expect(cache.get('gone')).toBeNull()
+  })
+
+  it('reports false for a key that was never cached', () => {
+    expect(cache.delete('never-set')).toBe(false)
+  })
+
+  it('does not disturb the other entries or their LRU order', () => {
+    cache.set('a', 'A')
+    cache.set('b', 'B')
+    cache.set('c', 'C')
+
+    cache.delete('b')
+
+    expect(cache.get('a')).toBe('A')
+    expect(cache.get('c')).toBe('C')
+    expect(cache.getStats().size).toBe(2)
+  })
+})
+
+describe('QueryCache.resetStats', () => {
+  it('zeroes the counters without evicting anything', () => {
+    const cache = new QueryCache<string>({ maxSize: 10, ttlMs: 60000, enableStats: true })
+    cache.set('k', 'v')
+    cache.get('k')
+    cache.get('absent')
+    expect(cache.getStats().hits).toBeGreaterThan(0)
+    expect(cache.getStats().misses).toBeGreaterThan(0)
+
+    cache.resetStats()
+
+    const stats = cache.getStats()
+    expect(stats.hits).toBe(0)
+    expect(stats.misses).toBe(0)
+    expect(stats.evictions).toBe(0)
+    // The point of resetStats is to restart measurement, not to empty the cache.
+    expect(cache.get('k')).toBe('v')
+  })
+})
+
+describe('CVESearchCache delegation', () => {
+  let cache: CVESearchCache
+
+  const result: CVECacheResult = { results: [], total: 0 }
+
+  beforeEach(() => {
+    cache = new CVESearchCache({ maxSize: 20, ttlMs: 60000, enableStats: true })
+  })
+
+  it('invalidateCPE drops CPE searches and leaves text searches cached', () => {
+    // This is the guarantee that matters after a CPE data refresh: stale CPE matches must
+    // go, but an unrelated text search should not be thrown away with them.
+    cache.setCPESearch('nginx', 'nginx', {}, result)
+    cache.setTextSearch('log4j', 10, 0, result)
+
+    const removed = cache.invalidateCPE()
+
+    expect(removed).toBeGreaterThan(0)
+    expect(cache.getCPESearch('nginx', 'nginx', {})).toBeNull()
+    expect(cache.getTextSearch('log4j', 10, 0)).toEqual(result)
+  })
+
+  it('getStats reports the underlying cache contents', () => {
+    cache.setTextSearch('openssl', 10, 0, result)
+
+    expect(cache.getStats().size).toBe(1)
+  })
+
+  it('cleanup removes entries whose TTL has passed', () => {
+    const shortLived = new CVESearchCache({ maxSize: 20, ttlMs: 1, enableStats: true })
+    shortLived.setTextSearch('expired', 10, 0, result)
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(Date.now() + 5000)
+
+      expect(shortLived.cleanup()).toBe(1)
+      expect(shortLived.getStats().size).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

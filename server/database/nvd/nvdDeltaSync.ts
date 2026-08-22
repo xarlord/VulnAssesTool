@@ -490,19 +490,33 @@ export class NvdDeltaSync {
 
     this.schedulerOptions = options
 
-    // Update database in transaction
+    // Insert-or-update, not a bare UPDATE: on a database whose sync schedule has never been
+    // set there is no sync_status row for 'NVD' yet, so an UPDATE matched nothing and the
+    // enable silently failed to persist. The timer still started, but getSyncStatus() kept
+    // reporting autoSyncEnabled: false and the setting was lost on restart.
+    // setAutoSyncInterval has always upserted; this now matches it.
     this.db.exec('BEGIN TRANSACTION')
     try {
-      this.db
-        .prepare(
-          `
+      const existing = this.db.prepare(`SELECT id FROM sync_status WHERE source = 'NVD'`).get()
+      if (existing) {
+        this.db
+          .prepare(
+            `
         UPDATE sync_status SET
           auto_sync_enabled = 1,
           auto_sync_interval_hours = ?
         WHERE source = 'NVD'
       `,
-        )
-        .run(options.intervalHours)
+          )
+          .run(options.intervalHours)
+      } else {
+        this.db
+          .prepare(
+            `INSERT INTO sync_status (source, last_sync_at, auto_sync_enabled, auto_sync_interval_hours)
+             VALUES ('NVD', '', 1, ?)`,
+          )
+          .run(options.intervalHours)
+      }
       this.db.exec('COMMIT')
     } catch (error) {
       this.db.exec('ROLLBACK')
