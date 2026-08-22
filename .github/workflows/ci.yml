@@ -74,6 +74,13 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
+      # Type-check the step definitions before running them. Nothing else checks them:
+      # tsconfig.app.json excludes test files and tsconfig.spec.json is not in the root
+      # tsconfig references, so four of them were importing domain types from a module that
+      # does not exist and silently getting `any`.
+      - name: Type-check BDD step definitions
+        run: npm run type-check:bdd
+
       - name: Run BDD tests
         run: npm run test:bdd
 

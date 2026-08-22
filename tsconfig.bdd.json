@@ -1,0 +1,34 @@
+{
+  // Type-checks the Cucumber step definitions. Separate from tests/bdd/tsconfig.json, which
+  // exists to give tsx its path aliases at RUNTIME and must keep its NodeNext resolution.
+  //
+  // Worth having because the step definitions were checked by nothing at all: they are excluded
+  // from tsconfig.app.json, and tsconfig.spec.json is not in the root tsconfig's references. Four
+  // of them imported their domain types from `src/renderer/lib/types.ts`, a module that does not
+  // exist — a type-only import, so tsx erased it and every annotation silently became `any`. The
+  // fixtures had drifted well away from the real shapes underneath that.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "moduleDetection": "force",
+    "types": ["@cucumber/cucumber", "@types/node"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/renderer/*"],
+      "@@/*": ["./src/shared/*"]
+    }
+  },
+  // src/renderer/types/**: ambient module augmentations (jspdf-autotable's lastAutoTable,
+  // cytoscape-fcose) that source files reached through the step definitions depend on. Without
+  // them this reports 10 errors in pdf.ts that the app build does not have.
+  "include": ["tests/bdd/**/*.ts", "src/renderer/types/**/*.d.ts"]
+}

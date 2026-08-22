@@ -7,7 +7,7 @@
 
 import { Given, When, Then, Before, After } from '@cucumber/cucumber'
 import { expect } from 'vitest'
-import type { Vulnerability, Component } from '../../../src/renderer/lib/types.ts'
+import type { Vulnerability, Component } from '../../../src/shared/types.ts'
 import {
   exportVulnerabilitiesToCsv,
   exportComponentsToCsv,
@@ -16,9 +16,9 @@ import {
   generateFilename,
   getVulnerabilityCsvHeader,
   getComponentCsvHeader,
-  type VulnerabilityCsvRow,
-  type ComponentCsvRow,
 } from '../../../src/renderer/lib/export/csv.ts'
+// csv.ts consumes these but does not re-export them; they are declared next door.
+import type { VulnerabilityCsvRow, ComponentCsvRow } from '../../../src/renderer/lib/export/types.ts'
 import {
   prepareVulnerabilitiesJson,
   prepareComponentsJson,
@@ -147,6 +147,8 @@ function createTestComponent(
     patchInfo: {
       hasFixAvailable: true,
       recommendedVersion: '2.0.0',
+      fixedVersions: ['2.0.0'],
+      vulnerableVersions: [version],
     },
   }
 }
