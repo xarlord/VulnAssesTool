@@ -5,60 +5,23 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { webcrypto } from 'node:crypto'
 import initSqlJs from 'sql.js'
 import type { Database } from 'sql.js'
 import { FilterAuditLogger, type AuditEventInput } from './filterAuditLogger'
 import { ISO21434ReportGenerator } from './iso21434ReportGenerator'
 import type { FilterAuditEvent, VulnerabilityRef, FilterDecision, FilterContext, UserRef } from '@@/types/fpf'
 
-// Store hashes for verification - simple hash cache
-const hashCache = new Map<string, string>()
-
-// Simple deterministic hash function for testing
-function simpleHash(data: string): Uint8Array {
-  // Create a deterministic 32-byte hash based on the input
-  const result = new Uint8Array(32)
-  let hash = 0
-  for (let i = 0; i < data.length; i++) {
-    const char = data.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32bit integer
-  }
-  // Use the hash to seed the 32-byte result
-  const seed = Math.abs(hash)
-  for (let i = 0; i < 32; i++) {
-    result[i] = (seed * (i + 1)) % 256
-  }
-  return result
-}
-
-// Mock crypto.subtle for testing environment
-const mockDigest = vi.fn().mockImplementation(async (algorithm: string, data: BufferSource) => {
-  const dataString = new TextDecoder().decode(data as ArrayBuffer)
-  // Check cache first for consistent results
-  if (hashCache.has(dataString)) {
-    // Return the cached bytes
-    const cachedHex = hashCache.get(dataString)!
-    const bytes = new Uint8Array(32)
-    for (let i = 0; i < 32; i++) {
-      bytes[i] = parseInt(cachedHex.substring(i * 2, i * 2 + 2), 16)
-    }
-    return bytes.buffer
-  }
-  const hash = simpleHash(dataString)
-  // Cache as hex string
-  const hexString = Array.from(hash)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-  hashCache.set(dataString, hexString)
-  return hash.buffer
-})
-
-vi.stubGlobal('crypto', {
-  subtle: {
-    digest: mockDigest,
-  },
-})
+// jsdom provides no crypto.subtle, so the audit logger's SHA-256 needs one supplied. Use Node's
+// real Web Crypto rather than a stand-in.
+//
+// This previously stubbed in a hand-rolled `simpleHash`, and that fake was itself the bug: it
+// folded the input to a 31-bit integer and then expanded it with `(seed * (i + 1)) % 256`, so
+// every one of the 32 output bytes was a function of `seed % 256` alone. The fake digest had 256
+// possible values, which gave the "all hashes are unique" test a few-percent birthday-collision
+// chance on every run — the tamper-evidence tests were measuring the mock, not SHA-256, and
+// intermittently failing on it. Real SHA-256 cannot collide across these inputs.
+vi.stubGlobal('crypto', webcrypto)
 
 describe('FilterAuditLogger without a backend (C2)', () => {
   it('warns instead of silently reporting a valid, empty audit trail', async () => {
@@ -126,12 +89,6 @@ describe('FilterAuditLogger', () => {
     })
     db = new SQL.Database()
     logger = new FilterAuditLogger(db)
-
-    // Clear hash cache between tests
-    hashCache.clear()
-
-    // Reset mock
-    mockDigest.mockClear()
   })
 
   afterEach(() => {

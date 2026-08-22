@@ -84,24 +84,28 @@ export default defineConfig({
       ],
       // Anti-regression floors. Ratchet up as real gaps close, never down.
       //
-      // Ratcheted 2026-08-21. Measured clean (210 files, 0 fail):
-      // stmts 95.37 / branch 89.73 / funcs 94.65 / lines 96.21. Statements and lines clear the
-      // PRD's 95% (NFR-07.1/08.1); functions and branches do not yet.
+      // Ratcheted 2026-08-22. Measured clean (211 files, 0 fail):
+      // stmts 95.58 / branch 89.91 / funcs 95.23 / lines 96.41.
       //
-      // Margins are tighter than the previous 1-1.7 because measurement is now reproducible: the
-      // threads pool used to crash or flake often enough that a run's numbers were partly luck
-      // (and a failed run emits no report at all). Each floor below sits under the MINIMUM
-      // observed across every full run taken on 2026-08-21 —
-      // stmts 95.24/95.25/95.37 · branch 89.68/89.71/89.73 · funcs 94.13/94.13/94.65 ·
-      // lines 96.06/96.08/96.21 — so these are evidence-based, not guesses.
+      // Statements, lines AND functions now clear the PRD's 95% (NFR-07.1/08.1). The functions
+      // floor is therefore set AT the requirement, not below it: if a change drops it under 95,
+      // the fix is a test for the new code, not a lower number here.
       //
-      // Functions need ~12 more covered to reach 95%. Branches need ~575, which is the real
-      // grind: most of what is left are unreachable defensive guards (SSR/null checks,
-      // closed-union default arms), and forcing those means contrived, intent-free tests.
+      // Branches are the one metric still short, and closing that gap is ~550 more branches.
+      // What is left is dominated by defensive guards that cannot be reached from a legitimate
+      // caller (SSR/null checks, closed-union default arms), so the honest ceiling is well under
+      // 95 unless the guards themselves are removed. Do not manufacture tests for them.
+      //
+      // Margins are tighter than the previous 1-1.7 because measurement is now reproducible. The
+      // threads pool used to crash or flake often enough that a run's numbers were partly luck,
+      // and a failed run emits no report at all — so a generous margin was covering for the
+      // harness, not for real variance. Across every full run on 2026-08-21/22 the measured
+      // minimums were stmts 95.24 · branch 89.68 · funcs 94.13 (pre-work) · lines 96.06, and
+      // each floor sits at or below what has been measured since.
       thresholds: {
         statements: 95,
         branches: 89,
-        functions: 94,
+        functions: 95,
         lines: 96,
       },
     },
