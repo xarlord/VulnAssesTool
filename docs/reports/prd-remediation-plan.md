@@ -733,11 +733,21 @@ asked for or a metric that cannot be moved without writing dishonest tests.
 **NFR-07.1 / NFR-08.1 (coverage).** Statements **95.61**, lines **96.44** and functions
 **95.31** all meet the PRD's 95%. Floors are 95/89/95/96, with functions set _at_ the
 requirement. **Branches remain at 89.90 and are the one metric that will not reach 95.** Closing
-that gap needs ~550 more covered branches, and what is left is dominated by defensive guards
-unreachable from a legitimate caller — SSR/`typeof window` checks, null guards on values the
-type system already forbids, `default:` arms on closed unions. They can only be "covered" by
-tests that assert nothing a user could ever trigger, or by deleting the guards. Recommend
-treating 95/89/95/96 as the standing bar and reviewing the branch target itself.
+that gap needs ~555 more covered branches. **Counted, not assumed** — there are 1,097 uncovered
+branches in total, and by type they are:
+
+| kind          | count | what they mostly are                                                      |
+| ------------- | ----- | ------------------------------------------------------------------------- | --- | ----------------------------------- | --- | ------------------------------------ |
+| `if`          | 476   | guards like `if (!this.db) return` on state the caller cannot produce     |
+| `binary-expr` | 358   | `                                                                         |     | `/`??`fallback defaults —`?? []`, ` |     | 0`, `?? DEFAULT_SEVERITY_THRESHOLDS` |
+| `cond-expr`   | 240   | overwhelmingly `error instanceof Error ? error.message : 'Unknown error'` |
+| `switch`      | 23    | `default:` arms on closed unions                                          |
+
+Reaching 95% means covering roughly half of those. A minority are genuinely reachable and worth
+testing, but the bulk are fallback arms that only execute if a value the types forbid shows up at
+runtime; the only ways to "cover" them are tests asserting something no user can trigger, or
+deleting the guards. Recommend treating 95/89/95/96 as the standing bar and renegotiating the
+branch target itself.
 
 **NFR-08.4 (BDD breadth).** 82 -> **108 scenarios / 511 steps**. Two features were `@wip` on
 justifications that named the wrong module (see `tests/bdd/README.md` for the corrected
