@@ -7,7 +7,7 @@
 
 import { Given, When, Then, Before, After } from '@cucumber/cucumber'
 import { expect } from 'vitest'
-import type { Project, Component, Vulnerability, ProjectStatistics } from '../../../src/renderer/lib/types.ts'
+import type { Project, Component, Vulnerability, ProjectStatistics, SbomFile } from '../../../src/shared/types.ts'
 import {
   calculateOverallMetrics,
   calculateProjectMetrics,
@@ -70,6 +70,19 @@ After({ tags: '@analytics' }, async function () {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/** A complete SbomFile. The inline literal this replaced set only 3 of the 7 required fields. */
+function makeSbomFile(filename: string): SbomFile {
+  return {
+    id: `sbom-${filename}`,
+    filename,
+    format: 'spdx',
+    formatVersion: 'SPDX-2.3',
+    uploadedAt: new Date(),
+    fileHash: `hash-${filename}`,
+    componentCount: 0,
+  }
+}
 
 function createTestProject(name: string, overrides: Partial<Project> = {}): Project {
   const now = new Date()
@@ -624,8 +637,19 @@ Then('data freshness should be {int}%', function (percentage: number) {
 Given('{int} vulnerabilities have patch information', function (count: number) {
   const vulns = Array.from({ length: count }, (_, i) => {
     const vuln = createTestVulnerability(`CVE-2024-${2000 + i}`, 'high')
+    const hasPatch = i < 40
     vuln.patchInfo = {
-      patchAvailability: i < 40 ? 'available' : 'unknown',
+      // 'none' rather than the 'unknown' this used to say — that is not a
+      // PatchAvailabilityStatus at all (available/partial/upstream/investigating/none).
+      patchAvailability: hasPatch ? 'available' : 'none',
+      fixedVersions: hasPatch ? ['2.0.0'] : [],
+      patchLinks: [],
+      remediationAdvice: {
+        priority: 'high',
+        category: hasPatch ? 'upgrade' : 'monitor',
+        steps: [],
+      },
+      affectedVersionRanges: [],
     }
     return vuln
   })
@@ -656,7 +680,7 @@ Given('{int} projects with various statistics', function (count: number) {
       createTestProject(`Productivity Project ${i}`, {
         statistics: stats,
         lastScanAt: scanDate,
-        sbomFiles: [{ filename: `bom${i}.json`, format: 'spdx', uploadedAt: new Date() }],
+        sbomFiles: [makeSbomFile(`bom${i}.json`)],
       }),
     )
   }

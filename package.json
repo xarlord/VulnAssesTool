@@ -51,6 +51,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md,css}\"",
     "type-check": "tsc --build --noEmit",
+    "type-check:bdd": "tsc -p tsconfig.bdd.json --noEmit",
     "errors": "npx tsx scripts/watch-errors.ts",
     "errors:json": "npx tsx scripts/watch-errors.ts --json",
     "errors:resolve": "npx tsx scripts/watch-errors.ts --mark-resolved",

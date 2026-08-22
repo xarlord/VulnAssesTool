@@ -7,14 +7,9 @@
 
 import { Given, When, Then, Before, After } from '@cucumber/cucumber'
 import { expect } from 'vitest'
-import type {
-  Project,
-  Component,
-  Vulnerability,
-  AppSettings,
-  SettingsProfile,
-} from '../../../src/renderer/lib/types.ts'
+import type { Project, Component, Vulnerability, AppSettings, SettingsProfile } from '../../../src/shared/types.ts'
 import type { AuditEvent, AuditActionType, AuditEntityType } from '../../../src/renderer/lib/audit/types.ts'
+import { DEFAULT_SETTINGS } from '../../../src/shared/constants.ts'
 import {
   logProjectCreate,
   logProjectUpdate,
@@ -93,8 +88,8 @@ function createTestProject(name: string, id?: string): Project {
     description: `Test project ${name}`,
     createdAt: new Date(),
     updatedAt: new Date(),
-    lastScanAt: null,
-    lastVulnDataRefresh: null,
+    lastScanAt: undefined,
+    lastVulnDataRefresh: undefined,
     sbomFiles: [],
     components: [],
     vulnerabilities: [],
@@ -111,18 +106,14 @@ function createTestProject(name: string, id?: string): Project {
   }
 }
 
+// Built from the app's real defaults rather than hand-listed. The hand-written version had
+// drifted badly — `language`, `refreshInterval`, `nvdApiKey`, `osvEnabled`, `maxConcurrentScans`
+// and `scanTimeout` are not AppSettings fields at all, and the required ones were missing. It
+// went unnoticed because these files imported their types from `src/renderer/lib/types.ts`,
+// which does not exist; the import is type-only, so tsx erased it and every annotation silently
+// became `any`.
 function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
-  return {
-    theme: 'light',
-    language: 'en',
-    autoRefresh: true,
-    refreshInterval: 3600000,
-    nvdApiKey: '',
-    osvEnabled: true,
-    maxConcurrentScans: 5,
-    scanTimeout: 300000,
-    ...overrides,
-  }
+  return { ...DEFAULT_SETTINGS, theme: 'light', ...overrides }
 }
 
 function createTestProfile(name: string, id?: string): SettingsProfile {
@@ -131,8 +122,9 @@ function createTestProfile(name: string, id?: string): SettingsProfile {
     name,
     description: `Test profile ${name}`,
     settings: createTestSettings(),
+    isDefault: false,
     createdAt: new Date(),
-    updatedAt: new Date(),
+    lastUsed: new Date(),
   }
 }
 
@@ -162,7 +154,7 @@ When('the project creation is logged', function () {
 Then('an audit event should be created with action {string}', function (action: string) {
   const event = getLastAuditEvent()
   expect(event).to.exist
-  expect(event.actionType).to.equal(action as AuditActionType)
+  expect(event!.actionType).to.equal(action as AuditActionType)
 })
 
 Then('an audit event should be created', function () {
@@ -333,7 +325,17 @@ Then('component count should be recorded', function () {
 // Scenario: Log SBOM removal
 Given('project {string} has SBOM {string}', function (projectId: string, filename: string) {
   context.testProject = createTestProject('Test Project', projectId)
-  context.testProject.sbomFiles = [{ filename, format: 'spdx', uploadedAt: new Date() }]
+  context.testProject.sbomFiles = [
+    {
+      id: `sbom-${filename}`,
+      filename,
+      format: 'spdx',
+      formatVersion: 'SPDX-2.3',
+      uploadedAt: new Date(),
+      fileHash: `hash-${filename}`,
+      componentCount: 0,
+    },
+  ]
 })
 
 When('the SBOM is removed', function () {
@@ -481,7 +483,8 @@ Then('affected IDs should be recorded', function () {
   const event = getLastAuditEvent()
   expect(event!.newState).to.be.an('object')
   expect(event!.newState).to.have.property('affectedIds')
-  expect(event!.newState!.affectedIds).to.be.an('array')
+  // newState is an open record on AuditEvent, so index rather than dotting into it.
+  expect((event!.newState as Record<string, unknown>).affectedIds).to.be.an('array')
 })
 
 // Scenario: Log bulk update operation

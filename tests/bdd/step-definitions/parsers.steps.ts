@@ -9,7 +9,7 @@
 
 import { Given, When, Then, Before, After } from '@cucumber/cucumber'
 import { expect } from 'vitest'
-import type { Component, Vulnerability } from '../../../src/renderer/lib/types.ts'
+import type { Component, Vulnerability } from '../../../src/shared/types.ts'
 import { parseSpdx, validateSpdx, getSpdxVersion, isSpdxFile } from '../../../src/renderer/lib/parsers/spdx.ts'
 import { parseCycloneDX, validateCycloneDX, getCycloneDXVersion } from '../../../src/renderer/lib/parsers/cyclonedx.ts'
 
