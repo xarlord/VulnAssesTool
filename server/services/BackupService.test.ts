@@ -283,19 +283,43 @@ describe('BackupService', () => {
       expect(files.some((f) => f.includes('pre-restore'))).toBe(true)
     })
 
-    it('should restore backup even when integrity is unknown', async () => {
+    // FR-21: "refuse to restore a backup that fails verification". This test previously asserted
+    // the opposite — it corrupted a backup and expected the restore to SUCCEED, on the reasoning
+    // that listBackups() reports integrity 'unknown' and restoreBackup only refused 'invalid'.
+    // That made the guard unreachable and the test a record of the defect rather than a check on
+    // it. Restore overwrites the live database, so a backup that cannot be shown to be good must
+    // be refused, and the live database must survive the refusal intact.
+    it('refuses to restore a corrupt backup and leaves the live database untouched', async () => {
       await service.initialize()
 
-      // Create a backup
       const createResult = await service.createBackup()
       expect(createResult.success).toBe(true)
 
-      // Overwrite with invalid content - integrity is still "unknown" from listBackups
+      const liveBefore = await fs.readFile(dbPath)
       await fs.writeFile(createResult.backup!.path, Buffer.from('invalid content'))
 
-      // restoreBackup should succeed since integrity is "unknown", not "invalid"
       const result = await service.restoreBackup(createResult.backup!.id)
-      expect(result.success).toBe(true)
+
+      expect(result.success).toBe(false)
+      expect(result.error).toMatch(/integrity/i)
+      // The point of refusing: the database the user is still running must be unharmed.
+      expect(await fs.readFile(dbPath)).toEqual(liveBefore)
+    })
+
+    it('refuses to restore when the backup file has been deleted underneath it', async () => {
+      await service.initialize()
+
+      const createResult = await service.createBackup()
+      expect(createResult.success).toBe(true)
+      const liveBefore = await fs.readFile(dbPath)
+
+      // listBackups() cached a record; the file goes away before restore reads it.
+      await fs.unlink(createResult.backup!.path)
+
+      const result = await service.restoreBackup(createResult.backup!.id)
+
+      expect(result.success).toBe(false)
+      expect(await fs.readFile(dbPath)).toEqual(liveBefore)
     })
 
     it('should handle restore error gracefully', async () => {
@@ -321,20 +345,27 @@ describe('BackupService', () => {
       expect(result.error).toBeDefined()
     })
 
-    it('should reject restore of backup with invalid integrity', async () => {
+    // Previously this mocked listBackups() into returning integrity:'invalid' and checked that
+    // restore refused. That only exercised a branch production could never reach, since the real
+    // listBackups() always reports 'unknown'. Inverted here into the property that actually
+    // matters: the file on disk decides, and a record claiming the backup is fine cannot override
+    // it. This fails if anyone reinstates trust in the cached field.
+    it('verifies the file itself, so a record claiming "valid" cannot authorise a corrupt restore', async () => {
       await service.initialize()
 
       const createResult = await service.createBackup()
       expect(createResult.success).toBe(true)
+      const liveBefore = await fs.readFile(dbPath)
 
-      // Override listBackups to return the backup marked as invalid
+      await fs.writeFile(createResult.backup!.path, Buffer.from('not a sqlite file'))
       const listSpy = vi
         .spyOn(service, 'listBackups')
-        .mockResolvedValue([{ ...createResult.backup!, integrity: 'invalid' as const }])
+        .mockResolvedValue([{ ...createResult.backup!, integrity: 'valid' as const }])
 
       const result = await service.restoreBackup(createResult.backup!.id)
       expect(result.success).toBe(false)
       expect(result.error).toContain('integrity')
+      expect(await fs.readFile(dbPath)).toEqual(liveBefore)
 
       listSpy.mockRestore()
     })

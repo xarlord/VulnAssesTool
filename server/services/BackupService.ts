@@ -206,8 +206,14 @@ export class BackupService {
         return { success: false, error: 'Backup not found' }
       }
 
-      if (backup.integrity === 'invalid') {
-        return { success: false, error: 'Backup integrity check failed' }
+      // Verify here rather than trusting the record from listBackups(), which reports every
+      // backup as 'unknown' (it does not open the files). Refusing only 'invalid' therefore made
+      // this guard unreachable and let a corrupt backup overwrite the live database. Require a
+      // positive 'valid': 'unknown' means the check itself failed, which is not permission to
+      // proceed when the cost of being wrong is the user's only copy of their data.
+      const integrity = await this.verifyBackupIntegrity(backup.path)
+      if (integrity !== 'valid') {
+        return { success: false, error: `Backup integrity check failed (${integrity}) — restore aborted` }
       }
 
       // Read backup file

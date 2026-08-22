@@ -17,7 +17,7 @@ vi.mock('node:child_process', () => {
 })
 
 // Imported after the mock is registered.
-const { SyftService, SyftError } = await import('./SyftService.js')
+const { SyftService, SyftError, assertRegistryImageRef } = await import('./SyftService.js')
 
 // A realistic Syft `cyclonedx-json` document (bomFormat + purl-bearing components).
 const SYFT_CYCLONEDX = JSON.stringify({
@@ -86,5 +86,57 @@ describe('SyftService.generateSbom', () => {
     await new SyftService('syft').generateSbom({ kind: 'file', value: '/tmp/app.jar' })
     expect(seenArgs[0]).toBe('file:/tmp/app.jar')
     expect(seenArgs).toContain('cyclonedx-json')
+  })
+})
+
+// SEC-1 (docs/reports/code-review-2026-08-22.md). The `imageRef` input reached Syft's argv with no
+// validation at all, while the sibling `localPath` input was confined to SBOM_LOCAL_SCAN_ROOT.
+// Both bypasses below were REPRODUCED against the real Syft v1.44.0 before this guard existed:
+// `dir:<host path>` returned an SBOM of that directory, and `--help` returned Syft's help text.
+describe('assertRegistryImageRef (SEC-1)', () => {
+  it('rejects filesystem source schemes that would bypass the local-scan containment', () => {
+    for (const ref of [
+      'dir:C:/Users',
+      'dir:/etc',
+      'file:/etc/passwd',
+      'DIR:/etc',
+      'oci-dir:/var/lib',
+      'docker-archive:/tmp/x.tar',
+      'oci-archive:/tmp/x.tar',
+      'singularity:/tmp/x.sif',
+      'sbom:/tmp/x.json',
+    ]) {
+      expect(() => assertRegistryImageRef(ref), ref).toThrow(/local-filesystem source/i)
+    }
+  })
+
+  it('rejects a reference that would be parsed as a Syft flag rather than a target', () => {
+    for (const ref of ['--help', '-o', '--output=/tmp/x']) {
+      expect(() => assertRegistryImageRef(ref), ref).toThrow(/may not start with/i)
+    }
+  })
+
+  it('rejects an empty or whitespace-only reference', () => {
+    expect(() => assertRegistryImageRef('')).toThrow(/empty/i)
+    expect(() => assertRegistryImageRef('   ')).toThrow(/empty/i)
+  })
+
+  // The guard is worthless if it also blocks real work, and registry references are varied:
+  // a bare name, a tag, a digest, a host with a PORT (which looks like a scheme), and Syft's own
+  // registry-side schemes must all still pass.
+  it('accepts the registry references people actually use', () => {
+    for (const ref of [
+      'nginx',
+      'nginx:latest',
+      'docker.io/library/nginx:1.25.3',
+      'ghcr.io/owner/repo:sha-abc123',
+      'registry.example.com:5000/team/service:2.1.0',
+      'alpine@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      'registry:nginx:latest',
+      'docker:nginx:latest',
+      'podman:nginx:latest',
+    ]) {
+      expect(() => assertRegistryImageRef(ref), ref).not.toThrow()
+    }
   })
 })

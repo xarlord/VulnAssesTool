@@ -78,6 +78,16 @@ export interface KevServiceConfig {
   autoSync: boolean
 }
 
+/**
+ * Largest share of the current catalog a sync may delete before the whole catalog is treated as
+ * untrustworthy and refused. CISA delists a handful of entries at a time, so a real update never
+ * approaches this; a fifth disappearing at once means the response is wrong, not the world.
+ */
+const MAX_CATALOG_SHRINK_RATIO = 0.2
+
+/** Below this many existing entries a percentage is noise, so only the empty-catalog guard applies. */
+const MIN_CATALOG_FOR_SHRINK_GUARD = 50
+
 const DEFAULT_CONFIG: KevServiceConfig = {
   cisaUrl: 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json',
   baselinePath: 'resources/kev-baseline.json',
@@ -291,7 +301,33 @@ export class KevService {
 
       // Get current entries for comparison
       const currentIds = this.getAllKevIds()
-      const newIds = new Set(catalog.vulnerabilities.map((v) => v.cveID))
+      const newIds = new Set(catalog.vulnerabilities?.map((v) => v.cveID) ?? [])
+
+      // SEC-2 (docs/reports/code-review-2026-08-22.md). Below, every CVE absent from the fetched
+      // catalog is delisted. That is correct for a genuine CISA removal and catastrophic for a
+      // response that merely LOOKS like a catalog: an HTTP 200 carrying `{"vulnerabilities": []}`
+      // — a captive portal, a truncated CDN response, an upstream publishing error — delists
+      // everything, and isKev() then answers false for every CVE in the product.
+      //
+      // The catch block below already protects a *failed* fetch. This one succeeds, which is why
+      // it needed its own guard. Refuse implausible catalogs and keep what we have; stale KEV data
+      // is a much smaller harm than silently reporting actively-exploited CVEs as not exploited.
+      if (newIds.size === 0) {
+        throw new Error('CISA returned an empty KEV catalog — refusing to apply it and keeping the existing entries')
+      }
+      // The ratio only means anything once the catalog is big enough for a percentage to be
+      // meaningful. On a 2-entry catalog a single legitimate delisting is a 50% drop; the real
+      // one carries ~1,700 entries, so the guard still covers every production case.
+      if (
+        currentIds.size >= MIN_CATALOG_FOR_SHRINK_GUARD &&
+        newIds.size < currentIds.size * (1 - MAX_CATALOG_SHRINK_RATIO)
+      ) {
+        throw new Error(
+          `CISA returned ${newIds.size} KEV entries, down from ${currentIds.size} — more than ` +
+            `${Math.round(MAX_CATALOG_SHRINK_RATIO * 100)}% smaller, so it is being refused as implausible. ` +
+            'Existing entries are unchanged.',
+        )
+      }
 
       // Calculate diff
       let added = 0

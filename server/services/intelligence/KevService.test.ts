@@ -658,3 +658,78 @@ describe('KevService — getKevService / resetKevService singleton', () => {
     expect(() => resetKevService()).not.toThrow()
   })
 })
+
+// SEC-2 (docs/reports/code-review-2026-08-22.md). syncFromCisa delists every CVE absent from the
+// fetched catalog. That is right for a genuine CISA removal and catastrophic for a response that
+// merely looks like a catalog — an HTTP 200 carrying an empty or truncated list wipes the lot, and
+// isKev() then answers false for every CVE in the product. The pre-existing failure tests only
+// covered a *failed* fetch; this one succeeds, which is exactly why it got through.
+describe('KevService — implausible catalogs are refused (SEC-2)', () => {
+  let db: InstanceType<typeof Database>
+
+  beforeEach(() => {
+    db = makeDb()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    db.close()
+  })
+
+  /** Seed `count` KEV entries so the shrink guard's minimum-size condition is met. */
+  function seedMany(count: number): string[] {
+    const ids: string[] = []
+    for (let i = 0; i < count; i++) {
+      const id = `CVE-1900-${String(i).padStart(4, '0')}`
+      seedKev(db, id)
+      ids.push(id)
+    }
+    return ids
+  }
+
+  it('refuses an HTTP-200 empty catalog and keeps every existing entry', async () => {
+    const ids = seedMany(60)
+    const service = new KevService(db, { autoSync: false, cisaUrl: 'http://test.local' })
+    await service.initialize()
+
+    mockCisaFetch([])
+    const result = await service.syncFromCisa()
+
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/empty/i)
+    // The whole point: KEV status must survive a bad response.
+    expect(service.isKev(ids[0])).toBe(true)
+    expect(service.isKev(ids[59])).toBe(true)
+    const row = db.prepare('SELECT COUNT(*) as c FROM kev_catalog').get() as { c: number }
+    expect(row.c).toBe(60)
+  })
+
+  it('refuses a catalog that lost more than a fifth of its entries', async () => {
+    const ids = seedMany(60)
+    const service = new KevService(db, { autoSync: false, cisaUrl: 'http://test.local' })
+    await service.initialize()
+
+    // A truncated response carrying only 40 of the 60 known entries (a 33% drop).
+    mockCisaFetch(ids.slice(0, 40))
+    const result = await service.syncFromCisa()
+
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/implausible/i)
+    expect(service.isKev(ids[50])).toBe(true)
+  })
+
+  it('still applies a plausible update, including genuine delistings', async () => {
+    const ids = seedMany(60)
+    const service = new KevService(db, { autoSync: false, cisaUrl: 'http://test.local' })
+    await service.initialize()
+
+    // 5 delisted (8%), 1 added — an ordinary CISA update, which must NOT be refused.
+    mockCisaFetch([...ids.slice(0, 55), 'CVE-1900-7777'])
+    const result = await service.syncFromCisa()
+
+    expect(result.success).toBe(true)
+    expect(result.removed).toBe(5)
+    expect(service.isKev(ids[59])).toBe(false)
+    expect(service.isKev('CVE-1900-7777')).toBe(true)
+  })
+})
