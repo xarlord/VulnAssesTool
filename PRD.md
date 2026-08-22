@@ -23,12 +23,13 @@ To become the industry-standard open-source web application for SBOM vulnerabili
 
 1. [Product Overview](#product-overview)
 2. [Target Users & Use Cases](#target-users--use-cases)
-3. [Functional Requirements](#functional-requirements)
+3. [Functional Requirements](#functional-requirements) — FR-01 … FR-24 (implemented)
 4. [Non-Functional Requirements](#non-functional-requirements)
-5. [Security & Compliance](#security--compliance)
-6. [Success Criteria & Metrics](#success-criteria--metrics)
-7. [Deployment Requirements](#deployment-requirements)
-8. [Roadmap & Future Enhancements](#roadmap--future-enhancements)
+5. [Planned Functional Requirements](#planned-functional-requirements) — FR-25 … FR-38, NFR-09 (**not implemented**)
+6. [Security & Compliance](#security--compliance)
+7. [Success Criteria & Metrics](#success-criteria--metrics)
+8. [Deployment Requirements](#deployment-requirements)
+9. [Roadmap & Future Enhancements](#roadmap--future-enhancements)
 
 ---
 
@@ -632,6 +633,300 @@ VulnAssessTool provides a self-hosted, offline-capable web application that:
   - Export as image
   - Filter by vulnerability status
 
+### FR-12: SBOM Generation from Binaries, Images and Source
+
+> Requirements FR-12 through FR-24 were added on 2026-08-22 by
+> [reports/requirements-gap-analysis-2026-08-22.md](docs/reports/requirements-gap-analysis-2026-08-22.md).
+> They describe capabilities that were **already shipped** and had no requirement covering them;
+> each is written from the implementation, not from intent. They are requirements, not release
+> notes: they state what the product must do, and the code happens to already do it.
+
+#### FR-12.1: Artifact Cataloging
+
+- **Priority:** High (Must Have)
+- **Description:** Users must be able to produce an SBOM from an artifact they hold, not only from
+  an SBOM someone else produced
+- **Requirements:**
+  - Accept an uploaded binary or archive, a local path, or a container image reference
+  - Select the cataloging mode from the target (`dir` for a source tree, `file` for an artifact,
+    image reference otherwise) without asking the user to classify it
+  - Emit CycloneDX JSON consumable by the FR-02.1 importer with no format-specific handling
+  - Report engine availability separately from generation, so a missing engine is a clear
+    precondition failure rather than a generation error
+  - Never invoke the cataloging engine through a shell; bound both execution time and output size
+
+#### FR-12.2: Cataloging Guidance for Composite Artifacts
+
+- **Priority:** Medium (Should Have)
+- **Description:** Artifacts that are containers of filesystems (Android images, Yocto builds,
+  MCU/RTOS firmware, AUTOSAR packages) must not silently produce an empty or misleading SBOM
+- **Requirements:**
+  - Document a per-artifact-class playbook covering what to unpack before cataloging
+  - Detect and reject inputs that require unpacking with an actionable message rather than
+    returning a near-empty component list
+
+### FR-13: Container Image Scanning
+
+- **Priority:** High (Must Have)
+- **Description:** Users must be able to assess a container image without first exporting an SBOM
+  from it by hand
+- **Requirements:**
+  - Detect an available container runtime (Docker or Podman) and report which one is in use
+  - Pull an image by reference, read its manifest, and inspect its configuration
+  - Extract the image filesystem and catalog installed packages into the FR-02 component model
+  - Scan the resulting components through the same pipeline as an imported SBOM (FR-03)
+  - Surface runtime-absent, image-not-found and authentication failures distinctly
+  - Execute runtime commands without a shell, with bounded timeout and output size
+
+### FR-14: Threat Intelligence Enrichment
+
+#### FR-14.1: Known Exploited Vulnerabilities (CISA KEV)
+
+- **Priority:** High (Must Have)
+- **Description:** Vulnerabilities under active exploitation must be distinguishable from those
+  that are merely severe, because severity alone does not indicate urgency
+- **Requirements:**
+  - Ship an embedded KEV baseline so KEV status resolves with no network access on first run
+  - Synchronise from the CISA catalog on a configurable interval (default 24 hours), replacing the
+    baseline without losing KEV status if the sync fails
+  - Answer KEV membership for a single CVE and for a batch in one call
+  - Expose the KEV entry's vendor, product, required action, due date and ransomware-campaign flag
+  - Support querying KEV additions within a date range, and report catalog totals and last-sync time
+  - A failed or never-run sync must degrade to the baseline, never to "not exploited"
+
+#### FR-14.2: Exploit Prediction Scoring (EPSS)
+
+- **Priority:** Medium (Should Have)
+- **Description:** Users must be able to prioritise by likelihood of exploitation, not only by
+  severity and known-exploited status
+- **Requirements:**
+  - Fetch EPSS probability and percentile for a CVE on demand from the EPSS API
+  - Cache scores with a configurable TTL (default 24 hours) and serve from cache while fresh
+  - Batch requests (default maximum 100 CVEs per call) and respect a request rate limit
+  - Support explicit refresh of a single score and cleanup of expired cache entries
+  - Absent or stale EPSS data must not block scanning or prioritisation
+
+#### FR-14.3: Composite Risk Score
+
+- **Priority:** Medium (Should Have)
+- **Description:** KEV status, EPSS and severity must combine into one comparable number so a
+  worklist can be ordered
+- **Requirements:**
+  - Produce a 0–100 score from KEV status, EPSS percentile and CVSS severity
+  - Weight known-exploited status decisively above predicted exploitability
+  - Remain defined when EPSS is unavailable, degrading to severity and KEV status
+  - Expose the contributing terms, not only the total, so a ranking can be explained
+
+### FR-15: False Positive Filtering (FPF)
+
+#### FR-15.1: Filter Orchestration
+
+- **Priority:** High (Must Have)
+- **Description:** A raw scan of an embedded or automotive system reports vulnerabilities in code
+  that is not present, not enabled, or not reachable; these must be filterable without hiding real
+  findings
+- **Requirements:**
+  - Apply filter tiers in ascending cost order and stop at the first tier that decides
+  - Never auto-suppress a Critical or High finding; the highest available action for those is to
+    flag for review
+  - Record every decision — suppressed, downgraded, flagged, retained — with the tier and rule that
+    produced it
+  - Produce per-vulnerability results and a batch summary in a single pass
+  - Operate against a declared system configuration (interfaces, services, enabled features)
+
+#### FR-15.2: Tier 1 — Deterministic Quick Filters
+
+- **Priority:** High (Must Have)
+- **Description:** The majority of false positives are decidable from configuration alone and must
+  not require graph analysis
+- **Requirements:**
+  - Support at minimum: disabled hardware interface, version mismatch, explicit CPE suppression
+    rule, disabled software feature, and not-externally-exposed component
+  - Be deterministic: the same input and configuration must always yield the same decision
+  - Attach the matched rule and the evidence for it to every decision
+
+#### FR-15.3: Tier 2 — Attack Path Reachability
+
+- **Priority:** Medium (Should Have)
+- **Description:** A vulnerability in a component that cannot be reached from any external entry
+  point carries different risk from one that can
+- **Requirements:**
+  - Build a directed attack graph of interfaces, services and components from the system
+    configuration, typed by edge kind and exposure level
+  - Determine reachability of each affected component from declared external entry points
+  - Return the shortest attack path when a component is reachable, and the reason when it is not
+  - Treat unknown reachability as reachable, never as unreachable
+
+#### FR-15.4: Tamper-Evident Audit Trail
+
+- **Priority:** High (Must Have)
+- **Description:** Filter decisions remove findings from a safety-relevant report, so the record of
+  them must be verifiable, not merely present
+- **Requirements:**
+  - Append every decision to a hash-chained log where each entry commits to its predecessor
+  - Use a cryptographic digest (SHA-256); a non-cryptographic or truncated hash does not satisfy
+    this requirement
+  - Provide chain verification that identifies the first broken link
+  - Record the decision, its context, and the acting user reference for each event
+  - The log must be exportable independently of the report that cites it
+
+#### FR-15.5: ISO 21434 Report Generation
+
+- **Priority:** Medium (Should Have)
+- **Description:** Filter activity must be presentable as evidence for a cybersecurity case
+- **Requirements:**
+  - Generate a report covering the vulnerability population, the filtered subset, and each
+    decision with its justification
+  - Export as JSON and PDF
+  - State the filtering approach and whether any non-deterministic tier contributed
+  - Include the audit-chain verification result, so a report from a broken chain is self-evident
+
+### FR-16: VEX (Vulnerability Exploitability eXchange)
+
+#### FR-16.1: VEX Generation
+
+- **Priority:** Medium (Should Have)
+- **Description:** Triage decisions must be publishable to downstream consumers in a standard
+  format rather than staying inside this tool
+- **Requirements:**
+  - Generate CycloneDX VEX documents from recorded filter decisions (FR-15.4)
+  - Map each decision to a VEX analysis status (`affected`, `not_affected`,
+    `under_investigation`, `resolved`) and a standard justification
+  - Reference affected components so a statement is scoped, not blanket
+  - Export as JSON and XML
+  - Carry document metadata: author, timestamp, and a unique document identifier
+
+#### FR-16.2: VEX Import and Suppression
+
+- **Priority:** Medium (Should Have)
+- **Description:** A previously published triage must suppress the same findings on a later scan,
+  including in CI, without re-triage
+- **Requirements:**
+  - Parse standard CycloneDX VEX and this tool's own generated shape
+  - Suppress findings whose statement status is `not_affected` or `resolved`
+  - Match statements to findings by vulnerability identifier and affected component reference
+  - Report unparseable or unmatched statements as warnings rather than failing the scan
+  - CSAF and OpenVEX are out of scope; an input in those formats must be rejected explicitly
+
+### FR-17: License Compliance Scanning
+
+- **Priority:** Medium (Should Have)
+- **Description:** SBOM component licences must be assessable against a policy, since licence risk
+  and vulnerability risk are gathered from the same inventory
+- **Requirements:**
+  - Classify each licence by risk category: public-domain, permissive, weak-copyleft,
+    strong-copyleft, network-copyleft, proprietary, unknown
+  - Resolve categories from SPDX identifiers via a catalog
+  - Evaluate against a policy yielding `allowed`, `review` or `denied` per component
+  - Support explicit allow and deny lists that override category rules, with deny winning
+  - Resolve multi-licence expressions to the most restrictive applicable category
+  - Treat an unrecognised licence as `unknown` and surface it, never as `allowed`
+  - Summarise findings by category and verdict across the project
+
+### FR-18: SBOM Diff and Incremental Scanning
+
+#### FR-18.1: SBOM Diff
+
+- **Priority:** Medium (Should Have)
+- **Description:** Users must be able to see what changed between two SBOMs
+- **Requirements:**
+  - Classify components as added, removed, changed or unchanged between two SBOMs
+  - Identify a component across versions by a stable identity, and detect a change by content
+  - Report per-class counts alongside the component lists
+  - Be available both in the application and from the CLI (FR-22)
+
+#### FR-18.2: Incremental Scanning
+
+- **Priority:** Medium (Should Have)
+- **Description:** Re-scanning an unchanged component wastes the scan budget that large SBOMs need
+- **Requirements:**
+  - Scan only components added or changed since the last scan of the same project
+  - Carry forward prior results for unchanged components
+  - Report how many components were skipped, so the saving is visible and auditable
+  - Fall back to a full scan when no prior baseline exists or the baseline cannot be trusted
+  - A change in vulnerability data, not only in the SBOM, must be able to force a full re-scan
+
+### FR-19: CPE Estimation and Matching
+
+- **Priority:** High (Must Have)
+- **Description:** Components frequently arrive without a CPE, and NVD matching is CPE-based; an
+  unmatched component is a silent coverage hole
+- **Requirements:**
+  - Estimate candidate CPEs for a component lacking one, using known vendor/product mappings,
+    a database search, and pattern inference
+  - Return candidates ranked by confidence, never a single unqualified guess
+  - Distinguish an estimated CPE from a declared one everywhere it is used
+  - Match a component to CVE entries by CPE 2.3 semantics including version ranges
+  - Report components that could not be matched as coverage gaps rather than as clean
+
+### FR-20: Offline Operation
+
+- **Priority:** High (Must Have)
+- **Description:** The product's stated advantage is working in disconnected and air-gapped
+  environments; offline must be a supported state, not a failure state
+- **Requirements:**
+  - Detect connectivity transitions and reflect the current state in the UI
+  - Queue mutating requests made while offline and persist the queue across a reload
+  - Replay the queue automatically on reconnect, in order, with progress reported
+  - Retry failures with exponential backoff and a bounded attempt count
+  - All local-database functionality (FR-03.1, FR-08) must remain fully available while offline
+
+### FR-21: Backup and Recovery
+
+- **Priority:** Medium (Should Have)
+- **Description:** The local database holds project data that is not recoverable from anywhere else
+- **Requirements:**
+  - Create backups on a configurable schedule (daily, weekly, or manual only) and on demand
+  - Retain a configurable number of backups and rotate older ones out
+  - Verify backup integrity, and refuse to restore a backup that fails verification
+  - Restore to a chosen point in time, and list available backups with size and timestamp
+  - Report backup statistics; a failed scheduled backup must be surfaced, not logged silently
+
+### FR-22: Command-Line Interface and CI/CD Integration
+
+- **Priority:** High (Must Have)
+- **Description:** Vulnerability assessment must be enforceable in a pipeline, not only performed
+  interactively
+- **Requirements:**
+  - Provide a CLI that scans an SBOM file and diffs two SBOM files
+  - Emit console, JSON, SARIF 2.1.0 and JUnit XML output; write to stdout or a named file
+  - Keep diagnostics on stderr so a redirected machine-readable format stays valid
+  - Gate the build on a configurable severity threshold, EPSS floor, or KEV-only filter
+  - Gate on unversioned "gap" components, so unmatched coverage cannot pass as clean (FR-19)
+  - Apply a VEX document supplied on the command line (FR-16.2)
+  - Use documented, stable exit codes: `0` clean, `1` findings at or above the threshold,
+    `2` execution error, `3` invalid input
+  - A missing, empty or unreadable vulnerability database must exit as an error, never as a clean
+    scan
+  - Ship first-party pipeline integrations for at least GitHub Actions and GitLab CI
+
+### FR-23: Internationalization
+
+- **Priority:** Medium (Should Have)
+- **Description:** UI strings must be translatable without code changes
+- **Requirements:**
+  - Resolve all user-facing strings through a translation runtime with namespaced keys
+  - Bundle translation resources so the first render is already translated — no untranslated flash
+  - Fall back to English for any missing key rather than rendering the raw key
+  - Enforce the absence of hardcoded user-facing strings in the application shell by an automated
+    check
+  - Adding a locale must require only registering a resource bundle
+
+### FR-24: Navigation and Discoverability
+
+- **Priority:** Low (Nice to Have)
+- **Description:** Users must be able to reach any feature without learning the navigation tree
+- **Requirements:**
+  - Provide a keyboard-invoked command palette covering navigation, actions and search
+  - Provide a first-run onboarding tour of the primary workflow, skippable and re-runnable
+  - Every command must be reachable by keyboard alone
+
+> **Explicitly excluded — AI-related.** FPF Tier 3 (LLM-assisted analysis) and AI-powered
+> vulnerability prioritisation are **not specified** and are out of scope. The FPF audit schema and
+> the ISO 21434 report retain `llmData` / `llmUsed` fields, and `isLLMAvailable()` returns a
+> constant `false`; these are a reserved seam, not dead code, and must not be removed on the
+> assumption that they are.
+
 ---
 
 ## Non-Functional Requirements
@@ -715,6 +1010,272 @@ frontend, accessed through a modern browser.
 | E2E Tests         | Critical user paths covered             |
 | BDD Tests         | All major features defined with Gherkin |
 
+## Planned Functional Requirements
+
+> **Status of this whole section: PLANNED — none of FR-25 … FR-38 or NFR-09 is implemented.**
+>
+> Added 2026-08-22. Before this, the roadmap carried these as one-line bullets ("Plugin system",
+> "Team collaboration features") with no requirement behind them — not enough to build against, and
+> not enough to reject on merit either. Each is now specified to the point where it can be
+> estimated, implemented, or explicitly dropped. **Dependencies are stated because several of these
+> are ordered: FR-35 without FR-34 is meaningless, and FR-33/FR-36 both assume FR-32.**
+>
+> Specifying a requirement here is not a commitment to build it. Rows are ordered roughly by
+> dependency, not by priority.
+
+### FR-25: Scheduled and Recurring Reports
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-09
+- **Description:** Reporting today is pull-only — a user must open the app and export. Recurring
+  assurance reporting is a scheduled activity, not an ad-hoc one
+- **Requirements:**
+  - Define a schedule (daily, weekly, monthly) per project or across all projects
+  - Select report type and format from those FR-09 already produces; no new report content
+  - Deliver to a configured filesystem destination; delivery by email is out of scope until a mail
+    transport is a supported dependency
+  - Record each run in the audit log (FR-07.1) with its outcome
+  - A failed scheduled run must raise a notification (FR-27), never fail silently
+  - Schedules must survive a server restart
+- **Acceptance:** a configured weekly report produces a file at the destination without user
+  interaction, and a forced failure produces both an audit entry and a notification
+
+### FR-26: Charts in Exported Reports
+
+- **Priority:** Low (Nice to Have) · **Status:** Planned · **Depends on:** FR-09.2
+- **Description:** PDF export renders tables only; the severity and trend visualisations that make
+  the dashboard readable are absent from the artifact that actually gets circulated
+- **Requirements:**
+  - Render severity distribution and trend-over-time charts into PDF exports
+  - Charts must be generated server-side or headlessly — not by screenshotting the DOM, which would
+    make export dependent on a rendered viewport
+  - Charts must degrade to the existing tables when data is insufficient, not render empty axes
+  - Text alternatives must be present in the document for accessibility
+- **Acceptance:** an exported PDF for a project with findings contains a severity chart whose
+  category totals equal the table's
+
+### FR-27: Notification Types and Delivery
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-10.4
+- **Description:** The notification service exists with info/success/warning/error levels, but the
+  roadmap row "additional notification types" has never said which. This requirement settles it
+- **Requirements:**
+  - Support event-triggered notifications for: a new KEV-listed vulnerability affecting a tracked
+    project, a scan completing, a scheduled report or backup failing, and a database sync failing
+  - Support a threshold trigger: notify when a project's count of findings at or above a chosen
+    severity increases
+  - Support digest delivery, collapsing a period's events into one notification
+  - Every type must be individually enable-able in settings, and default to the current behaviour
+  - Notifications must be persisted and readable after a reload, not transient toasts only
+- **Acceptance:** enabling the KEV trigger and syncing a catalog that newly lists an affected CVE
+  produces exactly one notification that survives a reload
+
+### FR-28: Multi-Provider Vulnerability Scanning
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-03
+- **Description:** NVD and OSV are two views of the ecosystem; commercial and curated feeds find
+  what they miss
+- **Requirements:**
+  - Support at least one additional provider behind the existing scanner interface
+  - Providers must be individually enable-able and require no provider-specific call sites in the
+    scanning pipeline
+  - Credentials must be stored per SR-01.2
+  - Findings from multiple providers must be deduplicated by CVE identifier and aliases, with the
+    contributing providers recorded on the merged finding
+  - A provider that is unavailable, rate-limited or unauthenticated must degrade the scan to the
+    remaining providers with a visible warning, never fail the scan
+  - Offline operation (FR-20) must remain fully functional with all remote providers disabled
+- **Acceptance:** disabling every remote provider yields the same local-database results as today;
+  enabling two providers that both report one CVE yields one finding citing both
+
+### FR-29: Container Registry Scanning
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-13
+- **Description:** FR-13 scans an image once it is local. Fleet assessment starts from a registry
+- **Requirements:**
+  - Enumerate repositories and tags from a configured registry
+  - Support at minimum an OCI-compliant registry; ECR, ACR and GCR are the named targets
+  - Authenticate using the registry's standard mechanism, with credentials stored per SR-01.2
+  - Scan a selected image by reference through the FR-13 pipeline without a manual pull
+  - Support scanning by tag pattern, bounded by an explicit maximum, so a broad pattern cannot
+    launch an unbounded job
+  - Report per-image progress and continue past an individual image failure
+- **Acceptance:** a tag pattern matching three images produces three scan results, and an
+  unauthorised fourth image is reported as failed without aborting the run
+
+### FR-30: Custom Vulnerability Rules Engine
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-15
+- **Description:** FPF rules (FR-15.2) are built in. Organisations need their own suppression,
+  escalation and tagging rules without a code change
+- **Requirements:**
+  - Define rules in a declarative, version-controllable format that can live in a repository
+  - A rule must be able to match on component identity, CPE/PURL pattern, licence, severity, KEV
+    status and EPSS score
+  - A rule must be able to suppress, downgrade, escalate or tag a finding
+  - The FR-15.1 prohibition holds: a custom rule must not auto-suppress a Critical or High finding;
+    the strongest available action is to flag for review
+  - Every custom-rule decision must enter the FR-15.4 audit chain, identifying the rule and its
+    version
+  - Rules must be validated on load, with a clear error naming the offending rule; an invalid
+    ruleset must not partially apply
+- **Acceptance:** a ruleset suppressing a Medium finding is reflected in results and the audit
+  chain; the same rule targeting a Critical finding flags rather than suppresses
+
+### FR-31: Plugin System
+
+- **Priority:** Low (Nice to Have) · **Status:** Planned · **Depends on:** FR-28, FR-32
+- **Description:** Extend providers and exporters without forking. The roadmap names custom
+  vulnerability providers specifically
+- **Requirements:**
+  - Define a stable, versioned plugin contract for at least vulnerability providers and exporters
+  - Discover plugins from a configured directory; loading must be opt-in per plugin
+  - A plugin must declare the contract version it targets; a mismatch must refuse to load with a
+    clear message
+  - A plugin failure must be contained: it disables that plugin and continues, and never takes down
+    a scan
+  - Plugin load and failure events must be recorded in the audit log (FR-07.1)
+  - **Security:** plugins execute as trusted code in the server process. This must be stated
+    explicitly in the documentation, and plugin loading must be disabled by default
+- **Acceptance:** a sample provider plugin contributes findings to a scan; a plugin that throws on
+  every call is disabled after its failure with the scan still completing
+
+### FR-32: Third-Party Integration API
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-34
+- **Description:** `/api/*` exists for this application's own client and assumes a trusted caller.
+  A third-party-facing API is a different contract with different guarantees
+- **Requirements:**
+  - Expose a versioned, documented REST surface for projects, scans, findings and reports
+  - Authenticate with revocable API tokens, scoped to read or write, stored hashed
+  - Version the surface so a change cannot break an existing consumer silently
+  - Enforce per-token rate limiting and record API access in the audit log (FR-07.1)
+  - Publish a machine-readable schema (OpenAPI) generated from the implementation, not maintained
+    by hand
+- **Acceptance:** a read-scoped token can list findings and is refused on a write; a revoked token
+  is refused immediately
+
+### FR-33: Issue Tracker Integration
+
+- **Priority:** Low (Nice to Have) · **Status:** Planned · **Depends on:** FR-32
+- **Description:** Remediation happens in an issue tracker; today the hand-off is manual copying
+- **Requirements:**
+  - Create an issue in a configured tracker from a finding, carrying identifier, severity,
+    affected component and remediation guidance
+  - Support at minimum one tracker; Jira and GitHub Issues are the named targets
+  - Record the link between finding and issue, and surface issue state on the finding
+  - Creating an issue twice for the same finding must update the existing link rather than
+    duplicate it
+  - Tracker credentials stored per SR-01.2; tracker unavailability must not fail the scan
+- **Acceptance:** creating an issue from a finding twice yields one issue and one link
+
+### FR-34: Authentication and Identity
+
+- **Priority:** High (Must Have, if multi-user is pursued) · **Status:** Planned
+- **Description:** The application currently assumes a single trusted operator. Every multi-user
+  requirement below depends on this one, and it must land first — retrofitting identity under an
+  existing authorisation model is the harder order
+- **Requirements:**
+  - Authenticate users against a local credential store and against an external identity provider
+  - Support OIDC; SAML and LDAP are named targets
+  - Manage sessions with expiry, explicit sign-out, and invalidation on credential change
+  - Record authentication events — success, failure, sign-out — in the audit log (FR-07.1)
+  - **Single-user deployments must remain usable with authentication disabled**, which must be the
+    default, so this requirement cannot regress the existing self-hosted single-operator use case
+  - Where authentication is enabled, every entry point including the API (FR-32) and the WebSocket
+    channel must be covered — an unauthenticated side door defeats the requirement
+- **Acceptance:** with authentication enabled, no `/api/*` route or WebSocket upgrade succeeds
+  unauthenticated; with it disabled, behaviour is identical to today
+
+### FR-35: Role-Based Access Control
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-34
+- **Description:** Not every authenticated user should be able to suppress findings or delete
+  projects
+- **Requirements:**
+  - Provide at minimum the roles Viewer (read), Analyst (scan and triage) and Administrator
+    (configure and manage users)
+  - Enforce authorisation server-side on every route; client-side hiding is presentation, not
+    enforcement
+  - Restrict finding suppression and FPF configuration (FR-15, FR-30) to Analyst and above
+  - Record the acting user and their role on every audited action
+  - Deny by default: an action with no explicit grant must be refused
+- **Acceptance:** a Viewer token is refused on suppression and project deletion, with the refusals
+  audited
+
+### FR-36: Team Collaboration
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-34, FR-35
+- **Description:** Triage is a shared activity; today a project has no notion of who is doing what
+- **Requirements:**
+  - Share a project with named users or a team, governed by FR-35 roles
+  - Assign a finding to a user and track its triage state
+  - Comment on a finding, with an immutable comment history
+  - Notify assignment and comment events through FR-27
+  - Represent concurrent edits so one user's triage cannot silently overwrite another's
+- **Acceptance:** two users triaging the same finding concurrently produce a detectable conflict
+  rather than a lost update
+
+### FR-37: Configuration and Data Sync
+
+- **Priority:** Low (Nice to Have) · **Status:** Planned · **Depends on:** FR-34
+- **Description:** Settings and profiles are per-installation. Users on more than one workstation
+  reconfigure by hand. **Self-hosted only** — the product's offline, no-telemetry positioning
+  (SR-01) rules out a vendor-hosted sync service
+- **Requirements:**
+  - Synchronise settings and settings profiles (FR-10.2) between installations against a
+    user-operated endpoint
+  - Sync must be opt-in and disabled by default
+  - Resolve conflicts explicitly, presenting both versions; last-write-wins is not acceptable for
+    settings a user has deliberately set
+  - Vulnerability and project data are out of scope for this requirement — the local database
+    remains authoritative
+  - Encrypt data in transit and at rest at the endpoint
+- **Acceptance:** two installations converge on a changed setting; a setting changed on both
+  independently raises a conflict rather than silently discarding one
+
+### FR-38: Compliance Report Templates
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Depends on:** FR-09.3
+- **Description:** FR-09.3 produces this tool's report shapes. Audits require particular ones
+- **Requirements:**
+  - Provide selectable templates for the CR-01/CR-02 frameworks the product already claims to
+    support (NTIA minimum elements, OWASP SCVS, ISO 27001 evidence, SOC 2 evidence)
+  - Support organisation branding and a custom cover page
+  - A template must declare the data it requires, and a report must state plainly when a required
+    input is absent rather than emitting an empty section
+  - Templates must be versioned, and a generated report must record which template version produced
+    it
+- **Acceptance:** generating an NTIA-minimum-elements report over an SBOM missing supplier data
+  names the gap rather than rendering a blank field
+
+### NFR-09: Foreground Responsiveness During Large Processing
+
+- **Priority:** Medium (Should Have) · **Status:** Planned · **Relates to:** NFR-01, NFR-02
+- **Description:** NFR-02 sets scale targets and the UI meets them through virtualisation, but
+  parsing, diffing and filtering large SBOMs still occupy the main thread. The roadmap's "Web
+  Workers for large dataset processing" is the implementation; this is the requirement
+- **Requirements:**
+  - No user-initiated processing may block the main thread for longer than 50 ms at a time
+  - Long-running client-side work — SBOM parsing, diffing (FR-18.1), FPF evaluation (FR-15) — must
+    run off the main thread
+  - Progress must be reported and the operation must be cancellable
+  - The behaviour must degrade gracefully where the off-thread mechanism is unavailable
+- **Acceptance:** parsing a 10,000-component SBOM keeps the UI interactive and reports progress
+  throughout
+
+### Explicitly not specified
+
+These roadmap rows are deliberately **not** given requirements. Listing them is the point: silence
+would read as an oversight.
+
+| Row                                     | Why not                                                                                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI-powered vulnerability prioritisation | AI-related — out of scope by instruction                                                                                                                                                    |
+| FPF Tier 3 (LLM analysis)               | AI-related — out of scope by instruction. See the note under FR-24                                                                                                                          |
+| Mobile companion app                    | A separate client product, not a feature of this one. It cannot be specified before FR-32 exists, since the API is what it would consume. Revisit after FR-32                               |
+| On-premises deployment option           | **Obsolete row.** The product is already a self-hosted web application (see Deployment Requirements); there is no hosted version for this to be an alternative to. Removed from the roadmap |
+| Premium support options                 | A commercial decision, not a product requirement. Belongs in the Open Questions table, where it already appears                                                                             |
+
 ---
 
 ## Security & Compliance
@@ -723,10 +1284,23 @@ frontend, accessed through a modern browser.
 
 #### SR-01: Data Protection
 
-- Encrypt API keys in local storage
+**SR-01.1: General**
+
 - Secure handling of sensitive vulnerability data
 - No telemetry without explicit consent
 - Sanitize all user inputs before processing
+
+**SR-01.2: Credential Storage** — API keys and integration credentials must be unreadable at rest,
+including to a reader of the application's own data directory:
+
+- Encrypt credentials at rest with an authenticated cipher (AES-256-GCM); an unauthenticated cipher
+  does not satisfy this requirement, because a tampered credential file must fail to decrypt rather
+  than decrypt to something else
+- Derive the encryption key from machine-local material via a key-derivation function; never store
+  the key alongside the ciphertext
+- Never write a credential to the client bundle, to a log, or to an exported report
+- A credential that cannot be decrypted must be reported as unavailable, never silently treated as
+  absent — the two have different remedies
 
 #### SR-02: Code Security
 
@@ -741,6 +1315,23 @@ frontend, accessed through a modern browser.
 - Verified update sources
 - Checksum validation for downloads
 - Rollback capability for failed updates
+
+#### SR-04: External Tool Supply Chain
+
+The product shells out to third-party binaries (Syft for cataloging, Docker/Podman for container
+work). Those binaries are part of its attack surface.
+
+- Pin every downloaded tool to an explicit version; never resolve a mutable tag such as `latest`
+- Verify a downloaded tool against its publisher-published checksum **before** it is executed, and
+  discard it on mismatch
+- Prefer an operator-supplied path or an already-provisioned copy over downloading
+- Invoke external tools directly with an argument vector, never through a shell, and bound both
+  execution time and captured output
+- A tool that fails verification must produce a clear failure; falling back to an unverified copy is
+  not acceptable
+
+> Rationale: this is the concrete lesson of the March 2026 Trivy supply-chain compromise — pin and
+> verify. It is recorded as a requirement rather than a code comment so it survives a rewrite.
 
 ### Compliance Requirements
 
@@ -759,9 +1350,23 @@ frontend, accessed through a modern browser.
 #### CR-03: Data Formats
 
 - **CycloneDX:** Support v1.0 - v1.5 (JSON/XML)
+- **CycloneDX VEX:** Generate and consume VEX 1.0 (see FR-16)
 - **SPDX:** Support v2.2 - v2.3
 - **CVSS:** Support v3.0 and v3.1
 - **CPE:** Support CPE 2.3 format
+- **SARIF:** Emit SARIF 2.1.0 for CI/CD consumption (see FR-22)
+- **JUnit XML:** Emit JUnit XML for CI/CD test reporting (see FR-22)
+
+#### CR-04: Automotive Cybersecurity (ISO/SAE 21434)
+
+The false-positive filter (FR-15) exists to support a cybersecurity case, so its evidence must meet
+the standard's expectations:
+
+- **Traceability:** every filter decision traceable to the rule and system configuration that
+  produced it (FR-15.1)
+- **Integrity:** the decision record must be tamper-evident, not merely retained (FR-15.4)
+- **Justification:** each suppression must carry a justification a reviewer can assess (FR-15.2)
+- **Reportability:** the decision record must be exportable as review evidence (FR-15.5)
 
 ---
 
@@ -779,13 +1384,20 @@ frontend, accessed through a modern browser.
 
 ### Quality Metrics
 
-| Metric                   | Target                          | Status                            |
-| ------------------------ | ------------------------------- | --------------------------------- |
-| Unit Test Coverage       | 95%                             | Existing: ~70% (Need improvement) |
-| E2E Test Coverage        | 100% of critical paths          | Existing: ~80% (Good)             |
-| BDD Scenarios            | 100% of features                | Existing: 124 scenarios (Good)    |
-| Linting Issues           | 0 errors/warnings               | Current: Needs verification       |
-| Security Vulnerabilities | 0 critical/high in dependencies | Ongoing monitoring                |
+| Metric                   | Target                          | Status                                                                                                |
+| ------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Unit Test Coverage       | 95%                             | **95.61 stmts / 95.31 func / 96.44 lines — met.** Branches 89.90 against a 95% target: see note below |
+| E2E Test Coverage        | 100% of critical paths          | 419 passing across 6 Playwright projects; 123 documented skips                                        |
+| BDD Scenarios            | 100% of features                | 147 defined, 108 executing, 32 `@wip` with itemised reasons                                           |
+| Linting Issues           | 0 errors/warnings               | 0 errors, 0 warnings — enforced as a CI gate                                                          |
+| Security Vulnerabilities | 0 critical/high in dependencies | Ongoing monitoring                                                                                    |
+
+> **Branch coverage — the 95% target is not achievable and should be renegotiated.** Measured
+> 2026-08-22: 1,097 branches are uncovered, of which 476 are `if` guards, 358 are `||`/`??`
+> fallbacks, 240 are `error instanceof Error ? …` expressions and 23 are `switch` defaults. The
+> residual is dominated by defensive paths no user input can reach; closing it would mean writing
+> tests that assert against impossible states. Statements, functions and lines all meet 95% and are
+> enforced by CI floors (95/89/95/96). Recommendation: set the branch floor at 90%.
 
 ### Adoption Metrics
 
@@ -892,38 +1504,59 @@ NFR-05) — there is nothing to install on the client.
 
 ### Phase 3: Polish & Optimization (Current Focus)
 
-**Status:** 🚧 In Progress — 6 of 7 delivered (verified against code 2026-08-09); **i18n is the only remaining item**.
+**Status:** ✅ Complete — re-verified against code 2026-08-22. The i18n row below was recorded as
+"not started" long after it shipped; corrected here.
 
 - [x] Performance optimization for large datasets — `VirtualList` (react-virtuoso) windowing; FTS5 + `EXPLAIN QUERY PLAN`; 50k / 1M-row / 1,000-project perf tests
 - [x] Enhanced CVSS breakdown visualization — `components/cvss/` (`CvssScoreGauge` radar, `CvssMetricsGrid`, `CvssVectorString`), incl. temporal metrics
 - [x] Dependency graph visualization — `DependencyGraphPage` + `components/graph/DependencyGraph` (Cytoscape.js force-directed, severity colours, path highlight)
 - [x] Offline mode improvements — `OfflineQueue` (navigator.onLine + persisted retry queue), `OfflineIndicator`, sync-on-reconnect
-- [ ] Internationalization (i18n) — **not started**; all UI strings are hardcoded English (sole remaining Phase 3 item)
+- [x] Internationalization (i18n) — specified as FR-23. Runtime, namespace layout and string
+      extraction shipped (78 of 82 files migrated, PR #27), with an enforced shell guardrail against
+      new hardcoded strings. `lib/i18n/index.ts` registers one locale (`en`); adding another is a
+      translation task, not an engineering one
 - [x] Accessibility audit and improvements — axe-core WCAG 2.1 AA gate (`e2e/a11y/accessibility.spec.ts`), audit report under `docs/ui-reviews/`
 - [x] Code refactoring for maintainability — eslint `no-explicit-any` / `no-non-null-assertion` / default-export ban at `error`; shared `components/ui/` primitives; PR3–PR5 remediation
 
 ### Phase 4: Advanced Features (Planned)
 
-**Status:** 📋 Planned
+**Status:** 📋 Planned — every row now has a requirement behind it. Until 2026-08-22 these were
+one-line bullets that could be neither built nor rejected on merit; see
+[Planned Functional Requirements](#planned-functional-requirements).
 
-- [ ] Multi-provider vulnerability scanning (Snyk, OSS Index)
-- [ ] Team collaboration features
-- [ ] Cloud sync with self-hosted option
-- [ ] CI/CD integration plugins
-- [ ] Custom vulnerability rules engine
-- [ ] API for third-party integrations
-- [ ] Mobile companion app
+| Row                                             | Requirement   | Depends on         |
+| ----------------------------------------------- | ------------- | ------------------ |
+| Multi-provider vulnerability scanning           | FR-28         | FR-03              |
+| Container registry scanning (ECR/ACR/GCR)       | FR-29         | FR-13              |
+| Custom vulnerability rules engine               | FR-30         | FR-15              |
+| Plugin system for custom providers              | FR-31         | FR-28, FR-32       |
+| API for third-party integrations                | FR-32         | FR-34              |
+| Issue tracker integration (Jira, GitHub Issues) | FR-33         | FR-32              |
+| Team collaboration features                     | FR-36         | FR-34, FR-35       |
+| Cloud sync with self-hosted option              | FR-37         | FR-34              |
+| Scheduled reports                               | FR-25         | FR-09              |
+| Charts in exported reports                      | FR-26         | FR-09.2            |
+| Notification types                              | FR-27         | FR-10.4            |
+| Off-main-thread processing (Web Workers)        | NFR-09        | —                  |
+| CI/CD integration plugins                       | **shipped**   | delivered as FR-22 |
+| Mobile companion app                            | not specified | needs FR-32 first  |
 
 ### Phase 5: Enterprise Features (Future)
 
 **Status:** 🔮 Future
 
-- [ ] Multi-user support with authentication
-- [ ] Role-based access control
-- [ ] SAML/LDAP integration
-- [ ] Advanced compliance reporting templates
-- [ ] On-premises deployment option
-- [ ] Premium support options
+| Row                                     | Requirement       | Note                                                                                                                      |
+| --------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Multi-user support with authentication  | FR-34             | Must land before FR-35/36/37 — identity is hard to retrofit under an authorisation model                                  |
+| Role-based access control               | FR-35             | Depends on FR-34                                                                                                          |
+| SAML/LDAP integration                   | FR-34             | Named targets within FR-34; OIDC is the baseline                                                                          |
+| Advanced compliance reporting templates | FR-38             | Depends on FR-09.3                                                                                                        |
+| On-premises deployment option           | **removed**       | Obsolete — the product already _is_ a self-hosted deployment; there is no hosted version for this to be an alternative to |
+| Premium support options                 | not a requirement | A commercial decision; it is already in the Open Questions table                                                          |
+
+**Excluded — AI-related:** AI-powered vulnerability prioritisation and FPF Tier 3 (LLM analysis)
+are deliberately unspecified. See the exclusion note at the end of the Functional Requirements
+section.
 
 ---
 
@@ -967,9 +1600,10 @@ NFR-05) — there is nothing to install on the client.
 
 **Document Change History**
 
-| Version | Date       | Author             | Changes                                                  |
-| ------- | ---------- | ------------------ | -------------------------------------------------------- |
-| 1.0     | 2026-02-12 | Project Lead Agent | Initial PRD creation based on existing codebase analysis |
+| Version | Date       | Author             | Changes                                                                                                                                                                                                                                                                                                                                                      |
+| ------- | ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.0     | 2026-02-12 | Project Lead Agent | Initial PRD creation based on existing codebase analysis                                                                                                                                                                                                                                                                                                     |
+| 1.1     | 2026-08-22 | Engineering        | Closed the requirements gap found by reverse traceability ([gap analysis](docs/reports/requirements-gap-analysis-2026-08-22.md)): added FR-12 … FR-24, SR-01.2, SR-04 and CR-04 for ~7,900 lines of shipped-but-unspecified code; added FR-25 … FR-38 and NFR-09 for roadmap rows that had no requirement; corrected stale Phase 3 and quality-metric claims |
 
 ---
 
