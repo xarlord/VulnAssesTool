@@ -225,24 +225,27 @@ the API sends `criteria`. Not repeated here; they are the highest-value fixes in
 
 ## Documentation defects in this branch
 
+> **All twelve are fixed on this branch.** Kept in the record rather than deleted — the point of
+> the table is that the branch shipped them in the first place.
+
 All of these are mine, introduced by the requirements work in PR #41. Recording them in full: the
 branch's premise is that claims should be checkable, so its own unchecked claims are exactly the
 thing it argues against.
 
-| #      | Where                                            | Defect                                                                                                                                                                         |
-| ------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| DOC-1  | `spec-traceability-matrix.md:144`                | SR-01.2 / SR-04 rows appended after a blank line with **no table header** — GFM renders them as literal text, so the summary's 5 SR rows show as 3                             |
-| DOC-2  | `spec-traceability-matrix.md:157`                | CR-04 row sits after the `---` rule, under "Remaining gaps" instead of Compliance, also headerless                                                                             |
-| DOC-3  | `spec-traceability-matrix.md:114`                | FR-21 cites `server/services/backupSchedule.ts` — **the file does not exist**; only `backupSchedule.test.ts`, which imports from `BackupService`                               |
-| DOC-4  | `requirements-gap-analysis…md:92`, `PRD.md:1391` | BDD figures "147 / 108 / 32" — the total is wrong and the parts don't sum. Verified by running the suite: **149 defined, 108 executing, 41 excluded** (`not @ui and not @wip`) |
-| DOC-5  | `docs/README.md:57`                              | Still says "20 shipped capabilities"; corrected to 21 everywhere else                                                                                                          |
-| DOC-6  | `PRD.md:1606`                                    | Change history says "~7,900 lines"; the verified de-duplicated total is ~8,500                                                                                                 |
-| DOC-7  | `PRD.md:1400`                                    | Recommends a 90% branch floor while measuring **89.90%** — adopting it reds CI immediately                                                                                     |
-| DOC-8  | `PRD.md:4`                                       | Header still reads `Version 1.1 / 2026-08-07` while the branch adds a `1.1 / 2026-08-22` history row — two documents claiming v1.1                                             |
-| DOC-9  | `PRD.md:1352`                                    | CR-03 says CycloneDX v1.0–v1.5; the parser accepts **1.6** and says so in its own comment. The branch edited this exact bullet list without fixing it                          |
-| DOC-10 | `PRD.md:908`                                     | FR-23 requires "all user-facing strings" and is traced DONE, but the evidence is 78 of 82 files — should be PARTIAL, or the requirement scoped                                 |
-| DOC-11 | `requirements-gap-analysis…md:97`                | "What changed" omits SR-01.2, which the other three documents list                                                                                                             |
-| DOC-12 | `spec-traceability-matrix.md:42`                 | Summary claims 3 PARTIAL FR rows; only **2** exist, so the DONE count should be 57, not 56                                                                                     |
+| #      | Where                                            | Defect                                                                                                                                                                                                                                                    |
+| ------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DOC-1  | `spec-traceability-matrix.md:144`                | SR-01.2 / SR-04 rows appended after a blank line with **no table header** — GFM renders them as literal text, so the summary's 5 SR rows show as 3                                                                                                        |
+| DOC-2  | `spec-traceability-matrix.md:157`                | CR-04 row sits after the `---` rule, under "Remaining gaps" instead of Compliance, also headerless                                                                                                                                                        |
+| DOC-3  | `spec-traceability-matrix.md:114`                | FR-21 cites `server/services/backupSchedule.ts` — **the file does not exist**; only `backupSchedule.test.ts`, which imports from `BackupService`                                                                                                          |
+| DOC-4  | `requirements-gap-analysis…md:92`, `PRD.md:1391` | BDD figures "147 / 108 / 32" — the total is wrong and the parts don't sum. Verified by running the suite: **149 defined, 108 executing, 41 excluded** (`not @ui and not @wip`)                                                                            |
+| DOC-5  | `docs/README.md:57`                              | Still says "20 shipped capabilities"; corrected to 21 everywhere else                                                                                                                                                                                     |
+| DOC-6  | `PRD.md:1606`                                    | Change history says "~7,900 lines"; the verified de-duplicated total is ~8,500                                                                                                                                                                            |
+| DOC-7  | `PRD.md:1400`                                    | Recommends a 90% branch floor while measuring **89.90%** — adopting it reds CI immediately                                                                                                                                                                |
+| DOC-8  | `PRD.md:4`                                       | Header still reads `Version 1.1 / 2026-08-07` while the branch adds a `1.1 / 2026-08-22` history row — two documents claiming v1.1                                                                                                                        |
+| DOC-9  | `PRD.md:1352`                                    | CR-03 says CycloneDX v1.0–v1.5; the parser accepts **1.6** and says so in its own comment. The branch edited this exact bullet list without fixing it                                                                                                     |
+| DOC-10 | `PRD.md:908`                                     | FR-23 requires "all user-facing strings" and is traced DONE, but the evidence is 78 of 82 files — should be PARTIAL, or the requirement scoped                                                                                                            |
+| DOC-11 | `requirements-gap-analysis…md:97`                | "What changed" omits SR-01.2, which the other three documents list                                                                                                                                                                                        |
+| DOC-12 | `spec-traceability-matrix.md:42`                 | Summary claims 3 PARTIAL FR rows while only **2** rows say PARTIAL. Resolved together with DOC-10 rather than by editing the count: marking FR-23 PARTIAL makes three, and the original 56/3 (total 68/8) correct. **The row was wrong, not the summary** |
 
 ---
 
@@ -257,8 +260,10 @@ Recorded because a review that only lists confirmations is not a review.
 - **"BDD actual is 149 / 105 executing / 44 excluded"** (offered as the correction to DOC-4). Running
   the suite reports **108 passing**, not 105. The correct triple is 149 / 108 / 41. The original
   figure was wrong and so was the proposed replacement.
-- **"The matrix says CycloneDX 1.0–1.6"** (offered as the contrast for DOC-9). The matrix states no
-  CycloneDX version range anywhere. DOC-9 stands on the parser's own comment instead.
+- ~~"The matrix says CycloneDX 1.0–1.6"~~ — **I was wrong to reject this.** The matrix CR-03 row does
+  read `CycloneDX 1.0-1.6`, contradicting the PRD's 1.0–1.5. Caught while fixing DOC-9. Left in the
+  record rather than quietly deleted: mis-rejecting a true finding is the same failure as accepting a
+  false one, and only one of the two usually gets written down.
 
 ---
 

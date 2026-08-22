@@ -89,12 +89,12 @@ Facts asserted in `PRD.md` that were false at the time of this analysis:
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Phase 3 i18n "**not started**; all UI strings are hardcoded English" | Runtime, namespaces and extraction shipped; 78 of 82 files migrated (PR #27). One locale registered — a translation job, not an engineering one |
 | Unit test coverage "Existing: ~70% (Need improvement)"               | 95.61 stmts / 89.90 branch / 95.31 func / 96.44 lines, enforced by CI floors 95/89/95/96                                                        |
-| BDD "Existing: 124 scenarios"                                        | 147 scenarios in the feature files, of which 108 execute and 32 carry `@wip` with itemised reasons                                              |
+| BDD "Existing: 124 scenarios"                                        | 149 scenarios defined, 108 executing, 41 excluded by the `not @ui and not @wip` filter (verified by running the suite)                          |
 | Linting "Current: Needs verification"                                | `npx eslint .` — 0 errors, 0 warnings; enforced as a CI gate                                                                                    |
 
 ## What changed as a result
 
-- `PRD.md` gained **FR-12 … FR-24**, **SR-04** and **CR-04** covering the shipped-but-unspecified
+- `PRD.md` gained **FR-12 … FR-24**, **SR-01.2**, **SR-04** and **CR-04** covering the shipped-but-unspecified
   work above, each written from the code rather than from intent.
 - `PRD.md` gained a **Planned Functional Requirements** section (**FR-25 … FR-38**, plus **NFR-09**) giving the
   roadmap bullets enough specification to be built or rejected on merit. AI-related rows are

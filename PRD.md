@@ -1,7 +1,7 @@
 # VulnAssessTool - Product Requirements Document (PRD)
 
-**Version:** 1.1
-**Last Updated:** 2026-08-07
+**Version:** 1.2
+**Last Updated:** 2026-08-22
 **Product Owner:** VulnAssessTool Development Team
 **Status:** Active — reflects the shipped v2.0 architecture. VulnAssessTool was migrated from an
 Electron desktop app to a self-hosted **Express (Node) + React** web application (commit `acd0518`);
@@ -1349,7 +1349,8 @@ work). Those binaries are part of its attack surface.
 
 #### CR-03: Data Formats
 
-- **CycloneDX:** Support v1.0 - v1.5 (JSON/XML)
+- **CycloneDX:** Support v1.0 - v1.6 (JSON/XML) — 1.6 is required because the Syft SBOM-from-binary
+  feature (FR-12) emits it and its output must round-trip through the FR-02.1 importer
 - **CycloneDX VEX:** Generate and consume VEX 1.0 (see FR-16)
 - **SPDX:** Support v2.2 - v2.3
 - **CVSS:** Support v3.0 and v3.1
@@ -1388,7 +1389,7 @@ the standard's expectations:
 | ------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Unit Test Coverage       | 95%                             | **95.61 stmts / 95.31 func / 96.44 lines — met.** Branches 89.90 against a 95% target: see note below |
 | E2E Test Coverage        | 100% of critical paths          | 419 passing across 6 Playwright projects; 123 documented skips                                        |
-| BDD Scenarios            | 100% of features                | 147 defined, 108 executing, 32 `@wip` with itemised reasons                                           |
+| BDD Scenarios            | 100% of features                | 149 defined, 108 executing, 41 excluded (`not @ui and not @wip`)                                      |
 | Linting Issues           | 0 errors/warnings               | 0 errors, 0 warnings — enforced as a CI gate                                                          |
 | Security Vulnerabilities | 0 critical/high in dependencies | Ongoing monitoring                                                                                    |
 
@@ -1397,7 +1398,9 @@ the standard's expectations:
 > fallbacks, 240 are `error instanceof Error ? …` expressions and 23 are `switch` defaults. The
 > residual is dominated by defensive paths no user input can reach; closing it would mean writing
 > tests that assert against impossible states. Statements, functions and lines all meet 95% and are
-> enforced by CI floors (95/89/95/96). Recommendation: set the branch floor at 90%.
+> enforced by CI floors (95/89/95/96). Recommendation: replace the 95% branch target with 90%, and hold the enforced CI floor at its
+> current 89 until measured branch coverage clears 90 — setting the floor to 90 today would fail the
+> build at 89.90.
 
 ### Adoption Metrics
 
@@ -1603,7 +1606,7 @@ section.
 | Version | Date       | Author             | Changes                                                                                                                                                                                                                                                                                                                                                      |
 | ------- | ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1.0     | 2026-02-12 | Project Lead Agent | Initial PRD creation based on existing codebase analysis                                                                                                                                                                                                                                                                                                     |
-| 1.1     | 2026-08-22 | Engineering        | Closed the requirements gap found by reverse traceability ([gap analysis](docs/reports/requirements-gap-analysis-2026-08-22.md)): added FR-12 … FR-24, SR-01.2, SR-04 and CR-04 for ~7,900 lines of shipped-but-unspecified code; added FR-25 … FR-38 and NFR-09 for roadmap rows that had no requirement; corrected stale Phase 3 and quality-metric claims |
+| 1.2     | 2026-08-22 | Engineering        | Closed the requirements gap found by reverse traceability ([gap analysis](docs/reports/requirements-gap-analysis-2026-08-22.md)): added FR-12 … FR-24, SR-01.2, SR-04 and CR-04 for ~8,500 lines of shipped-but-unspecified code; added FR-25 … FR-38 and NFR-09 for roadmap rows that had no requirement; corrected stale Phase 3 and quality-metric claims |
 
 ---
 
