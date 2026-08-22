@@ -4,6 +4,19 @@
 **Branch:** feat/phase0-perf-a11y
 **Status:** Design approved; implementation pending (built before Workstream A / Phase 3 VEX)
 
+> **Status update — 2026-08-22 (re-verified against HEAD).** This document still says
+> "implementation pending", which is no longer accurate. **B-1, version-range-aware matching,
+> shipped** (FR-03.1, wave 3): `server/database/versionRange.ts` provides `compareVersions` /
+> `isVersionInRange`, and `NvdDatabase.searchCVEsByCPE` calls it via
+> `searchVersionRangeCandidates`, unioning range hits with the literal `cpe23_uri` matches. So
+> "Root cause 4 — version-range matching is not implemented ... the range data is dormant" below
+> is **false at HEAD** and is kept only as a record of what the design was reacting to.
+>
+> What has **not** shipped is the near-match _approval_ surface — there is no UI to confirm a
+> product-identity match for a component whose exact version NVD does not list;
+> `cpeEstimationService` still auto-assigns at >=80 and otherwise leaves the component at
+> "No CPE". Read the rest of this document as a design for that remaining piece.
+
 ## Problem
 
 A component whose product name is known to NVD but whose **exact version is not** in the
