@@ -615,28 +615,47 @@ vuln-assess-tool/
 - Auto-updater interval scheduling
 - All missing IPC handlers wired (auto-sync, FTS search, cache management)
 
-### Planned (v2.1)
+#### Shipped since v2.0 (previously still listed as "Planned")
 
-- Fix remaining contrast issues (muted text 4.34 → 4.5:1)
-- Lazy load heavy components (charts, dependency graph)
-- Pre-seeded database distribution
+Re-verified against the code on 2026-08-22. All of v2.1 is done, plus one v3.0 row:
+
+- **Contrast fixes** — `--muted-foreground` darkened to `215.4 16.3% 38.5%` in light mode, and
+  `e2e/a11y/accessibility.spec.ts` now fails the build on any critical or serious WCAG violation
+  across the core pages, so a regression reddens the gate rather than being noticed later.
+- **Lazy loading** — every route in `App.tsx` is a `lazy(() => import(...))`, including the two
+  heavy ones this row meant (Dashboard's charts, ProjectDetail's dependency graph).
+- **Pre-seeded database distribution** — `scripts/seed-database.ts` builds it and
+  `dbSeedingService`'s `hasBundledSeed()` / `copyBundledSeed()` install it on first run, before
+  the connection opens.
+- **SBOM generation from source code** (was listed under v3.0) — `server/routes/sbom.ts` picks
+  the Syft source kind from the path (`stat.isDirectory() ? 'dir' : 'file'`), so a source tree
+  works alongside a binary or image reference.
+
+### Partially done
+
+- **CI/CD integration** — the pieces exist: `vulnshield` is a runnable CLI with SARIF
+  (`cli/exporters/sarif.ts`) and JUnit (`cli/exporters/junit.ts`) output and a severity-based
+  exit code, which is what a pipeline needs. What is missing is the packaging: no published
+  GitHub Action and no GitLab CI template.
+- **Multi-language support (i18n)** — the runtime, the namespace layout and the full string
+  extraction are done, but `src/renderer/lib/i18n/index.ts` still registers exactly one locale
+  (`resources = { en }`). Adding a language is now a translation job, not an engineering one.
 
 ### Planned (v2.5)
 
-- Additional notification types
+- Additional notification types (the service and its info/success/warning/error types exist;
+  this row has never said which further types are wanted)
 - Scheduled reports
-- Enhanced PDF reports with charts
+- Enhanced PDF reports with charts — reports render today, but `lib/export/pdf.ts` draws no
+  charts
 - Web Workers for large dataset processing
 - Plugin system for custom vulnerability providers
 
 ### Planned (v3.0)
 
-- SBOM generation from source code
-- CI/CD integration (GitHub Actions, GitLab CI)
 - AI-powered vulnerability prioritization
 - Team collaboration features
 - Cloud sync for settings
-- Multi-language support (i18n)
 
 ## Contributing
 
