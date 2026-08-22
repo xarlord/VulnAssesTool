@@ -277,6 +277,9 @@ export async function scanCommand(
       const componentRef = component.purl ?? `${component.name}@${component.version}`
       const scanResult = await scanner.scanComponent(purl, {
         preferLocal: true,
+        // Pass the declared CPE separately rather than choosing between it and the purl: it is the
+        // key NVD indexes on, so it leads the match ladder while the purl still contributes.
+        declaredCpe: component.cpe,
       })
       for (const vuln of scanResult.vulnerabilities) {
         const existing = vulnById.get(vuln.id)

@@ -414,3 +414,60 @@ describe('LocalScanner lifecycle branch coverage', () => {
     }
   })
 })
+
+// Two matching defects found by scanning a real 2.9 GB NVD catalog rather than fixtures — fixtures
+// hid them because their CPEs and purls were chosen to match. See
+// docs/reports/code-review-2026-08-22.md and the live-scan record of 2026-08-22.
+describe('CPE search terms survive the sanitizer (live-scan defect)', () => {
+  // The sanitizer used to delete LIKE metacharacters as if that were SQL hygiene. The DB layer
+  // already escapes them (escapeLikePattern + ESCAPE '\'), so this only destroyed queries:
+  // 68.7% of distinct cpe_product values in a real catalog contain an underscore. Probed against
+  // the real DB: `apache:commons_text` -> 1 hit incl. Text4Shell; `apache:commonstext` -> 0.
+  it('keeps underscores in vendor:product terms', () => {
+    const tiers = deriveSearchTiers('cpe:2.3:a:apache:commons_text:1.9:*:*:*:*:*:*:*')
+    expect(tiers[0].terms).toEqual(['apache:commons_text'])
+    expect(tiers[1].terms).toEqual(['commons_text'])
+  })
+
+  it('keeps underscores for multi-word NVD product names', () => {
+    expect(deriveSearchTiers('cpe:2.3:a:vmware:spring_framework:5.3.17:*:*:*:*:*:*:*')[0].terms).toEqual([
+      'vmware:spring_framework',
+    ])
+    expect(deriveSearchTiers('cpe:2.3:o:microsoft:windows_10:1909:*:*:*:*:*:*:*')[0].terms).toEqual([
+      'microsoft:windows_10',
+    ])
+  })
+
+  it('still drops CPE wildcards so a wildcard-only term cannot match everything', () => {
+    expect(deriveSearchTiers('cpe:2.3:a:apache:*:*:*:*:*:*:*:*:*')).toEqual([])
+  })
+})
+
+describe('a declared CPE leads the ladder (live-scan defect)', () => {
+  // The caller passed `component.purl ?? component.cpe`, so a declared CPE was consulted only when
+  // no purl existed — for CycloneDX, essentially never. Measured on struts2-core 2.5.10 against
+  // the real catalog: 1 finding / 0 KEV / CVE-2017-5638 (KEV, Equifax) MISSED via the purl, vs
+  // 91 findings / 8 KEV / found via the declared CPE.
+  const PURL = 'pkg:maven/org.apache.struts/struts2-core@2.5.10'
+  const CPE = 'cpe:2.3:a:apache:struts:2.5.10:*:*:*:*:*:*:*'
+
+  it('puts the declared CPE tiers ahead of anything inferred from the purl', () => {
+    const tiers = deriveSearchTiers(PURL, CPE)
+    expect(tiers[0].terms).toEqual(['apache:struts'])
+    // The purl-derived tiers are still present as fallbacks, not discarded.
+    const allTerms = tiers.flatMap((t) => t.terms)
+    expect(allTerms).toContain('struts2-core')
+  })
+
+  it('is unchanged when no CPE is declared', () => {
+    expect(deriveSearchTiers(PURL, undefined)).toEqual(deriveSearchTiers(PURL))
+  })
+
+  it('does not double up when the identifier already is the CPE', () => {
+    expect(deriveSearchTiers(CPE, CPE)).toEqual(deriveSearchTiers(CPE))
+  })
+
+  it('ignores a declared value that is not a CPE', () => {
+    expect(deriveSearchTiers(PURL, 'not-a-cpe')).toEqual(deriveSearchTiers(PURL))
+  })
+})

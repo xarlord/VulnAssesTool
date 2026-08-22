@@ -522,12 +522,22 @@ export class NvdDataImporter {
 
     if (!cve.configurations) return matches
 
+    let skipped = 0
     for (const config of cve.configurations) {
       for (const node of config.nodes) {
         for (const cpe of node.cpeMatch) {
+          // NVD API 2.0 sends `criteria`; `cpe23Uri` is the 1.0 spelling, accepted as a fallback.
+          const cpeUri = cpe.criteria ?? cpe.cpe23Uri
+          if (!cpeUri) {
+            // Never insert a row with no CPE URI. better-sqlite3 accepts `undefined` and writes
+            // NULL, which is how reading the wrong field name produced 3M rows matching nothing
+            // instead of an error. Count and report it rather than storing junk.
+            skipped++
+            continue
+          }
           matches.push({
             cve_id: cve.id,
-            cpe23_uri: cpe.cpe23Uri,
+            cpe23_uri: cpeUri,
             vulnerable: cpe.vulnerable ? 1 : 0,
             version_start_including: cpe.versionStartIncluding || null,
             version_start_excluding: cpe.versionStartExcluding || null,
@@ -536,6 +546,10 @@ export class NvdDataImporter {
           })
         }
       }
+    }
+
+    if (skipped > 0) {
+      console.warn(`[NvdDataImporter] ${cve.id}: skipped ${skipped} cpeMatch entr(ies) with no criteria/cpe23Uri`)
     }
 
     return matches

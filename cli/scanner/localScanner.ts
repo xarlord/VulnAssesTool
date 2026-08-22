@@ -87,16 +87,22 @@ export function parseComponentId(identifier: string): { name: string; version: s
 }
 
 /**
- * Lowercase + strip LIKE metacharacters (% _ \) and CPE wildcards (*) so a term
- * is safe and specific for searchCVEsByCPE. A wildcard-only term collapses to ''
- * (dropped) rather than matching every CVE.
+ * Lowercase + strip CPE wildcards (*) so a term is specific for searchCVEsByCPE. A wildcard-only
+ * term collapses to '' (dropped) rather than matching every CVE.
+ *
+ * This deliberately does NOT touch LIKE metacharacters. It used to delete `% _ \` as well, which
+ * looked like SQL hygiene but was destroying real queries: the DB layer already escapes them
+ * properly (`escapeLikePattern` + `ESCAPE '\'` in nvdDb/cpeSearch), so this was a second,
+ * lossy layer on top of a correct one. Underscores are pervasive in NVD product names —
+ * `spring_framework`, `commons_text`, `windows_10` — and 68.7% of the 161,533 distinct
+ * `cpe_product` values in a real catalog contain one. Deleting them turned
+ * `apache:commons_text` (1 hit, Text4Shell) into `apache:commonstext` (0 hits) and
+ * `vmware:spring_framework` (43 hits) into `vmware:springframework` (0). Measured, not guessed —
+ * see docs/reports/live-scan-defects (2026-08-22).
  */
 function sanitizeTerm(term: string | undefined): string {
   if (!term) return ''
-  return term
-    .toLowerCase()
-    .replace(/[%_\\*]/g, '')
-    .trim()
+  return term.toLowerCase().replace(/\*/g, '').trim()
 }
 
 /** Split a package name into meaningful search tokens. */
@@ -122,7 +128,17 @@ export interface SearchTier {
  * ladder: explicit CPE -> suggested CPE vendor:product -> full name -> longest token.
  * Each tier is returned separately so scanning can stop at the first tier that hits.
  */
-export function deriveSearchTiers(identifier: string): SearchTier[] {
+export function deriveSearchTiers(identifier: string, declaredCpe?: string): SearchTier[] {
+  // A CPE the SBOM actually declares is the most authoritative identifier available — it is the
+  // very key NVD indexes on — so its tiers go first, ahead of anything inferred from the purl.
+  // Previously the caller passed `component.purl ?? component.cpe`, so a declared CPE was used
+  // only when no purl existed, which for CycloneDX means essentially never. Measured cost of that
+  // on struts2-core 2.5.10: 1 finding / 0 KEV / CVE-2017-5638 missed via the purl, against
+  // 91 findings / 8 KEV / found via the declared CPE.
+  if (declaredCpe && declaredCpe.startsWith('cpe:') && !identifier.startsWith('cpe:')) {
+    return [...deriveSearchTiers(declaredCpe), ...deriveSearchTiers(identifier)]
+  }
+
   if (identifier.startsWith('cpe:')) {
     // cpe:2.3:part:vendor:product:version:...
     const parts = identifier.split(':')
@@ -205,9 +221,40 @@ export class LocalScanner implements ScannerInstance {
         `NVD database at ${this.dbPath} is empty. Sync CVE data before scanning.`,
       )
     }
+    this.warnIfVersionBlind()
   }
 
-  async scanComponent(identifier: string, _options?: { preferLocal?: boolean }): Promise<ScanComponentResult> {
+  /**
+   * Warn when the catalog carries no CPE version bounds at all.
+   *
+   * A `cpe:2.3:a:apache:log4j:*` row is only meaningful alongside its
+   * versionStartIncluding/versionEndExcluding; without them it reads as "every version of log4j".
+   * A real 3,017,128-row catalog was measured with **zero** rows carrying any bound, which is why
+   * a patched log4j 2.17.2 came back flagged for Log4Shell and OpenSSL 3.0.0 for 2003-era CVEs.
+   * The range matcher (`isVersionInRange`) is correct and simply has nothing to work with.
+   *
+   * Root cause is fixed in nvdDataImporter (it read the API 1.0 field name), but existing
+   * databases stay version-blind until re-imported — so say so rather than presenting unfiltered
+   * results as if they were filtered.
+   */
+  private warnIfVersionBlind(): void {
+    try {
+      if (!this.db.hasAnyCpeVersionBounds()) {
+        console.warn(
+          '[scan] WARNING: this NVD database contains no CPE version ranges, so findings are NOT ' +
+            'filtered by component version — expect false positives on patched versions. ' +
+            'Re-import the catalog to populate them.',
+        )
+      }
+    } catch {
+      // A schema without the bounds columns is old, not broken; scanning still works.
+    }
+  }
+
+  async scanComponent(
+    identifier: string,
+    options?: { preferLocal?: boolean; declaredCpe?: string },
+  ): Promise<ScanComponentResult> {
     const matched = new Map<string, CVEWithDetails>()
     let hitConfidence: MatchConfidence = 'name-only'
 
@@ -216,7 +263,7 @@ export class LocalScanner implements ScannerInstance {
     // cpe23_uri match (already scoped); a bare product/name/token uses the precise
     // cpe_product cascade instead of a blunt substring, cutting cross-product noise.
     const matchedTerms: string[] = []
-    for (const tier of deriveSearchTiers(identifier)) {
+    for (const tier of deriveSearchTiers(identifier, options?.declaredCpe)) {
       for (const term of tier.terms) {
         const cves = term.includes(':')
           ? this.db.searchCVEsByCPE(term, SEARCH_LIMIT)

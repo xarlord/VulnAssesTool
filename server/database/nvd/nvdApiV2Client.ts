@@ -124,7 +124,17 @@ export interface NvdCveV2 {
       negate?: boolean
       cpeMatch: Array<{
         vulnerable: boolean
-        cpe23Uri: string
+        /**
+         * NVD API **2.0** names this field `criteria`. `cpe23Uri` was the 1.0 name and is kept
+         * only so an archived 1.0-era payload still parses. Declaring 2.0 responses as `cpe23Uri`
+         * was silently wrong: the field is always absent, better-sqlite3 accepts the resulting
+         * `undefined` and stores NULL, so a sync filled `cpe_matches` with rows that match
+         * nothing. Verified against the live API — see docs/reports/code-review-2026-08-22.md.
+         */
+        criteria?: string
+        /** Legacy NVD API 1.0 spelling of {@link criteria}. */
+        cpe23Uri?: string
+        matchCriteriaId?: string
         versionStartIncluding?: string
         versionStartExcluding?: string
         versionEndIncluding?: string

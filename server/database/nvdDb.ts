@@ -1053,6 +1053,32 @@ export class NvdDatabase {
   }
 
   /**
+   * True when at least one cpe_matches row carries a version bound.
+   *
+   * A catalog with none is version-blind: a wildcard CPE such as `cpe:2.3:a:apache:log4j:*` has
+   * nothing to constrain it, so `isVersionInRange` never gets a range to test and every version of
+   * a product matches every CVE naming it. Callers use this to warn rather than to fail — the scan
+   * still works, its results are just unfiltered by version.
+   *
+   * Cheap regardless of table size: LIMIT 1 stops at the first hit.
+   */
+  hasAnyCpeVersionBounds(): boolean {
+    if (!this.db) throw new Error('Database not initialized')
+
+    const row = this.db
+      .prepare(
+        `SELECT 1 AS present FROM cpe_matches
+         WHERE version_start_including IS NOT NULL
+            OR version_start_excluding IS NOT NULL
+            OR version_end_including IS NOT NULL
+            OR version_end_excluding IS NOT NULL
+         LIMIT 1`,
+      )
+      .get() as { present: number } | undefined
+    return row !== undefined
+  }
+
+  /**
    * Get total count of CVEs
    */
   getTotalCVECount(): number {

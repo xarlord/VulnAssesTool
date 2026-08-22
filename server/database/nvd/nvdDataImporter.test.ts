@@ -1096,3 +1096,90 @@ describe('createNvdDataImporter', () => {
     testDb.close()
   })
 })
+
+// The importer read `cpe.cpe23Uri`, which is the NVD API **1.0** field name. API 2.0 — the one
+// nvdApiV2Client actually calls — sends `criteria`. Confirmed against the live endpoint:
+//   cpeMatch keys = vulnerable, criteria, versionEndExcluding, matchCriteriaId
+// better-sqlite3 accepts the resulting `undefined` and stores NULL rather than throwing, so a sync
+// filled cpe_matches with rows that match nothing, silently. Every fixture above uses the 1.0
+// spelling, which is exactly why the suite never noticed. See docs/reports/code-review-2026-08-22.md.
+describe('NvdDataImporter — NVD API 2.0 cpeMatch shape', () => {
+  let importer2: NvdDataImporter
+
+  beforeEach(() => {
+    db = createTestDatabase()
+    importer2 = createNvdDataImporter(db)
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+  })
+
+  const v2Cve = {
+    ...sampleCve,
+    id: 'CVE-2024-CRIT01',
+    configurations: [
+      {
+        operator: 'OR',
+        nodes: [
+          {
+            operator: 'OR',
+            cpeMatch: [
+              {
+                vulnerable: true,
+                criteria: 'cpe:2.3:a:apache:log4j:*:*:*:*:*:*:*:*',
+                matchCriteriaId: 'ABCD-1234',
+                versionStartIncluding: '2.0',
+                versionEndExcluding: '2.15.0',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+
+  it('stores the CPE URI and its version bounds from a real 2.0 payload', async () => {
+    const result = await importer2.importCves([v2Cve])
+    expect(result.success).toBe(true)
+
+    const row = db.prepare('SELECT * FROM cpe_matches WHERE cve_id = ?').get('CVE-2024-CRIT01') as
+      | Record<string, unknown>
+      | undefined
+
+    expect(row).toBeDefined()
+    expect(row!.cpe23_uri).toBe('cpe:2.3:a:apache:log4j:*:*:*:*:*:*:*:*')
+    // The bounds are the whole point: without them a wildcard CPE matches every version, which is
+    // how a patched log4j 2.17.2 was reported vulnerable to Log4Shell.
+    expect(row!.version_start_including).toBe('2.0')
+    expect(row!.version_end_excluding).toBe('2.15.0')
+  })
+
+  it('still accepts the legacy 1.0 cpe23Uri spelling', async () => {
+    const result = await importer2.importCves([{ ...sampleCve, id: 'CVE-2024-LEGACY' }])
+    expect(result.success).toBe(true)
+
+    const row = db.prepare('SELECT cpe23_uri FROM cpe_matches WHERE cve_id = ?').get('CVE-2024-LEGACY') as
+      | { cpe23_uri: string }
+      | undefined
+    expect(row?.cpe23_uri).toBe('cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*')
+  })
+
+  it('skips an entry carrying neither field instead of writing a NULL-URI row', async () => {
+    const malformed = {
+      ...sampleCve,
+      id: 'CVE-2024-NOURI',
+      configurations: [
+        { operator: 'OR', nodes: [{ operator: 'OR', cpeMatch: [{ vulnerable: true, versionEndExcluding: '9.9' }] }] },
+      ],
+    }
+
+    const result = await importer2.importCves([malformed])
+    expect(result.success).toBe(true)
+
+    const count = db.prepare('SELECT COUNT(*) as c FROM cpe_matches WHERE cve_id = ?').get('CVE-2024-NOURI') as {
+      c: number
+    }
+    expect(count.c).toBe(0)
+  })
+})

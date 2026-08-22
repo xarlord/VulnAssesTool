@@ -416,6 +416,52 @@ describe('CLI Scan Command', () => {
 
       expect(mockScanComponent).toHaveBeenCalledWith('cpe:2.3:a:test:test-lib:1.0.0:*:*:*:*:*:*:*', {
         preferLocal: true,
+        declaredCpe: 'cpe:2.3:a:test:test-lib:1.0.0:*:*:*:*:*:*:*',
+      })
+    })
+
+    // A declared CPE must reach the scanner even when a purl exists. It previously did not:
+    // scan.ts chose `component.purl ?? component.cpe`, so for CycloneDX (which almost always has
+    // purls) the authoritative identifier NVD indexes on was never consulted. Measured against a
+    // real catalog, that cost struts2-core 2.5.10 its CVE-2017-5638 match — KEV-listed, and the
+    // Equifax CVE.
+    it('passes a declared CPE alongside the purl, not instead of it', async () => {
+      const withBoth: Component[] = [
+        {
+          id: 'comp-both',
+          name: 'struts2-core',
+          version: '2.5.10',
+          type: 'library',
+          purl: 'pkg:maven/org.apache.struts/struts2-core@2.5.10',
+          cpe: 'cpe:2.3:a:apache:struts:2.5.10:*:*:*:*:*:*:*',
+          licenses: [],
+          vulnerabilities: [],
+        },
+      ]
+
+      vi.mocked(fs.existsSync).mockReturnValue(true)
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ bomFormat: 'CycloneDX' }))
+
+      const { parseCycloneDX } = await import('../../src/renderer/lib/parsers/cyclonedx.js')
+      vi.mocked(parseCycloneDX).mockReturnValue({
+        components: withBoth,
+        vulnerabilities: [],
+        sbomFile: {} as any,
+      })
+
+      const { getHybridScanner } = await import('../../src/renderer/lib/database/hybridScanner.js')
+      const mockScanComponent = vi.fn().mockResolvedValue({ vulnerabilities: [], fromCache: 0, fromApi: 0, errors: [] })
+      vi.mocked(getHybridScanner).mockReturnValue({
+        scanComponent: mockScanComponent,
+        scanComponents: vi.fn(),
+        getStatistics: vi.fn().mockReturnValue({ totalCves: 1000 }),
+      } as any)
+
+      await scanCommand('sbom.cdx.json', {})
+
+      expect(mockScanComponent).toHaveBeenCalledWith('pkg:maven/org.apache.struts/struts2-core@2.5.10', {
+        preferLocal: true,
+        declaredCpe: 'cpe:2.3:a:apache:struts:2.5.10:*:*:*:*:*:*:*',
       })
     })
 
