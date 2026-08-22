@@ -13,6 +13,83 @@ Findings are grouped by kind and ordered by severity within each group.
 
 ---
 
+## Resolution status
+
+Updated as fixes landed on `fix/review-findings`. Every fix ships with the test that would have
+caught the defect, and each of those tests was mutation-checked — reverting the fix turns exactly
+the new assertions red. Nothing here is marked fixed on the strength of a passing suite alone.
+
+| ID             | Status        | How it was verified                                                                                                                                                           |
+| -------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SEC-1          | **Fixed**     | `assertRegistryImageRef` rejects filesystem schemes and leading `-`. Re-ran both original exploits against the rebuilt server: `dir:<host path>` and `--help` are now refused |
+| SEC-2          | **Fixed**     | Empty and implausibly-shrunk catalogs refused. Mutation-checked: disabling the guards turns the two new assertions red                                                        |
+| SEC-3          | Open (LOW)    | Defence-in-depth only; not reproducible as a file write with GNU tar 1.35 or bsdtar                                                                                           |
+| PROD-1         | **Fixed**     | `restoreBackup` verifies the file and requires `valid`. Two tests that encoded the defect were rewritten                                                                      |
+| PROD-2         | Open (HIGH)   | Needs a decision, not a patch — wire the offline queue into the mutating paths, or delete it. See below                                                                       |
+| PROD-3         | **Fixed**     | Badge chain now distinguishes a declared CPE from an auto-selected estimate; mutation-checked                                                                                 |
+| PROD-4         | Open (MEDIUM) | Same decision as PROD-2: `IncrementalScanService` has no caller and no vuln-DB change trigger                                                                                 |
+| PROD-5         | Open (MEDIUM) | Unknown reachability still reported as `reachable: false`; downstream confidence gate keeps the safety outcome correct today                                                  |
+| PROD-6         | **Fixed**     | CSAF and OpenVEX are refused explicitly instead of parsing to an empty statement list; 4 mutation-checked tests                                                               |
+| PROD-7         | **Fixed**     | Critical/High protection moved from configuration into a code invariant; mutation-checked                                                                                     |
+| PROD-8         | Open (LOW)    | `--max-gaps` remains opt-in; needs a product call on the default                                                                                                              |
+| PROD-9         | Open (LOW)    | Android-image detection still only on the `localPath` branch                                                                                                                  |
+| PROD-10        | **Fixed**     | Requirement corrected, not the code — FR-17 said "most restrictive" where SPDX `OR` means least                                                                               |
+| DOC-1 … DOC-12 | **Fixed**     | All twelve; DOC-10/DOC-12 resolved as one defect (the FR-23 row, not the summary count)                                                                                       |
+
+### The live-catalog matching defects
+
+Recorded separately from the numbered findings because they came from scanning a real 2.9 GB NVD
+database rather than from reading code. Three of four are fixed:
+
+| Defect                                                 | Status                                                                                                        |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Sanitizer stripped `_`, killing 68.7% of CPE products  | **Fixed** — the DB layer already escaped LIKE metacharacters; the CLI layer was lossy on top of a correct one |
+| Declared CPE discarded whenever a purl existed         | **Fixed** — both are passed, CPE leading the ladder                                                           |
+| Importer read `cpe23Uri`; NVD API 2.0 sends `criteria` | **Fixed** — reads `criteria` with a 1.0 fallback, and skips rather than writing a NULL-URI row                |
+| Version ranges never applied                           | **Not fixed** — see below                                                                                     |
+
+Measured effect of the first two together, same SBOM against the same catalog:
+
+|                             | before                                     | after                         |
+| --------------------------- | ------------------------------------------ | ----------------------------- |
+| struts2-core 2.5.10         | 1 finding, 0 KEV, CVE-2017-5638 **missed** | 91 findings, 8 KEV, **found** |
+| CVE-2022-42889 (Text4Shell) | missed                                     | found                         |
+| total findings / KEV        | 413 / 8                                    | 349 / 12                      |
+| scan duration               | 75s                                        | 10s                           |
+
+More true positives and less name-matching noise at the same time, which is the shape you want:
+the extra findings came from the authoritative identifier, the removed ones were product-name
+collisions.
+
+**Version ranges are deliberately still open.** The catalog in use has zero bounds across all
+3,017,128 rows, so a wildcard CPE reads as "every version" and log4j 2.17.2 is still flagged for
+Log4Shell. `isVersionInRange` is correct and simply has nothing to test against. Fixing the
+importer stops _new_ imports losing the bounds, but existing databases stay version-blind until
+re-imported. A heuristic that guessed at exclusion from concrete-version rows would introduce
+false negatives on CVEs that genuinely affect all versions — worse than the false positives it
+would remove. So the scanner now says so on stderr instead:
+
+```
+[scan] WARNING: this NVD database contains no CPE version ranges, so findings are NOT filtered
+by component version — expect false positives on patched versions. Re-import the catalog to
+populate them.
+```
+
+### What is left, and why it is left
+
+**PROD-2 and PROD-4 are decisions, not patches.** `OfflineQueue` (670 lines) and
+`IncrementalScanService` (323 lines) are both fully implemented, fully tested, and called by
+nothing. Wiring either one changes runtime behaviour across the app and deserves its own change;
+deleting either is equally defensible. What is not defensible is leaving tested code that nothing
+calls while a requirement claims the behaviour ships — FR-20 and FR-18.2 should move to PARTIAL in
+the traceability matrix until one or the other happens.
+
+**PROD-5** is a correctness bug whose safety consequence is currently masked: unknown reachability
+reports `reachable: false`, but the confidence gate downstream stops that becoming an
+auto-suppression. It is one refactor away from mattering.
+
+---
+
 ## Security
 
 ### SEC-1 — `imageRef` bypasses the local-scan containment control (HIGH, reproduced)

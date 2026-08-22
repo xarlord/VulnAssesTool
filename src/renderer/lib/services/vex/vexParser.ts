@@ -136,6 +136,58 @@ function parseCycloneDxVuln(raw: unknown, warnings: string[]): ParsedVexStatemen
  * a VEX document at all (not JSON, not an object, no statements/vulnerabilities
  * array); collects per-entry problems as `warnings` instead of throwing.
  */
+/**
+ * Reject CSAF and OpenVEX explicitly instead of half-parsing them.
+ *
+ * The dispatch below duck-types on the presence of a `statements` or `vulnerabilities` array, and
+ * both unsupported formats happen to have one:
+ *
+ *  - **OpenVEX** has top-level `statements`, but each entry's `vulnerability` is an object rather
+ *    than a string, so every entry fell out as a warning.
+ *  - **CSAF** has top-level `vulnerabilities`, but entries key the id as `cve`, not `id` — same
+ *    outcome.
+ *
+ * Either way the caller received a successful parse with an EMPTY statement list. In CI (`--vex`)
+ * that means the run is green and nothing is suppressed, with no error to notice — the worst shape
+ * a failure can take. FR-16.2 requires these to be refused; this is that refusal.
+ */
+function rejectUnsupportedVexFormat(json: Record<string, unknown>): void {
+  // OpenVEX is unambiguous: a JSON-LD @context pointing at the openvex spec.
+  const context = json['@context']
+  if (typeof context === 'string' && context.toLowerCase().includes('openvex')) {
+    throw new Error('OpenVEX documents are not supported — export the triage as CycloneDX VEX instead')
+  }
+
+  // CSAF carries a `document` object with a `csaf_version`, and/or a CSAF-shaped vulnerabilities
+  // array whose entries use `cve` rather than `id`.
+  const doc = json.document
+  if (isRecord(doc) && ('csaf_version' in doc || 'category' in doc)) {
+    throw new Error('CSAF documents are not supported — export the triage as CycloneDX VEX instead')
+  }
+  if (Array.isArray(json.vulnerabilities) && json.vulnerabilities.length > 0) {
+    const everyEntryIsCsafShaped = json.vulnerabilities.every(
+      (entry) => isRecord(entry) && !('id' in entry) && 'cve' in entry,
+    )
+    if (everyEntryIsCsafShaped) {
+      throw new Error('CSAF documents are not supported — export the triage as CycloneDX VEX instead')
+    }
+  }
+
+  // OpenVEX without an @context: `statements` present, but no entry carries a string vulnerability
+  // id, which is the shape this parser requires.
+  if (Array.isArray(json.statements) && json.statements.length > 0) {
+    const noEntryHasStringVulnerability = json.statements.every(
+      (entry) => isRecord(entry) && typeof entry.vulnerability !== 'string',
+    )
+    if (noEntryHasStringVulnerability) {
+      throw new Error(
+        'VEX document has no statement with a string "vulnerability" id — if this is OpenVEX, ' +
+          'it is not supported; export the triage as CycloneDX VEX instead',
+      )
+    }
+  }
+}
+
 export function parseVexDocument(content: string): ParsedVex {
   let json: unknown
   try {
@@ -146,6 +198,8 @@ export function parseVexDocument(content: string): ParsedVex {
   if (!isRecord(json)) {
     throw new Error('VEX document must be a JSON object')
   }
+
+  rejectUnsupportedVexFormat(json)
 
   const warnings: string[] = []
   const statements: ParsedVexStatement[] = []

@@ -425,3 +425,51 @@ describe('ComponentsTab branch coverage', () => {
     expect(screen.getByText('patched-lib')).toBeInTheDocument()
   })
 })
+
+// PROD-3 (docs/reports/code-review-2026-08-22.md). The badge chain's first arm was
+// `component.cpe && !component.hasMissingCpe`. An AUTO-SELECTED estimate sets both — see
+// cpeEstimationPipeline — so a guess matched the first arm and rendered as green "CPE Verified",
+// making the yellow "CPE Estimated" arm unreachable for the very components it exists for.
+// This matters beyond cosmetics: the live-catalog scan the same day showed CPE accuracy is what
+// decides whether a CVE is found at all, so a user must be able to see which CPEs are guesses.
+describe('ComponentsTab CPE provenance badge (FR-19)', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  const declared = makeComponent({
+    id: 'c-declared',
+    name: 'declared-cpe-lib',
+    cpe: 'cpe:2.3:a:apache:struts:2.5.10:*:*:*:*:*:*:*',
+    hasMissingCpe: false,
+  })
+
+  // Exactly what cpeEstimationPipeline produces on auto-select: a cpe, hasMissingCpe cleared,
+  // and the suggestion list retained.
+  const estimated = makeComponent({
+    id: 'c-estimated',
+    name: 'estimated-cpe-lib',
+    cpe: 'cpe:2.3:a:guessed:vendor:1.0:*:*:*:*:*:*:*',
+    hasMissingCpe: false,
+    suggestedCpes: [{ cpe: 'cpe:2.3:a:guessed:vendor:1.0:*:*:*:*:*:*:*', confidence: 'high', source: 'pattern' }],
+  } as Partial<Component>)
+
+  it('shows a declared CPE as verified', () => {
+    render(<ComponentsTab project={makeProject([declared])} onComponentClick={vi.fn()} />)
+    expect(screen.getByText('CPE Verified')).toBeInTheDocument()
+    expect(screen.queryByText('CPE Estimated')).not.toBeInTheDocument()
+  })
+
+  it('shows an auto-selected estimate as estimated, never as verified', () => {
+    render(<ComponentsTab project={makeProject([estimated])} onComponentClick={vi.fn()} />)
+    expect(screen.getByText('CPE Estimated')).toBeInTheDocument()
+    expect(screen.queryByText('CPE Verified')).not.toBeInTheDocument()
+  })
+
+  it('still shows components with no CPE at all as missing', () => {
+    const missing = makeComponent({ id: 'c-missing', name: 'no-cpe-lib', hasMissingCpe: true })
+    render(<ComponentsTab project={makeProject([missing])} onComponentClick={vi.fn()} />)
+    expect(screen.getByText('No CPE')).toBeInTheDocument()
+  })
+})

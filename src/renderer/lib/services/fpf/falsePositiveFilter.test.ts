@@ -317,3 +317,53 @@ describe('isLLMAvailable', () => {
     expect(fpf.isLLMAvailable()).toBe(false)
   })
 })
+
+// PROD-7 (docs/reports/code-review-2026-08-22.md). The header of this file states the safety
+// contract as "NEVER auto-suppress a Critical/High finding", but it was enforced only through
+// configuration and had two ways out:
+//   1. `settings.neverAutoFilter || DEFAULT_FILTER_SETTINGS.neverAutoFilter` — an explicit `[]` is
+//      truthy, so an empty array did NOT fall back to the default.
+//   2. configService.validateConfig only *warns* on a missing 'critical', and never checks 'high'.
+// So a saved config carrying `neverAutoFilter: []` silently switched the contract off. It is now a
+// code invariant: configuration may widen the protected set, never narrow it.
+describe('FalsePositiveFilter — Critical/High protection is not configurable away (FR-15.1)', () => {
+  const context2: FilterContext = { ...context }
+
+  for (const severity of ['critical', 'high'] as const) {
+    it(`does not auto-suppress a ${severity} finding when neverAutoFilter is emptied`, async () => {
+      const fpf = new FalsePositiveFilter(
+        makeConfig({
+          filterSettings: {
+            ...makeConfig().filterSettings,
+            // The exact shape that disabled the protection.
+            neverAutoFilter: [],
+            alwaysEscalateToReview: [],
+            // Force the tier-1 auto-filter branch to be reachable on confidence alone.
+            autoFilterConfidenceThreshold: 1,
+          },
+        }),
+      )
+
+      const result = await fpf.filterVulnerability(makeVuln({ severity }), makeComponent(), context2)
+
+      expect(result.action).not.toBe('filtered')
+    })
+  }
+
+  it('still auto-suppresses a low finding when the config allows it', async () => {
+    const fpf = new FalsePositiveFilter(
+      makeConfig({
+        filterSettings: {
+          ...makeConfig().filterSettings,
+          neverAutoFilter: [],
+          alwaysEscalateToReview: [],
+          autoFilterConfidenceThreshold: 1,
+        },
+      }),
+    )
+
+    // The guard must protect Critical/High specifically, not disable filtering wholesale.
+    const result = await fpf.filterVulnerability(makeVuln({ severity: 'low' }), makeComponent(), context2)
+    expect(result.action).toBe('filtered')
+  })
+})

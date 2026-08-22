@@ -318,8 +318,19 @@ export function ComponentsTab({ project, onComponentClick }: ComponentsTabProps)
                                       {t('componentCard.badges.source', { filename: sbomFilename })}
                                     </span>
                                   )}
-                                  {/* CPE Status Indicator */}
-                                  {component.cpe && !component.hasMissingCpe ? (
+                                  {/*
+                                    CPE Status Indicator.
+
+                                    `!component.suggestedCpes?.length` is what separates a CPE the
+                                    SBOM declared from one this app guessed. An auto-selected
+                                    estimate sets `cpe` AND `hasMissingCpe: false`
+                                    (cpeEstimationPipeline), so without that clause it matched this
+                                    first arm and rendered as green "verified" — the yellow
+                                    "estimated" arm below was unreachable for exactly the components
+                                    it existed for. A guess and ground truth must not look alike
+                                    when CPE accuracy is what decides whether a CVE is found.
+                                  */}
+                                  {component.cpe && !component.hasMissingCpe && !component.suggestedCpes?.length ? (
                                     <span
                                       className="inline-flex items-center rounded-md bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 border border-green-500/20"
                                       title={t('componentCard.badges.cpeVerifiedTitle', { cpe: component.cpe })}

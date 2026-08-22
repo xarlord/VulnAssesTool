@@ -57,6 +57,12 @@ export interface FilterStatistics {
 /**
  * False Positive Filter - Main orchestrator class
  */
+/**
+ * Severities this filter will never auto-suppress, whatever the configuration says (FR-15.1).
+ * Configuration may add to the protected set; it cannot take these out of it.
+ */
+const ALWAYS_PROTECTED_SEVERITIES: ReadonlyArray<Vulnerability['severity']> = ['critical', 'high']
+
 export class FalsePositiveFilter {
   private config: SystemConfig
   private tier1Filter: Tier1QuickFilter
@@ -124,11 +130,24 @@ export class FalsePositiveFilter {
       return result
     }
 
-    // Check if we should never auto-filter this severity
+    // Check if we should never auto-filter this severity.
+    //
+    // FR-15.1 states as an invariant that a Critical or High finding is never auto-suppressed —
+    // the strongest available action for those is to escalate for review. That was previously left
+    // to configuration and had two ways out: `settings.neverAutoFilter || DEFAULT_...` treats an
+    // explicit `[]` as truthy (an empty array does NOT fall back to the default), and
+    // configService.validateConfig only *warns* about a missing 'critical' and never checks 'high'
+    // at all. So a saved config with `neverAutoFilter: []` silently disabled the protection.
+    //
+    // Enforced here in code instead. Configuration may widen the set — never narrow it below
+    // Critical/High.
     const severity = vulnerability.severity
+    const configuredNeverAutoFilter = settings.neverAutoFilter?.length
+      ? settings.neverAutoFilter
+      : DEFAULT_FILTER_SETTINGS.neverAutoFilter
     const isSeverityNeverAutoFilter =
-      severity !== 'none' && (settings.neverAutoFilter || DEFAULT_FILTER_SETTINGS.neverAutoFilter).includes(severity)
-    void isSeverityNeverAutoFilter
+      severity !== 'none' &&
+      (ALWAYS_PROTECTED_SEVERITIES.includes(severity) || configuredNeverAutoFilter.includes(severity))
 
     // Tier 1: Quick Filters
     if (!options.skipTier1) {

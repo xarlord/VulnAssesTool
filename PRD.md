@@ -819,7 +819,11 @@ VulnAssessTool provides a self-hosted, offline-capable web application that:
   - Resolve categories from SPDX identifiers via a catalog
   - Evaluate against a policy yielding `allowed`, `review` or `denied` per component
   - Support explicit allow and deny lists that override category rules, with deny winning
-  - Resolve multi-licence expressions to the most restrictive applicable category
+  - Resolve multi-licence expressions per SPDX semantics: `AND` takes the most restrictive
+    category (all obligations apply), `OR` takes the least restrictive (the consumer may choose
+    a branch). An earlier draft of this bullet said "most restrictive" unconditionally, which
+    would have made `MIT OR GPL-3.0` read as GPL — wrong, and a change to the scanner would have
+    been the wrong fix
   - Treat an unrecognised licence as `unknown` and surface it, never as `allowed`
   - Summarise findings by category and verdict across the project
 
