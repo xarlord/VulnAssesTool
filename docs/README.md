@@ -51,13 +51,14 @@ that still describes a desktop/Electron app has been moved to [archive/](archive
 
 ## Status & Reports
 
-| Document                                                                                           | Description                                                           |
-| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [reports/prd-remediation-plan.md](reports/prd-remediation-plan.md)                                 | **Canonical** PRD requirement remediation status                      |
-| [reports/requirements-gap-analysis-2026-08-22.md](reports/requirements-gap-analysis-2026-08-22.md) | Reverse traceability: 20 shipped capabilities that had no requirement |
-| [reports/requirement-validation-2026-07-25.md](reports/requirement-validation-2026-07-25.md)       | Requirement validation snapshot (superseded by the plan above)        |
-| [reports/bug-hunt-fixes-2026-08-02.md](reports/bug-hunt-fixes-2026-08-02.md)                       | Bug hunt #1 findings and fixes (resolved)                             |
-| [reports/bug-hunt-2026-08-03.md](reports/bug-hunt-2026-08-03.md)                                   | Bug hunt #2 findings and fixes (resolved)                             |
+| Document                                                                                           | Description                                                                 |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [reports/prd-remediation-plan.md](reports/prd-remediation-plan.md)                                 | **Canonical** PRD requirement remediation status                            |
+| [reports/requirements-gap-analysis-2026-08-22.md](reports/requirements-gap-analysis-2026-08-22.md) | Reverse traceability: 21 shipped capabilities that had no requirement       |
+| [reports/code-review-2026-08-22.md](reports/code-review-2026-08-22.md)                             | Code + security review findings (SEC/PROD/DOC), with what did not reproduce |
+| [reports/requirement-validation-2026-07-25.md](reports/requirement-validation-2026-07-25.md)       | Requirement validation snapshot (superseded by the plan above)              |
+| [reports/bug-hunt-fixes-2026-08-02.md](reports/bug-hunt-fixes-2026-08-02.md)                       | Bug hunt #1 findings and fixes (resolved)                                   |
+| [reports/bug-hunt-2026-08-03.md](reports/bug-hunt-2026-08-03.md)                                   | Bug hunt #2 findings and fixes (resolved)                                   |
 
 ## UI Reviews (historical)
 
