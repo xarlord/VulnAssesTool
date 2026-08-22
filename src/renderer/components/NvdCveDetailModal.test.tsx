@@ -229,7 +229,7 @@ describe('NvdCveDetailModal', () => {
       // Wait for modal to load
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText('product')).toBeInTheDocument()
+      expect(await screen.findByText('product')).toBeInTheDocument()
     })
 
     it('should display vendor name from CPE URI', async () => {
@@ -238,7 +238,7 @@ describe('NvdCveDetailModal', () => {
       // Wait for modal to load
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText(/by vendor/)).toBeInTheDocument()
+      expect(await screen.findByText(/by vendor/)).toBeInTheDocument()
     })
 
     it('should toggle CPE section expand/collapse', async () => {
@@ -495,7 +495,7 @@ describe('NvdCveDetailModal', () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText('Not Affected (Fixed Versions)')).toBeInTheDocument()
+      expect(await screen.findByText('Not Affected (Fixed Versions)')).toBeInTheDocument()
       expect(screen.getByText(/Version 3\.0 is not affected/)).toBeInTheDocument()
     })
   })
@@ -519,7 +519,7 @@ describe('NvdCveDetailModal', () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText(/From \(>\):/)).toBeInTheDocument()
+      expect(await screen.findByText(/From \(>\):/)).toBeInTheDocument()
       expect(screen.getByText('1.0')).toBeInTheDocument()
     })
 
@@ -541,7 +541,7 @@ describe('NvdCveDetailModal', () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText(/Up to \(≤\):/)).toBeInTheDocument()
+      expect(await screen.findByText(/Up to \(≤\):/)).toBeInTheDocument()
       expect(screen.getByText('2.5')).toBeInTheDocument()
     })
 
@@ -566,7 +566,7 @@ describe('NvdCveDetailModal', () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText(/From \(≥\):/)).toBeInTheDocument()
+      expect(await screen.findByText(/From \(≥\):/)).toBeInTheDocument()
       expect(screen.getByText(/From \(>\):/)).toBeInTheDocument()
       expect(screen.getByText(/Up to \(≤\):/)).toBeInTheDocument()
       expect(screen.getByText(/Up to \(<\):/)).toBeInTheDocument()
@@ -632,13 +632,13 @@ describe('NvdCveDetailModal', () => {
     it('should display assigner when present', async () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
-      expect(screen.getByText(/Assigner: mitre/)).toBeInTheDocument()
+      expect(await screen.findByText(/Assigner: mitre/)).toBeInTheDocument()
     })
 
     it('should display vuln status when present', async () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
-      expect(screen.getByText(/Status: Analyzed/)).toBeInTheDocument()
+      expect(await screen.findByText(/Status: Analyzed/)).toBeInTheDocument()
     })
   })
 
@@ -674,7 +674,7 @@ describe('NvdCveDetailModal', () => {
       await screen.findByTestId('cve-detail-modal')
 
       // Multi-source summary heading
-      expect(screen.getByText('All CVSS Scores (Multiple Sources)')).toBeInTheDocument()
+      expect(await screen.findByText('All CVSS Scores (Multiple Sources)')).toBeInTheDocument()
       // Source names
       expect(screen.getByText('nvd@nist.gov')).toBeInTheDocument()
       expect(screen.getByText('msrc@microsoft.com')).toBeInTheDocument()
@@ -706,7 +706,7 @@ describe('NvdCveDetailModal', () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText('CVSS v3.0')).toBeInTheDocument()
+      expect(await screen.findByText('CVSS v3.0')).toBeInTheDocument()
       // v3-specific metric names (v2 uses different names like "Access Vector")
       expect(screen.getByText('Attack Vector')).toBeInTheDocument()
       expect(screen.getByText('Attack Complexity')).toBeInTheDocument()
@@ -737,7 +737,7 @@ describe('NvdCveDetailModal', () => {
       renderModal(true)
       await screen.findByTestId('cve-detail-modal')
 
-      expect(screen.getByText('CVSS v2.0')).toBeInTheDocument()
+      expect(await screen.findByText('CVSS v2.0')).toBeInTheDocument()
       // v2-specific metric names (v3 uses different names like "Attack Vector")
       expect(screen.getByText('Access Vector')).toBeInTheDocument()
       expect(screen.getByText('Authentication')).toBeInTheDocument()
@@ -763,7 +763,7 @@ describe('NvdCveDetailModal', () => {
       // "Authentication" only exists in the CVSS v2 metric map. If a bare (unprefixed)
       // v2 vector were misdetected as v3, 'Au' would match nothing and this label
       // — along with the whole Authentication row — would silently disappear.
-      expect(screen.getByText('Authentication')).toBeInTheDocument()
+      expect(await screen.findByText('Authentication')).toBeInTheDocument()
     })
 
     it('should drop unrecognized metric codes and fall back to the raw code for unrecognized values', async () => {
@@ -855,7 +855,7 @@ describe('NvdCveDetailModal', () => {
       // Older/partial NVD records can carry a per-version score without a matching
       // per-version severity label. Each of the three CVSS blocks must still show a
       // sensible severity by falling back to the CVE's overall severity.
-      expect(screen.getByText('CVSS v3.1')).toBeInTheDocument()
+      expect(await screen.findByText('CVSS v3.1')).toBeInTheDocument()
       expect(screen.getByText('CVSS v3.0')).toBeInTheDocument()
       expect(screen.getByText('CVSS v2.0')).toBeInTheDocument()
       expect(screen.getAllByText('critical')).toHaveLength(3)
@@ -896,7 +896,7 @@ describe('NvdCveDetailModal', () => {
       // With no cvssV31/V30/V2 score, the section's visibility depends entirely on
       // cvssMetrics — a vendor-supplied score must not be hidden just because NVD's
       // own primary score is absent.
-      expect(screen.getByText('CVSS Scores')).toBeInTheDocument()
+      expect(await screen.findByText('CVSS Scores')).toBeInTheDocument()
       expect(screen.getByText('All CVSS Scores (Multiple Sources)')).toBeInTheDocument()
       expect(screen.getByText('cna@vendor.com')).toBeInTheDocument()
       expect(screen.queryByText('CVSS v3.1')).not.toBeInTheDocument()
@@ -924,7 +924,7 @@ describe('NvdCveDetailModal', () => {
 
       // A match can specify only an upper bound with no lower bound at all — this must
       // still be recognized as a version range, not treated as "all versions".
-      expect(screen.getByText(/up to 4\.0 \(exclusive\)/)).toBeInTheDocument()
+      expect(await screen.findByText(/up to 4\.0 \(exclusive\)/)).toBeInTheDocument()
       expect(screen.getByText(/Up to \(<\):/)).toBeInTheDocument()
     })
 
@@ -940,7 +940,7 @@ describe('NvdCveDetailModal', () => {
 
       // Real feeds occasionally carry truncated/malformed CPE strings — the modal must
       // degrade to a labeled placeholder rather than rendering blank or throwing.
-      expect(screen.getByText('Unknown Product')).toBeInTheDocument()
+      expect(await screen.findByText('Unknown Product')).toBeInTheDocument()
     })
 
     it('should display "*" as the version when a well-formed CPE URI has an empty version field', async () => {
@@ -962,7 +962,7 @@ describe('NvdCveDetailModal', () => {
 
       // No version range bounds and an empty version segment: the match still needs a
       // non-blank display value, so it must fall back to the CPE wildcard "*".
-      expect(screen.getByText('Version *')).toBeInTheDocument()
+      expect(await screen.findByText('Version *')).toBeInTheDocument()
     })
   })
 

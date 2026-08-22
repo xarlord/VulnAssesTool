@@ -82,19 +82,27 @@ export default defineConfig({
         'src/renderer/lib/audit/types.ts',
         'src/renderer/lib/cache/index.ts',
       ],
-      // Anti-regression floors, set below measured full-suite coverage with margin. Ratcheted
-      // 2026-08-13 after coverage batches 1-3 (~33 files, ~795 intent tests on the highest
-      // uncovered-branch files). Clean full-suite measurement (208 files, 0 fail):
-      // stmts 95.18 / branch 89.74 / funcs 94.14 / lines 96.02 — statements and lines now clear
-      // the PRD's 95% target (NFR-07.1/08.1). Branch sits at ~90%: the remaining uncovered
-      // branches are largely unreachable defensive guards (SSR/null checks, closed-union default
-      // arms), so forcing them higher would mean contrived, intent-free tests. Floors ~1-1.7
-      // below measured; ratchet up as real gaps close, never down.
+      // Anti-regression floors. Ratchet up as real gaps close, never down.
+      //
+      // Ratcheted 2026-08-21. Measured clean (210 files, 0 fail):
+      // stmts 95.37 / branch 89.73 / funcs 94.65 / lines 96.21. Statements and lines clear the
+      // PRD's 95% (NFR-07.1/08.1); functions and branches do not yet.
+      //
+      // Margins are tighter than the previous 1-1.7 because measurement is now reproducible: the
+      // threads pool used to crash or flake often enough that a run's numbers were partly luck
+      // (and a failed run emits no report at all). Each floor below sits under the MINIMUM
+      // observed across every full run taken on 2026-08-21 —
+      // stmts 95.24/95.25/95.37 · branch 89.68/89.71/89.73 · funcs 94.13/94.13/94.65 ·
+      // lines 96.06/96.08/96.21 — so these are evidence-based, not guesses.
+      //
+      // Functions need ~12 more covered to reach 95%. Branches need ~575, which is the real
+      // grind: most of what is left are unreachable defensive guards (SSR/null checks,
+      // closed-union default arms), and forcing those means contrived, intent-free tests.
       thresholds: {
-        statements: 94,
-        branches: 88,
-        functions: 93,
-        lines: 95,
+        statements: 95,
+        branches: 89,
+        functions: 94,
+        lines: 96,
       },
     },
 
@@ -126,11 +134,25 @@ export default defineConfig({
     // Isolate tests
     isolate: true,
 
-    // Pool - use threads (Vitest 4.x)
-    pool: 'threads',
-    singleThread: false,
-    minThreads: 1,
-    maxThreads: 4,
+    // Pool - forks (child processes), not threads.
+    //
+    // The intermittent SIGSEGV (exit 139) that ci.yml blames on the macOS runner is not a runner
+    // problem: it is better-sqlite3, a native N-API addon, being finalized during *worker-thread*
+    // teardown. That is why it also shows up on ubuntu CI and on Windows locally. Child processes
+    // tear down as processes, where the addon's handles are safe.
+    //
+    // Measured on Windows, 209 files / 6,163 tests, this branch:
+    //   threads - 4 runs: 1 SIGSEGV, 2 runs with a failing file, 1 clean (172-238s)
+    //   forks   - 3 runs: 3 clean, coverage report produced every time  (181-227s)
+    // Forks is not the slower pool here, so there is no speed argument for keeping threads.
+    //
+    // If CI disagrees, this is a one-line revert. If it holds, macOS can go back in the ci.yml
+    // matrix (dropped there for this same crash) - worth a follow-up run to confirm.
+    //
+    // NOTE: the previous `singleThread: false` / `minThreads: 1` / `maxThreads: 4` keys were
+    // removed, not translated. They are not Vitest 4 options (it uses `maxWorkers`), so they were
+    // silently ignored and the 4-worker cap they read as never actually applied.
+    pool: 'forks',
 
     // Watch mode
     watch: false,

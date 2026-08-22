@@ -12,10 +12,29 @@ describe('CacheManager', () => {
   let db: InstanceType<typeof Database>
   let cacheManager: CacheManager
 
+  const TEST_TTL_MS = 1000
+
   const testConfig: Partial<CacheConfig> = {
     maxSizeMB: 1,
-    ttlMs: 1000,
+    ttlMs: TEST_TTL_MS,
     cleanupIntervalMs: 500,
+  }
+
+  /**
+   * Move the wall clock past an entry's TTL.
+   *
+   * Expiry is decided by `Date.now() - created_at`, but `setTimeout` is driven by libuv's
+   * monotonic clock. Sleeping 1100ms against a 1000ms TTL therefore only holds while those two
+   * clocks agree to within 100ms — under a loaded full-suite run they did not, and `get()` served
+   * a value it should have expired. Jumping the system clock asserts the same intent (an entry
+   * older than its TTL is not served) without assuming the two clocks agree.
+   *
+   * Safe to call mid-test: nothing awaits after it, so the real cleanup interval cannot fire and
+   * delete the entry out from under the assertion.
+   */
+  const advanceClockPastTtl = (): void => {
+    vi.useFakeTimers()
+    vi.setSystemTime(Date.now() + TEST_TTL_MS + 100)
   }
 
   beforeEach(() => {
@@ -28,6 +47,9 @@ describe('CacheManager', () => {
   })
 
   afterEach(() => {
+    // Restore here, not at the end of each test body: an assertion that throws would otherwise
+    // leave a frozen clock installed for every later test in this file.
+    vi.useRealTimers()
     cacheManager.shutdown()
     db.close()
     CacheManager.resetInstance()
@@ -154,21 +176,19 @@ describe('CacheManager', () => {
   })
 
   describe('TTL (Time-To-Live)', () => {
-    it('should return null for expired entries', async () => {
+    it('should return null for expired entries', () => {
       cacheManager.set('expire-key', 'value')
 
-      // Wait for TTL to expire
-      await new Promise((resolve) => setTimeout(resolve, 1100))
+      advanceClockPastTtl()
 
       const result = cacheManager.get('expire-key')
       expect(result).toBeNull()
     })
 
-    it('should delete expired entries when accessed', async () => {
+    it('should delete expired entries when accessed', () => {
       cacheManager.set('expire-delete-key', 'value')
 
-      // Wait for TTL to expire
-      await new Promise((resolve) => setTimeout(resolve, 1100))
+      advanceClockPastTtl()
 
       cacheManager.get('expire-delete-key')
 
@@ -308,10 +328,10 @@ describe('CacheManager', () => {
       expect(cacheManager.has('not-exists')).toBe(false)
     })
 
-    it('should return false for expired key', async () => {
+    it('should return false for expired key', () => {
       cacheManager.set('expired-key', 'value')
 
-      await new Promise((resolve) => setTimeout(resolve, 1100))
+      advanceClockPastTtl()
 
       expect(cacheManager.has('expired-key')).toBe(false)
     })
