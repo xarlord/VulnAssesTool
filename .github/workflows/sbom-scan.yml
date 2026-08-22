@@ -45,7 +45,7 @@ jobs:
       # copy on every run; bump the "-v1" suffix (or clear the cache) to force a
       # refresh after re-syncing. restore-keys lets older entries be reused.
       - name: Provision NVD database (cache)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.DATA_DIR }}
           key: nvd-data-v1
