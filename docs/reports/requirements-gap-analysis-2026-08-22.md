@@ -14,7 +14,7 @@ checkable rather than asserted.
 
 ## Result
 
-**20 shipped capabilities — ~8,500 lines of product code — had no requirement of any kind.**
+**21 shipped capabilities — ~8,500 lines of product code — had no requirement of any kind.**
 
 A keyword probe of `PRD.md` before this analysis makes the scale plain — these are counts of how
 many times each shipped capability is mentioned **anywhere** in the 982-line PRD, including prose:

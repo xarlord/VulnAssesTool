@@ -24,7 +24,7 @@ full replacement, not an update.
 > row here. Summary counts below reflect the SR-03 closure.
 
 > **Update 2026-08-22 — this matrix now runs in both directions.** Until today it only walked
-> requirement → code, which is why it reported `GAP: 0` while 20 shipped capabilities
+> requirement → code, which is why it reported `GAP: 0` while 21 shipped capabilities
 > (~8,500 lines) had no requirement at all: a subsystem with no requirement has no row to be missing
 > from. The reverse sweep is recorded in
 > [requirements-gap-analysis-2026-08-22.md](requirements-gap-analysis-2026-08-22.md); the
