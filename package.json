@@ -6,7 +6,7 @@
   "author": "VulnAssessTool",
   "type": "module",
   "main": "dist/server/index.js",
-  "homepage": "https://github.com/xarlord/d-fence-vulnerability-assesment-tool",
+  "homepage": "https://github.com/xarlord/VulnAssesTool",
   "bin": {
     "vulnshield": "dist/cli/index.js"
   },
@@ -170,6 +170,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/xarlord/d-fence-vulnerability-assesment-tool.git"
+    "url": "https://github.com/xarlord/VulnAssesTool.git"
   }
 }

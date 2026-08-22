@@ -12,7 +12,7 @@ tests/bdd/
 ├── features/              # Feature files (.feature)
 │   ├── analytics/
 │   ├── audit/
-│   ├── database/          # nvd-database runs; hybrid-scanner + update-scheduler are @wip
+│   ├── database/          # nvd-database + update-scheduler run; hybrid-scanner is @wip
 │   ├── export/
 │   ├── parsers/
 │   ├── sbom-generator/
@@ -58,11 +58,17 @@ The default gate (`npm run test:bdd`) excludes:
   `src/renderer/lib/database/hybridScanner.ts` is still a declared stub: `scanComponent` returns
   an empty result, `scanComponents` returns `[]`, `getStatistics` returns `{ totalCves: 0 }`.
   Step defs against it would assert the stub's return values, which is vacuous.
-- **`update-scheduler.feature`** (10 scenarios) — `@wip` at the Feature level.
-  `src/renderer/lib/refresh/autoRefreshScheduler.ts` exports one thing,
-  `startAutoRefreshScheduler`, a 5-minute interval check (`AUTO_REFRESH_CHECK_INTERVAL_MS`). The
-  scenarios describe a cron-style daily/weekly/monthly scheduler with pause/resume,
-  missed-schedule recovery and timezone handling — none of which exists.
+- **8 of 17 scenarios in `update-scheduler.feature`** — `@wip` individually. The other 9 run
+  against the real `server/database/nvd/nvdDeltaSync.ts`.
+  (This feature was also `@wip` wholesale, on the grounds that
+  `src/renderer/lib/refresh/autoRefreshScheduler.ts` is only a 5-minute interval check. True, but
+  it is the wrong module — that one is the renderer's UI refresh loop and has nothing to do with
+  NVD sync scheduling. The real schedule lives in `NvdDeltaSync` +
+  `SYNC_INTERVAL_HOURS` in `server/routes/database.ts`.) The conclusion still held, though: the
+  app schedules by **interval** (manual/daily/weekly/monthly -> 0/24/168/720 hours, persisted in
+  `sync_status`), not by calendar time. The 8 that stay excluded want a time-of-day, day-of-week
+  or day-of-month component, a next-run calculator, display formatting or timezone conversion —
+  none of which exists anywhere in the sync path.
 - **9 of 26 scenarios in `nvd-database.feature`** — `@wip` individually, with the reason above
   each in the feature file. The other 17 run for real against `server/database/nvdDb.ts`.
   (This feature was `@wip` wholesale until 2026-08-21 on the grounds that no CRUD/transaction
@@ -142,7 +148,7 @@ state leakage before it was caught).
   default gate since there's no server running.
 - `@wip` — known-excluded scenario/feature; see "Excluded scenarios" above. Always pair with a
   comment explaining why.
-- `@audit`, `@export`, `@analytics`, `@parser`, `@sbom-generator`, `@database` — scope the matching
+- `@audit`, `@export`, `@analytics`, `@parser`, `@sbom-generator`, `@database`, `@scheduler` — scope the matching
   Before/After reset hooks in each step-definition file to that feature. `@database`'s hooks also
   create and delete the per-scenario temp directory the real SQLite file lives in.
 

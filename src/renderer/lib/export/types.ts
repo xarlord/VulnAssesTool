@@ -116,36 +116,3 @@ export interface PdfReportConfig {
   includeFullDetails?: boolean
   maxVulnerabilities?: number
 }
-
-/**
- * Export error types
- */
-export class ExportError extends Error {
-  code: string
-  details?: unknown
-
-  constructor(message: string, code: string, details?: unknown) {
-    super(message)
-    this.name = 'ExportError'
-    this.code = code
-    this.details = details
-  }
-}
-
-/**
- * Validation error for invalid export data
- */
-export class ValidationError extends ExportError {
-  constructor(message: string, details?: unknown) {
-    super(message, 'VALIDATION_ERROR', details)
-  }
-}
-
-/**
- * File generation error
- */
-export class FileGenerationError extends ExportError {
-  constructor(message: string, details?: unknown) {
-    super(message, 'FILE_GENERATION_ERROR', details)
-  }
-}

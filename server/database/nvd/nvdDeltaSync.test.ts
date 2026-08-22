@@ -350,6 +350,25 @@ describe('NvdDeltaSync', () => {
       expect(status.autoSyncEnabled).toBe(false)
     })
 
+    it('persists the enable on a database that has no sync_status row yet', () => {
+      // Every other enableAutoSync test above INSERTs a sync_status row first, which is exactly
+      // why this went unnoticed: the method ran a bare UPDATE, so on a fresh install — where no
+      // row exists until the schedule is first saved — it matched nothing. The timer started but
+      // nothing was persisted, getSyncStatus() still reported autoSyncEnabled: false, and the
+      // setting vanished on restart.
+      expect(db.prepare(`SELECT id FROM sync_status WHERE source = 'NVD'`).get()).toBeUndefined()
+
+      // 48, not the default 24: getSyncStatus() falls back to autoSyncIntervalHours 24 when the
+      // row is missing, so asserting 24 here would pass even if nothing were written.
+      deltaSync.enableAutoSync({ intervalHours: 48 })
+
+      const status = deltaSync.getSyncStatus()
+      expect(status.autoSyncEnabled).toBe(true)
+      expect(status.autoSyncIntervalHours).toBe(48)
+
+      deltaSync.disableAutoSync()
+    })
+
     it('should call onSyncStart callback', async () => {
       const onSyncStart = vi.fn()
 
