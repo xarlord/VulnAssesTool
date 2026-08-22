@@ -1,0 +1,66 @@
+# GitLab CI template — VulnAssesTool SBOM scan
+#
+# Copy into your project's .gitlab-ci.yml, or include it:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/xarlord/VulnAssesTool/master/docs/templates/gitlab-ci.yml'
+#
+# The one prerequisite is the NVD database. The CLI deliberately cannot download NVD data
+# itself — `vulnshield db sync` fails with an explanation rather than pretending to work — so
+# nvd-data.db has to be produced by the VulnAssesTool server and brought into the job. Below it
+# is pulled from a package registry; caching it or committing it to a data repo works equally
+# well. See docs/CI_INTEGRATION.md.
+
+stages:
+  - scan
+
+.vulnshield-base:
+  stage: scan
+  image: node:20
+  variables:
+    # Point these at your SBOM and database.
+    SBOM_PATH: 'sbom.json'
+    NVD_DB_PATH: '.vulnshield/nvd-data.db'
+    # Severity that fails the pipeline: critical | high | medium | low | none
+    FAIL_ON: 'high'
+  before_script:
+    - git clone --depth 1 https://github.com/xarlord/VulnAssesTool.git /opt/vulnassestool
+    - cd /opt/vulnassestool && npm ci --ignore-scripts && npm run build:cli && cd -
+    - mkdir -p "$(dirname "$NVD_DB_PATH")"
+    # Replace with however your organisation distributes the database.
+    - 'curl --fail --location --header "JOB-TOKEN: $CI_JOB_TOKEN" --output "$NVD_DB_PATH" "$NVD_DB_URL"'
+
+# JUnit report — surfaces findings in the merge request widget.
+vulnshield:junit:
+  extends: .vulnshield-base
+  script:
+    - >-
+      node /opt/vulnassestool/dist/cli/index.js scan "$SBOM_PATH"
+      --db "$NVD_DB_PATH"
+      --format junit
+      --output vulnshield-junit.xml
+      --fail-on "$FAIL_ON"
+  artifacts:
+    when: always
+    reports:
+      junit: vulnshield-junit.xml
+    paths:
+      - vulnshield-junit.xml
+
+# SARIF report — keep alongside the JUnit job if you ingest SARIF elsewhere.
+# `allow_failure: true` because this job exists to publish the report; the JUnit job above is
+# the one that should gate the pipeline. Drop it if you want both to gate.
+vulnshield:sarif:
+  extends: .vulnshield-base
+  allow_failure: true
+  script:
+    - >-
+      node /opt/vulnassestool/dist/cli/index.js scan "$SBOM_PATH"
+      --db "$NVD_DB_PATH"
+      --format sarif
+      --output vulnshield.sarif
+      --fail-on "$FAIL_ON"
+  artifacts:
+    when: always
+    paths:
+      - vulnshield.sarif

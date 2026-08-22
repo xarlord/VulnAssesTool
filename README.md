@@ -617,7 +617,7 @@ vuln-assess-tool/
 
 #### Shipped since v2.0 (previously still listed as "Planned")
 
-Re-verified against the code on 2026-08-22. All of v2.1 is done, plus one v3.0 row:
+Re-verified against the code on 2026-08-22. All of v2.1 is done, plus two v3.0 rows:
 
 - **Contrast fixes** — `--muted-foreground` darkened to `215.4 16.3% 38.5%` in light mode, and
   `e2e/a11y/accessibility.spec.ts` now fails the build on any critical or serious WCAG violation
@@ -630,13 +630,16 @@ Re-verified against the code on 2026-08-22. All of v2.1 is done, plus one v3.0 r
 - **SBOM generation from source code** (was listed under v3.0) — `server/routes/sbom.ts` picks
   the Syft source kind from the path (`stat.isDirectory() ? 'dir' : 'file'`), so a source tree
   works alongside a binary or image reference.
+- **CI/CD integration** (was listed under v3.0) — the `vulnshield` CLI already emitted SARIF and
+  JUnit and exited on severity; what was missing was the packaging around it. Now shipped: a
+  composite GitHub Action (`action.yml`), a GitLab CI template
+  ([`docs/templates/gitlab-ci.yml`](docs/templates/gitlab-ci.yml)) and
+  [CI_INTEGRATION.md](docs/CI_INTEGRATION.md). Note the one hard prerequisite — the CLI cannot
+  download NVD data, so the pipeline must supply an `nvd-data.db`; a missing or empty one is
+  refused with exit 2 rather than reported as a clean scan.
 
 ### Partially done
 
-- **CI/CD integration** — the pieces exist: `vulnshield` is a runnable CLI with SARIF
-  (`cli/exporters/sarif.ts`) and JUnit (`cli/exporters/junit.ts`) output and a severity-based
-  exit code, which is what a pipeline needs. What is missing is the packaging: no published
-  GitHub Action and no GitLab CI template.
 - **Multi-language support (i18n)** — the runtime, the namespace layout and the full string
   extraction are done, but `src/renderer/lib/i18n/index.ts` still registers exactly one locale
   (`resources = { en }`). Adding a language is now a translation job, not an engineering one.
